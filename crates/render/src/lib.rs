@@ -19,7 +19,6 @@ pub mod comp;
 
 pub mod backdrop;
 pub mod bitmaps;
-pub mod custom_theme;
 pub mod fence_chrome;
 #[allow(
     non_snake_case,
@@ -45,7 +44,6 @@ pub mod theme;
 
 pub use backdrop::{GpuPixels, Image, MicaTint, MonitorBackdrop, WallpaperPosition};
 pub use bitmaps::BitmapCache;
-pub use custom_theme::CustomTheme;
 pub use panel::{Clip, Panel};
 pub use stack::RenderStack;
 pub use theme::{Theme, ThemeMode};

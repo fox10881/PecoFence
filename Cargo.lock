@@ -324,7 +324,6 @@ dependencies = [
  "bezier_easing",
  "pecofence-core",
  "pecofence-platform",
- "serde_json",
  "tracing",
  "windows-canvas",
  "windows-collections",
