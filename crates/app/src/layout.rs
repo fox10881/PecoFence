@@ -4,7 +4,10 @@ use pecofence_core::{DateBucket, ViewLayout};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GridMetrics {
+    /// Icon box width in DIPs (the cell always centres it horizontally).
     pub icon: f32,
+    /// Icon box height in DIPs: `icon` for Standard, `icon` × 1.5 for Poster.
+    pub icon_h: f32,
     pub cell_w: f32,
     pub cell_h: f32,
     pub pad_x: f32,
@@ -23,19 +26,51 @@ impl GridMetrics {
         let line_h = 16.0;
         Self {
             icon,
+            icon_h: icon,
             // 4 px grid: icon + 32 wide (32→64, 48→80, 64→96, 96→128) so a 72 DIP label holds
             // six 12 px CJK glyphs (the 96 px desktop "large" size gets a 120 DIP label); no
             // side padding, so the first icon's left edge lands on the title's x = 16. 8 top
             // pad, 4 icon→label gap, two 16 px label lines, 4 bottom.
             cell_w: icon + 32.0,
-            cell_h: icon + 8.0 + 4.0 + line_h * label_lines as f32 + 4.0,
+            cell_h: icon + 8.0 + Self::label_h(line_h, label_lines) + 4.0,
             pad_x: 0.0,
             pad_y: 8.0,
             label_lines,
             line_h,
             icon_top: 8.0,
-            label_gap: 4.0,
+            label_gap: Self::gap(label_lines),
         }
+    }
+
+    /// Height the label block takes below the icon: the 4 DIP icon→label gap plus the label
+    /// lines, or nothing at all when labels are hidden (`label_lines == 0`) so the cell ends
+    /// right under the icon's 4 DIP bottom pad.
+    fn label_h(line_h: f32, label_lines: u8) -> f32 {
+        if label_lines == 0 {
+            0.0
+        } else {
+            4.0 + line_h * label_lines as f32
+        }
+    }
+
+    /// Icon→label gap; 0 while labels are hidden so nothing pushes the icon off the top pad.
+    fn gap(label_lines: u8) -> f32 {
+        if label_lines == 0 {
+            0.0
+        } else {
+            4.0
+        }
+    }
+
+    /// 「图标形状」 per-fence override: Poster makes the icon box 2:3 (H = W × 1.5) so the
+    /// renderer centre-crops thumbnails into it; the cell keeps its width recipe and grows
+    /// vertically by the extra half icon. Apply before `with_line_h` / `with_spacing`.
+    pub fn with_shape(mut self, shape: pecofence_core::IconShape) -> Self {
+        if shape == pecofence_core::IconShape::Poster {
+            self.icon_h = self.icon * 1.5;
+            self.cell_h += self.icon * 0.5;
+        }
+        self
     }
 
     /// Label line height from the system icon-title font (Accessibility text scaling): the
@@ -44,7 +79,7 @@ impl GridMetrics {
     pub fn with_line_h(mut self, line_h: f32) -> Self {
         let line_h = (line_h.max(1.0) / 4.0).ceil() * 4.0;
         self.line_h = line_h;
-        self.cell_h = self.icon + 8.0 + 4.0 + line_h * self.label_lines as f32 + 4.0;
+        self.cell_h = self.icon_h + 8.0 + Self::label_h(line_h, self.label_lines) + 4.0;
         self
     }
 
@@ -55,15 +90,32 @@ impl GridMetrics {
             pecofence_core::Spacing::Compact => {
                 self.cell_w -= 12.0;
                 // 4 + icon + 2 + label + 2 == cell_h: the label still ends inside the cell.
-                self.cell_h -= 8.0;
+                // With hidden labels only the top pad gives anything back.
+                self.cell_h -= if self.label_lines == 0 { 4.0 } else { 8.0 };
                 self.icon_top = 4.0;
-                self.label_gap = 2.0;
+                self.label_gap = if self.label_lines == 0 { 0.0 } else { 2.0 };
             }
             pecofence_core::Spacing::Normal => {}
             pecofence_core::Spacing::Loose => {
                 self.cell_w += 16.0;
                 self.cell_h += 12.0;
             }
+        }
+        self
+    }
+
+    /// Per-axis gap overrides in DIPs (`FenceView.spacing_x` / `spacing_y`): each set axis
+    /// replaces the named `spacing` preset's effect on it. `gap_x` is the space added beside
+    /// the icon box; `gap_y` is the space added below it — both collapse to flush at 0.0
+    /// (the row then drops its top pad so posters tile edge to edge). After `with_spacing`.
+    pub fn with_gaps(mut self, gap_x: Option<f32>, gap_y: Option<f32>) -> Self {
+        if let Some(gx) = gap_x {
+            self.cell_w = (self.icon + gx.max(0.0)).max(8.0);
+        }
+        if let Some(gy) = gap_y {
+            self.icon_top = 0.0;
+            self.cell_h =
+                self.icon_h + Self::label_h(self.line_h, self.label_lines) + gy.max(0.0);
         }
         self
     }
@@ -434,9 +486,23 @@ impl Grid {
         (idx < count && self.cell(idx).contains(x, y)).then_some(idx)
     }
 
-    /// Maximum scroll offset for a viewport of `view_height` DIPs.
+    /// Maximum scroll offset for a viewport of `view_height` DIPs: rounded up to a whole
+    /// row so the last stop lands on a row boundary — the fractional tail under the last
+    /// row scrolls out of view instead of leaving the grid phase-shifted.
     pub fn max_scroll(&self, view_height: f32) -> f32 {
-        (self.content_height - view_height).max(0.0)
+        snapped_max_scroll(
+            (self.content_height - view_height).max(0.0),
+            self.bands.row_h,
+        )
+    }
+
+    /// Bottom edge (content DIPs) of every item row, band by band: where a Bookshelf board
+    /// sits under the row. Section header bands get no board.
+    pub fn row_bottoms(&self) -> impl Iterator<Item = f32> + '_ {
+        self.bands.groups.iter().flat_map(|g| {
+            let row_h = self.bands.row_h;
+            (0..g.rows).map(move |r| g.rows_y + (r + 1) as f32 * row_h)
+        })
     }
 
     /// Insertion index for a drop at content-local point (nearest cell boundary).
@@ -839,10 +905,24 @@ impl ItemLayout {
         }
     }
 
-    /// Maximum scroll offset for a scrollable viewport of `view_height` DIPs.
+    /// Maximum scroll offset for a scrollable viewport of `view_height` DIPs: rounded up
+    /// to a whole row step for the same magnetic-grid reason as `Grid::max_scroll`.
     pub fn max_scroll(&self, view_height: f32) -> f32 {
-        (self.content_height() - view_height).max(0.0)
+        snapped_max_scroll(
+            (self.content_height() - view_height).max(0.0),
+            self.row_step(),
+        )
     }
+}
+
+/// Snaps a scroll range's far end up to a whole row step. The ≤ 1-row padding this
+/// effectively adds under the last row scrolls out of view, so a fully-scrolled
+/// viewport shows whole rows in the same phase as any other stop.
+fn snapped_max_scroll(raw: f32, row_step: f32) -> f32 {
+    if raw <= 0.0 || row_step <= 0.0 {
+        return raw.max(0.0);
+    }
+    (raw / row_step).ceil() * row_step
 }
 
 /// Keeping fences out of each other's way (device px). Only fences lying wholly beyond an edge
@@ -1322,6 +1402,28 @@ mod tests {
         }
     }
 
+    /// 显示图标标签 off (`label_lines` 0): no icon→label gap, no label rows — the cell is
+    /// icon + pads, still on the 4 px grid, and the icon-title font no longer grows it.
+    #[test]
+    fn zero_label_lines_hug_the_icon() {
+        for icon in [32u32, 48, 64, 96] {
+            let icon_f = icon as f32;
+            let normal = GridMetrics::for_icon_size(icon, 0);
+            assert_eq!((normal.label_gap, normal.label_lines), (0.0, 0));
+            assert_eq!(normal.cell_h, icon_f + 8.0 + 4.0, "top pad + icon + bottom pad");
+            let compact = normal.with_spacing(pecofence_core::Spacing::Compact);
+            assert_eq!(compact.cell_h, icon_f + 4.0 + 4.0, "compact only trims the top pad");
+            assert_eq!(compact.label_gap, 0.0);
+            let loose = normal.with_spacing(pecofence_core::Spacing::Loose);
+            assert_eq!(loose.cell_h, icon_f + 8.0 + 4.0 + 12.0);
+            for m in [normal, compact, loose] {
+                assert_eq!(m.cell_h % 4.0, 0.0, "icon {icon}: cell on the 4 px grid");
+            }
+            // A bigger icon-title font cannot reopen label room that is not there.
+            assert_eq!(normal.with_line_h(20.0).cell_h, normal.cell_h);
+        }
+    }
+
     #[test]
     fn detail_columns_skip_hidden_columns() {
         let all = DetailColumns::for_width_with(480.0, DetailColumns::DEFAULT_WIDTHS, [true; 3]);
@@ -1466,7 +1568,11 @@ mod tests {
             l.content_height(),
             m.pad_y * 2.0 + 4.0 * m.cell_h + 2.0 * GROUP_HEADER_H
         );
-        assert_eq!(l.max_scroll(100.0), l.content_height() - 100.0);
+        // The far scroll boundary rounds up to a whole row step: the fractional tail
+        // becomes bottom padding the viewport can scroll past, keeping the rows'
+        // phase intact at the last stop.
+        let raw = l.content_height() - 100.0;
+        assert_eq!(l.max_scroll(100.0), (raw / l.row_step()).ceil() * l.row_step());
         for i in 0..8 {
             for j in 0..8 {
                 assert!(i == j || !overlaps(l.cell(i), l.cell(j)), "{i} vs {j}");

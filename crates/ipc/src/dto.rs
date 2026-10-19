@@ -164,7 +164,8 @@ pub struct FenceDto {
     pub title_color: String,
     /// `small` | `normal` | `large` | `extraLarge`.
     pub title_size: String,
-    /// `default` (the global `rollUp.titleOnHover`) | `hover` | `always`.
+    /// `default` (the global `rollUp.titleOnHover`) | `hover` | `always` | `never`
+    /// (the title row is disabled entirely — no draw, no hit, not even on hover).
     #[serde(default)]
     pub title_on_hover: String,
     /// `icons` | `list` | `details`.
@@ -174,6 +175,26 @@ pub struct FenceDto {
     pub reverse: bool,
     pub group_by_date: bool,
     pub label_lines: u8,
+    /// Item names under the icons (per-fence 显示图标标签); false lays the grid out with no
+    /// label rows, so icon covers sit flush on the bookshelf boards.
+    pub show_labels: bool,
+    /// `standard` | `poster` (2:3 centre-cropped covers) — per-fence 「图标形状」.
+    pub icon_shape: String,
+    /// Freeform icon edge in DIPs, overriding `iconSize` while set; `null` = the preset.
+    #[serde(default)]
+    pub custom_icon_size: Option<u32>,
+    /// Horizontal gap in DIPs between icon columns, overriding `spacing`; `null` = preset.
+    #[serde(default)]
+    pub spacing_x: Option<f32>,
+    /// Vertical gap in DIPs between icon rows, overriding `spacing`; `null` = preset.
+    #[serde(default)]
+    pub spacing_y: Option<f32>,
+    /// 隐藏滚动条: the overlay scrollbar is not drawn; wheel scrolling keeps working.
+    #[serde(default)]
+    pub hide_scrollbar: bool,
+    /// 锁定滚动: no scrolling at all; the viewport is pinned to the top.
+    #[serde(default)]
+    pub lock_scroll: bool,
     pub portal: Option<PortalDto>,
     /// How the items fit the window; `null` for a tab that is not the one currently shown and
     /// for fences without a window (disconnected monitor).

@@ -1188,7 +1188,9 @@ impl FenceViewState {
                 let content = ContentDraw {
                     items: &items,
                     group_headers: &[],
+                    shelf_rows: &[],
                     icon_size: self.icon_size as f32,
+                    icon_h: grid.metrics.icon_h,
                     label_lines: self.label_lines,
                     line_h: grid.metrics.line_h,
                     icon_top: grid.metrics.icon_top,

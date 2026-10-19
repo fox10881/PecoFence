@@ -54,12 +54,14 @@ pub(super) fn on_mousemove(
             let dy = (y - start_y) as f32 / v.scale();
             // Direct manipulation: the thumb drives the offset, no glide;
             // every drag frame lands on a whole device pixel (Explorer
-            // tracks the thumb in integer positions).
+            // tracks the thumb in integer positions). Hard-clamped: dragging past the
+            // track ends pins the thumb at the wall — no rubber-band overshoot.
             v.scroll_anim = None;
             let next = snap_offset(
                 start_scroll + dy * (g.content_h - g.view_h) / (g.track_h - g.thumb_h),
                 v.scale(),
-            );
+            )
+            .clamp(0.0, g.max_scroll);
             if (next - v.scroll_y).abs() > 0.01 {
                 v.dismiss_rename_for_scroll();
             }

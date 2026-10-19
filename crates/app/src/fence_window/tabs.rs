@@ -563,7 +563,7 @@ impl FenceViewState {
             .map(|t| {
                 pecofence_render::text::measure_width(
                     &t.title,
-                    &self.chrome.tab_format(t.title_size),
+                    self.chrome.tab_format(t.title_size),
                 )
             })
             .fold(0.0, f32::max);
@@ -593,14 +593,16 @@ impl FenceViewState {
     }
 
     /// Window height (device px) of a rolled fence: its title row, or (tabs on the left) the
-    /// column collapsed to fit every tab, at most the expanded height.
+    /// column collapsed to fit every tab, at most the expanded height. A「从不显示」title
+    /// leaves the same tall sliver — a bare plate strip — so a rolled fence stays findable.
     pub(super) fn rolled_h_px(&self) -> i32 {
+        let title_h = (self.theme.title_height * self.scale()).round() as i32;
         if self.tabs_on_rail() {
             self.rail_rows_height_px(RAIL_COLLAPSED_BOTTOM)
                 .min(self.expanded_h_px)
-                .max(self.title_h_px())
+                .max(title_h)
         } else {
-            self.title_h_px()
+            title_h
         }
     }
 
@@ -710,7 +712,7 @@ impl FenceViewState {
                         || {
                             (pecofence_render::text::measure_width(
                                 &t.title,
-                                &self.chrome.tab_format(t.title_size),
+                                self.chrome.tab_format(t.title_size),
                             ) + pecofence_render::fence_chrome::tab_icon_w(t.folder_icon)
                                 + pecofence_render::fence_chrome::tab_text_padding(&self.theme))
                             .clamp(TAB_MIN_W, TAB_MAX_W)

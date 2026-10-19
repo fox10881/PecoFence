@@ -1317,6 +1317,17 @@ impl App {
             reverse: f.view.reverse,
             group_by_date: f.view.group_by_date,
             label_lines: f.view.label_lines,
+            show_labels: f.view.show_labels.unwrap_or(true),
+            icon_shape: match f.view.effective_icon_shape() {
+                pecofence_core::IconShape::Standard => "standard",
+                pecofence_core::IconShape::Poster => "poster",
+            }
+            .to_string(),
+            custom_icon_size: f.view.custom_icon_size,
+            spacing_x: f.view.spacing_x,
+            spacing_y: f.view.spacing_y,
+            hide_scrollbar: f.view.hide_scrollbar.unwrap_or(false),
+            lock_scroll: f.view.lock_scroll.unwrap_or(false),
             portal,
             // Only the fence the window currently shows has a measured layout.
             fit: (connected && measure)

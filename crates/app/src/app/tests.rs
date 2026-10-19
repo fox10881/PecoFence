@@ -41,7 +41,7 @@ fn peek_search_matches_names_and_hidden_extensions() {
 }
 
 mod ipc {
-    use super::super::fence_options::{FenceProp, parse_fence_prop};
+    use super::super::fence_options::{FenceProp, TitleBarChoice, parse_fence_prop};
     use super::super::ipc::{
         AUTO_SNAPSHOT_PREFIX, MAX_NAME_CHARS, MIN_EXPIRY_MS, adjusted, auto_snapshot_slot,
         check_rule_conditions, checked_name, is_inbox_alias, patch_settings_path,
@@ -427,6 +427,10 @@ mod ipc {
             FenceProp::HideWhenEmpty(true)
         );
         assert_eq!(
+            parse_fence_prop("showLabels", &json!(false)).unwrap(),
+            FenceProp::ShowLabels(false)
+        );
+        assert_eq!(
             parse_fence_prop("opacity", &json!("transparent")).unwrap(),
             FenceProp::Opacity(Some(0.0))
         );
@@ -434,14 +438,15 @@ mod ipc {
             parse_fence_prop("opacity", &json!("default")).unwrap(),
             FenceProp::Opacity(None)
         );
-        for (value, on) in [
-            ("default", None),
-            ("hover", Some(true)),
-            ("always", Some(false)),
+        for (value, choice) in [
+            ("default", TitleBarChoice::Default),
+            ("hover", TitleBarChoice::Hover),
+            ("always", TitleBarChoice::Always),
+            ("never", TitleBarChoice::Never),
         ] {
             assert_eq!(
                 parse_fence_prop("titleOnHover", &json!(value)).unwrap(),
-                FenceProp::TitleOnHover(on)
+                FenceProp::TitleOnHover(choice)
             );
         }
         assert_eq!(
@@ -449,7 +454,19 @@ mod ipc {
                 .unwrap_err()
                 .details
                 .unwrap()["allowed"],
-            json!(["default", "hover", "always"])
+            json!(["default", "hover", "always", "never"])
+        );
+        assert_eq!(
+            parse_fence_prop("hideScrollbar", &json!(true)).unwrap(),
+            FenceProp::HideScrollbar(true)
+        );
+        assert_eq!(
+            parse_fence_prop("lockScroll", &json!(true)).unwrap(),
+            FenceProp::LockScroll(true)
+        );
+        assert_eq!(
+            parse_fence_prop("lockScroll", &json!("yes")).unwrap_err().code,
+            ErrorCode::InvalidValue
         );
         assert_eq!(
             parse_fence_prop("labelLines", &json!(4)).unwrap_err().code,

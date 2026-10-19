@@ -14,7 +14,9 @@ impl FenceViewState {
         let mut content = false;
         let mut glide_done = false;
         if let Some(t) = self.scroll_anim {
-            self.scroll_y = t.value_at(now);
+            // A hard wall at both ends even mid-glide: no eased sample (nor a future
+            // overshooting curve) may push items past the content's edges.
+            self.scroll_y = t.value_at(now).clamp(0.0, self.scroll_max());
             let done = t.is_done(now);
             if done {
                 // Exactly the (pixel-snapped) destination, whatever the eased sample was.

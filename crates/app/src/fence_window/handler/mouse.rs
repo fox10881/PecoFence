@@ -827,6 +827,12 @@ pub(super) fn on_mousewheel(
             // frozen surface of a rolling fence stays put.
             return Some(0);
         }
+        // 锁定滚动: nothing scrolls — the wheel (and the precision touchpad's
+        // synthesised inertia tail, which arrives as fractional deltas) is
+        // discarded before any step or glide math runs.
+        if v.lock_scroll {
+            return Some(0);
+        }
         // Windows "lines per notch" (SPI_GETWHEELSCROLLLINES) rows in
         // List / Details, one grid row in Icons, a viewport when set to
         // "one screen at a time". Whole notches (|delta| >= 120) glide
@@ -850,6 +856,16 @@ pub(super) fn on_mousewheel(
             matches!(layout, ItemLayout::Grid(_)),
         );
         if step == 0.0 {
+            return Some(0);
+        }
+        // Brick wall at both ends: a delta (including the precision touchpad's
+        // synthesised inertia tail, which arrives as ordinary fractional wheel
+        // messages) that pushes past the edge the offset is already resting on —
+        // or already gliding to — is discarded whole, before it can touch the
+        // glide. No retarget, no scrollbar flash, no overscroll tension.
+        let target = v.scroll_target();
+        let max_scroll = layout.max_scroll(view_h);
+        if (step > 0.0 && target <= 0.0) || (step < 0.0 && target >= max_scroll) {
             return Some(0);
         }
         let cap = if delta.abs() < msg::WHEEL_DELTA {

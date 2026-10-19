@@ -272,10 +272,24 @@ pub struct FenceViewState {
     pub(super) opacity: f32,
     /// Per-fence title on hover; None follows `Behavior::title_on_hover`.
     pub(super) title_on_hover_override: Option<bool>,
+    /// 「显示标题栏 → 从不显示」: no title row at all — not drawn, not hit-tested, and
+    /// the content reclaims its height (the fence keeps its size and resize edges).
+    pub(super) title_hidden: bool,
+    /// 隐藏滚动条 (FenceView.hide_scrollbar): the overlay bar is not drawn or hit-tested;
+    /// wheel and logical scrolling keep working.
+    pub(super) hide_scrollbar: bool,
+    /// 锁定滚动 (FenceView.lock_scroll): no scrolling at all — `scroll_max()` reports 0,
+    /// so every existing clamp pins the offset to the top and the bar never appears.
+    pub(super) lock_scroll: bool,
     /// Per-fence colour wash / title colour / title size.
     pub(super) style: FenceStyle,
     /// Icon grid spacing (FenceView.spacing).
     pub(super) spacing: Spacing,
+    /// 「图标形状」 (FenceView.icon_shape): Poster makes the icon box 2:3.
+    pub(super) icon_shape: IconShape,
+    /// Per-axis gap overrides in DIPs (FenceView.spacing_x / spacing_y); None = `spacing`.
+    pub(super) spacing_x: Option<f32>,
+    pub(super) spacing_y: Option<f32>,
     /// Keyboard/selection anchor: the last item clicked or moved to with the arrow keys.
     pub(super) anchor_index: Option<usize>,
     /// Start of a Shift range selection.
@@ -403,8 +417,15 @@ impl FenceViewState {
         }
     }
 
+    /// The title row's height in device px: 0 while「从不显示」folds the fence so the
+    /// content starts at the window top — every title hit zone and the content offset
+    /// (`head_px`) follow this one number.
     pub(super) fn title_h_px(&self) -> i32 {
-        (self.theme.title_height * self.scale()).round() as i32
+        if self.title_hidden {
+            0
+        } else {
+            (self.theme.title_height * self.scale()).round() as i32
+        }
     }
 
     /// Size of the content surface. Equal to the window minus the title bar after every

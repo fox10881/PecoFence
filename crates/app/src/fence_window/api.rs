@@ -74,7 +74,7 @@ impl FenceWindow {
             )
             .create(handler)?;
         let hwnd = window.hwnd();
-        apply_window_shape(hwnd);
+        apply_window_shape(hwnd, ctx.theme.borrow().liquid_glass);
         let _ = dwm::set_border_color_none(hwnd);
         // Not DWMWA_EXCLUDED_FROM_PEEK: DWM hides such windows for the whole virtual-desktop
         // switch animation while their shadows slide, leaving empty panes. Plain windows slide
@@ -252,8 +252,14 @@ impl FenceWindow {
             backdrop_override: None,
             opacity: 1.0,
             title_on_hover_override: None,
+            title_hidden: false,
+            hide_scrollbar: false,
+            lock_scroll: false,
             style: FenceStyle::default(),
             spacing: Spacing::Normal,
+            icon_shape: IconShape::default(),
+            spacing_x: None,
+            spacing_y: None,
             anchor_index: None,
             range_anchor: None,
             device_lost: false,
@@ -660,8 +666,10 @@ impl FenceWindow {
             v.hide_tip();
             if let Some(s) = v.scroll_restore {
                 // Tab switch: the new tab's items are here, back to where that tab was
-                // (the redraw clamps to its content; `set_layout` consumes the value).
-                v.scroll_y = s;
+                // (`set_layout` consumes the value). Hard-clamped, like every offset,
+                // and the settle pulls a stale fractional offset onto the row grid.
+                v.scroll_y = s.clamp(0.0, v.scroll_max());
+                v.arm_scroll_settle();
             }
             if let Some((id, ring)) = v.select_after_nav.take()
                 && let Some(i) = v.items.iter().position(|it| it.id == id)
@@ -1026,6 +1034,8 @@ impl FenceWindow {
                 v.scroll_anim = None;
                 v.scroll_y = restored;
                 v.scroll_restore = Some(restored);
+                // A saved offset predates the row grid: the settle aligns it.
+                v.arm_scroll_settle();
                 // A real switch between two existing tabs (click, Ctrl+Tab) — not creation,
                 // merge, detach or closing the active tab — gets the content swap and the pill
                 // glide. Rolled / animating fences and animations-off snap as before.
@@ -1272,6 +1282,7 @@ impl FenceWindow {
             // A genuine layout change starts at the top; a tab switch between tabs of
             // different layouts keeps the restored offset (the redraw clamps it).
             v.scroll_y = restore.unwrap_or(0.0);
+            v.arm_scroll_settle();
             v.header_hover = None;
             v.header_fades.clear();
             v.reset_item_fades();
@@ -1555,6 +1566,50 @@ impl FenceWindow {
         });
     }
 
+    /// 「显示标题栏 → 从不显示」: the title row folds out of the layout (`title_h_px` → 0),
+    /// so toggling re-lays the panels at the same window size; the app then re-snaps the
+    /// fence to its cells.
+    pub fn set_title_hidden(&self, on: bool) {
+        self.with_view(|v| {
+            if v.title_hidden == on {
+                return;
+            }
+            v.title_hidden = on;
+            let (w, h) = v.chrome_panel.size_px();
+            if let Err(error) = v.layout_panels(w, h).and_then(|_| v.redraw()) {
+                tracing::warn!(%error, "title_hidden relayout failed");
+            }
+        });
+    }
+
+    /// 隐藏滚动条: the bar lives on the content surface, so a content redraw repaints it.
+    pub fn set_hide_scrollbar(&self, on: bool) {
+        self.with_view(|v| {
+            if v.hide_scrollbar != on {
+                v.hide_scrollbar = on;
+                let _ = v.redraw_content();
+            }
+        });
+    }
+
+    /// 锁定滚动: pins the viewport to the top at once — a live thumb/track drag or a
+    /// running glide is cancelled rather than left parked mid-scroll — then repaints.
+    pub fn set_lock_scroll(&self, on: bool) {
+        self.with_view(|v| {
+            if v.lock_scroll == on {
+                return;
+            }
+            v.lock_scroll = on;
+            if on {
+                v.scroll_anim = None;
+                v.scroll_drag = None;
+                v.page_repeat = None;
+                v.scroll_y = 0.0;
+            }
+            let _ = v.redraw_content();
+        });
+    }
+
     /// Per-fence colour wash, title colour and title size.
     pub fn set_style(&self, style: FenceStyle) {
         self.with_view(|v| {
@@ -1580,6 +1635,35 @@ impl FenceWindow {
                 v.snap_item_motion();
                 let _ = v.redraw();
             }
+        });
+    }
+
+    /// 「图标形状」 and the per-axis gap overrides (FenceView.icon_shape / spacing_x /
+    /// spacing_y): a cell-size change refits the labels and relayouts, like `set_spacing`;
+    /// a shape change also refetches the icons (poster boxes need a taller thumbnail).
+    pub fn set_grid_extras(
+        &self,
+        shape: IconShape,
+        gap_x: Option<f32>,
+        gap_y: Option<f32>,
+    ) {
+        self.with_view(|v| {
+            if v.icon_shape == shape && v.spacing_x == gap_x && v.spacing_y == gap_y {
+                return;
+            }
+            let reshaped = v.icon_shape != shape;
+            v.icon_shape = shape;
+            v.spacing_x = gap_x;
+            v.spacing_y = gap_y;
+            for item in &mut v.items {
+                item.label = None;
+            }
+            v.unfold_cache = None;
+            if reshaped {
+                v.reload_icons_and_labels();
+            }
+            v.snap_item_motion();
+            let _ = v.redraw();
         });
     }
 
@@ -1741,7 +1825,7 @@ impl FenceWindow {
 
     pub fn set_theme(&self, theme: Theme, backdrops: Rc<BackdropSets>, shadow: ShadowStyle) {
         let hwnd = self.hwnd();
-        apply_window_shape(hwnd);
+        apply_window_shape(hwnd, theme.liquid_glass);
         let mode = self
             .view
             .borrow()
@@ -1766,8 +1850,6 @@ impl FenceWindow {
                 v.glass_dark_text.set(None);
             }
             v.theme = theme;
-            // A theme may bring its own title font: the tabs are measured again.
-            v.tab_natural_w.borrow_mut().clear();
             if !theme.liquid_glass {
                 v.gpu_glass.borrow_mut().reset();
             }
@@ -1794,7 +1876,7 @@ impl FenceWindow {
     /// items showing one of them, or its failure placeholder, take the new one.
     pub fn reload_icons(&self, replaced: &HashSet<String>) {
         self.with_view(|v| {
-            let px = (v.icon_dip() * v.scale()).round() as u32;
+            let px = (v.icon_fetch_dip() * v.scale()).round() as u32;
             let mut any = false;
             {
                 let icons = v.icons.borrow();

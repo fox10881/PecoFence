@@ -189,7 +189,13 @@ impl FenceViewState {
         }
     }
 
+    /// Furthest the offset may reach. 锁定滚动 reports 0 regardless of the content, so
+    /// every clamp (`scroll_to`, the draw, the glide tick, autoscrolls, `scroll_into_view`)
+    /// pins `scroll_y` to the top — the display case never moves.
     pub(super) fn scroll_max(&self) -> f32 {
+        if self.lock_scroll {
+            return 0.0;
+        }
         let (layout, view_h) = self.scroll_extent();
         layout.max_scroll(view_h)
     }
@@ -206,14 +212,32 @@ impl FenceViewState {
     /// means "apply on the next frame, no glide" (precision-touchpad deltas tracking 1:1); the
     /// frame clock still coalesces a 120 Hz stream into one redraw per compositor frame. With
     /// animations off the offset snaps at once and `scroll_anim` stays None (callers redraw).
-    pub(super) fn scroll_to(&mut self, target: f32, cap: Duration) {
+    pub(super) fn scroll_to(&mut self, mut target: f32, cap: Duration) {
         if self.rolled_up && self.roll_anim.is_none() {
             // Nothing to scroll: the content is hidden and must reappear where it was.
             return;
         }
+        let (layout, view_h) = self.scroll_extent();
+        // 锁定滚动 collapses the range; the row-snapped `layout.max_scroll` is the
+        // magnetic grid's far boundary.
+        let max = if self.lock_scroll {
+            0.0
+        } else {
+            layout.max_scroll(view_h)
+        };
+        // The magnetic row grid: an animated scroll rests on a whole row boundary, so
+        // every stop shows the rows in the same phase — the shelf lines can never end
+        // up mid-row. 1:1 precision-touchpad deltas (cap 0) keep tracking the finger
+        // exactly; the settle timer pulls their final rest onto the grid.
+        if !cap.is_zero() {
+            let step = layout.row_step();
+            if step > 0.0 {
+                target = (target / step).round() * step;
+            }
+        }
         // Every glide ends on a whole device pixel (WinUI ScrollPresenter pixel-snaps at
         // rest), so icons and hairlines are crisp once the motion stops.
-        let target = snap_offset(target, self.scale()).clamp(0.0, self.scroll_max());
+        let target = snap_offset(target, self.scale()).clamp(0.0, max);
         if (target - self.scroll_target()).abs() > 0.01 {
             self.dismiss_rename_for_scroll();
         }
@@ -262,10 +286,12 @@ impl FenceViewState {
     }
 
     /// Rounds the offset to a whole device pixel and clamps it (WinUI ScrollPresenter rests on
-    /// pixel boundaries). Returns whether it changed.
+    /// pixel boundaries). Also arms the magnetic row settle: callers run this at scroll
+    /// rests (drag / marquee / autoscroll ends). Returns whether it changed.
     pub(super) fn snap_scroll(&mut self) -> bool {
         let old = self.scroll_y;
         self.scroll_y = snap_offset(old, self.scale()).clamp(0.0, self.scroll_max());
+        self.arm_scroll_settle();
         self.scroll_y != old
     }
 
@@ -277,10 +303,24 @@ impl FenceViewState {
         // The first item of a "按时间分组" section brings its header along.
         let top = layout.group_header_of(index).map_or(cell.y, |h| h.y);
         let base = self.scroll_target();
+        // The reveal must not round into a clip: a below-viewport reveal snaps up to the
+        // next row boundary, an above-viewport reveal snaps down, so the item (and its
+        // group header) stays fully inside the snapped viewport.
+        let step = layout.row_step();
         let target = if top < base {
-            top - layout.top_pad()
+            let t = top - layout.top_pad();
+            if step > 0.0 {
+                (t / step).floor() * step
+            } else {
+                t
+            }
         } else if cell.y + cell.h > base + view_h {
-            cell.y + cell.h + layout.top_pad() - view_h
+            let t = cell.y + cell.h + layout.top_pad() - view_h;
+            if step > 0.0 {
+                (t / step).ceil() * step
+            } else {
+                t
+            }
         } else {
             return;
         };
@@ -288,8 +328,46 @@ impl FenceViewState {
             self.scroll_to(target, motion::SLOW);
         } else {
             self.scroll_anim = None;
-            self.scroll_y = target.clamp(0.0, layout.max_scroll(view_h));
+            // 锁定滚动 pins the offset at the top: the local layout's positive range
+            // collapses to 0.
+            let max = if self.lock_scroll { 0.0 } else { layout.max_scroll(view_h) };
+            self.scroll_y = target.clamp(0.0, max);
             self.note_scroll_activity();
+        }
+    }
+
+    /// Debounced magnetic row settle, (re)armed on every scroll input and at each rest
+    /// point (thumb release, drag / marquee / autoscroll end, offset restores): once the
+    /// input stream has been quiet for `SCROLL_SETTLE_MS`, `settle_scroll` glides the
+    /// offset onto the row grid.
+    pub(super) fn arm_scroll_settle(&self) {
+        window::set_timer(self.hwnd, TIMER_SCROLL_SETTLE, SCROLL_SETTLE_MS);
+    }
+
+    /// Pulls a scroll offset that came to rest between row boundaries (1:1 touchpad
+    /// deltas, thumb drags, edge autoscrolls, restores) onto the row grid with a short
+    /// glide. No-op while any interaction is still in flight.
+    pub(super) fn settle_scroll(&mut self) {
+        if self.rolled_up
+            || self.roll_anim.is_some()
+            || self.lock_scroll
+            || self.scroll_anim.is_some()
+            || self.scroll_drag.is_some()
+            || self.page_repeat.is_some()
+            || self.drag_scroll.is_some()
+            || self.marquee.is_some()
+        {
+            return;
+        }
+        let (layout, view_h) = self.scroll_extent();
+        let step = layout.row_step();
+        if step <= 0.0 {
+            return;
+        }
+        let snapped =
+            ((self.scroll_y / step).round() * step).clamp(0.0, layout.max_scroll(view_h));
+        if (snapped - self.scroll_y).abs() > 0.5 {
+            self.scroll_to(snapped, motion::FASTER);
         }
     }
 
@@ -298,6 +376,7 @@ impl FenceViewState {
     /// the window procedure nor touches geometry, so `tick` may call this.
     pub(super) fn note_scroll_activity(&mut self) {
         self.last_scroll = Some(Instant::now());
+        self.arm_scroll_settle();
         if self.behavior.hide_inactive_scrollbar.get() {
             window::set_timer(self.hwnd, TIMER_SCROLLBAR, SCROLLBAR_LINGER_MS + 50);
         }
@@ -312,7 +391,9 @@ impl FenceViewState {
     /// Geometry with the thumb placed for `scroll_y` (the glide's destination, for the
     /// track-repeat hit test).
     pub(super) fn scrollbar_geometry_for(&self, scroll_y: f32) -> Option<ScrollbarGeom> {
-        if self.rolled_up {
+        // 锁定滚动: nothing scrolls, so there is no bar — no draw, no hit zone, and a
+        // thumb/track press can never start a drag.
+        if self.rolled_up || self.lock_scroll {
             return None;
         }
         let (layout, view_h) = self.scroll_extent();
@@ -352,6 +433,10 @@ impl FenceViewState {
         y_px: i32,
         scroll_y: f32,
     ) -> Option<(ScrollHit, ScrollbarGeom)> {
+        // 隐藏滚动条: an undrawn bar must not capture clicks or drags.
+        if self.hide_scrollbar {
+            return None;
+        }
         let title_h = self.content_y;
         if y_px < title_h {
             return None;
@@ -386,8 +471,12 @@ impl FenceViewState {
     }
 
     /// The bar to draw: width, alpha, the track / arrow reveal and the arrow hover fades
-    /// sampled from their tweens (None once faded out).
+    /// sampled from their tweens (None once faded out, and always None while「隐藏滚动条」
+    /// is on — the same Option path the fade-out uses, so track, arrows and thumb all skip).
     pub(super) fn scrollbar_draw(&self) -> Option<ScrollbarDraw> {
+        if self.hide_scrollbar {
+            return None;
+        }
         let g = self.scrollbar_geometry()?;
         let now = Instant::now();
         let alpha = self.sb_alpha.value_at(now);
@@ -648,7 +737,9 @@ impl FenceViewState {
         let speed = drag_scroll_speed(ds.depth, layout.row_step());
         let old = self.scroll_y;
         self.scroll_anim = None;
-        self.scroll_y = (old + ds.dir as f32 * speed * dt).clamp(0.0, layout.max_scroll(view_h));
+        // 锁定滚动: the max collapses to 0, so the drag-scroll can only pin the top.
+        let max = if self.lock_scroll { 0.0 } else { layout.max_scroll(view_h) };
+        self.scroll_y = (old + ds.dir as f32 * speed * dt).clamp(0.0, max);
         if self.scroll_y == old {
             return false;
         }
@@ -694,8 +785,9 @@ impl FenceViewState {
         let (layout, view_h) = self.scroll_extent();
         let old = self.scroll_y;
         self.scroll_anim = None;
-        self.scroll_y =
-            (old + overshoot.signum() as f32 * speed * dt).clamp(0.0, layout.max_scroll(view_h));
+        // 锁定滚动: the max collapses to 0, so the marquee autoscroll can only pin the top.
+        let max = if self.lock_scroll { 0.0 } else { layout.max_scroll(view_h) };
+        self.scroll_y = (old + overshoot.signum() as f32 * speed * dt).clamp(0.0, max);
         if let Some(m) = self.marquee.as_mut() {
             m.auto_last = Some(now);
             m.cur = (px, py.clamp(top, bottom));

@@ -166,11 +166,6 @@ impl AppState {
         self.store.primary_path()
     }
 
-    /// The folder custom themes are read from (see `pecofence_render::CustomTheme`).
-    pub fn themes_dir(&self) -> PathBuf {
-        self.store.dir().join("themes")
-    }
-
     /// `config_path` where Explorer can find it. The Store package's writes under %APPDATA%
     /// land in its `LocalCache\Roaming`, so only this process sees the file at the %APPDATA%
     /// path; the final path of the opened file names the real one.
@@ -718,7 +713,14 @@ impl AppState {
             .filter(|&tab| tab != shown)
             .filter_map(|tab| self.fence(tab))
             .flat_map(|f| {
-                let px = crate::layout::icon_px(f.view.layout, f.view.icon_size, dpi);
+                let mut px =
+                    crate::layout::icon_px(f.view.layout, f.view.effective_icon_size(), dpi);
+                // Poster boxes are 1.5× taller; prewarm the thumbnail at the long edge.
+                if f.view.layout == pecofence_core::ViewLayout::Icons
+                    && f.view.effective_icon_shape() == pecofence_core::IconShape::Poster
+                {
+                    px = px * 3 / 2;
+                }
                 self.items_of(f)
                     .into_iter()
                     .map(move |item| (&item.icon_key, px))
@@ -1707,6 +1709,45 @@ impl AppState {
         plan
     }
 
+    /// Re-files `ids` by the rules as if they had just arrived on the desktop (the user dragged
+    /// them out of a fence onto the desktop: an explicit "let go", so an earlier manual
+    /// placement no longer pins them). Unmatched items stay where they are (the inbox).
+    /// Returns the fences whose membership changed.
+    pub fn apply_rules_to(&mut self, ids: &[ItemId], entries: &[DesktopEntry]) -> Vec<FenceId> {
+        let mut touched = Vec::new();
+        for entry in entries {
+            if entry.origin == EntryOrigin::Namespace {
+                continue;
+            }
+            let key = ItemKey::from_path(&entry.path.to_string_lossy());
+            let Some(&id) = self.catalog.get(&key) else {
+                continue;
+            };
+            if !ids.contains(&id) {
+                continue;
+            }
+            let from = self
+                .fences()
+                .iter()
+                .find(|f| f.contains_item(id))
+                .map(|f| f.id);
+            let decision = self.config.rules.evaluate(&self.facts_for(entry));
+            if let Some((fence, by)) = self.target_fence(decision)
+                && Some(fence) != from
+                && self.config.assign(self.layout, id, fence, by).is_some()
+            {
+                touched.extend(from);
+                touched.push(fence);
+            }
+        }
+        if !touched.is_empty() {
+            self.dirty = true;
+            touched.sort_unstable();
+            touched.dedup();
+        }
+        touched
+    }
+
     // ---- fences -----------------------------------------------------------------------------
 
     pub fn set_fence_bounds(&mut self, id: FenceId, rect: RECT, rolled: bool, expanded_h_px: i32) {
@@ -1889,6 +1930,36 @@ impl AppState {
     /// Per-fence title on hover (None = follow `rollUp.titleOnHover`).
     pub fn set_title_on_hover(&mut self, id: FenceId, on: Option<bool>) {
         self.edit_appearance(id, |a| a.title_on_hover = on);
+    }
+
+    /// 「显示标题栏 → 从不显示」 (Some(true) = the title row is gone entirely; None keeps
+    /// `title_on_hover`'s behaviour).
+    pub fn set_title_hidden(&mut self, id: FenceId, hidden: bool) {
+        self.edit_appearance(id, |a| a.title_hidden = hidden.then_some(true));
+    }
+
+    /// 隐藏滚动条 (FenceView.hide_scrollbar): Some(true) never draws the bar; None is the
+    /// default. Per-tab, like the other view options.
+    pub fn set_hide_scrollbar(&mut self, id: FenceId, on: bool) {
+        if let Some(f) = self.fence_mut(id) {
+            let next = on.then_some(true);
+            if f.view.hide_scrollbar != next {
+                f.view.hide_scrollbar = next;
+                self.dirty = true;
+            }
+        }
+    }
+
+    /// 锁定滚动 (FenceView.lock_scroll): Some(true) disables all scrolling and pins the
+    /// offset to the top. Per-tab, like the other view options.
+    pub fn set_lock_scroll(&mut self, id: FenceId, on: bool) {
+        if let Some(f) = self.fence_mut(id) {
+            let next = on.then_some(true);
+            if f.view.lock_scroll != next {
+                f.view.lock_scroll = next;
+                self.dirty = true;
+            }
+        }
     }
 
     /// The tint washes only the title row.

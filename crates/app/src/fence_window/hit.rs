@@ -89,7 +89,7 @@ impl FenceViewState {
     /// Is the client-pixel point on the portal "up" button? A tab strip in the title row has
     /// none; a left tab column has it at the end of the shown tab's row (`rail_up_box`).
     pub(super) fn up_button_at(&self, x_px: i32, y_px: i32) -> bool {
-        if !self.deco.up_button || self.title_row_strip() {
+        if !self.deco.up_button || self.title_row_strip() || self.title_hidden {
             return false;
         }
         let scale = self.scale();
@@ -139,7 +139,9 @@ impl FenceViewState {
         let (w_px, h_px) = self.chrome_panel.size_px();
         // Under the tabs of a left tab column (the fence's title bar). Collapsed to the column
         // there is none: a tab click expands the fence. Hidden by the user, its spot is title.
-        if self.column_collapsed || self.behavior.hide_count_and_chevron.get() {
+        // 「从不显示」 removes the whole row — its box must not steal item clicks.
+        if self.column_collapsed || self.behavior.hide_count_and_chevron.get() || self.title_hidden
+        {
             return false;
         }
         let r = if self.tabs_on_rail() {
@@ -169,8 +171,10 @@ impl FenceViewState {
 
     pub(super) fn grid_metrics(&self) -> GridMetrics {
         GridMetrics::for_icon_size(self.icon_size, self.label_lines)
+            .with_shape(self.icon_shape)
             .with_line_h(self.chrome.label_line_h())
             .with_spacing(self.spacing)
+            .with_gaps(self.spacing_x, self.spacing_y)
     }
 
     /// "按时间分组" sections of the current items as delivered (sorted, possibly reversed):
@@ -213,6 +217,15 @@ impl FenceViewState {
     /// Icon edge in DIPs for the current layout (rows use a small 20 DIP icon).
     pub(super) fn icon_dip(&self) -> f32 {
         crate::layout::icon_dip(self.layout, self.icon_size)
+    }
+
+    /// Edge in DIPs the thumbnails are fetched at: the icon box's longer side, so a
+    /// poster (2:3) cover stays sharp after the centre-crop.
+    pub(super) fn icon_fetch_dip(&self) -> f32 {
+        match self.layout {
+            ViewLayout::Icons => self.grid_metrics().icon_h.max(self.icon_dip()),
+            _ => self.icon_dip(),
+        }
     }
 
     pub(super) fn row_metrics(&self) -> Option<RowMetrics> {

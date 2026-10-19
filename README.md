@@ -28,6 +28,14 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 
 ---
 
+## Ultimate Static Desktop & Poster Shelves Integration
+
+![Ultimate Static Desktop & Poster Shelves Integration](docs/assets/desktop-poster-shelves.png)
+
+### 🧩 The Essential Missing Piece: BoxArt Studio
+While PecoFence provides the rigid grid layout and zero-gap 2:3 poster containers, Windows still natively generates standard square icons. 
+To achieve the exact physical game shelf look shown in the screenshot, you need **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. BoxArt Studio is the essential companion tool that batch-transforms your standard Windows game shortcuts and folders into beautiful, high-resolution 2:3 physical game boxes. 
+
 <a id="ask-your-ai-to-organize-it"></a>
 
 ## Your desktop. Configured by your AI

@@ -47,10 +47,14 @@ impl App {
     /// Grid rhythm of host `id`'s shown fence at `scale`.
     pub(super) fn grid_steps(&self, id: FenceId, scale: f32) -> Option<GridSteps> {
         let shown = self.state.fence(self.state.active_tab_of(id))?;
-        let metrics =
-            crate::layout::GridMetrics::for_icon_size(shown.view.icon_size, shown.view.label_lines)
+        let metrics = crate::layout::GridMetrics::for_icon_size(
+            shown.view.effective_icon_size(),
+            shown.view.effective_label_lines(),
+        )
+                .with_shape(shown.view.effective_icon_shape())
                 .with_line_h(self.ctx.chrome.label_line_h())
-                .with_spacing(shown.view.spacing);
+                .with_spacing(shown.view.spacing)
+                .with_gaps(shown.view.spacing_x, shown.view.spacing_y);
         // A left tab column sits before the first icon column, and replaces the title row.
         let rail = self.fences.get(&id).map_or(0.0, |w| w.tab_rail_dip());
         let title_h = if rail > 0.0 {

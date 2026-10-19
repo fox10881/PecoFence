@@ -155,6 +155,25 @@ pub(super) fn on_timer_scroll_repeat(
     Some(0)
 }
 
+/// Debounced magnetic row-grid settle: the scroll input stream has been quiet for
+/// `SCROLL_SETTLE_MS`, so an offset that stopped between rows (1:1 touchpad deltas,
+/// thumb drags, edge autoscrolls, restores) glides onto the nearest row boundary.
+pub(super) fn on_timer_scroll_settle(
+    h: &HandlerCtx,
+    hwnd: HWND,
+    _wparam: usize,
+    _lparam: isize,
+) -> Option<isize> {
+    let HandlerCtx { view, .. } = h;
+    window::kill_timer(hwnd, TIMER_SCROLL_SETTLE);
+    if let Ok(mut guard) = view.try_borrow_mut()
+        && let Some(v) = guard.as_mut()
+    {
+        v.settle_scroll();
+    }
+    Some(0)
+}
+
 pub(super) fn on_timer_scrollbar_expand(
     h: &HandlerCtx,
     hwnd: HWND,

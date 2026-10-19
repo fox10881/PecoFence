@@ -7,7 +7,7 @@ use crate::bitmaps::BitmapCache;
 use crate::gpu_bindings as b;
 use crate::panel::Clip;
 use crate::theme::{Theme, font_small, font_text, lerp, with_alpha};
-use std::cell::{Ref, RefCell};
+use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 use std::rc::Rc;
 use windows_canvas::{
@@ -34,21 +34,8 @@ pub const DEFAULT_LABEL_LINE_H: f32 = 16.0;
 /// multi-line CJK labels from visually running together in narrow panes.
 pub const ICON_LABEL_SIDE_INSET: f32 = 8.0;
 
-/// Titles and tab captions at the four title sizes (12 / 14 / 16 / 18 px), rebuilt when a
-/// theme names its own title font.
-struct TitleFonts {
-    titles: [TextFormat; 4],
-    /// Same face, size and weight as standalone titles, centred inside their controls.
-    tabs: [TextFormat; 4],
-    /// The left tab column's resting captions: regular weight, leading (the shown tab uses
-    /// the title format).
-    tab_lists: [TextFormat; 4],
-    face: Option<String>,
-    weight: i32,
-}
-
 pub struct FenceChrome {
-    title_fonts: RefCell<TitleFonts>,
+    title_format: TextFormat,
     count_format: TextFormat,
     label_font: RefCell<LabelFont>,
     glyph_format: TextFormat,
@@ -58,10 +45,19 @@ pub struct FenceChrome {
     row_format_right: TextFormat,
     /// Header sort indicator (8 px chevron).
     sort_glyph_format: TextFormat,
+    /// Same face, size and weight as standalone titles, centred inside their controls.
+    tab_formats: [TextFormat; 4],
+    /// The left tab column's resting captions: regular weight, leading (the shown tab uses
+    /// the semibold title format).
+    tab_list_formats: [TextFormat; 4],
     /// Empty-state text: Body 14, top-aligned (Explorer "This folder is empty.").
     empty_format: TextFormat,
     /// 14 px Fluent glyph beside the title (portal folder icon).
     title_glyph_format: TextFormat,
+    /// Title at 12 / 16 / 18 px for the per-fence "title size" option (`title_format` is 14).
+    title_format_small: TextFormat,
+    title_format_large: TextFormat,
+    title_format_xlarge: TextFormat,
     /// "按时间分组" section captions: Caption 12 / 600, leading, vertically centred.
     group_format: TextFormat,
     /// Tab match badge number: 11 / 600, centred.
@@ -381,6 +377,9 @@ pub struct TitleState {
     /// How far a fully transparent fence (外观 → 全透明) has cleared its plate: 0 = drawn,
     /// 1 = no glass, tint or rim at all (the resting look away from the pointer).
     pub plate_clear: f32,
+    /// 「显示标题栏 → 从不显示」: the title row is gone — no caption, chevron, count or tab
+    /// strip, even rolled. Only the merge hint (a whole-window affordance) still draws.
+    pub hide_title: bool,
     /// A tab strip too wide for its room scrolls: where its pills are cut. None = it fits.
     pub strip_clip: Option<StripClip>,
 }
@@ -648,9 +647,9 @@ fn draw_header_glass(
     }
     let radius = header_control_radius(theme, rect);
     if let Backdrop::GpuGlass { material, .. } = backdrop {
-        let mut material = material.borrow_mut();
-        material.set_lens(theme.lens);
-        material.draw_control(session, key, rect, scale, radius, amount * alpha)?;
+        material
+            .borrow_mut()
+            .draw_control(session, key, rect, scale, radius, amount * alpha)?;
     }
     let white = ColorF::new(1.0, 1.0, 1.0, 1.0);
     // A thin optical wash, not the opaque LayerOnAcrylic fill used by Fluent tabs.
@@ -707,6 +706,132 @@ fn header_foreground(
     *theme
 }
 
+/// Bookshelf palette (walnut): lit top faces catch light from above; front faces, sides
+/// and the interior back step down in depth like the old `PaintBox` carcass.
+const SHELF_BACK: ColorF = ColorF::from_rgba8(0x2E, 0x1D, 0x12, 0xF2);
+const SHELF_LIT: ColorF = ColorF::from_rgba8(0x9C, 0x72, 0x50, 0xFF);
+const SHELF_FACE: ColorF = ColorF::from_rgba8(0x5C, 0x40, 0x33, 0xFF);
+const SHELF_FACE_LO: ColorF = ColorF::from_rgba8(0x41, 0x2C, 0x1F, 0xFF);
+const SHELF_SIDE: ColorF = ColorF::from_rgba8(0x4E, 0x36, 0x26, 0xFF);
+const SHELF_PLINTH: ColorF = ColorF::from_rgba8(0x33, 0x22, 0x17, 0xFF);
+const SHELF_UMBRA: ColorF = ColorF::from_rgba8(0x1E, 0x13, 0x0D, 0x8C);
+const SHELF_BORDER: ColorF = ColorF::from_rgba8(0x1E, 0x13, 0x0D, 0xFF);
+/// Carcass side boards and the inset the shelf boards keep from them (DIPs).
+const SHELF_SIDE_W: f32 = 7.0;
+/// A shelf board: 2 DIPs of lit top face the icons stand on, 6 of shaded front face.
+const SHELF_TOP_H: f32 = 2.0;
+const SHELF_FACE_H: f32 = 6.0;
+/// Bottom board of the carcass (DIPs).
+const SHELF_PLINTH_H: f32 = 9.0;
+
+/// The Bookshelf carcass, drawn instead of the backdrop materials: a walnut back, the
+/// beam the title row sits on, side boards, a bottom plinth and the outer 2 DIP border.
+/// The shelf boards under each item row are drawn in the content pass (they scroll with
+/// the items); the opacity veil and the per-fence tint still apply on top.
+fn draw_bookshelf_carcass(
+    session: &DrawingSession<'_>,
+    px: Px,
+    theme: &Theme,
+    outer: Rect,
+    radius: f32,
+    plate_a: f32,
+) -> Result<()> {
+    let back = session.create_solid_brush(with_alpha(SHELF_BACK, plate_a))?;
+    session.fill_rounded_rect(&RoundedRect::uniform(outer, radius), &back);
+
+    let lit = session.create_solid_brush(with_alpha(SHELF_LIT, plate_a))?;
+    let umbra = session.create_solid_brush(with_alpha(SHELF_UMBRA, plate_a))?;
+    let hair = px.hair();
+
+    // Header beam: lit top edge, a face shading down, then its shadow on the first cubby.
+    let beam_h = theme.title_height.min(outer.height()).max(0.0);
+    if beam_h > 0.0 {
+        let beam = Rect::from_xywh(outer.left, outer.top, outer.width(), beam_h);
+        let face = session.create_linear_gradient(
+            Vector2::new(0.0, beam.top),
+            Vector2::new(0.0, beam.bottom),
+            &[
+                GradientStop::new(0.0, with_alpha(SHELF_FACE, plate_a)),
+                GradientStop::new(1.0, with_alpha(SHELF_FACE_LO, plate_a)),
+            ],
+        )?;
+        session.fill_rect(&beam, &face);
+        session.fill_rect(
+            &Rect::from_xywh(outer.left, outer.top, outer.width(), SHELF_TOP_H),
+            &lit,
+        );
+        session.fill_rect(
+            &Rect::from_xywh(outer.left, beam.bottom - hair, outer.width(), hair),
+            &umbra,
+        );
+    }
+
+    // Side boards, each with a shadow on its inner edge.
+    let side = session.create_solid_brush(with_alpha(SHELF_SIDE, plate_a))?;
+    let inner_h = outer.height().max(0.0);
+    session.fill_rect(
+        &Rect::from_xywh(outer.left, outer.top, SHELF_SIDE_W, inner_h),
+        &side,
+    );
+    session.fill_rect(
+        &Rect::from_xywh(outer.right - SHELF_SIDE_W, outer.top, SHELF_SIDE_W, inner_h),
+        &side,
+    );
+    session.fill_rect(
+        &Rect::from_xywh(outer.left + SHELF_SIDE_W, outer.top, hair, inner_h),
+        &umbra,
+    );
+    session.fill_rect(
+        &Rect::from_xywh(outer.right - SHELF_SIDE_W - hair, outer.top, hair, inner_h),
+        &umbra,
+    );
+
+    // Bottom plinth: a lit top edge over a darker face.
+    let plinth_h = SHELF_PLINTH_H.min(outer.height()).max(0.0);
+    if plinth_h > 0.0 {
+        let plinth = session.create_solid_brush(with_alpha(SHELF_PLINTH, plate_a))?;
+        let top = outer.bottom - plinth_h;
+        session.fill_rect(
+            &Rect::from_xywh(outer.left, top, outer.width(), plinth_h),
+            &plinth,
+        );
+        session.fill_rect(&Rect::from_xywh(outer.left, top, outer.width(), hair), &lit);
+    }
+
+    // The outer 2 DIP border, rounded like the window frame.
+    let border = session.create_solid_brush(with_alpha(SHELF_BORDER, plate_a))?;
+    session.draw_rounded_rect(&px.ring(outer, radius), &border, 2.0);
+    Ok(())
+}
+
+/// The Bookshelf boards: a lit top face the icons stand on and a shaded front face, hung
+/// between the carcass sides at every row's bottom edge (`rows`, surface DIPs, already
+/// scrolled). Called inside the item clip so a board leaves the viewport with its row.
+fn draw_shelf_boards(
+    session: &DrawingSession<'_>,
+    px: Px,
+    width: f32,
+    rows: &[f32],
+) -> Result<()> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let lit = session.create_solid_brush(SHELF_LIT)?;
+    let face = session.create_solid_brush(SHELF_FACE)?;
+    let umbra = session.create_solid_brush(SHELF_UMBRA)?;
+    let x0 = SHELF_SIDE_W.min(width * 0.5);
+    let w = (width - 2.0 * x0).max(0.0);
+    for &y in rows {
+        session.fill_rect(&Rect::from_xywh(x0, y, w, SHELF_TOP_H), &lit);
+        session.fill_rect(&Rect::from_xywh(x0, y + SHELF_TOP_H, w, SHELF_FACE_H), &face);
+        session.fill_rect(
+            &Rect::from_xywh(x0, y + SHELF_TOP_H + SHELF_FACE_H, w, px.hair()),
+            &umbra,
+        );
+    }
+    Ok(())
+}
+
 /// The fence plate inside `outer` (the whole surface, or the part below a folded title row):
 /// backdrop material, opacity veil, tint wash, sheen and the 1 px rim, all at `plate_a`
 /// (a fully transparent fence fades them in only while the pointer is over it). `opacity` is
@@ -735,7 +860,15 @@ fn draw_plate(
     let crop_rect = |crop: &BackdropCrop<'_>| {
         Rect::from_xywh(0.0, 0.0, crop.width.max(width), crop.height.max(height))
     };
-    match *backdrop {
+    // Invisible Canvas: the plate is the wallpaper itself — no backdrop, fill, tint,
+    // sheen, rim or border reaches the surface.
+    if theme.invisible_canvas {
+        return Ok(());
+    }
+    if theme.bookshelf {
+        draw_bookshelf_carcass(session, px, theme, outer, radius, plate_a)?;
+    } else {
+        match *backdrop {
         Backdrop::GpuGlass {
             material,
             wallpaper,
@@ -745,7 +878,6 @@ fn draw_plate(
             // A folded title row moves the lens (and its bezel) down to the plate top.
             let inset = (plate_top * scale).round() as i32;
             let lens = [rect[0], rect[1] + inset, rect[2], (rect[3] - inset).max(1)];
-            material.borrow_mut().set_lens(theme.lens);
             let result = material.borrow_mut().draw(
                 session,
                 &mut bitmaps.glass_wallpaper,
@@ -834,6 +966,7 @@ fn draw_plate(
             let fill = session.create_solid_brush(with_alpha(theme.solid_fill, plate_a))?;
             session.fill_rounded_rect(&RoundedRect::uniform(outer, radius), &fill);
         }
+        }
     }
 
     if opacity > 1.0 {
@@ -888,7 +1021,7 @@ fn draw_plate(
         backdrop,
         Backdrop::Glass(..) | Backdrop::MicaLike(..) | Backdrop::GpuGlass { .. }
     );
-    if sampled_material && !theme.liquid_glass {
+    if sampled_material && !theme.liquid_glass && !theme.bookshelf {
         let sheen = session.create_linear_gradient(
             Vector2::new(0.0, plate_top),
             Vector2::new(width, height.max(plate_top + 1.0)),
@@ -920,7 +1053,7 @@ fn draw_plate(
             session.set_transform(&saved);
             drawn?;
         }
-    } else if sampled_material {
+    } else if sampled_material && !theme.bookshelf {
         let rim = session.create_linear_gradient(
             Vector2::new(0.0, plate_top),
             Vector2::new(width * 0.65, height.max(plate_top + 1.0)),
@@ -940,7 +1073,7 @@ fn draw_plate(
             ],
         )?;
         session.draw_rounded_rect(&rim_rect, &rim, px.hair());
-    } else {
+    } else if !theme.bookshelf {
         let stroke = session.create_solid_brush(with_alpha(theme.stroke, plate_a))?;
         session.draw_rounded_rect(&rim_rect, &stroke, px.hair());
     }
@@ -1065,6 +1198,9 @@ pub struct ContentDraw<'a> {
     /// Section headers between the row blocks of grouped items.
     pub group_headers: &'a [GroupHeaderDraw<'a>],
     pub icon_size: f32,
+    /// Icon box height in DIPs — `icon_size` for a square box; 1.5× it in 「海报」 (poster)
+    /// shape, where the thumbnail is centre-cropped to fill instead of letterboxed.
+    pub icon_h: f32,
     pub label_lines: u8,
     pub line_h: f32,
     /// Cell top pad above the icon and gap between icon and label (GridMetrics).
@@ -1085,6 +1221,9 @@ pub struct ContentDraw<'a> {
     /// The items end here (surface DIPs): 「调整大小时按整行整列对齐」 leaves the height under
     /// the whole rows empty. `f32::INFINITY` = the surface's bottom.
     pub items_bottom: f32,
+    /// Bookshelf boards: surface-DIP Y of each item row's bottom edge (already scrolled),
+    /// where a shelf's lit top face sits. Empty in the other themes and in drag previews.
+    pub shelf_rows: &'a [f32],
 }
 
 /// The brushes an item-state pass needs, created once per content draw. The per-item alphas
@@ -1278,9 +1417,11 @@ fn draw_insert_caret(
     }
 }
 
-/// Icon box of an item: the bitmap (aspect-preserved inside `size`), cross-faded over the
+/// Icon box of an item: the bitmap (aspect-preserved inside `w`×`h`), cross-faded over the
 /// loading tile while `icon_alpha` < 1; a generic document glyph when extraction failed;
-/// the tile alone while the icon is still pending. `alpha` fades the whole thing.
+/// the tile alone while the icon is still pending. `alpha` fades the whole thing. A box
+/// taller than it is wide is 「海报」: the thumbnail is centre-cropped to cover it exactly,
+/// discarding the shell thumbnail's transparent padding without stretching.
 #[allow(clippy::too_many_arguments)]
 fn draw_item_icon(
     session: &DrawingSession<'_>,
@@ -1295,7 +1436,8 @@ fn draw_item_icon(
     icon_alpha: f32,
     x: f32,
     y: f32,
-    size: f32,
+    w: f32,
+    h: f32,
     tile_radius: f32,
 ) -> Result<()> {
     let tile = |a: f32| {
@@ -1303,7 +1445,7 @@ fn draw_item_icon(
             return;
         }
         session.fill_rounded_rect(
-            &RoundedRect::uniform(Rect::from_xywh(x, y, size, size), tile_radius),
+            &RoundedRect::uniform(Rect::from_xywh(x, y, w, h), tile_radius),
             brushes.a(with_alpha(theme.subtle_pressed, a)),
         );
     };
@@ -1313,24 +1455,39 @@ fn draw_item_icon(
             tile(alpha * (1.0 - icon_alpha));
         }
         let bmp = bitmaps.get_or_upload(session, icon_key, img)?;
-        // Preserve aspect ratio inside the icon box (thumbnails are not square).
-        let (iw, ih) = (img.width as f32, img.height as f32);
-        let k = (size / iw).min(size / ih);
-        let (dw, dh) = (iw * k, ih * k);
-        let dest = Rect::from_xywh(x + (size - dw) / 2.0, y + (size - dh) / 2.0, dw, dh);
         let dim = if dimmed { 0.5 } else { 1.0 };
-        session.draw_bitmap(&bmp, &dest, dim * alpha * icon_alpha);
+        if h > w + 0.5 {
+            // Poster: centre-crop a source rect of the box's aspect out of the bitmap and
+            // fill the whole box (Bitmap::width/height are its DIP units, as DrawBitmap's
+            // source rect expects).
+            let aspect = w / h;
+            let (bw, bh) = (bmp.width(), bmp.height());
+            let (sw, sh) = if bw / bh > aspect {
+                (bh * aspect, bh)
+            } else {
+                (bw, bw / aspect)
+            };
+            let src = Rect::from_xywh((bw - sw) / 2.0, (bh - sh) / 2.0, sw, sh);
+            session.draw_bitmap_src(&bmp, &src, &Rect::from_xywh(x, y, w, h), dim * alpha * icon_alpha);
+        } else {
+            // Preserve aspect ratio inside the icon box (thumbnails are not square).
+            let (iw, ih) = (img.width as f32, img.height as f32);
+            let k = (w / iw).min(h / ih);
+            let (dw, dh) = (iw * k, ih * k);
+            let dest = Rect::from_xywh(x + (w - dw) / 2.0, y + (h - dh) / 2.0, dw, dh);
+            session.draw_bitmap(&bmp, &dest, dim * alpha * icon_alpha);
+        }
     } else if failed {
         // No icon obtainable (broken shortcut, missing handler): a generic document glyph
         // from Segoe Fluent Icons instead of a permanent grey tile.
-        let glyph_format = TextFormat::new(crate::theme::font_icons(), size * 0.72)?
+        let glyph_format = TextFormat::new(crate::theme::font_icons(), w * 0.72)?
             .with_alignment(TextAlignment::Center)
             .with_paragraph_alignment(ParagraphAlignment::Center)
             .with_word_wrapping(WordWrapping::NoWrap);
         session.draw_text(
             "\u{E7C3}",
             &glyph_format,
-            &Rect::from_xywh(x, y, size, size),
+            &Rect::from_xywh(x, y, w, h),
             brushes.a(with_alpha(theme.text_secondary, alpha)),
         );
     } else {
@@ -1449,6 +1606,10 @@ impl FenceChrome {
         let locale = text_locale();
         // WinUI type ramp: Body Strong 14/600 for the title, Caption 12 (Small optical size) for
         // labels and the rolled item count, Body 14 for the empty state. No letter-spacing.
+        let title_format = TextFormat::with_locale(font_text(), 14.0, FontWeight(600), locale)?
+            .with_alignment(TextAlignment::Leading)
+            .with_paragraph_alignment(ParagraphAlignment::Center)
+            .with_word_wrapping(WordWrapping::NoWrap);
         let count_format = TextFormat::with_locale(font_small(), 12.0, FontWeight::NORMAL, locale)?
             .with_alignment(TextAlignment::Trailing)
             .with_paragraph_alignment(ParagraphAlignment::Center)
@@ -1479,6 +1640,34 @@ impl FenceChrome {
                 .with_alignment(TextAlignment::Center)
                 .with_paragraph_alignment(ParagraphAlignment::Center)
                 .with_word_wrapping(WordWrapping::NoWrap);
+        let tab_format = |face, size| -> Result<TextFormat> {
+            Ok(
+                TextFormat::with_locale(face, size, FontWeight(600), locale)?
+                    .with_alignment(TextAlignment::Center)
+                    .with_paragraph_alignment(ParagraphAlignment::Center)
+                    .with_word_wrapping(WordWrapping::NoWrap),
+            )
+        };
+        let tab_formats = [
+            tab_format(font_small(), 12.0)?,
+            tab_format(font_text(), 14.0)?,
+            tab_format(font_text(), 16.0)?,
+            tab_format(font_text(), 18.0)?,
+        ];
+        let list_format = |face, size| -> Result<TextFormat> {
+            Ok(
+                TextFormat::with_locale(face, size, FontWeight::NORMAL, locale)?
+                    .with_alignment(TextAlignment::Leading)
+                    .with_paragraph_alignment(ParagraphAlignment::Center)
+                    .with_word_wrapping(WordWrapping::NoWrap),
+            )
+        };
+        let tab_list_formats = [
+            list_format(font_small(), 12.0)?,
+            list_format(font_text(), 14.0)?,
+            list_format(font_text(), 16.0)?,
+            list_format(font_text(), 18.0)?,
+        ];
         let empty_format = TextFormat::with_locale(font_text(), 14.0, FontWeight::NORMAL, locale)?
             .with_alignment(TextAlignment::Center)
             .with_paragraph_alignment(ParagraphAlignment::Top)
@@ -1486,6 +1675,21 @@ impl FenceChrome {
         let title_glyph_format =
             TextFormat::with_locale(crate::theme::font_icons(), 14.0, FontWeight::NORMAL, locale)?
                 .with_alignment(TextAlignment::Center)
+                .with_paragraph_alignment(ParagraphAlignment::Center)
+                .with_word_wrapping(WordWrapping::NoWrap);
+        let title_format_small =
+            TextFormat::with_locale(font_small(), 12.0, FontWeight(600), locale)?
+                .with_alignment(TextAlignment::Leading)
+                .with_paragraph_alignment(ParagraphAlignment::Center)
+                .with_word_wrapping(WordWrapping::NoWrap);
+        let title_format_large =
+            TextFormat::with_locale(font_text(), 16.0, FontWeight(600), locale)?
+                .with_alignment(TextAlignment::Leading)
+                .with_paragraph_alignment(ParagraphAlignment::Center)
+                .with_word_wrapping(WordWrapping::NoWrap);
+        let title_format_xlarge =
+            TextFormat::with_locale(font_text(), 18.0, FontWeight(600), locale)?
+                .with_alignment(TextAlignment::Leading)
                 .with_paragraph_alignment(ParagraphAlignment::Center)
                 .with_word_wrapping(WordWrapping::NoWrap);
         let group_format = TextFormat::with_locale(font_small(), 12.0, FontWeight(600), locale)?
@@ -1497,15 +1701,20 @@ impl FenceChrome {
             .with_paragraph_alignment(ParagraphAlignment::Center)
             .with_word_wrapping(WordWrapping::NoWrap);
         let chrome = Self {
-            title_fonts: RefCell::new(Self::build_title_fonts(None, 600)?),
+            title_format,
             count_format,
             label_font,
             glyph_format,
             row_format,
             row_format_right,
             sort_glyph_format,
+            tab_formats,
+            tab_list_formats,
             empty_format,
             title_glyph_format,
+            title_format_small,
+            title_format_large,
+            title_format_xlarge,
             group_format,
             badge_format,
         };
@@ -1515,58 +1724,6 @@ impl FenceChrome {
             let _ = chrome.set_icon_title_font(&f.family, f.size_dip, FontWeight(f.weight));
         }
         Ok(chrome)
-    }
-
-    /// `face` for every title size, or the built-in faces (the Small optical size at 12 px).
-    fn build_title_fonts(face: Option<&str>, weight: i32) -> Result<TitleFonts> {
-        let locale = text_locale();
-        let format =
-            |size: f32, weight: i32, align: TextAlignment| -> Result<TextFormat> {
-                let built_in = if size < 13.0 {
-                    font_small()
-                } else {
-                    font_text()
-                };
-                Ok(TextFormat::with_locale(
-                    face.unwrap_or(built_in),
-                    size,
-                    FontWeight(weight),
-                    locale,
-                )?
-                .with_alignment(align)
-                .with_paragraph_alignment(ParagraphAlignment::Center)
-                .with_word_wrapping(WordWrapping::NoWrap))
-            };
-        let sizes = [12.0, 14.0, 16.0, 18.0];
-        let set = |weight: i32, align: TextAlignment| -> Result<[TextFormat; 4]> {
-            Ok([
-                format(sizes[0], weight, align)?,
-                format(sizes[1], weight, align)?,
-                format(sizes[2], weight, align)?,
-                format(sizes[3], weight, align)?,
-            ])
-        };
-        Ok(TitleFonts {
-            titles: set(weight, TextAlignment::Leading)?,
-            tabs: set(weight, TextAlignment::Center)?,
-            tab_lists: set(FontWeight::NORMAL.0, TextAlignment::Leading)?,
-            face: face.map(str::to_string),
-            weight,
-        })
-    }
-
-    /// A theme's title font (`face`, `weight`; None = Segoe UI Variable, semibold) for titles
-    /// and tabs. Returns whether anything changed (the caller then lays the title rows out).
-    pub fn set_title_font(&self, face: Option<&str>, weight: Option<i32>) -> Result<bool> {
-        let weight = weight.unwrap_or(600);
-        {
-            let cur = self.title_fonts.borrow();
-            if cur.face.as_deref() == face && cur.weight == weight {
-                return Ok(false);
-            }
-        }
-        *self.title_fonts.borrow_mut() = Self::build_title_fonts(face, weight)?;
-        Ok(true)
     }
 
     fn build_label_format(family: &str, size: f32, weight: FontWeight) -> Result<TextFormat> {
@@ -1620,18 +1777,18 @@ impl FenceChrome {
         self.label_font.borrow().line_h
     }
 
-    /// Title at 12 / 14 / 16 / 18 px for the per-fence "title size" option (0 to 3).
-    pub fn title_format(&self, size: u8) -> Ref<'_, TextFormat> {
-        Ref::map(self.title_fonts.borrow(), |f| {
-            &f.titles[usize::from(size.min(3))]
-        })
+    pub fn title_format(&self, size: u8) -> &TextFormat {
+        match size {
+            0 => &self.title_format_small,
+            2 => &self.title_format_large,
+            3 => &self.title_format_xlarge,
+            _ => &self.title_format,
+        }
     }
 
     /// Layout, drawing and tooltip fitting all use the same title size.
-    pub fn tab_format(&self, size: u8) -> Ref<'_, TextFormat> {
-        Ref::map(self.title_fonts.borrow(), |f| {
-            &f.tabs[usize::from(size.min(3))]
-        })
+    pub fn tab_format(&self, size: u8) -> &TextFormat {
+        &self.tab_formats[usize::from(size.min(3))]
     }
 
     /// Width a match badge reading `text` adds to a tab pill, its gap to the caption included.
@@ -1661,7 +1818,7 @@ impl FenceChrome {
         theme: &Theme,
     ) -> bool {
         let content_w =
-            crate::text::measure_width(title, &self.tab_format(size)) + tab_icon_w(folder_icon);
+            crate::text::measure_width(title, self.tab_format(size)) + tab_icon_w(folder_icon);
         content_w <= (w - tab_text_inset(theme, w, content_w)).max(0.0)
     }
 
@@ -1685,20 +1842,17 @@ impl FenceChrome {
     }
 
     /// Caption format of a left tab column row: semibold for the shown tab.
-    fn rail_title_format(&self, size: u8, active: bool) -> Ref<'_, TextFormat> {
-        let i = usize::from(size.min(3));
-        Ref::map(self.title_fonts.borrow(), |f| {
-            if active {
-                &f.titles[i]
-            } else {
-                &f.tab_lists[i]
-            }
-        })
+    fn rail_title_format(&self, size: u8, active: bool) -> &TextFormat {
+        if active {
+            self.title_format(size)
+        } else {
+            &self.tab_list_formats[usize::from(size.min(3))]
+        }
     }
 
     /// `title` shows whole in `room` DIPs of a left tab column row.
     pub fn rail_title_fits(&self, title: &str, room: f32, size: u8, active: bool) -> bool {
-        crate::text::measure_width(title, &self.rail_title_format(size, active)) <= room
+        crate::text::measure_width(title, self.rail_title_format(size, active)) <= room
     }
 
     /// Draws the chrome into a `width` x `height` DIP area whose origin is (0, 0). `scale` is
@@ -1741,8 +1895,11 @@ impl FenceChrome {
             .corner_radius
             .min(width.min(outer.height()) * 0.5)
             .max(0.0);
-        // Title-row reveal ("title on hover"); a rolled fence always shows its title row.
-        let title_a = if rolled_up {
+        // Title-row reveal ("title on hover"); a rolled fence always shows its title row —
+        // unless「从不显示」 vetoes it: the row is disabled then, rolled or not.
+        let title_a = if state.hide_title {
+            0.0
+        } else if rolled_up {
             1.0
         } else {
             state.title.clamp(0.0, 1.0)
@@ -1864,7 +2021,7 @@ impl FenceChrome {
             return Ok(());
         }
         // Title text; leave room for the roll-up chevron on the right, ellipsize the rest.
-        let title_width = crate::text::measure_width(title, &self.title_format(style.title_size))
+        let title_width = crate::text::measure_width(title, self.title_format(style.title_size))
             .min((width - deco.title_x() - TITLE_RIGHT_RESERVE).max(1.0));
         let sample_x = aligned_x(
             style.title_align,
@@ -1895,7 +2052,7 @@ impl FenceChrome {
         let secondary =
             session.create_solid_brush(with_alpha(foreground.text_secondary, title_a))?;
         let tertiary = session.create_solid_brush(with_alpha(foreground.text_tertiary, title_a))?;
-        let title_format = &self.title_format(style.title_size);
+        let title_format = self.title_format(style.title_size);
         // Rolled plate: the item count sits before the chevron so a rolled fence still tells
         // you what is inside (it fades out as the fence expands), unless the user hid it.
         let caption = caption.filter(|_| !style.hide_count_and_chevron);
@@ -2023,7 +2180,7 @@ impl FenceChrome {
                     let ring = session.create_solid_brush(with_alpha(theme.selection_stroke, a))?;
                     session.draw_rounded_rect(&px.ring(rect, radius), &ring, px.hair());
                 }
-                let fmt = &self.tab_format(tab.title_size);
+                let fmt = self.tab_format(tab.title_size);
                 let badge_w = tab.badge.map_or(0.0, |b| self.tab_badge_width(b));
                 let icon_w = tab_icon_w(tab.folder_icon);
                 let title_w = crate::text::measure_width(tab.title, fmt);
@@ -2486,7 +2643,7 @@ impl FenceChrome {
                 if let Some(halo) = halo {
                     halo.set_color(halo_color(color, a));
                 }
-                let fmt = &self.rail_title_format(tab.title_size, strong);
+                let fmt = self.rail_title_format(tab.title_size, strong);
                 let fitted = crate::text::fit_width(tab.title, fmt, room);
                 draw_caption(session, &fitted, fmt, &caption, &brush, halo);
             }
@@ -2697,6 +2854,7 @@ impl FenceChrome {
                     row.icon_alpha,
                     icon_x,
                     icon_y,
+                    rows.icon_size,
                     rows.icon_size,
                     3.0,
                 )?;
@@ -2941,6 +3099,10 @@ impl FenceChrome {
         let label_dim = session.create_solid_brush(theme.text_secondary)?;
 
         let mut paint_items = || -> Result<()> {
+            // Bookshelf boards sit under the rows they carry; they scroll with the items.
+            if theme.bookshelf {
+                draw_shelf_boards(session, px, width, content.shelf_rows)?;
+            }
             // "按时间分组" section headers: secondary caption flush with the label inset, then an
             // Explorer-style hairline to the right margin. Static bands (the items glide), painted
             // first so an unfolded label may overdraw them like it overdraws the row below.
@@ -3083,7 +3245,11 @@ impl FenceChrome {
             return Ok(());
         }
         let base_lines = content.label_lines as f32;
-        let lines = unfold.map_or(base_lines, |(_, n)| (n as f32).max(base_lines));
+        let lines = if base_lines <= 0.0 {
+            0.0
+        } else {
+            unfold.map_or(base_lines, |(_, n)| (n as f32).max(base_lines))
+        };
         let extra = (lines - base_lines) * content.line_h;
         let rect = Rect::from_xywh(
             cell.x + 2.0,
@@ -3122,11 +3288,16 @@ impl FenceChrome {
             icon_x,
             icon_y,
             content.icon_size,
+            content.icon_h,
             4.0,
         )?;
+        // Labels hidden for this fence: the cell already hugs the icon, nothing below it.
+        if content.label_lines == 0 {
+            return Ok(());
+        }
         let label_rect = Rect::from_xywh(
             cell.x + ICON_LABEL_SIDE_INSET,
-            icon_y + content.icon_size + content.label_gap,
+            icon_y + content.icon_h + content.label_gap,
             (cell.w - ICON_LABEL_SIDE_INSET * 2.0).max(1.0),
             content.line_h * lines,
         );
@@ -3196,25 +3367,24 @@ mod tests {
         let mut widths = Vec::new();
         for size in 0..=2 {
             for caption in ["文件与文档", "Folder pictures", "资料 Archives 2026"] {
-                let single = TextLayout::new(caption, &chrome.title_format(size), 1000.0, 100.0)
+                let single = TextLayout::new(caption, chrome.title_format(size), 1000.0, 100.0)
                     .unwrap()
                     .metrics();
-                let tab = TextLayout::new(caption, &chrome.tab_format(size), 1000.0, 100.0)
+                let tab = TextLayout::new(caption, chrome.tab_format(size), 1000.0, 100.0)
                     .unwrap()
                     .metrics();
                 assert!((single.width - tab.width).abs() < 0.001);
                 assert!((single.height - tab.height).abs() < 0.001);
                 for width in [0.0, 2.0, 8.0, 20.0, 80.0] {
-                    let text = crate::text::fit_width(caption, &chrome.tab_format(size), width);
+                    let text = crate::text::fit_width(caption, chrome.tab_format(size), width);
                     assert!(
-                        crate::text::measure_width(&text, &chrome.tab_format(size))
-                            <= width + 0.001
+                        crate::text::measure_width(&text, chrome.tab_format(size)) <= width + 0.001
                     );
                 }
             }
             widths.push(crate::text::measure_width(
                 "文件与文档",
-                &chrome.tab_format(size),
+                chrome.tab_format(size),
             ));
         }
         assert!(widths[0] < widths[1] && widths[1] < widths[2]);
@@ -3250,7 +3420,7 @@ mod tests {
         let chrome = FenceChrome::new().unwrap();
         for theme in [Theme::dark().with_liquid_glass(), Theme::dark()] {
             let full = tab_text_padding(&theme);
-            let caption = crate::text::measure_width("游戏", &chrome.tab_format(1));
+            let caption = crate::text::measure_width("游戏", chrome.tab_format(1));
             // Room to spare: the theme's padding.
             assert_eq!(tab_text_inset(&theme, caption + full + 10.0, caption), full);
             // A crowded strip (a 172 DIP fence with three tabs gives ~37 DIP pills): the

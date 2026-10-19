@@ -68,12 +68,16 @@ pub(super) fn apply_system_backdrop(hwnd: HWND, mode: BackdropMode, dark: bool) 
     let _ = dwm::set_immersive_dark_mode(hwnd, dark);
 }
 
-/// The fence clips its window itself (`update_shape_clip`), so DWM must neither round it nor
-/// draw its frame. DWM's small Fluent corner (4 DIP) left the 8 DIP rim a sliver of plate
-/// outside its arc.
-pub(super) fn apply_window_shape(hwnd: HWND) {
-    let _ = dwm::set_nonclient_rendering(hwnd, false);
-    let _ = dwm::set_corner_preference(hwnd, dwm::CornerPreference::DoNotRound);
+pub(super) fn apply_window_shape(hwnd: HWND, liquid_glass: bool) {
+    let _ = dwm::set_nonclient_rendering(hwnd, !liquid_glass);
+    let _ = dwm::set_corner_preference(
+        hwnd,
+        if liquid_glass {
+            dwm::CornerPreference::DoNotRound
+        } else {
+            dwm::CornerPreference::RoundSmall
+        },
+    );
 }
 
 impl FenceViewState {
@@ -282,8 +286,13 @@ impl FenceViewState {
             let dur = self.anim_dur(motion::FAST);
             self.plate_reveal.retarget(plate, dur, Curve::Linear, now);
         }
-        let plate_top =
-            self.theme.title_height * (1.0 - self.title_reveal.value_at(now).clamp(0.0, 1.0));
+        // 「从不显示」 folds the title row out of the layout (`head_px` = 0), so the plate
+        // covers the whole window — no fold inset, or the clip would cut the content's top.
+        let plate_top = if self.title_hidden {
+            0.0
+        } else {
+            self.theme.title_height * (1.0 - self.title_reveal.value_at(now).clamp(0.0, 1.0))
+        };
         let plate_clear = 1.0 - self.plate_reveal.value_at(now).clamp(0.0, 1.0);
         let f = &mut self.chrome_fades;
         f.set(animate, ChromeKey::Title, title_visible as u8 as f32, now);
@@ -332,6 +341,7 @@ impl FenceViewState {
             merge_hint: self.merge_t.value_at(now),
             plate_top,
             plate_clear,
+            hide_title: self.title_hidden,
             strip_clip: self.tab_strip_clip(),
         }
     }
@@ -615,16 +625,29 @@ impl FenceViewState {
     }
 
     /// The clip must follow every height-animation frame even while content stays frozen. It
-    /// starts at the plate top: a title row folded away by title on hover is cut off too.
+    /// starts at the plate top: a title row folded away by title on hover is cut off too (a
+    /// Fluent window is otherwise rounded by DWM alone).
     pub(super) fn update_shape_clip(&self, w: i32, h: i32) -> Result<()> {
         let inset = self.plate_inset_px.clamp(0, (h - 1).max(0));
-        self.motion.clip_rounded_at(
-            &self.root,
-            inset as f32,
-            w as f32,
-            (h - inset) as f32,
-            self.theme.corner_radius * self.scale(),
-        )?;
+        if self.theme.liquid_glass {
+            self.motion.clip_rounded_at(
+                &self.root,
+                inset as f32,
+                w as f32,
+                (h - inset) as f32,
+                self.theme.corner_radius * self.scale(),
+            )?;
+        } else if inset > 0 {
+            self.motion.clip_rounded_at(
+                &self.root,
+                inset as f32,
+                w as f32,
+                (h - inset) as f32,
+                FLUENT_WINDOW_RADIUS_DIP * self.scale(),
+            )?;
+        } else {
+            self.motion.clear_clip(&self.root)?;
+        }
         Ok(())
     }
 
@@ -633,7 +656,7 @@ impl FenceViewState {
     /// `near` the viewport only; the others get theirs when they scroll in (a crowded fence
     /// would otherwise extract every thumbnail at startup).
     pub(super) fn ensure_icons_and_labels(&mut self, label_w: f32, near: impl Fn(usize) -> bool) {
-        let icon_px = (self.icon_dip() * self.scale()).round() as u32;
+        let icon_px = (self.icon_fetch_dip() * self.scale()).round() as u32;
         if (self.label_w - label_w).abs() > 0.5 {
             self.label_w = label_w;
             for item in &mut self.items {
@@ -794,7 +817,9 @@ impl FenceViewState {
             return Ok(());
         };
         let view_h = self.scroll_view_h(&layout);
-        self.scroll_y = self.scroll_y.clamp(0.0, grid.max_scroll(view_h));
+        // 锁定滚动 pins the offset at the top: the draw itself enforces the 0 max.
+        let max = if self.lock_scroll { 0.0 } else { grid.max_scroll(view_h) };
+        self.scroll_y = self.scroll_y.clamp(0.0, max);
         let scroll = self.scroll_y;
         // The rows in view plus one viewport above and below, and the same around where a
         // running glide ends (End, PageDown, a thumb drag, a Peek reveal).
@@ -910,10 +935,24 @@ impl FenceViewState {
         }));
         let group_headers = group_header_draws(&layout, scroll, 0.0);
         let scrollbar = self.scrollbar_draw();
+        // Bookshelf boards under every row in view; an empty bookcase keeps its shelves.
+        let mut shelf_rows: Vec<f32> = Vec::new();
+        if self.theme.bookshelf {
+            shelf_rows = grid.row_bottoms().map(|y| y - scroll).collect();
+            if self.items.is_empty() {
+                let mut y = grid.metrics.pad_y + grid.metrics.cell_h - scroll;
+                while y < view_h {
+                    shelf_rows.push(y);
+                    y += grid.metrics.cell_h;
+                }
+            }
+        }
         let content = ContentDraw {
             items: &cells,
             group_headers: &group_headers,
+            shelf_rows: &shelf_rows,
             icon_size: self.icon_size as f32,
+            icon_h: grid.metrics.icon_h,
             label_lines: self.label_lines,
             line_h: grid.metrics.line_h,
             icon_top: grid.metrics.icon_top,
@@ -962,7 +1001,9 @@ impl FenceViewState {
         let width_dip = cw as f32 / scale;
         let layout = self.layout(width_dip);
         let view_h = self.scroll_view_h(&layout);
-        self.scroll_y = self.scroll_y.clamp(0.0, layout.max_scroll(view_h));
+        // 锁定滚动 pins the offset at the top: the draw itself enforces the 0 max.
+        let max = if self.lock_scroll { 0.0 } else { layout.max_scroll(view_h) };
+        self.scroll_y = self.scroll_y.clamp(0.0, max);
         let cols = self.columns_for(width_dip);
         let text_w = (cols.name_w - metrics.icon - 8.0 - 4.0).max(20.0);
         let scroll = self.scroll_y;

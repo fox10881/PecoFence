@@ -120,8 +120,8 @@ impl App {
                 &fence.title,
                 shown.kind == FenceKind::Inbox,
                 fence.rolled_up,
-                shown.view.icon_size,
-                shown.view.label_lines,
+                shown.view.effective_icon_size(),
+                shown.view.effective_label_lines(),
                 fence.view.auto_height,
                 rect,
                 px.height(),
@@ -171,7 +171,7 @@ impl App {
                 w.set_group_by_date(f.view.group_by_date);
                 if switching {
                     // After `set_tabs`, whose content swap draws the outgoing items once more.
-                    w.set_incoming_tab_view(f.view.icon_size, f.view.layout);
+                    w.set_incoming_tab_view(f.view.effective_icon_size(), f.view.layout);
                 }
                 w.set_items(self.item_views(f));
                 w.set_sort_indicator(f.view.sort, f.view.reverse);
@@ -219,6 +219,7 @@ impl App {
             .map(|a| (a.backdrop.map(backdrop_mode_for), a.opacity.unwrap_or(1.0)))
             .unwrap_or((None, 1.0));
         w.set_appearance(bd, op);
+        w.set_title_hidden(f.appearance.as_ref().and_then(|a| a.title_hidden) == Some(true));
         w.set_title_on_hover(f.appearance.as_ref().and_then(|a| a.title_on_hover));
         w.set_style(fence_style_for(&f));
         if let Some(a) = self.anchor.borrow_mut().as_mut() {
@@ -248,14 +249,21 @@ impl App {
             let Some(w) = self.fences.get(&id) else {
                 return;
             };
-            if w.icon_size() != shown.view.icon_size {
+            if w.icon_size() != shown.view.effective_icon_size() {
                 // Drops cached icons/labels, so only when it actually differs.
-                w.set_icon_size(shown.view.icon_size);
+                w.set_icon_size(shown.view.effective_icon_size());
             }
             w.set_layout(shown.view.layout);
-            w.set_label_lines(shown.view.label_lines);
+            w.set_label_lines(shown.view.effective_label_lines());
             w.set_is_inbox(shown.kind == FenceKind::Inbox);
             w.set_spacing(shown.view.spacing);
+            w.set_grid_extras(
+                shown.view.effective_icon_shape(),
+                shown.view.spacing_x,
+                shown.view.spacing_y,
+            );
+            w.set_hide_scrollbar(shown.view.hide_scrollbar == Some(true));
+            w.set_lock_scroll(shown.view.lock_scroll == Some(true));
             w.set_column_widths(
                 shown
                     .view
@@ -549,10 +557,15 @@ impl App {
     /// from it (window redraw, cell snap, height fit, auto height, save).
     pub(super) fn apply_icon_size(&mut self, fence: FenceId, size: u32) {
         self.state.set_icon_size(fence, size);
+        // A custom icon size (customIconSize) keeps overriding the preset the wheel set.
+        let effective = self
+            .state
+            .fence(fence)
+            .map_or(size, |f| f.view.effective_icon_size());
         if let Some(w) = self.window_for(fence)
             && w.active_fence() == fence
         {
-            w.set_icon_size(size);
+            w.set_icon_size(effective);
         }
         // The old size's extractions still queued would delay the new size's.
         self.drop_unneeded_icon_requests();

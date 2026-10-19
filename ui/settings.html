@@ -202,6 +202,11 @@
   .preview-glass { position: absolute; inset: -20px; background: var(--glass-panel); backdrop-filter: blur(.65px) saturate(110%); pointer-events: none; }
   .preview-title { position: relative; z-index: 1; padding: 7px 12px 0; font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: var(--preview-title-align, left); }
   .tile-glass .preview-title { text-shadow: var(--glass-label-shadow); }
+  .tile-bookshelf .mini-fence { border-radius: 8px; border: 1px solid #3e2723; box-shadow: 0 8px 16px #0000003d;
+    background: repeating-linear-gradient(to bottom, transparent 0 15px, #2b1a12e0 15px 17px), linear-gradient(to bottom, #5C4033, #3E2723); }
+  .tile-bookshelf .preview-title { color: #f3e7d7; text-shadow: 0 1px 2px #00000080; }
+  .tile-invisible .mini-fence { border-radius: 8px; border: 1px dashed var(--control-strong); box-shadow: none; background: transparent; }
+  .tile-invisible .preview-title { text-shadow: 0 1px 3px #00000080; }
   .mini-items { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 8px 12px 10px; min-height: 52px; }
   .file-icon { width: var(--preview-icon-size, 26px); height: var(--preview-icon-size, 26px); position: relative; display: grid; place-items: center; border-radius: 5px; font-size: 13px; flex: none;
     color: #eef7ff; background: #749cca; box-shadow: inset 0 1px 0 #ffffff5c, 0 3px 6px #00000012; transition: width .2s, height .2s, opacity .2s; }
@@ -210,6 +215,10 @@
   #desktopPreview.chameleon .file-icon { filter: saturate(.35); opacity: .65; }
 
   .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sliderctl { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+  .sliderctl input[type=range] { width: 128px; accent-color: var(--accent); }
+  .sliderctl .sliderval { min-width: 44px; text-align: right; font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
+  .sliderctl input[type=range]:disabled { opacity: .4; }
   .swatch { width: 28px; height: 28px; min-width: 0; padding: 0; border-radius: 50%; position: relative; background: var(--swatch); border: 1px solid #00000026; }
   .swatch:hover { background: var(--swatch); filter: brightness(1.08); }
   .swatch.none { background: var(--control); border-color: var(--control-strong); }
@@ -325,6 +334,15 @@
     .preview-glass, .tile-glass .mini-fence::before, .tile-glass .mini-fence::after { display: none; }
     .mini-fence { border: 1px solid CanvasText; }
   }
+  /* Arabic: mirror the few physical side rules that dir=rtl cannot flip on its own. */
+  [dir=rtl] nav a.sel::before { left: auto; right: 0; }
+  [dir=rtl] .card.child, [dir=rtl] .rows > .card { padding-left: 0; padding-right: 57px; }
+  [dir=rtl] .style-tiles, [dir=rtl] .chips, [dir=rtl] .fb-kinds, [dir=rtl] .fb-field { padding-left: 0; padding-right: 40px; }
+  [dir=rtl] .brand { padding-left: 0; padding-right: 10px; }
+  [dir=rtl] .toggle::after { right: 3px; transition: transform .15s cubic-bezier(.2, 0, 0, 1), right .15s, top .15s, width .15s, height .15s; }
+  [dir=rtl] .toggle.on::after { transform: translateX(-20px); }
+  [dir=rtl] .toggle:not([aria-disabled=true]):hover::after { right: 2px; }
+  [dir=rtl] .toggle.on:not([aria-disabled=true]):active::after { transform: translateX(-17px); }
 </style>
 </head>
 <body>
@@ -353,9 +371,13 @@
           <label class="tile tile-glass"><input type="radio" name="themeStyle" value="liquidGlass">
             <span class="shot" aria-hidden="true"><span class="mini-fence"><span class="preview-title">工作空间</span><span class="mini-items"><span class="file-icon folder ic">&#xE8B7;</span><span class="file-icon ic">&#xE8A5;</span><span class="file-icon sheet ic">&#xE9F9;</span></span></span></span>
             <span class="cap">Liquid Glass · 液态玻璃</span></label>
+          <label class="tile tile-bookshelf" title="经典木质书架风格"><input type="radio" name="themeStyle" value="bookshelf">
+            <span class="shot" aria-hidden="true"><span class="mini-fence"><span class="preview-title">工作空间</span><span class="mini-items"><span class="file-icon folder ic">&#xE8B7;</span><span class="file-icon ic">&#xE8A5;</span><span class="file-icon sheet ic">&#xE9F9;</span></span></span></span>
+            <span class="cap">Bookshelf · 书架</span></label>
+          <label class="tile tile-invisible" title="完全透明画布：栅栏背景完全隐藏，图标悬浮在壁纸上"><input type="radio" name="themeStyle" value="invisibleCanvas">
+            <span class="shot" aria-hidden="true"><span class="mini-fence"><span class="preview-title">工作空间</span><span class="mini-items"><span class="file-icon folder ic">&#xE8B7;</span><span class="file-icon ic">&#xE8A5;</span><span class="file-icon sheet ic">&#xE9F9;</span></span></span></span>
+            <span class="cap">Invisible Canvas · 隐形画布</span></label>
         </div></div>
-      <div class="card"><div class="l"><span class="ic">&#xE790;</span><div><div class="t" id="customThemeTitle">自定义主题</div><div class="s">主题文件放在 themes 文件夹里，选中后代替上面的风格，文件保存后栅栏立即更新</div><div class="s error" id="customThemeError" aria-live="polite" hidden></div></div></div>
-        <div class="actions"><select id="customTheme" aria-labelledby="customThemeTitle"></select><button id="openThemes">打开主题文件夹</button><button id="themeGuide">写法说明</button></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE7A1;</span><div><div class="t">颜色模式</div></div></div>
         <select data-bind="theme"><option value="followWindowsMode">跟随 Windows 模式</option><option value="followAppMode">跟随应用模式</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE8D3;</span><div><div class="t">图标名称颜色</div><div class="s">自动：液态玻璃按背后壁纸的明暗选深色或浅色，Fluent 跟随颜色模式；栅栏标题的颜色在“栅栏”页设置</div></div></div>
@@ -376,7 +398,7 @@
       <div class="card"><div class="l"><span class="ic">&#xE793;</span><div><div class="t">图标融入背景（Chameleon）</div><div class="s">降低图标饱和度和不透明度，让桌面看起来更清爽</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="icons.chameleon"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE71B;</span><div><div class="t">显示快捷方式箭头</div><div class="s">和 Windows 桌面一样，在快捷方式图标的左下角显示小箭头</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="icons.shortcutArrows"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE774;</span><div><div class="t">显示语言</div><div class="s">立即切换界面语言；你的文件和自定义名称保持不变</div></div></div>
-        <select id="language" data-bind="language"><option value="system">跟随系统</option><option value="zh-CN" data-language-name>简体中文</option><option value="zh-TW" data-language-name>繁體中文</option><option value="en" data-language-name>English</option><option value="ja" data-language-name>日本語</option><option value="ko" data-language-name>한국어</option><option value="de" data-language-name>Deutsch</option><option value="fr" data-language-name>Français</option><option value="es" data-language-name>Español</option><option value="pt-BR" data-language-name>Português (Brasil)</option><option value="ru" data-language-name>Русский</option></select></div>
+        <select id="language" data-bind="language"><option value="system">跟随系统</option><option value="zh-CN" data-language-name>简体中文</option><option value="zh-TW" data-language-name>繁體中文</option><option value="en" data-language-name>English</option><option value="ja" data-language-name>日本語</option><option value="ko" data-language-name>한국어</option><option value="de" data-language-name>Deutsch</option><option value="fr" data-language-name>Français</option><option value="es" data-language-name>Español</option><option value="pt-BR" data-language-name>Português (Brasil)</option><option value="ru" data-language-name>Русский</option><option value="ar" data-language-name>العربية</option></select></div>
       <h3>桌面与启动</h3>
       <div class="card"><div class="l"><span class="ic">&#xE7E8;</span><div><div class="t">随 Windows 启动</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="autostart"></div></div>
       <div class="group">
@@ -440,12 +462,23 @@
       <div class="card"><div class="l"><span class="ic">&#xE8E9;</span><div><div class="t">标题字号</div><div class="s">栅栏标题和标签页文字的大小</div></div></div>
         <select id="fenceTitleSize" data-fence="titleSize"><option value="small">小</option><option value="normal">标准</option><option value="large">大</option><option value="extraLarge">特大</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE737;</span><div><div class="t">显示标题栏</div><div class="s">鼠标悬停时显示：平时收起标题行，指针移到栅栏上才出现</div></div></div>
-        <select id="fenceTitleOnHover" data-fence="titleOnHover"><option value="default">跟随常规设置</option><option value="always">始终显示</option><option value="hover">鼠标悬停时显示</option></select></div>
+        <select id="fenceTitleOnHover" data-fence="titleOnHover"><option value="default">跟随常规设置</option><option value="always">始终显示</option><option value="hover">鼠标悬停时显示</option><option value="never">从不显示</option></select></div>
+      <div class="card"><div class="l"><span class="ic">&#xE8D4;</span><div><div class="t">显示图标标签</div><div class="s">关闭后图标下方不显示名称，书架主题下封面正好坐在木板上</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="showLabels"></div></div>
       <h3>布局</h3>
       <div class="card"><div class="l"><span class="ic">&#xE8B9;</span><div><div class="t">图标大小</div><div class="s">也可以在栅栏内按住 Ctrl 滚动鼠标滚轮</div></div></div>
         <select id="fenceIconSize" data-fence="iconSize"><option value="32">小图标</option><option value="48">中等图标</option><option value="64">较大图标</option><option value="96">大图标</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xF0E2;</span><div><div class="t">图标间距</div></div></div>
         <select id="fenceSpacing" data-fence="spacing"><option value="compact">紧凑</option><option value="normal">标准</option><option value="loose">宽松</option></select></div>
+      <div class="card"><div class="l"><span class="ic">&#xE8D8;</span><div><div class="t">图标形状</div><div class="s">海报形状把图标裁成 2:3 封面，铺满无空隙，适合游戏封面</div></div></div>
+        <select id="fenceIconShape" data-fence="iconShape"><option value="standard">标准</option><option value="poster">海报</option></select></div>
+      <div class="card"><div class="l"><span class="ic">&#xE71B;</span><div><div class="t">自定义图标大小</div><div class="s">覆盖“图标大小”预设，可在 16–256 间自由调整</div></div></div>
+        <div class="sliderctl"><input type="range" id="fenceCustomSize" min="16" max="256" step="8"><span class="sliderval" id="fenceCustomSizeVal"></span><div class="toggle" role="switch" tabindex="0" id="fenceCustomSizeOn"></div></div></div>
+      <div class="card"><div class="l"><span class="ic">&#xE8C8;</span><div><div class="t">水平间距</div><div class="s">图标列之间的间距；拖到 0 让图标完全贴合，关闭则跟随“图标间距”</div></div></div>
+        <div class="sliderctl"><input type="range" id="fenceGapX" min="0" max="64" step="4"><span class="sliderval" id="fenceGapXVal"></span><div class="toggle" role="switch" tabindex="0" id="fenceGapXOn"></div></div></div>
+      <div class="card"><div class="l"><span class="ic">&#xE8CB;</span><div><div class="t">垂直间距</div><div class="s">图标行之间的间距；拖到 0 让图标完全贴合，关闭则跟随“图标间距”</div></div></div>
+        <div class="sliderctl"><input type="range" id="fenceGapY" min="0" max="64" step="4"><span class="sliderval" id="fenceGapYVal"></span><div class="toggle" role="switch" tabindex="0" id="fenceGapYOn"></div></div></div>
+      <div class="card"><div class="l"><span class="ic">&#xE762;</span><div><div class="t">隐藏滚动条</div><div class="s">完全不绘制滚动条；鼠标滚轮仍可滚动</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="hideScrollbar"></div></div>
+      <div class="card"><div class="l"><span class="ic">&#xE72E;</span><div><div class="t">锁定滚动</div><div class="s">完全禁止滚动；滚轮、拖动和自动滚动都不起作用，内容固定在顶部，适合静态橱窗布局</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="lockScroll"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE745;</span><div><div class="t">自动高度</div><div class="s">高度跟随内容行数，内容增减时平滑过渡</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="autoHeight"></div></div>
       <h3>行为</h3>
       <div class="card"><div class="l"><span class="ic">&#xE72E;</span><div><div class="t">锁定位置和大小</div><div class="s">边框不再可拖动缩放；标题仍可点击、右键、双击</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="locked"></div></div>
@@ -584,50 +617,19 @@
   function renderAppearance() {
     if (!state) return;
     const settings = state.settings, preview = document.getElementById('desktopPreview');
-    // A custom theme's base style comes with the host's next state.
-    const glass = settings.customTheme ? state.styleInUse === 'liquidGlass' : settings.themeStyle === 'liquidGlass';
-    document.documentElement.classList.toggle('liquid-glass', glass);
+    document.documentElement.classList.toggle('liquid-glass', settings.themeStyle === 'liquidGlass');
     preview.classList.toggle('chameleon', !!settings.icons.chameleon);
     preview.style.setProperty('--preview-icon-size', ({ 32: 21, 48: 26, 64: 31, 96: 36 }[settings.iconSize] || 26) + 'px');
     preview.style.setProperty('--preview-tint', settings.icons.tintRgb ? '#' + rgbToHex(settings.icons.tintRgb) : 'transparent');
     preview.style.setProperty('--preview-tint-strength', settings.icons.tintStrength);
     preview.style.setProperty('--preview-title-align', settings.titleAlign || 'left');
   }
-  // A chosen custom theme takes the place of the style tiles: none of them is checked, and a
-  // click on one goes back to that built-in style.
   function bindThemeStyle() {
-    const value = state.settings.customTheme ? '' : state.settings.themeStyle || 'fluent';
+    const value = state.settings.themeStyle || 'fluent';
     document.querySelectorAll('input[name=themeStyle]').forEach(radio => {
       radio.checked = radio.value === value;
-      radio.onchange = () => {
-        if (!radio.checked) return;
-        state.settings.themeStyle = radio.value;
-        state.settings.customTheme = null;
-        bindCustomTheme();
-        commit('themeStyle');
-      };
+      radio.onchange = () => { if (radio.checked) { state.settings.themeStyle = radio.value; commit('themeStyle'); } };
     });
-  }
-  // The theme files of the themes folder; a chosen file that is gone stays listed with its error.
-  function bindCustomTheme() {
-    const select = document.getElementById('customTheme'), chosen = state.settings.customTheme || '';
-    const names = [...(state.customThemes || [])];
-    if (chosen && !names.includes(chosen)) names.push(chosen);
-    // Rebuilt only when the list changed: every host state passes through here, and a rebuild
-    // closes the list while it is open.
-    const listed = [...select.options].map(o => o.text);
-    if (listed.join('\n') !== [t("无"), ...names].join('\n')) {
-      select.replaceChildren(new Option(t("无"), ''), ...names.map(name => new Option(name, name)));
-    }
-    select.value = chosen;
-    select.onchange = () => {
-      state.settings.customTheme = select.value || null;
-      bindThemeStyle();
-      commit('customTheme');
-    };
-    const error = document.getElementById('customThemeError'), message = chosen && state.customThemeError;
-    error.hidden = !message;
-    error.textContent = message ? tf("主题文件有误，正在使用内置风格：{0}", message) : '';
   }
 
   // The desktop uses cached native optics. The Liquid Glass tile refracts its backdrop through a
@@ -990,6 +992,27 @@
     });
     renderSwatches(fenceTintSwatches, tintSel);
     renderSwatches(fenceTabColorSwatches, tabSel);
+    // 布局 overrides: a slider with an on/off toggle — off posts null (跟随预设), on posts
+    // the slider's value; 0 spacing packs the icons flush.
+    const bindSlider = (onId, rangeId, valId, prop) => {
+      const on = document.getElementById(onId), range = document.getElementById(rangeId), val = document.getElementById(valId);
+      const cur = f[prop], enabled = cur != null;
+      on.classList.toggle('on', enabled); on.setAttribute('aria-checked', String(enabled));
+      range.disabled = !enabled;
+      if (enabled && document.activeElement !== range) range.value = cur;
+      val.textContent = enabled ? cur + ' px' : t('默认');
+      on.onclick = () => {
+        const now = !on.classList.contains('on'); on.classList.toggle('on', now); on.setAttribute('aria-checked', String(now));
+        range.disabled = !now; val.textContent = now ? range.value + ' px' : t('默认');
+        setFence(f.id, prop, now ? Number(range.value) : null);
+      };
+      keyToggle(on);
+      range.oninput = () => { val.textContent = range.value + ' px'; };
+      range.onchange = () => setFence(f.id, prop, Number(range.value));
+    };
+    bindSlider('fenceCustomSizeOn', 'fenceCustomSize', 'fenceCustomSizeVal', 'customIconSize');
+    bindSlider('fenceGapXOn', 'fenceGapX', 'fenceGapXVal', 'spacingX');
+    bindSlider('fenceGapYOn', 'fenceGapY', 'fenceGapYVal', 'spacingY');
     document.getElementById('fenceDock').onclick = () => { setFence(f.id, 'dockTop', null); toast(t("已停靠到屏幕顶部")); };
     ringFence();
   }
@@ -1226,8 +1249,6 @@
   document.getElementById('rateStore').onclick = () => send({ type: 'action', name: 'rateInStore' });
   document.getElementById('starRepo').onclick = () => send({ type: 'action', name: 'openRepository' });
   document.getElementById('openManual').onclick = () => send({ type: 'action', name: 'openManual' });
-  document.getElementById('openThemes').onclick = () => send({ type: 'action', name: 'openThemesFolder' });
-  document.getElementById('themeGuide').onclick = () => send({ type: 'action', name: 'openThemeGuide' });
   document.getElementById('repairIcons').onclick = () => send({ type: 'action', name: 'repairIcons' });
 
   // 关于 → 更新: an installed copy downloads and runs the new setup, a ZIP opens the release page.
@@ -1366,7 +1387,7 @@
       document.getElementById('rateStore').hidden = !m.storeEdition;
       renderWorkspaceSummary(m.fences.length, m.itemCount);
       document.getElementById('cfgPath').textContent = m.configPath;
-      bindAll(); bindThemeStyle(); bindCustomTheme(); bindIconTint(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
+      bindAll(); bindThemeStyle(); bindIconTint(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
       update = m.update; renderUpdate();
       // Transitions come on a frame after this state has been drawn: a single frame would style
       // both changes together and start them after all.

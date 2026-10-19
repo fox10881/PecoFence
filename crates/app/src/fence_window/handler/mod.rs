@@ -280,6 +280,9 @@ impl FenceWindow {
                     msg::WM_TIMER if wparam == TIMER_SCROLLBAR => {
                         timers::on_timer_scrollbar(h, hwnd, wparam, lparam)
                     }
+                    msg::WM_TIMER if wparam == TIMER_SCROLL_SETTLE => {
+                        timers::on_timer_scroll_settle(h, hwnd, wparam, lparam)
+                    }
                     msg::WM_TIMER if wparam == TIMER_SHADOW => {
                         timers::on_timer_shadow(h, hwnd, wparam, lparam)
                     }

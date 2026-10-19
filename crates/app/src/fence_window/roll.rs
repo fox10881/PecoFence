@@ -330,13 +330,15 @@ impl FenceViewState {
     }
 
     /// Whether the title row is shown right now (title-on-hover rule): also while another
-    /// fence is dragged over it to merge and while the title is being renamed.
+    /// fence is dragged over it to merge and while the title is being renamed.「从不显示」
+    /// vetoes every reveal — hover, roll, merge hint and rename alike.
     pub(super) fn title_visible_target(&self) -> bool {
-        !self.title_on_hover()
-            || self.mouse_inside
-            || self.roll_target()
-            || self.merge_hint
-            || self.title_renaming
+        !self.title_hidden
+            && (!self.title_on_hover()
+                || self.mouse_inside
+                || self.roll_target()
+                || self.merge_hint
+                || self.title_renaming)
     }
 
     /// 外观 → 全透明: no plate (glass, tint, rim, shadow) at rest.

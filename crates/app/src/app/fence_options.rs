@@ -68,6 +68,13 @@ pub(super) const FENCE_PROPS: &[&str] = &[
     "reverse",
     "groupByDate",
     "labelLines",
+    "showLabels",
+    "iconShape",
+    "customIconSize",
+    "spacingX",
+    "spacingY",
+    "hideScrollbar",
+    "lockScroll",
     "portalNavigate",
     "portalTitleIcon",
     "hideWhenEmpty",
@@ -79,6 +86,20 @@ pub(super) enum TitleColorChoice {
     /// Follow the fence tint.
     Tint,
     Rgb([u8; 3]),
+}
+
+/// Parsed「显示标题栏」 choice: `title_on_hover` covers default/hover/always; Never maps to
+/// `appearance.title_hidden`, which folds the title row out entirely.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TitleBarChoice {
+    /// Follow the global `rollUp.titleOnHover`.
+    Default,
+    /// Always show the title row.
+    Always,
+    /// Show it only while the pointer is over the fence.
+    Hover,
+    /// Never show it — the row is gone (no draw, no hit) and content reclaims its height.
+    Never,
 }
 
 /// One per-fence option, parsed and range-checked (shared by the settings page's `setFence`
@@ -100,8 +121,8 @@ pub(super) enum FenceProp {
     TitleColor(TitleColorChoice),
     /// None = normal.
     TitleSize(Option<TitleSize>),
-    /// None = the global `rollUp.titleOnHover`.
-    TitleOnHover(Option<bool>),
+    /// 「显示标题栏」: global / always / hover / never (`appearance.title_hidden`).
+    TitleOnHover(TitleBarChoice),
     PortalNavigate(bool),
     PortalTitleIcon(bool),
     /// Inbox only: 为空时自动隐藏.
@@ -111,6 +132,21 @@ pub(super) enum FenceProp {
     Reverse(bool),
     GroupByDate(bool),
     LabelLines(u8),
+    /// 显示图标标签 (FenceView.show_labels): false parks the label rows without losing
+    /// `label_lines`, so covers can sit on the bookshelf boards.
+    ShowLabels(bool),
+    /// 图标形状 (FenceView.icon_shape): Poster draws a 2:3 centre-cropped cover.
+    IconShape(IconShape),
+    /// 自定义图标大小 (FenceView.custom_icon_size): None follows `iconSize`.
+    CustomIconSize(Option<u32>),
+    /// 水平间距 / 垂直间距 (FenceView.spacing_x / spacing_y): None follows `spacing`;
+    /// 0.0 packs the cells flush.
+    GapX(Option<f32>),
+    GapY(Option<f32>),
+    /// 隐藏滚动条 (FenceView.hide_scrollbar): no track/arrows/thumb; wheel still scrolls.
+    HideScrollbar(bool),
+    /// 锁定滚动 (FenceView.lock_scroll): no scrolling at all; the offset pins to the top.
+    LockScroll(bool),
 }
 
 /// Parses `prop` / `value` as the settings page and `fence get` spell them. Unknown property
@@ -199,11 +235,12 @@ pub(super) fn parse_fence_prop(
             })
         }
         "titleOnHover" => {
-            const ALLOWED: &[&str] = &["default", "hover", "always"];
+            const ALLOWED: &[&str] = &["default", "hover", "always", "never"];
             FenceProp::TitleOnHover(match as_str(ALLOWED)? {
-                "default" => None,
-                "hover" => Some(true),
-                "always" => Some(false),
+                "default" => TitleBarChoice::Default,
+                "hover" => TitleBarChoice::Hover,
+                "always" => TitleBarChoice::Always,
+                "never" => TitleBarChoice::Never,
                 _ => return Err(bad(ALLOWED)),
             })
         }
@@ -237,6 +274,44 @@ pub(super) fn parse_fence_prop(
                 _ => return Err(bad(ALLOWED)),
             }
         }
+        "showLabels" => FenceProp::ShowLabels(as_bool()?),
+        "iconShape" => {
+            const ALLOWED: &[&str] = &["standard", "poster"];
+            FenceProp::IconShape(match as_str(ALLOWED)? {
+                "standard" => IconShape::Standard,
+                "poster" => IconShape::Poster,
+                _ => return Err(bad(ALLOWED)),
+            })
+        }
+        "customIconSize" => {
+            const ALLOWED: &[&str] = &["16..=256", "null"];
+            match value {
+                serde_json::Value::Null => FenceProp::CustomIconSize(None),
+                _ => match value.as_u64() {
+                    Some(n @ 16..=256) => FenceProp::CustomIconSize(Some(n as u32)),
+                    _ => return Err(bad(ALLOWED)),
+                },
+            }
+        }
+        "spacingX" | "spacingY" => {
+            const ALLOWED: &[&str] = &["0..=64", "null"];
+            let gap = match value {
+                serde_json::Value::Null => None,
+                _ => Some(
+                    value
+                        .as_f64()
+                        .filter(|n| (0.0..=64.0).contains(n))
+                        .ok_or_else(|| bad(ALLOWED))? as f32,
+                ),
+            };
+            if prop == "spacingX" {
+                FenceProp::GapX(gap)
+            } else {
+                FenceProp::GapY(gap)
+            }
+        }
+        "hideScrollbar" => FenceProp::HideScrollbar(as_bool()?),
+        "lockScroll" => FenceProp::LockScroll(as_bool()?),
         "portalNavigate" => FenceProp::PortalNavigate(as_bool()?),
         "portalTitleIcon" => FenceProp::PortalTitleIcon(as_bool()?),
         "hideWhenEmpty" => FenceProp::HideWhenEmpty(as_bool()?),
@@ -372,11 +447,29 @@ impl App {
         self.schedule_save();
     }
 
-    /// `None` = follow the global 「鼠标悬停时才显示标题栏」.
-    pub(super) fn set_fence_title_on_hover(&mut self, fence: FenceId, on: Option<bool>) {
+    /// 「显示标题栏」 choice (window-level, like the rest of `appearance`). `Never` sets
+    /// `title_hidden` — the row folds out of the layout — so the fence re-snaps to its
+    /// cells afterward.
+    pub(super) fn set_fence_title_bar(&mut self, fence: FenceId, choice: TitleBarChoice) {
         let host = self.state.host_of(fence);
-        self.state.set_title_on_hover(host, on);
+        match choice {
+            TitleBarChoice::Default => {
+                self.state.set_title_hidden(host, false);
+                self.state.set_title_on_hover(host, None);
+            }
+            TitleBarChoice::Hover => {
+                self.state.set_title_hidden(host, false);
+                self.state.set_title_on_hover(host, Some(true));
+            }
+            TitleBarChoice::Always => {
+                self.state.set_title_hidden(host, false);
+                self.state.set_title_on_hover(host, Some(false));
+            }
+            TitleBarChoice::Never => self.state.set_title_hidden(host, true),
+        }
         self.apply_fence_appearance(host);
+        self.apply_cell_snap(fence);
+        self.apply_auto_height(fence);
         self.schedule_save();
     }
 
@@ -461,10 +554,15 @@ impl App {
             Some([0x00, 0x00, 0x00]) => "black".to_string(),
             Some(rgb) => hex(rgb),
         };
-        let title_on_hover = match h.appearance.as_ref().and_then(|a| a.title_on_hover) {
-            None => "default",
-            Some(true) => "hover",
-            Some(false) => "always",
+        let title_on_hover = if h.appearance.as_ref().and_then(|a| a.title_hidden) == Some(true)
+        {
+            "never"
+        } else {
+            match h.appearance.as_ref().and_then(|a| a.title_on_hover) {
+                None => "default",
+                Some(true) => "hover",
+                Some(false) => "always",
+            }
         };
         let title_size = match title_size.unwrap_or_default() {
             TitleSize::Small => "small",
@@ -495,6 +593,16 @@ impl App {
             "tabbed": self.state.tabs_of(host_id).len() > 1,
             "iconSize": f.view.icon_size,
             "spacing": spacing,
+            "showLabels": f.view.show_labels.unwrap_or(true),
+            "iconShape": match f.view.effective_icon_shape() {
+                IconShape::Standard => "standard",
+                IconShape::Poster => "poster",
+            },
+            "customIconSize": f.view.custom_icon_size,
+            "spacingX": f.view.spacing_x,
+            "spacingY": f.view.spacing_y,
+            "hideScrollbar": f.view.hide_scrollbar.unwrap_or(false),
+            "lockScroll": f.view.lock_scroll.unwrap_or(false),
             "autoHeight": h.view.auto_height,
             "locked": h.locked,
             "excludeFromQuickHide": h.exclude_from_quick_hide,
@@ -544,6 +652,50 @@ impl App {
         self.push_settings_state();
     }
 
+    /// Pushes the shown fence's effective label rows to its window: `labelLines`, or 0 while
+    /// `showLabels` is off (the saved line count survives either way).
+    fn push_label_lines(&mut self, fence: FenceId) {
+        let Some(lines) = self
+            .state
+            .fence(fence)
+            .map(|f| f.view.effective_label_lines())
+        else {
+            return;
+        };
+        if let Some(w) = self.window_for(fence)
+            && w.active_fence() == fence
+        {
+            w.set_label_lines(lines);
+        }
+    }
+
+    /// Pushes the shown fence's grid overrides to its window: 「图标形状」 plus the per-axis
+    /// gaps (`spacing_x` / `spacing_y`), each `None` falling back to the named `spacing`.
+    fn push_grid_extras(&mut self, fence: FenceId) {
+        let Some(view) = self.state.fence(fence).map(|f| f.view.clone()) else {
+            return;
+        };
+        if let Some(w) = self.window_for(fence)
+            && w.active_fence() == fence
+        {
+            w.set_grid_extras(view.effective_icon_shape(), view.spacing_x, view.spacing_y);
+        }
+    }
+
+    /// Pushes `effective_icon_size` (custom size while set, else the preset) to the window —
+    /// `set_icon_size` reloads the icons when the edge actually changes.
+    fn push_effective_icon_size(&mut self, fence: FenceId) {
+        let Some(size) = self.state.fence(fence).map(|f| f.view.effective_icon_size())
+        else {
+            return;
+        };
+        if let Some(w) = self.window_for(fence)
+            && w.active_fence() == fence
+        {
+            w.set_icon_size(size);
+        }
+    }
+
     /// Applies one parsed property to `fence` (window-level ones act on its host, see the
     /// module docs). Returns whether the persisted state actually changed.
     pub(super) fn apply_fence_prop(&mut self, fence: FenceId, prop: FenceProp) -> bool {
@@ -584,7 +736,7 @@ impl App {
                 let (_, title_rgb, _) = self.style_of(fence);
                 self.set_fence_title_style(fence, title_rgb, size);
             }
-            FenceProp::TitleOnHover(on) => self.set_fence_title_on_hover(fence, on),
+            FenceProp::TitleOnHover(choice) => self.set_fence_title_bar(fence, choice),
             FenceProp::PortalNavigate(on) => self.set_fence_portal_navigate(fence, on),
             FenceProp::PortalTitleIcon(on) => self.set_fence_title_icon(fence, on),
             FenceProp::HideWhenEmpty(on) => self.set_fence_hide_when_empty(fence, on),
@@ -622,13 +774,87 @@ impl App {
                     f.view.label_lines = lines;
                     self.state.mark_dirty();
                 }
+                self.push_label_lines(fence);
+                self.apply_cell_snap(fence);
+                self.apply_auto_height(fence);
+                self.schedule_save();
+            }
+            FenceProp::ShowLabels(on) => {
+                // `None` while on, so the field leaves the file until labels are turned off.
+                let stored = (!on).then_some(false);
+                if let Some(f) = self.state.fence_mut(fence)
+                    && f.view.show_labels != stored
+                {
+                    f.view.show_labels = stored;
+                    self.state.mark_dirty();
+                }
+                self.push_label_lines(fence);
+                self.apply_cell_snap(fence);
+                self.apply_auto_height(fence);
+                self.schedule_save();
+            }
+            FenceProp::IconShape(shape) => {
+                let stored = (shape != IconShape::Standard).then_some(shape);
+                if let Some(f) = self.state.fence_mut(fence)
+                    && f.view.icon_shape != stored
+                {
+                    f.view.icon_shape = stored;
+                    self.state.mark_dirty();
+                }
+                self.push_grid_extras(fence);
+                self.apply_cell_snap(fence);
+                self.apply_auto_height(fence);
+                self.schedule_save();
+            }
+            FenceProp::CustomIconSize(size) => {
+                if let Some(f) = self.state.fence_mut(fence)
+                    && f.view.custom_icon_size != size
+                {
+                    f.view.custom_icon_size = size;
+                    self.state.mark_dirty();
+                }
+                // The effective edge changed: push it like `apply_icon_size` does.
+                self.push_effective_icon_size(fence);
+                self.drop_unneeded_icon_requests();
+                self.push_grid_extras(fence);
+                self.apply_cell_snap(fence);
+                self.apply_auto_height(fence);
+                self.schedule_save();
+            }
+            FenceProp::GapX(gap) | FenceProp::GapY(gap) => {
+                let x = matches!(prop, FenceProp::GapX(_));
+                if let Some(f) = self.state.fence_mut(fence) {
+                    let slot = if x {
+                        &mut f.view.spacing_x
+                    } else {
+                        &mut f.view.spacing_y
+                    };
+                    if *slot != gap {
+                        *slot = gap;
+                        self.state.mark_dirty();
+                    }
+                }
+                self.push_grid_extras(fence);
+                self.apply_cell_snap(fence);
+                self.apply_auto_height(fence);
+                self.schedule_save();
+            }
+            FenceProp::HideScrollbar(on) => {
+                self.state.set_hide_scrollbar(fence, on);
                 if let Some(w) = self.window_for(fence)
                     && w.active_fence() == fence
                 {
-                    w.set_label_lines(lines);
+                    w.set_hide_scrollbar(on);
                 }
-                self.apply_cell_snap(fence);
-                self.apply_auto_height(fence);
+                self.schedule_save();
+            }
+            FenceProp::LockScroll(on) => {
+                self.state.set_lock_scroll(fence, on);
+                if let Some(w) = self.window_for(fence)
+                    && w.active_fence() == fence
+                {
+                    w.set_lock_scroll(on);
+                }
                 self.schedule_save();
             }
         }

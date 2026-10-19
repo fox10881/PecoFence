@@ -96,10 +96,6 @@ pub struct Settings {
     /// Material style is independent of the light/dark preference.
     #[serde(default)]
     pub theme_style: ThemeStyle,
-    /// A theme file in the configuration's `themes` folder, by name without `.json`. While it
-    /// loads, its `base` takes the place of `themeStyle`.
-    #[serde(default)]
-    pub custom_theme: Option<String>,
     /// Colour of the item names in every fence; fence titles have their own `titleColor`.
     #[serde(default)]
     pub label_color: LabelColor,
@@ -221,7 +217,6 @@ impl Default for Settings {
             backdrop: Backdrop::Acrylic,
             theme: ThemeSetting::FollowWindowsMode,
             theme_style: ThemeStyle::Fluent,
-            custom_theme: None,
             label_color: LabelColor::Auto,
             title_align: TitleAlign::Left,
             tab_bar: TabBar::Top,
@@ -270,6 +265,12 @@ pub enum ThemeStyle {
     #[default]
     Fluent,
     LiquidGlass,
+    /// A classic wooden bookshelf. Drawn as a solid wood plate for now; the shelf
+    /// rendering (rows of book spines) lands separately.
+    Bookshelf,
+    /// Invisible Canvas: the plate draws nothing — icons and captions float on the
+    /// wallpaper itself.
+    InvisibleCanvas,
 }
 
 /// Item name colour (「图标名称颜色」). Auto: Liquid Glass picks dark or light text from the
@@ -638,6 +639,69 @@ pub struct FenceView {
     /// layouts). Implies `sort == Date`.
     #[serde(default)]
     pub group_by_date: bool,
+    /// Item names under the icons; None/true = shown (the default). Some(false) hides them
+    /// and the cells drop their label rows, so covers sit flush on the bookshelf boards.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_labels: Option<bool>,
+    /// Icon cell shape: None/Standard keeps the square box; Poster draws a 2:3 cover
+    /// (H = W × 1.5) the thumbnail is centre-cropped into — zero-gap poster grids.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_shape: Option<IconShape>,
+    /// Freeform icon edge in DIPs, overriding `icon_size` while set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_icon_size: Option<u32>,
+    /// Extra gap between icon columns in DIPs, overriding `spacing` on the x axis;
+    /// 0.0 packs the cells flush.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spacing_x: Option<f32>,
+    /// Extra gap between icon rows in DIPs, overriding `spacing` on the y axis;
+    /// 0.0 packs the cells flush.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spacing_y: Option<f32>,
+    /// 隐藏滚动条: skip drawing the overlay scrollbar's track, arrows and thumb —
+    /// wheel and logical scrolling keep working.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hide_scrollbar: Option<bool>,
+    /// 锁定滚动: scrolling is off entirely — the wheel, thumb/track drags,
+    /// auto-scroll and `scroll_into_view` all do nothing and the offset is
+    /// pinned to the top (the fence is a fixed display case).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock_scroll: Option<bool>,
+}
+
+/// Shape of an icon cell's icon box (「图标形状」).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+pub enum IconShape {
+    /// Square box; the icon keeps its aspect inside it.
+    #[default]
+    Standard,
+    /// 2:3 cover box: the thumbnail is centre-cropped to fill it exactly, discarding
+    /// the shell thumbnail's transparent padding — like a game-cover poster.
+    Poster,
+}
+
+impl FenceView {
+    /// Label rows the grid actually lays out: `label_lines`, or 0 while `show_labels` has
+    /// turned labels off (the configured line count is kept for when they come back).
+    pub fn effective_label_lines(&self) -> u8 {
+        if self.show_labels == Some(false) {
+            0
+        } else {
+            self.label_lines
+        }
+    }
+
+    /// Icon edge the grid actually uses: `custom_icon_size`, else the `icon_size` preset.
+    pub fn effective_icon_size(&self) -> u32 {
+        self.custom_icon_size.unwrap_or(self.icon_size)
+    }
+
+    /// Icon cell shape in use: `icon_shape`, or Standard while unset.
+    pub fn effective_icon_shape(&self) -> IconShape {
+        self.icon_shape.unwrap_or_default()
+    }
 }
 
 impl Default for FenceView {
@@ -653,6 +717,13 @@ impl Default for FenceView {
             column_widths: None,
             columns_visible: None,
             group_by_date: false,
+            show_labels: None,
+            icon_shape: None,
+            custom_icon_size: None,
+            spacing_x: None,
+            spacing_y: None,
+            hide_scrollbar: None,
+            lock_scroll: None,
         }
     }
 }
@@ -676,6 +747,10 @@ pub struct AppearanceOverride {
     /// `rollUp.titleOnHover`).
     #[serde(default)]
     pub title_on_hover: Option<bool>,
+    /// 「显示标题栏 → 从不显示」: the title row is gone entirely — not drawn, not
+    /// hit-tested, not even on hover, and the content reclaims its height.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_hidden: Option<bool>,
     /// The tint washes only the title row instead of the whole glass.
     #[serde(default)]
     pub tint_title_only: bool,
@@ -1655,10 +1730,8 @@ mod tests {
         json.as_object_mut().unwrap().remove("titleAlign");
         json.as_object_mut().unwrap().remove("tabBar");
         json.as_object_mut().unwrap().remove("labelColor");
-        json.as_object_mut().unwrap().remove("customTheme");
         let legacy: Settings = serde_json::from_value(json).unwrap();
         assert_eq!(legacy.theme_style, ThemeStyle::Fluent);
-        assert_eq!(legacy.custom_theme, None);
         assert_eq!(legacy.title_align, TitleAlign::Left);
         assert_eq!(legacy.tab_bar, TabBar::Top);
         assert_eq!(legacy.label_color, LabelColor::Auto);
@@ -2258,6 +2331,77 @@ mod tests {
         assert_eq!(c.last_shown(), Some(1));
         assert!(c.mark_shown(0));
         assert_eq!(c.last_shown(), Some(0));
+    }
+
+    /// 显示图标标签: `showLabels` stays out of the file while unset; `false` parks the saved
+    /// `labelLines` instead of overwriting it, and old configs load with labels on.
+    #[test]
+    fn fence_view_show_labels_stays_optional_until_used() {
+        let v = FenceView::default();
+        let j = serde_json::to_value(&v).unwrap();
+        assert!(j.get("showLabels").is_none());
+        assert_eq!(v.effective_label_lines(), 2);
+
+        let v = FenceView {
+            label_lines: 3,
+            show_labels: Some(false),
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_value(&v).unwrap()["showLabels"], false);
+        assert_eq!(v.effective_label_lines(), 0);
+
+        let back: FenceView = serde_json::from_str(
+            r#"{"iconSize":48,"sort":"manual","labelLines":3,"autoHeight":false}"#,
+        )
+        .unwrap();
+        assert_eq!(back.show_labels, None);
+        assert_eq!(back.effective_label_lines(), 3);
+    }
+
+    #[test]
+    fn hide_scrollbar_defaults_off_and_roundtrips() {
+        let v = FenceView::default();
+        assert_eq!(v.hide_scrollbar, None);
+        assert!(
+            serde_json::to_value(&v)
+                .unwrap()
+                .get("hideScrollbar")
+                .is_none()
+        );
+
+        let v = FenceView {
+            hide_scrollbar: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_value(&v).unwrap()["hideScrollbar"], true);
+        let back: FenceView = serde_json::from_str(
+            r#"{"iconSize":48,"sort":"manual","labelLines":2,"autoHeight":false}"#,
+        )
+        .unwrap();
+        assert_eq!(back.hide_scrollbar, None);
+    }
+
+    #[test]
+    fn lock_scroll_defaults_off_and_roundtrips() {
+        let v = FenceView::default();
+        assert_eq!(v.lock_scroll, None);
+        assert!(
+            serde_json::to_value(&v)
+                .unwrap()
+                .get("lockScroll")
+                .is_none()
+        );
+
+        let v = FenceView {
+            lock_scroll: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_value(&v).unwrap()["lockScroll"], true);
+        let back: FenceView = serde_json::from_str(
+            r#"{"iconSize":48,"sort":"manual","labelLines":2,"autoHeight":false}"#,
+        )
+        .unwrap();
+        assert_eq!(back.lock_scroll, None);
     }
 }
 

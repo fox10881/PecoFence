@@ -308,6 +308,21 @@ impl<'a> DrawingSession<'a> {
         }
     }
 
+    /// Draws the `src` region of a bitmap into the DIP rectangle `dest`, stretched to fill —
+    /// use with a centre-cropped `src` to cover non-matching aspect ratios.
+    pub fn draw_bitmap_src(&self, bitmap: &Bitmap, src: &Rect, dest: &Rect, opacity: f32) {
+        unsafe {
+            self.context.DrawBitmap(
+                &bitmap.0,
+                Some(&dest.to_abi()),
+                opacity,
+                D2D1_INTERPOLATION_MODE_LINEAR,
+                Some(&src.to_abi()),
+                None,
+            );
+        }
+    }
+
     /// Loads a bitmap from a file into this device context.
     pub fn load_bitmap(&self, path: impl AsRef<std::path::Path>) -> Result<Bitmap> {
         Bitmap::load_from_file(self.context, path.as_ref())

@@ -11,6 +11,7 @@
     locale = tag || 'zh-CN';
     messages = catalog || {};
     document.documentElement.lang = locale;
+    document.documentElement.dir = locale === 'ar' ? 'rtl' : '';
     return changed;
   };
   // Capture only the original document. Later user-provided titles, filenames,

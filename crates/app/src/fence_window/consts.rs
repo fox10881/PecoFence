@@ -10,6 +10,9 @@ pub(super) const SEARCH_DIM_ALPHA: f32 = 0.15;
 pub(super) const SEARCH_MATCH_SELECTION: f32 = 0.5;
 /// Opacity of the tab pills a Peek search finds nothing in.
 pub(super) const SEARCH_TAB_DIM_ALPHA: f32 = 0.4;
+/// Corner radius DWM gives a Fluent fence (DWMWCP_ROUNDSMALL; the shadow casts the same one):
+/// the root clip matches it while a folded title row moves the plate's top edge down.
+pub(super) const FLUENT_WINDOW_RADIUS_DIP: f32 = 4.0;
 /// Esc registered as a hotkey on the fence for the length of a title drag in the system move
 /// loop (`on_entersizemove`): the loop hears the keyboard only while the fence has the focus.
 pub(super) const HOTKEY_MOVE_ESC: i32 = 1;
@@ -45,6 +48,10 @@ pub(super) const TIMER_TAB_HOVER: usize = 45;
 /// Polls the right button during a title drag in the system move loop: the loop sends
 /// WM_MOVING only while the pointer moves, so a right click on a resting pointer went unseen.
 pub(super) const TIMER_MOVE_RBUTTON: usize = 46;
+/// The magnetic row-grid settle: ~180 ms after the last scroll input the offset glides
+/// onto the nearest row boundary. Re-armed on every scroll activity, so it only fires
+/// once the input stream (a touchpad inertia tail included) has actually stopped.
+pub(super) const TIMER_SCROLL_SETTLE: usize = 47;
 /// DWM can suspend completion callbacks for fully occluded windows. UI state must still
 /// settle after the longest (250 ms) transition, independently of compositor visibility.
 pub(super) const COMPOSITION_FINISH_MS: u32 = 400;
@@ -59,6 +66,9 @@ pub(super) const SCROLL_PAGE_FIRST_MS: u32 = 200;
 pub(super) const SCROLL_PAGE_REPEAT_MS: u32 = 50;
 /// Inactive-scrollbar linger after the last activity (WinUI ScrollView `s_noIndicatorCountdown`).
 pub(super) const SCROLLBAR_LINGER_MS: u32 = 2000;
+/// Quiet period after which the scroll offset settles onto the row grid: short enough
+/// to feel magnetic, long enough that a touchpad's inertia tail reads as one stream.
+pub(super) const SCROLL_SETTLE_MS: u32 = 180;
 /// Marquee auto-scroll: a per-frame velocity proportional to how far the pointer is outside
 /// the item area (DIP/s per DIP of overshoot, clamped), like Explorer's list view.
 pub(super) const MARQUEE_SCROLL_GAIN: f32 = 12.0;
