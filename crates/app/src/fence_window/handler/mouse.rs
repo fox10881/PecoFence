@@ -231,6 +231,10 @@ pub(super) fn on_lbuttondown(
         let mut capture = false;
         match hit {
             Some(i) => {
+                // This press takes the selection: every other container (fences and the
+                // loose-icon overlays) drops its own, so a deselected icon's highlight is
+                // repainted away instead of lingering on screen.
+                queue.push(Command::ClearItemSelection { except: hwnd });
                 // Explorer: a plain press keeps a multi-selection for
                 // dragging and collapses it on a release without a drag; a
                 // press on the sole selected item may become a slow
@@ -251,6 +255,8 @@ pub(super) fn on_lbuttondown(
             None => {
                 if !ctrl && !shift {
                     v.selected.clear();
+                    // A plain-press marquee replaces the selection, here and everywhere.
+                    queue.push(Command::ClearItemSelection { except: hwnd });
                 }
                 if in_content {
                     // Ctrl toggles, Shift adds (Ctrl wins when both are held).
@@ -752,6 +758,7 @@ pub(super) fn on_rbuttonup(
                 v.anchor_index = Some(i);
                 v.range_anchor = Some(i);
             }
+            queue.push(Command::ClearItemSelection { except: hwnd });
             // Like a left click, a right click on an item grants the focus
             // session (Explorer activates the view), so the selection shows
             // in the accent under the menu.

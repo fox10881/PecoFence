@@ -34,6 +34,14 @@ impl App {
                         .unwrap_or_default();
                     w.select_desktop_rect(RECT::default(), &base);
                 }
+                if !additive {
+                    // A plain press on the bare desktop (or on a Windows icon) takes the
+                    // selection away from every fence's items too — same as a press inside
+                    // a container broadcasting `ClearItemSelection`.
+                    for w in self.fences.values() {
+                        w.clear_item_selection();
+                    }
+                }
                 let kept = if additive {
                     self.ctx.behavior.selection.borrow().clone()
                 } else {

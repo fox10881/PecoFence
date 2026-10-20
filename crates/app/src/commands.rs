@@ -264,10 +264,10 @@ pub enum Command {
     DesktopMarquee(crate::anchor::MarqueeEvent),
     /// A click elsewhere ended the desktop fence selection.
     ClearFenceSelection,
-    /// A press on another of our windows (or on a Windows desktop icon) ended the loose-icon
-    /// selection on the desktop overlay windows. `except` is the overlay the press landed on;
-    /// its own selection was already re-decided by `press_item`.
-    ClearDesktopSelection { except: HWND },
+    /// An item press on one container (a fence or a desktop overlay) ended the item
+    /// selection on every other one. `except` is the window the press landed on; its own
+    /// selection was already re-decided by `press_item`.
+    ClearItemSelection { except: HWND },
     ToggleAllFences,
     /// Peek hotkey: float all fences above the current windows (again = end).
     TogglePeek,

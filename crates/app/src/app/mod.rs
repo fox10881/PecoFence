@@ -1902,11 +1902,14 @@ impl App {
             Command::NewFenceRect(rect) => self.offer_new_fence(rect),
             Command::DesktopMarquee(event) => self.on_desktop_marquee(event),
             Command::ClearFenceSelection => self.set_fence_selection(Vec::new()),
-            Command::ClearDesktopSelection { except } => {
-                // `select_desktop_rect` repaints the overlay only when its selection changed.
-                for w in self.desktop_windows.values() {
+            Command::ClearItemSelection { except } => {
+                // An item press on one container ended the item selection on every
+                // other: each window drops `selected` and repaints only when the set
+                // actually changed, so the deselected icons' rects are wiped without
+                // touching the pressed window (`except` — its press_item already ran).
+                for w in self.fences.values().chain(self.desktop_windows.values()) {
                     if w.hwnd() != except {
-                        w.select_desktop_rect(RECT::default(), &[]);
+                        w.clear_item_selection();
                     }
                 }
             }

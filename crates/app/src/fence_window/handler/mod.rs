@@ -184,30 +184,6 @@ impl FenceWindow {
                 if press_ends_selection(&h.behavior, hwnd, message, wparam) {
                     h.queue.push(Command::ClearFenceSelection);
                 }
-                // A press on one of our windows moves selection focus to it: the loose-icon
-                // overlays drop theirs so a deselected icon never keeps its highlight (the
-                // overlays are click-through outside the icons, so no press of their own
-                // reaches this point). The pressed overlay keeps its selection.
-                if matches!(
-                    message,
-                    msg::WM_LBUTTONDOWN
-                        | msg::WM_LBUTTONDBLCLK
-                        | msg::WM_RBUTTONDOWN
-                        | WM_RBUTTONDBLCLK
-                        | msg::WM_NCLBUTTONDOWN
-                        | msg::WM_NCLBUTTONDBLCLK
-                        | WM_NCRBUTTONDOWN
-                ) {
-                    let on_desktop = h
-                        .view
-                        .try_borrow()
-                        .ok()
-                        .and_then(|g| g.as_ref().map(|v| v.desktop))
-                        .unwrap_or(false);
-                    h.queue.push(Command::ClearDesktopSelection {
-                        except: if on_desktop { hwnd } else { HWND::default() },
-                    });
-                }
                 match message {
                     msg::WM_MOUSEACTIVATE => Some(msg::MA_NOACTIVATE),
                     // Alt+F4 / SC_CLOSE while the fence is the active window: fences are

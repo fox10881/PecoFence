@@ -222,6 +222,7 @@ pub(super) fn on_mousemove(
         v.press_inside = false;
         v.cancel_pending_rename();
         v.hide_tip();
+        queue.push(Command::ClearItemSelection { except: hwnd });
         drag_selection(&mut v.selected, item);
         let ids = v.selected_ids();
         // A Recycle Bin dragged together with files would empty the CF_HDROP for every target.

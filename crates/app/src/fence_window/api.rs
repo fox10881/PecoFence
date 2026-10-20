@@ -472,6 +472,26 @@ impl FenceWindow {
         count
     }
 
+    /// A pointer press on another container took the selection: this window drops its
+    /// item selection and repaints the cells that showed it (the highlight would
+    /// otherwise linger, since a window only repaints when its own state changes).
+    /// No-op when nothing was selected.
+    pub fn clear_item_selection(&self) {
+        let mut guard = self.view.borrow_mut();
+        let Some(v) = guard.as_mut() else {
+            return;
+        };
+        if v.selected.is_empty() {
+            return;
+        }
+        v.selected.clear();
+        v.anchor_index = None;
+        v.range_anchor = None;
+        if !v.rolled_up {
+            let _ = v.redraw_content();
+        }
+    }
+
     pub fn hwnd(&self) -> HWND {
         self.window.hwnd()
     }
