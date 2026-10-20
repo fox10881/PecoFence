@@ -24,9 +24,18 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
   &nbsp;·&nbsp; <a href="README.es.md">Español</a>
   &nbsp;·&nbsp; <a href="README.pt-BR.md">Português (Brasil)</a>
   &nbsp;·&nbsp; <a href="README.ru.md">Русский</a>
+  &nbsp;·&nbsp; <a href="README.ar.md">العربية</a>
 </p>
 
 ---
+
+## 궁극의 정적 데스크톱 & 포스터 선반 통합
+
+![궁극의 정적 데스크톱 & 포스터 선반 통합](../assets/desktop-poster-shelves.png)
+
+### 🧩 빠져 있던 마지막 조각: BoxArt Studio
+PecoFence는 정돈된 그리드 레이아웃과 간격 없는 2:3 포스터 컨테이너를 제공하지만, Windows는 여전히 표준 정사각형 아이콘을 생성합니다.
+스크린샷처럼 실물 게임 패키지 선반 모양을 구현하려면 **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**가 필요합니다. BoxArt Studio는 일반 Windows 게임 바로 가기와 폴더를 아름다운 고해상도 2:3 실물 게임 박스로 일괄 변환해 주는 필수 도우미 도구입니다.
 
 <a id="ai에게-정리를-맡기세요"></a>
 
@@ -144,3 +153,5 @@ PecoFence는 Apache 2.0 라이선스로 공개되어 있습니다. 더 정확한
 
 **돌아오고 싶어지는 바탕 화면을 위해.**  
 [Apache 2.0 라이선스](../../LICENSE) · [타사 고지](../../third_party/README.md)
+
+[LINUX DO](https://linux.do) 커뮤니티에 감사드립니다.

@@ -24,9 +24,18 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
   &nbsp;·&nbsp; <strong>Español</strong>
   &nbsp;·&nbsp; <a href="README.pt-BR.md">Português (Brasil)</a>
   &nbsp;·&nbsp; <a href="README.ru.md">Русский</a>
+  &nbsp;·&nbsp; <a href="README.ar.md">العربية</a>
 </p>
 
 ---
+
+## La integración definitiva de escritorio estático y estanterías de pósters
+
+![La integración definitiva de escritorio estático y estanterías de pósters](../assets/desktop-poster-shelves.png)
+
+### 🧩 La pieza que faltaba: BoxArt Studio
+PecoFence aporta la cuadrícula rígida y los contenedores de póster 2:3 sin huecos, pero Windows sigue generando iconos cuadrados estándar.
+Para conseguir el aspecto exacto de estantería física de videojuegos que se ve en la captura, necesitas **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. BoxArt Studio es la herramienta complementaria esencial que convierte por lotes tus accesos directos de juegos y carpetas de Windows en elegantes carátulas 2:3 de alta resolución.
 
 <a id="pídele-a-tu-ia-que-lo-organice"></a>
 
@@ -144,3 +153,5 @@ precisa hasta una interacción de escritorio mejor resuelta.
 
 **Hecho para un escritorio al que da gusto volver.**  
 [Licencia Apache 2.0](../../LICENSE) · [Avisos de terceros](../../third_party/README.md)
+
+Gracias a la comunidad [LINUX DO](https://linux.do).

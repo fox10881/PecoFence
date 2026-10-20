@@ -24,9 +24,18 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
   &nbsp;·&nbsp; <a href="README.es.md">Español</a>
   &nbsp;·&nbsp; <a href="README.pt-BR.md">Português (Brasil)</a>
   &nbsp;·&nbsp; <a href="README.ru.md">Русский</a>
+  &nbsp;·&nbsp; <a href="README.ar.md">العربية</a>
 </p>
 
 ---
+
+## 究極の静的デスクトップ & ポスターシェルフ統合
+
+![究極の静的デスクトップ & ポスターシェルフ統合](../assets/desktop-poster-shelves.png)
+
+### 🧩 欠けている最後のピース: BoxArt Studio
+PecoFence は整然としたグリッドレイアウトと隙間ゼロの 2:3 ポスターコンテナを提供しますが、Windows が標準で生成するアイコンは従来の正方形のままです。
+スクリーンショットのような実物のゲームボックス棚の見た目にするには **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)** が必要です。BoxArt Studio は、通常の Windows のゲームショートカットやフォルダーを美しい高解像度の 2:3 ゲームボックスに一括変換する必須のコンパニオンツールです。
 
 <a id="ai-に整理を任せる"></a>
 
@@ -140,3 +149,5 @@ PecoFence は Apache 2.0 ライセンスで公開されています。訳文の�
 
 **見るたびに、気持ちのいいデスクトップを。**  
 [Apache 2.0 ライセンス](../../LICENSE) · [サードパーティライセンス](../../third_party/README.md)
+
+[LINUX DO](https://linux.do) コミュニティに感謝します。

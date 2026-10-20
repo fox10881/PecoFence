@@ -24,9 +24,18 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
   &nbsp;·&nbsp; <a href="README.es.md">Español</a>
   &nbsp;·&nbsp; <a href="README.pt-BR.md">Português (Brasil)</a>
   &nbsp;·&nbsp; <strong>Русский</strong>
+  &nbsp;·&nbsp; <a href="README.ar.md">العربية</a>
 </p>
 
 ---
+
+## Идеальная пара: статичный рабочий стол и полки с постерами
+
+![Идеальная пара: статичный рабочий стол и полки с постерами](../assets/desktop-poster-shelves.png)
+
+### 🧩 Недостающий элемент: BoxArt Studio
+PecoFence даёт строгую сетку и постерные контейнеры 2:3 без зазоров, но Windows по-прежнему создаёт стандартные квадратные значки.
+Чтобы добиться вида полки с физическими коробками игр, как на снимке экрана, нужен **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. BoxArt Studio — незаменимый компаньон, который пакетно превращает обычные ярлыки игр и папки Windows в красивые коробки 2:3 высокого разрешения.
 
 <a id="попросите-свой-ии-навести-порядок"></a>
 
@@ -144,3 +153,5 @@ PecoFence распространяется под лицензией Apache 2.0,
 
 **Для рабочего стола, к которому приятно возвращаться.**  
 [Лицензия Apache 2.0](../../LICENSE) · [Сторонние компоненты](../../third_party/README.md)
+
+Благодарим сообщество [LINUX DO](https://linux.do).

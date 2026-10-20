@@ -24,9 +24,18 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
   &nbsp;·&nbsp; <a href="README.es.md">Español</a>
   &nbsp;·&nbsp; <a href="README.pt-BR.md">Português (Brasil)</a>
   &nbsp;·&nbsp; <a href="README.ru.md">Русский</a>
+  &nbsp;·&nbsp; <a href="README.ar.md">العربية</a>
 </p>
 
 ---
+
+## L'association ultime : bureau statique et étagères de posters
+
+![L'association ultime : bureau statique et étagères de posters](../assets/desktop-poster-shelves.png)
+
+### 🧩 La pièce manquante : BoxArt Studio
+PecoFence fournit la grille rigide et les conteneurs de posters 2:3 sans interstice, mais Windows génère toujours des icônes carrées standard.
+Pour obtenir l'aspect exact d'une étagère de boîtiers de jeux comme sur la capture d'écran, il vous faut **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. BoxArt Studio est l'outil compagnon indispensable qui transforme par lots vos raccourcis de jeux et dossiers Windows en magnifiques boîtiers 2:3 haute résolution.
 
 <a id="demandez-à-votre-ia-de-ranger"></a>
 
@@ -144,3 +153,5 @@ PecoFence est sous licence Apache 2.0 et les contributions sont bienvenues, d’
 
 **Conçu pour un Bureau où l’on a plaisir à revenir.**  
 [Licence Apache 2.0](../../LICENSE) · [Mentions tierces](../../third_party/README.md)
+
+Merci à la communauté [LINUX DO](https://linux.do).

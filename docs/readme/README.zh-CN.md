@@ -24,9 +24,18 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
   &nbsp;·&nbsp; <a href="README.es.md">Español</a>
   &nbsp;·&nbsp; <a href="README.pt-BR.md">Português (Brasil)</a>
   &nbsp;·&nbsp; <a href="README.ru.md">Русский</a>
+  &nbsp;·&nbsp; <a href="README.ar.md">العربية</a>
 </p>
 
 ---
+
+## 桌面静态海报书架整合：终极形态
+
+![桌面静态海报书架整合](../assets/desktop-poster-shelves.png)
+
+### 🧩 最后一块拼图：BoxArt Studio
+PecoFence 提供了整齐的网格布局和零间距的 2:3 海报容器，但 Windows 原生生成的仍是标准方形图标。
+要实现截图中的实体游戏盒书架效果，你需要 **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**。BoxArt Studio 是必备的搭配工具，可以把普通的 Windows 游戏快捷方式和文件夹批量转换成精美的高分辨率 2:3 实体游戏盒封面。
 
 <a id="让-ai-帮你整理"></a>
 
@@ -143,3 +152,5 @@ Microsoft Store 版由微软签名，自动更新，不会出现 SmartScreen 提
 
 **让每次回到桌面，都更舒服一点。**  
 [Apache 2.0 许可证](../../LICENSE) · [第三方许可说明](../../third_party/README.md)
+
+感谢 [LINUX DO](https://linux.do) 社区。

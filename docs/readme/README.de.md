@@ -24,9 +24,18 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
   &nbsp;·&nbsp; <a href="README.es.md">Español</a>
   &nbsp;·&nbsp; <a href="README.pt-BR.md">Português (Brasil)</a>
   &nbsp;·&nbsp; <a href="README.ru.md">Русский</a>
+  &nbsp;·&nbsp; <a href="README.ar.md">العربية</a>
 </p>
 
 ---
+
+## Die ultimative Kombination aus statischem Desktop und Poster-Regalen
+
+![Die ultimative Kombination aus statischem Desktop und Poster-Regalen](../assets/desktop-poster-shelves.png)
+
+### 🧩 Das fehlende Puzzleteil: BoxArt Studio
+PecoFence liefert das starre Rasterlayout und die lückenlosen 2:3-Poster-Container – Windows erzeugt jedoch weiterhin quadratische Standard-Symbole.
+Für den exakten Look eines physischen Spieleregals wie im Screenshot brauchen Sie **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. BoxArt Studio ist das unverzichtbare Begleitwerkzeug, das Ihre normalen Windows-Spieleverknüpfungen und -Ordner gesammelt in hochauflösende 2:3-Spieleboxen verwandelt.
 
 <a id="lassen-sie-ihre-ki-aufräumen"></a>
 
@@ -144,3 +153,5 @@ PecoFence steht unter der Apache-2.0-Lizenz, und Beiträge sind willkommen – v
 
 **Für einen Desktop, zu dem du gern zurückkehrst.**  
 [Apache-2.0-Lizenz](../../LICENSE) · [Hinweise zu Drittanbietern](../../third_party/README.md)
+
+Danke an die [LINUX DO](https://linux.do)-Community.

@@ -24,9 +24,18 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
   &nbsp;·&nbsp; <a href="README.es.md">Español</a>
   &nbsp;·&nbsp; <strong>Português (Brasil)</strong>
   &nbsp;·&nbsp; <a href="README.ru.md">Русский</a>
+  &nbsp;·&nbsp; <a href="README.ar.md">العربية</a>
 </p>
 
 ---
+
+## A combinação definitiva de desktop estático e prateleiras de pôsteres
+
+![A combinação definitiva de desktop estático e prateleiras de pôsteres](../assets/desktop-poster-shelves.png)
+
+### 🧩 A peça que faltava: BoxArt Studio
+O PecoFence fornece o layout em grade rígido e os contêineres de pôster 2:3 sem espaços, mas o Windows continua gerando ícones quadrados padrão.
+Para obter o visual exato de prateleira física de jogos mostrado na captura de tela, você precisa do **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. O BoxArt Studio é a ferramenta complementar essencial que transforma em lote seus atalhos de jogos e pastas do Windows em belas caixas de jogo 2:3 em alta resolução.
 
 <a id="peça-à-sua-ia-para-organizar"></a>
 
@@ -144,3 +153,5 @@ a uma interação melhor na área de trabalho.
 
 **Feito para uma área de trabalho à qual você gosta de voltar.**  
 [Licença Apache 2.0](../../LICENSE) · [Avisos de terceiros](../../third_party/README.md)
+
+Obrigado à comunidade [LINUX DO](https://linux.do).
