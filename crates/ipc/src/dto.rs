@@ -195,6 +195,13 @@ pub struct FenceDto {
     /// 锁定滚动: no scrolling at all; the viewport is pinned to the top.
     #[serde(default)]
     pub lock_scroll: bool,
+    /// 3D 层架: the fence is a Y-sheared parallelogram with two top-edge handles
+    /// instead of the eight-way resize border.
+    #[serde(default)]
+    pub shelf_3d: bool,
+    /// 纵深缩放: progressive icon scaling toward the far edge (0.0 = all same size).
+    #[serde(default)]
+    pub depth_scale: f32,
     pub portal: Option<PortalDto>,
     /// How the items fit the window; `null` for a tab that is not the one currently shown and
     /// for fences without a window (disconnected monitor).
@@ -369,6 +376,14 @@ pub struct SnapshotDto {
     /// Fences of the layout for the current monitor set (the ones `fences.list` would show
     /// after a restore); the first layout's when none matches.
     pub fence_count: usize,
+    /// Desktop wallpaper captured with the snapshot (`snapshots.save` `include_wallpaper`);
+    /// a restore re-applies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallpaper_path: Option<String>,
+    /// The single automatic "restore backup" entry (a fixed id every restore overwrites);
+    /// its name is a locale label rather than user text.
+    #[serde(default)]
+    pub is_auto_backup: bool,
 }
 
 /// A daily configuration backup kept beside `config.json`.

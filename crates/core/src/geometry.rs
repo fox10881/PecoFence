@@ -132,6 +132,8 @@ pub fn normalize(rect: PxRect, work: &WorkArea) -> NormGeometry {
         work_w,
         work_h,
         anchor: pick_anchor(x, y, w, h, work_w, work_h),
+        skew_left: None,
+        skew_right: None,
     }
 }
 
@@ -170,6 +172,38 @@ pub fn denormalize(geo: &NormGeometry, work: &WorkArea) -> PxRect {
         top,
         right: left + (w * s).round() as i32,
         bottom: top + (h * s).round() as i32,
+    }
+}
+
+/// The axis-aligned window rectangle a fence needs: the base rect grown to contain the
+/// sheared parallelogram when the geometry carries edge skews (3D shelf). Without skews
+/// this is exactly `denormalize`.
+pub fn window_rect(geo: &NormGeometry, work: &WorkArea) -> PxRect {
+    let base = denormalize(geo, work);
+    if !geo.skewed() {
+        return base;
+    }
+    let s = work.scale();
+    let top_pad = (geo.skew_top_pad() * s).round() as i32;
+    let spread = (geo.skew_spread() * s).round() as i32;
+    PxRect {
+        left: base.left,
+        top: base.top - top_pad,
+        right: base.right,
+        bottom: base.top - top_pad + base.height() + spread,
+    }
+}
+
+/// The inverse of `window_rect`: the base rectangle inside a sheared fence's window
+/// bounding box, given the same edge skews (in DIPs).
+pub fn window_base(window: PxRect, skew_left: f32, skew_right: f32, scale: f32) -> PxRect {
+    let pad = (-skew_left.min(0.0).min(skew_right.min(0.0)) * scale).round() as i32;
+    let spread = (skew_left.abs().max(skew_right.abs()) * scale).round() as i32;
+    PxRect {
+        left: window.left,
+        top: window.top + pad,
+        right: window.right,
+        bottom: (window.bottom - pad - spread).max(window.top + pad + 1),
     }
 }
 
@@ -261,10 +295,56 @@ mod tests {
             work_w: 1920.0,
             work_h: 1040.0,
             anchor: Anchor::LeftTop,
+            skew_left: None,
+            skew_right: None,
         };
         let r = denormalize(&g, &wa);
         assert!(r.left >= 0 && r.right <= 800 && r.top >= 0 && r.bottom <= 600);
         assert_eq!(r.width(), MIN_W_DIP as i32);
         assert_eq!(r.height(), MIN_H_DIP as i32);
+    }
+
+    #[test]
+    fn skewed_window_rect_roundtrip() {
+        let wa = work(96, 1920, 1040);
+        let mut g = normalize(
+            PxRect {
+                left: 100,
+                top: 100,
+                right: 500,
+                bottom: 400,
+            },
+            &wa,
+        );
+        // No skews: the window rect is the plain denormalized rect.
+        let base = denormalize(&g, &wa);
+        assert_eq!(window_rect(&g, &wa), base);
+        // Normalized skews (one edge at 0): the box grows by the spread and
+        // `window_base` recovers the same base rect.
+        g.skew_left = Some(0.0);
+        g.skew_right = Some(40.0);
+        let bbox = window_rect(&g, &wa);
+        assert_eq!(bbox.top, base.top);
+        assert_eq!(bbox.height(), base.height() + 40);
+        assert_eq!(window_base(bbox, 0.0, 40.0, 1.0), base);
+        // Other side lower, at 150% DPI.
+        let hi = work(144, 2880, 1560);
+        let g_hi = NormGeometry {
+            skew_left: Some(60.0),
+            skew_right: Some(0.0),
+            ..g.clone()
+        };
+        let base_hi = denormalize(&g_hi, &hi);
+        let bbox_hi = window_rect(&g_hi, &hi);
+        assert_eq!(bbox_hi.top, base_hi.top);
+        assert_eq!(bbox_hi.height(), base_hi.height() + 90);
+        assert_eq!(window_base(bbox_hi, 60.0, 0.0, 1.5), base_hi);
+        // Some(0)/Some(0) is "skewed" but flat: same rect as before.
+        let flat = NormGeometry {
+            skew_left: Some(0.0),
+            skew_right: Some(0.0),
+            ..g.clone()
+        };
+        assert_eq!(window_rect(&flat, &wa), base);
     }
 }

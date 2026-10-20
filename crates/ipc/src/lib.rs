@@ -250,17 +250,26 @@ pub enum Method {
         #[serde(default)]
         dry_run: bool,
     },
-    /// Result: `{changed, snapshot: SnapshotDto}`.
+    /// `include_wallpaper`: also store the current desktop wallpaper path; a restore of
+    /// this snapshot re-applies it. Result: `{changed, snapshot: SnapshotDto}`.
     #[serde(rename = "snapshots.save")]
-    SnapshotsSave { name: String },
+    SnapshotsSave {
+        name: String,
+        #[serde(default)]
+        include_wallpaper: bool,
+    },
     /// `id` = snapshot id (or unique prefix) or name. A snapshot of the current layout is
     /// taken first unless the list is full of user snapshots (then `warning` says so and
-    /// `snapshotId` is absent). Result: `{changed, restored: uuid, snapshotId?}`.
+    /// `snapshotId` is absent). A snapshot saved with a wallpaper also restores it.
+    /// Result: `{changed, restored: uuid, snapshotId?}`.
     #[serde(rename = "snapshots.restore")]
     SnapshotsRestore { id: String },
     /// Result: `{changed, deleted: uuid}`.
     #[serde(rename = "snapshots.delete")]
     SnapshotsDelete { id: String },
+    /// `id` = snapshot id (or unique prefix) or name. Result: `{changed, renamed: uuid}`.
+    #[serde(rename = "snapshots.rename")]
+    SnapshotsRename { id: String, name: String },
 
     // ---- configuration files -----------------------------------------------------------
     /// Write the complete configuration (settings, rules, layouts, items, snapshots) as
@@ -695,9 +704,16 @@ mod tests {
             },
             Method::RulesApply { dry_run: false },
             Method::RulesApply { dry_run: true },
-            Method::SnapshotsSave { name: "x".into() },
+            Method::SnapshotsSave {
+                name: "x".into(),
+                include_wallpaper: true,
+            },
             Method::SnapshotsRestore { id: "x".into() },
             Method::SnapshotsDelete { id: "x".into() },
+            Method::SnapshotsRename {
+                id: "x".into(),
+                name: "renamed".into(),
+            },
             Method::ConfigExport {
                 path: "C:\\tmp\\x.json".into(),
             },

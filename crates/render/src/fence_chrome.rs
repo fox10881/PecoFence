@@ -136,6 +136,9 @@ pub struct ItemCell<'a> {
     /// The selected / focused item's full name (Windows desktop: the focused icon's label
     /// unfolds past the two-line limit, overlapping the row below). Painted last.
     pub full_label: Option<(&'a str, u32)>,
+    /// 3D-shelf depth scale (0..=1, normally 1.0): the whole cell — state pill, icon and
+    /// label — shrinks around the icon's centre toward the far edge.
+    pub depth: f32,
 }
 
 /// Which details column a header caption / sort indicator refers to.
@@ -807,12 +810,7 @@ fn draw_bookshelf_carcass(
 /// The Bookshelf boards: a lit top face the icons stand on and a shaded front face, hung
 /// between the carcass sides at every row's bottom edge (`rows`, surface DIPs, already
 /// scrolled). Called inside the item clip so a board leaves the viewport with its row.
-fn draw_shelf_boards(
-    session: &DrawingSession<'_>,
-    px: Px,
-    width: f32,
-    rows: &[f32],
-) -> Result<()> {
+fn draw_shelf_boards(session: &DrawingSession<'_>, px: Px, width: f32, rows: &[f32]) -> Result<()> {
     if rows.is_empty() {
         return Ok(());
     }
@@ -823,7 +821,10 @@ fn draw_shelf_boards(
     let w = (width - 2.0 * x0).max(0.0);
     for &y in rows {
         session.fill_rect(&Rect::from_xywh(x0, y, w, SHELF_TOP_H), &lit);
-        session.fill_rect(&Rect::from_xywh(x0, y + SHELF_TOP_H, w, SHELF_FACE_H), &face);
+        session.fill_rect(
+            &Rect::from_xywh(x0, y + SHELF_TOP_H, w, SHELF_FACE_H),
+            &face,
+        );
         session.fill_rect(
             &Rect::from_xywh(x0, y + SHELF_TOP_H + SHELF_FACE_H, w, px.hair()),
             &umbra,
@@ -869,103 +870,107 @@ fn draw_plate(
         draw_bookshelf_carcass(session, px, theme, outer, radius, plate_a)?;
     } else {
         match *backdrop {
-        Backdrop::GpuGlass {
-            material,
-            wallpaper,
-            rect,
-            scale,
-        } => {
-            // A folded title row moves the lens (and its bezel) down to the plate top.
-            let inset = (plate_top * scale).round() as i32;
-            let lens = [rect[0], rect[1] + inset, rect[2], (rect[3] - inset).max(1)];
-            let result = material.borrow_mut().draw(
-                session,
-                &mut bitmaps.glass_wallpaper,
+            Backdrop::GpuGlass {
+                material,
                 wallpaper,
-                lens,
-                inset as f32,
+                rect,
                 scale,
-                radius,
-                opacity.min(1.0) * plate_a,
-                hover,
-            );
-            if let Err(error) = result {
-                if windows_canvas::is_device_lost(error.code()) {
-                    return Err(error);
-                }
-                let fallback = if theme.text_primary.r > 0.5 {
-                    Theme::dark().solid_fill
+            } => {
+                // A folded title row moves the lens (and its bezel) down to the plate top.
+                let inset = (plate_top * scale).round() as i32;
+                let lens = [rect[0], rect[1] + inset, rect[2], (rect[3] - inset).max(1)];
+                let result = material.borrow_mut().draw(
+                    session,
+                    &mut bitmaps.glass_wallpaper,
+                    wallpaper,
+                    lens,
+                    inset as f32,
+                    scale,
+                    radius,
+                    opacity.min(1.0) * plate_a,
+                    hover,
+                );
+                if let Err(error) = result {
+                    if windows_canvas::is_device_lost(error.code()) {
+                        return Err(error);
+                    }
+                    let fallback = if theme.text_primary.r > 0.5 {
+                        Theme::dark().solid_fill
+                    } else {
+                        Theme::light().solid_fill
+                    };
+                    let fill = session.create_solid_brush(with_alpha(fallback, plate_a))?;
+                    session.fill_rounded_rect(&RoundedRect::uniform(outer, radius), &fill);
                 } else {
-                    Theme::light().solid_fill
-                };
-                let fill = session.create_solid_brush(with_alpha(fallback, plate_a))?;
-                session.fill_rounded_rect(&RoundedRect::uniform(outer, radius), &fill);
-            } else {
-                let mut c = theme.glass_layer_fill;
+                    let mut c = theme.glass_layer_fill;
+                    c.a *= opacity.min(1.0) * plate_a;
+                    let layer = session.create_solid_brush(c)?;
+                    session.fill_rect(&outer, &layer);
+                }
+            }
+            Backdrop::MicaLike(crop) if crop.image.width > 0 && crop.image.height > 0 => {
+                let bitmap = bitmaps.get_or_upload(session, crop.key, crop.image)?;
+                session.draw_bitmap(&bitmap, &crop_rect(&crop), glass_alpha(opacity) * plate_a);
+                let mut c = theme.layer_fill;
                 c.a *= opacity.min(1.0) * plate_a;
                 let layer = session.create_solid_brush(c)?;
                 session.fill_rect(&outer, &layer);
             }
-        }
-        Backdrop::MicaLike(crop) if crop.image.width > 0 && crop.image.height > 0 => {
-            let bitmap = bitmaps.get_or_upload(session, crop.key, crop.image)?;
-            session.draw_bitmap(&bitmap, &crop_rect(&crop), glass_alpha(opacity) * plate_a);
-            let mut c = theme.layer_fill;
-            c.a *= opacity.min(1.0) * plate_a;
-            let layer = session.create_solid_brush(c)?;
-            session.fill_rect(&outer, &layer);
-        }
-        Backdrop::Glass(crop, scale) if crop.image.width > 0 && crop.image.height > 0 => {
-            let bitmap = if theme.liquid_glass {
-                match bitmaps.get(crop.key) {
-                    Some(bitmap) => bitmap,
-                    None => {
-                        let overlay = crate::liquid_glass::refracted_overlay(
-                            crop.image,
-                            width,
-                            crop.height.max(height),
-                            radius,
-                        );
-                        bitmaps.get_or_upload(session, crop.key, &overlay)?
+            Backdrop::Glass(crop, scale) if crop.image.width > 0 && crop.image.height > 0 => {
+                let bitmap = if theme.liquid_glass {
+                    match bitmaps.get(crop.key) {
+                        Some(bitmap) => bitmap,
+                        None => {
+                            let overlay = crate::liquid_glass::refracted_overlay(
+                                crop.image,
+                                width,
+                                crop.height.max(height),
+                                radius,
+                            );
+                            bitmaps.get_or_upload(session, crop.key, &overlay)?
+                        }
                     }
-                }
-            } else {
-                bitmaps.get_or_upload(session, crop.key, crop.image)?
-            };
-            let alpha = if theme.liquid_glass {
-                opacity.min(1.0)
-            } else {
-                glass_alpha(opacity)
-            };
-            session.draw_bitmap(&bitmap, &crop_rect(&crop), alpha * plate_a);
-            let mut c = theme.glass_layer_fill;
-            c.a *= opacity.min(1.0) * plate_a;
-            let layer = session.create_solid_brush(c)?;
-            session.fill_rect(&outer, &layer);
-            // Acrylic grain: tile the noise texture at exactly one texel per device pixel.
-            if !theme.liquid_glass {
-                let tile = crate::backdrop::noise_tile();
-                let noise = bitmaps.get_or_upload(session, NOISE_BITMAP_KEY, tile)?;
-                let step = crate::backdrop::NOISE_TILE_PX as f32 / scale.max(0.5);
-                let mut y = 0.0;
-                while y < height {
-                    let mut x = 0.0;
-                    while x < width {
-                        session.draw_bitmap(&noise, &Rect::from_xywh(x, y, step, step), plate_a);
-                        x += step;
+                } else {
+                    bitmaps.get_or_upload(session, crop.key, crop.image)?
+                };
+                let alpha = if theme.liquid_glass {
+                    opacity.min(1.0)
+                } else {
+                    glass_alpha(opacity)
+                };
+                session.draw_bitmap(&bitmap, &crop_rect(&crop), alpha * plate_a);
+                let mut c = theme.glass_layer_fill;
+                c.a *= opacity.min(1.0) * plate_a;
+                let layer = session.create_solid_brush(c)?;
+                session.fill_rect(&outer, &layer);
+                // Acrylic grain: tile the noise texture at exactly one texel per device pixel.
+                if !theme.liquid_glass {
+                    let tile = crate::backdrop::noise_tile();
+                    let noise = bitmaps.get_or_upload(session, NOISE_BITMAP_KEY, tile)?;
+                    let step = crate::backdrop::NOISE_TILE_PX as f32 / scale.max(0.5);
+                    let mut y = 0.0;
+                    while y < height {
+                        let mut x = 0.0;
+                        while x < width {
+                            session.draw_bitmap(
+                                &noise,
+                                &Rect::from_xywh(x, y, step, step),
+                                plate_a,
+                            );
+                            x += step;
+                        }
+                        y += step;
                     }
-                    y += step;
                 }
             }
-        }
-        Backdrop::SystemMaterial => {
-            let layer = session.create_solid_brush(with_alpha(theme.layer_fill, plate_a))?;
-            session.fill_rounded_rect(&RoundedRect::uniform(outer, radius), &layer);
-        }
-        _ => {
-            let fill = session.create_solid_brush(with_alpha(theme.solid_fill, plate_a))?;
-            session.fill_rounded_rect(&RoundedRect::uniform(outer, radius), &fill);
-        }
+            Backdrop::SystemMaterial => {
+                let layer = session.create_solid_brush(with_alpha(theme.layer_fill, plate_a))?;
+                session.fill_rounded_rect(&RoundedRect::uniform(outer, radius), &layer);
+            }
+            _ => {
+                let fill = session.create_solid_brush(with_alpha(theme.solid_fill, plate_a))?;
+                session.fill_rounded_rect(&RoundedRect::uniform(outer, radius), &fill);
+            }
         }
     }
 
@@ -1468,7 +1473,12 @@ fn draw_item_icon(
                 (bw, bw / aspect)
             };
             let src = Rect::from_xywh((bw - sw) / 2.0, (bh - sh) / 2.0, sw, sh);
-            session.draw_bitmap_src(&bmp, &src, &Rect::from_xywh(x, y, w, h), dim * alpha * icon_alpha);
+            session.draw_bitmap_src(
+                &bmp,
+                &src,
+                &Rect::from_xywh(x, y, w, h),
+                dim * alpha * icon_alpha,
+            );
         } else {
             // Preserve aspect ratio inside the icon box (thumbnails are not square).
             let (iw, ih) = (img.width as f32, img.height as f32);
@@ -3226,8 +3236,43 @@ impl FenceChrome {
     /// One icon cell: state layers, icon box and label. `unfold` = (full name, line count):
     /// the label grows to that many lines and the state pill grows with it (Windows desktop
     /// focused-icon behaviour); the content surface clips whatever runs past the bottom.
+    /// `cell.depth` (< 1.0 toward a 3D shelf's far edge) scales everything around the icon.
     #[allow(clippy::too_many_arguments)]
     fn draw_cell(
+        &self,
+        session: &DrawingSession<'_>,
+        theme: &Theme,
+        bitmaps: &mut BitmapCache,
+        state: &StateBrushes,
+        px: Px,
+        content: &ContentDraw<'_>,
+        cell: &ItemCell<'_>,
+        label: &Brush,
+        label_dim: &Brush,
+        unfold: Option<(&str, u32)>,
+    ) -> Result<()> {
+        let depth = cell.depth.clamp(0.0, 1.0);
+        if depth < 1.0 {
+            let saved = session.transform();
+            let centre = Vector2::new(
+                cell.x + cell.w / 2.0,
+                cell.y + content.icon_top + content.icon_h / 2.0,
+            );
+            session.set_transform(&(Matrix3x2::scale_around(depth, depth, centre) * saved));
+            let r = self.draw_cell_unscaled(
+                session, theme, bitmaps, state, px, content, cell, label, label_dim, unfold,
+            );
+            session.set_transform(&saved);
+            return r;
+        }
+        self.draw_cell_unscaled(
+            session, theme, bitmaps, state, px, content, cell, label, label_dim, unfold,
+        )
+    }
+
+    /// `draw_cell` without the depth transform.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_cell_unscaled(
         &self,
         session: &DrawingSession<'_>,
         theme: &Theme,

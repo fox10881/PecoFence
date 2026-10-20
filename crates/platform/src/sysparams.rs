@@ -158,6 +158,51 @@ pub fn double_click_time_ms() -> u32 {
     unsafe { GetDoubleClickTime() }
 }
 
+// `SPI_SETDESKWALLPAPER` broadcasts the change so every Explorer window (and this app's
+// wallpaper readers) sees it without a sign-out; `SPIF_UPDATEINIFILE` writes it to the
+// profile so it survives a restart.
+const SPI_SETDESKWALLPAPER: u32 = 0x0014;
+const SPI_GETDESKWALLPAPER: u32 = 0x0073;
+const SPIF_UPDATEINIFILE: u32 = 0x01;
+const SPIF_SENDWININICHANGE: u32 = 0x02;
+
+/// `SPI_GETDESKWALLPAPER`: the current wallpaper path (None when the call fails or the
+/// desktop has a solid colour / slideshow with no file behind it).
+pub fn desktop_wallpaper() -> Option<String> {
+    let mut buf = [0u16; 1024];
+    // SAFETY: out-buffer of 1024 UTF-16 units, sized well over MAX_PATH; the SPI
+    // null-terminates what it writes.
+    let ok = unsafe {
+        SystemParametersInfoW(
+            SPI_GETDESKWALLPAPER,
+            buf.len() as u32,
+            buf.as_mut_ptr() as *mut core::ffi::c_void,
+            0,
+        )
+    };
+    if !ok.as_bool() {
+        return None;
+    }
+    let path = crate::wide::from_wide(&buf);
+    (!path.is_empty()).then_some(path)
+}
+
+/// `SPI_SETDESKWALLPAPER` with `SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE`: applies `path`
+/// as the desktop wallpaper now and persists it. False when the call fails.
+pub fn set_desktop_wallpaper(path: &str) -> bool {
+    let wide = to_wide(path);
+    // SAFETY: pvParam points at our NUL-terminated wide string for the duration of the call.
+    let ok = unsafe {
+        SystemParametersInfoW(
+            SPI_SETDESKWALLPAPER,
+            0,
+            wide.as_ptr() as *mut core::ffi::c_void,
+            SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE,
+        )
+    };
+    ok.as_bool()
+}
+
 #[cfg(test)]
 mod tests {
     use super::icon_title_size_dip;

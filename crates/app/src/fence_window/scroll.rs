@@ -180,12 +180,14 @@ impl FenceViewState {
 
     /// Height (device px) of the content viewport, header included: the content panel, or
     /// while rolled up the remembered expanded height below the title (see `scroll_extent`).
+    /// A sheared fence's surface is taller than the band by the shear amplitude, and a
+    /// rolled fence's remembered window height includes the skew's spread — both come out.
     pub(super) fn viewport_h_px(&self) -> i32 {
         if self.rolled_up && self.roll_anim.is_none() {
             let head = self.head_px();
-            self.expanded_h_px.max(head + 40) - head
+            (self.expanded_h_px - self.spread_px()).max(head + 40) - head
         } else {
-            self.content_size_px().1
+            self.content_size_px().1 - (self.content_shear_amp() * self.scale()).ceil() as i32
         }
     }
 
@@ -330,7 +332,11 @@ impl FenceViewState {
             self.scroll_anim = None;
             // 锁定滚动 pins the offset at the top: the local layout's positive range
             // collapses to 0.
-            let max = if self.lock_scroll { 0.0 } else { layout.max_scroll(view_h) };
+            let max = if self.lock_scroll {
+                0.0
+            } else {
+                layout.max_scroll(view_h)
+            };
             self.scroll_y = target.clamp(0.0, max);
             self.note_scroll_activity();
         }
@@ -364,8 +370,7 @@ impl FenceViewState {
         if step <= 0.0 {
             return;
         }
-        let snapped =
-            ((self.scroll_y / step).round() * step).clamp(0.0, layout.max_scroll(view_h));
+        let snapped = ((self.scroll_y / step).round() * step).clamp(0.0, layout.max_scroll(view_h));
         if (snapped - self.scroll_y).abs() > 0.5 {
             self.scroll_to(snapped, motion::FASTER);
         }
@@ -437,6 +442,7 @@ impl FenceViewState {
         if self.hide_scrollbar {
             return None;
         }
+        let (x_px, y_px) = self.unskew_px(x_px, y_px)?;
         let title_h = self.content_y;
         if y_px < title_h {
             return None;
@@ -628,8 +634,10 @@ impl FenceViewState {
                 // A glide in flight would fight the thumb: stop it.
                 self.scroll_anim = None;
                 self.snap_scroll();
+                // The drag delta is measured in slab px (see the move handler).
+                let (_, slab_y) = self.unskew_unbounded(x_px, y_px);
                 self.scroll_drag = Some(ScrollDrag {
-                    start_y_px: y_px,
+                    start_y_px: slab_y,
                     start_scroll: self.scroll_y,
                 });
                 false
@@ -678,12 +686,14 @@ impl FenceViewState {
     /// `DragScroll`): enters / leaves / re-arms the zone; the scrolling itself runs in `tick`.
     pub(super) fn update_drag_scroll(&mut self, pt: DragPoint) {
         let r = window::window_rect(self.hwnd);
-        let cy = pt.y - r.top;
+        // The band is measured on the unskewed surface: a sheared fence's edge zones
+        // follow the slab, so the pointer maps into slab px for the comparison.
+        let (cx, cy) = self.unskew_unbounded(pt.x - r.left, pt.y - r.top);
         let (top, bottom) = self.marquee_band_px();
         let zone_px = (DRAG_SCROLL_ZONE_DIP * self.scale()) as i32;
         // Over a left tab column the drag aims at a tab pill, not at the item area's edge.
         let zone = drag_scroll_zone(cy, top, bottom, zone_px)
-            .filter(|_| self.scroll_max() > 0.0 && pt.x - r.left >= self.content_x);
+            .filter(|_| self.scroll_max() > 0.0 && cx >= self.content_x);
         let Some((dir, depth)) = zone else {
             if self.drag_scroll.take().is_some() && self.snap_scroll() {
                 // Auto-scroll ended between pixels: `content_busy` makes the next tick redraw
@@ -738,7 +748,11 @@ impl FenceViewState {
         let old = self.scroll_y;
         self.scroll_anim = None;
         // 锁定滚动: the max collapses to 0, so the drag-scroll can only pin the top.
-        let max = if self.lock_scroll { 0.0 } else { layout.max_scroll(view_h) };
+        let max = if self.lock_scroll {
+            0.0
+        } else {
+            layout.max_scroll(view_h)
+        };
         self.scroll_y = (old + ds.dir as f32 * speed * dt).clamp(0.0, max);
         if self.scroll_y == old {
             return false;
@@ -786,7 +800,11 @@ impl FenceViewState {
         let old = self.scroll_y;
         self.scroll_anim = None;
         // 锁定滚动: the max collapses to 0, so the marquee autoscroll can only pin the top.
-        let max = if self.lock_scroll { 0.0 } else { layout.max_scroll(view_h) };
+        let max = if self.lock_scroll {
+            0.0
+        } else {
+            layout.max_scroll(view_h)
+        };
         self.scroll_y = (old + overshoot.signum() as f32 * speed * dt).clamp(0.0, max);
         if let Some(m) = self.marquee.as_mut() {
             m.auto_last = Some(now);

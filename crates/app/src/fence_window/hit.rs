@@ -77,6 +77,9 @@ impl FenceViewState {
         if self.layout != ViewLayout::Details || self.rolled_up {
             return false;
         }
+        let Some((x_px, y_px)) = self.unskew_px(x_px, y_px) else {
+            return false;
+        };
         let (cw, _) = self.content_size_px();
         let x_px = x_px - self.content_x;
         if x_px < 0 || x_px >= cw {
@@ -92,6 +95,9 @@ impl FenceViewState {
         if !self.deco.up_button || self.title_row_strip() || self.title_hidden {
             return false;
         }
+        let Some((x_px, y_px)) = self.unskew_px(x_px, y_px) else {
+            return false;
+        };
         let scale = self.scale();
         let (x, y) = (x_px as f32 / scale, y_px as f32 / scale);
         let r = if self.tabs_on_rail() {
@@ -126,6 +132,16 @@ impl FenceViewState {
     /// Is the client-pixel point in the title row (the left tab column beside one)? Its
     /// caption and its controls (tabs, the chevron box) are one row for the hover.
     pub(super) fn title_row_at(&self, x_px: i32, y_px: i32) -> bool {
+        if !self.skew_active() {
+            return if self.tabs_on_rail() {
+                x_px >= 0 && x_px < self.content_x
+            } else {
+                y_px >= 0 && y_px < self.title_h_px()
+            };
+        }
+        let Some((x_px, y_px)) = self.unskew_px(x_px, y_px) else {
+            return false;
+        };
         if self.tabs_on_rail() {
             x_px >= 0 && x_px < self.content_x
         } else {
@@ -144,6 +160,9 @@ impl FenceViewState {
         {
             return false;
         }
+        let Some((x_px, y_px)) = self.unskew_px(x_px, y_px) else {
+            return false;
+        };
         let r = if self.tabs_on_rail() {
             let rows_end = self
                 .tab_rects()
@@ -241,6 +260,7 @@ impl FenceViewState {
         if self.layout != ViewLayout::Details || self.rolled_up {
             return None;
         }
+        let (x_px, y_px) = self.unskew_px(x_px, y_px)?;
         let scale = self.scale();
         let y = (y_px - self.content_y) as f32 / scale;
         if y < 0.0 || y >= RowMetrics::details().header_h {
@@ -256,6 +276,7 @@ impl FenceViewState {
         if self.layout != ViewLayout::Details || self.rolled_up {
             return None;
         }
+        let (x_px, y_px) = self.unskew_px(x_px, y_px)?;
         let scale = self.scale();
         let y = (y_px - self.content_y) as f32 / scale;
         if y < 0.0 || y >= RowMetrics::details().header_h {
@@ -316,12 +337,31 @@ impl FenceViewState {
                 )
             }
         };
-        let win_left = win.left + self.content_x;
+        // The box's four slab corners shear to the window; the popup sits on their bounds.
+        let sx = |x: f32| self.content_x as f32 / scale + x;
+        let sy = |y: f32| title_h as f32 / scale + y;
+        let corners = [
+            (sx(left), sy(top)),
+            (sx(right), sy(top)),
+            (sx(left), sy(bottom)),
+            (sx(right), sy(bottom)),
+        ];
+        let mut l = f32::MAX;
+        let mut t = f32::MAX;
+        let mut r_ = f32::MIN;
+        let mut b = f32::MIN;
+        for (x, y) in corners {
+            let (cx, cy) = self.shear_point(x, y);
+            l = l.min(cx);
+            t = t.min(cy);
+            r_ = r_.max(cx);
+            b = b.max(cy);
+        }
         Some(RECT {
-            left: win_left + (left * scale) as i32,
-            top: win.top + title_h + (top * scale) as i32,
-            right: win_left + (right * scale) as i32,
-            bottom: win.top + title_h + (bottom * scale) as i32,
+            left: win.left + (l * scale).round() as i32,
+            top: win.top + (t * scale).round() as i32,
+            right: win.left + (r_ * scale).round() as i32,
+            bottom: win.top + (b * scale).round() as i32,
         })
     }
 
@@ -352,13 +392,14 @@ impl FenceViewState {
     }
 
     /// Window height (device px) that shows every row of `layout`, ignoring the work area.
+    /// A sheared fence's window is its slab plus the skew's spread.
     fn desired_height_px(&self, layout: &ItemLayout) -> i32 {
         // Header bands and per-group row blocks included; an empty fence keeps one row.
         let content = layout.fixed_top()
             + layout
                 .content_height()
                 .max(layout.top_pad() * 2.0 + layout.row_step());
-        self.head_px() + (content * self.scale()).ceil() as i32 + FIT_SLACK_PX
+        self.head_px() + (content * self.scale()).ceil() as i32 + FIT_SLACK_PX + self.spread_px()
     }
 
     /// Window height (device px) that shows every row of the left tab column, the free strip
@@ -424,14 +465,22 @@ impl FenceViewState {
     pub(super) fn test_item_point(&self, name: &str) -> Option<(i32, i32)> {
         let scale = self.scale();
         let r = window::window_rect(self.hwnd);
+        // A slab point (DIPs) sheared onto the window and back to a screen point.
+        let to_screen = |x: f32, y: f32| {
+            let (cx, cy) = self.shear_point(x, y);
+            (
+                r.left + (cx * scale).round() as i32,
+                r.top + (cy * scale).round() as i32,
+            )
+        };
         if let Some(title) = name.strip_prefix("tab:") {
             let i = self.tabs.iter().position(|t| t.title.contains(title))?;
             let (x, w) = *self.tab_rects().get(i)?;
-            let along = ((x + w / 2.0) * scale).round() as i32;
+            let along = x + w / 2.0;
             return Some(if self.tabs_on_rail() {
-                (r.left + self.content_x / 2, r.top + along)
+                to_screen(self.content_x as f32 / scale / 2.0, along)
             } else {
-                (r.left + along, r.top + self.title_h_px() / 2)
+                to_screen(along, self.theme.title_height / 2.0)
             });
         }
         let i = self.items.iter().position(|it| it.name.contains(name))?;
@@ -440,9 +489,9 @@ impl FenceViewState {
         let c = layout.cell(i);
         let x = c.x + c.w.min(40.0) / 2.0;
         let y = c.y - self.scroll_y + layout.fixed_top() + c.h / 2.0;
-        Some((
-            r.left + self.content_x + (x * scale).round() as i32,
-            r.top + self.content_y + (y * scale).round() as i32,
+        Some(to_screen(
+            self.content_x as f32 / scale + x,
+            self.content_y as f32 / scale + y,
         ))
     }
 
@@ -451,6 +500,7 @@ impl FenceViewState {
         if self.rolled_up {
             return None;
         }
+        let (x_px, y_px) = self.unskew_px(x_px, y_px)?;
         let scale = self.scale();
         let title_h = self.content_y;
         if y_px < title_h || x_px < self.content_x {

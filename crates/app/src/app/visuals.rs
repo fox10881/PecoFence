@@ -1203,8 +1203,7 @@ impl App {
             let theme = self.ctx.theme.borrow();
             theme.liquid_glass != (style == pecofence_core::ThemeStyle::LiquidGlass)
                 || theme.bookshelf != (style == pecofence_core::ThemeStyle::Bookshelf)
-                || theme.invisible_canvas
-                    != (style == pecofence_core::ThemeStyle::InvisibleCanvas)
+                || theme.invisible_canvas != (style == pecofence_core::ThemeStyle::InvisibleCanvas)
         };
         if mode == self.theme_mode && !style_changed && !accent_changed && !force {
             return;

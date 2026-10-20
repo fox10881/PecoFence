@@ -37,6 +37,22 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 O PecoFence fornece o layout em grade rígido e os contêineres de pôster 2:3 sem espaços, mas o Windows continua gerando ícones quadrados padrão.
 Para obter o visual exato de prateleira física de jogos mostrado na captura de tela, você precisa do **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. O BoxArt Studio é a ferramenta complementar essencial que transforma em lote seus atalhos de jogos e pastas do Windows em belas caixas de jogo 2:3 em alta resolução.
 
+### 📸 Snapshots de layout portáteis
+
+Os snapshots de layout agora são backups totalmente portáteis: renomeie um arquivo salvo diretamente na lista de snapshots e, se quiser, embuta o papel de parede atual no próprio arquivo. O layout é então restaurado pixel a pixel em qualquer PC — mesmo um que nunca tenha visto seu papel de parede.
+
+### 🧊 Prateleira 3D inclinada (experimental)
+
+Deforme qualquer grupo em um paralelogramo perfeito para que suas linhas acompanhem as prateleiras de um papel de parede em ângulo: arraste as alças verticais no topo de uma lateral para inclinar o grupo, e os ícones escalam progressivamente em direção à borda mais próxima e mais baixa — ajustável pelo controle **Fator de profundidade** nas configurações do grupo.
+
+> **⚠️ Problema conhecido — ajuda bem-vinda.** O movimento do mouse, o alinhamento e a detecção de cliques dentro do paralelogramo inclinado funcionam perfeitamente. Porém, com um papel de parede em perspectiva 3D, a primeira linha se alinha perfeitamente à prateleira, mas as seguintes não, devido à perspectiva do ponto de fuga do papel de parede. Se algum desenvolvedor souber resolver perfeitamente essa matemática de perspectiva em várias linhas, pull requests são muito bem-vindos!
+
+### 🖼️ Papéis de parede 2D prontos para usar
+
+O repositório traz um pacote selecionado de papéis de parede de prateleiras em vista frontal plana em [`assets/wallpapers/`](../../assets/wallpapers/), que se alinham perfeitamente com os grupos planos e sem inclinação — escolha um, arrume suas prateleiras e pronto.
+
+> **💡 Dica de profissional:** Fornecemos papéis de parede 2D prontos que se alinham perfeitamente com os grupos planos. Para uma configuração incrível, recomendamos fortemente passar essas imagens 2D por um gerador de vídeo com IA para animá-las e aplicá-las à área de trabalho com o [Lively Wallpaper](https://github.com/rocksdanister/lively).
+
 <a id="peça-à-sua-ia-para-organizar"></a>
 
 ## Sua área de trabalho, configurada pela sua IA
@@ -113,6 +129,7 @@ Pegue o que precisa e pressione **Esc** para voltar.
 | **Pastas sempre à mão** | Coloque na área de trabalho uma pasta de verdade, sempre atualizada. Navegue pelas subpastas e veja as mudanças na hora. |
 | **Espaço quando você precisa** | Recolha um grupo até o título. Passe o mouse para expandir. Bloqueie o layout quando estiver do seu jeito. Clique duas vezes na área de trabalho para ocultar os grupos. Clique duas vezes de novo para trazê-los de volta. |
 | **Um caminho de volta** | Instantâneos de layout, backups diários, importação e exportação da configuração e troca de grupos entre monitores. |
+| **Prateleira 3D inclinada (experimental)** | Deforme um grupo em paralelogramo para que suas linhas sigam as prateleiras de um papel de parede em ângulo, com escala de profundidade dos ícones em direção à borda próxima. |
 | **Leve de verdade** | Um aplicativo nativo em Rust que, ocioso, usa cerca de 40 MB de memória (segundo o Gerenciador de Tarefas). O painel de configurações em WebView2 só carrega quando necessário. |
 
 As regras de organização automática mantêm os arquivos onde eles estão. As movimentações

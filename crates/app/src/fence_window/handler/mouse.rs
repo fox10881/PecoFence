@@ -25,6 +25,15 @@ pub(super) fn on_setcursor(
         window::set_standard_cursor(StandardCursor::SizeWE);
         return Some(1);
     }
+    // Over a 3D-shelf edge handle (or mid-drag): the vertical-resize cursor.
+    if v.skew_drag.is_some()
+        || v.handle_at(pt.x as f32 / v.scale(), pt.y as f32 / v.scale())
+            .is_some()
+    {
+        drop(guard);
+        window::set_standard_cursor(StandardCursor::SizeNS);
+        return Some(1);
+    }
     None
 }
 
@@ -136,7 +145,8 @@ pub(super) fn on_lbuttondown(
                     tab: tab.id,
                 });
             }
-            let pointer_x = v.tab_axis(x, y);
+            let (ux, uy) = v.unskew_unbounded(x, y);
+            let pointer_x = v.tab_axis(ux, uy);
             let slot_x = v
                 .tab_draw_xs(Instant::now())
                 .get(t)
@@ -167,7 +177,20 @@ pub(super) fn on_lbuttondown(
             queue.push(Command::RaiseFence(hwnd));
             return Some(0);
         }
-        let in_content = !v.rolled_up && y >= v.content_y && x >= v.content_x;
+        // 3D shelf handle: a press on an edge's grab zone starts the skew drag; the
+        // window re-bounds around the moved edge on every move (WM_MOUSEMOVE).
+        if let Some(edge) = v.handle_at(x as f32 / v.scale(), y as f32 / v.scale()) {
+            let pt = window::cursor_pos();
+            v.begin_skew_drag(edge, pt.y);
+            drop(guard);
+            window::set_capture(hwnd);
+            window::set_standard_cursor(StandardCursor::SizeNS);
+            queue.push(Command::RaiseFence(hwnd));
+            return Some(0);
+        }
+        let in_content = !v.rolled_up
+            && v.unskew_px(x, y)
+                .is_some_and(|(ux, uy)| uy >= v.content_y && ux >= v.content_x);
         if let Some(col) = v.divider_hit(x, y) {
             v.col_drag = Some(ColDrag {
                 col,
@@ -238,11 +261,12 @@ pub(super) fn on_lbuttondown(
                     } else {
                         MarqueeMode::Replace
                     };
+                    let (mx, my) = v.unskew_unbounded(x, y);
                     v.marquee = Some(MarqueeState {
-                        start: (x, y),
+                        start: (mx, my),
                         start_scroll: v.scroll_y,
-                        cur: (x, y),
-                        pointer: (x, y),
+                        cur: (mx, my),
+                        pointer: (mx, my),
                         auto_last: None,
                         base: if ctrl || shift {
                             v.selected.clone()
@@ -343,7 +367,7 @@ pub(super) fn on_lbuttonup(
         }
         return Some(0);
     }
-    let (drag, had_marquee, tab_drag, col_done, had_scroll, press) = {
+    let (drag, had_marquee, tab_drag, col_done, had_scroll, skew_moved, press) = {
         let mut guard = view.borrow_mut();
         match guard.as_mut() {
             Some(v) => {
@@ -363,14 +387,20 @@ pub(super) fn on_lbuttonup(
                     tab_drag,
                     v.col_drag.take().map(|_| (v.active, v.column_widths)),
                     v.end_scrollbar_press(),
+                    // A shelf-edge drag that never moved saves nothing.
+                    v.skew_drag.take().is_some_and(|d| d.moved),
                     // Not repainted here: folded into the single redraw
                     // below, after the capture is released.
                     v.take_pressed(),
                 )
             }
-            None => (None, false, None, None, false, None),
+            None => (None, false, None, None, false, false, None),
         }
     };
+    // The skewed geometry persists exactly like a resize did.
+    if skew_moved {
+        queue_bounds_changed(queue, &h.behavior, fence_id, hwnd);
+    }
     if let Some((fence, widths)) = col_done {
         queue.push(Command::SetColumnWidths { fence, widths });
     }
@@ -389,6 +419,7 @@ pub(super) fn on_lbuttonup(
         || tab_drag.is_some()
         || col_done.is_some()
         || had_scroll
+        || skew_moved
         || press.is_some()
         || window::get_capture() == hwnd
     {
@@ -498,6 +529,7 @@ pub(super) fn on_capturechanged(
     if let Some(v) = guard.as_mut() {
         v.drag = None;
         v.rbutton_press = None;
+        v.skew_drag = None;
         v.clear_pressed();
         if v.detach_pending || v.remote_drag.is_some() {
             tracing::info!(

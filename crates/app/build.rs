@@ -87,6 +87,30 @@ fn link_options(out_dir: &Path) {
             "cargo:rustc-link-arg-bins=/MANIFESTINPUT:{}",
             manifest.display()
         );
+        copy_webview_loader(out_dir);
+    }
+}
+
+/// Running `pecofence.exe` straight from `target/<profile>` needs the WebView2 loader
+/// beside it, the same way `scripts/make-windows.ps1` copies it into `dist/`. OUT_DIR is
+/// `target/<profile>/build/<pkg>-<hash>/out`, so three levels up is the profile directory.
+fn copy_webview_loader(out_dir: &Path) {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let src = manifest_dir
+        .join("..")
+        .join("..")
+        .join("third_party")
+        .join("webview2")
+        .join("WebView2Loader.x64.dll");
+    println!("cargo:rerun-if-changed={}", src.display());
+    if !src.is_file() {
+        println!("cargo:warning={} not found; skipping", src.display());
+        return;
+    }
+    if let Some(profile_dir) = out_dir.ancestors().nth(3)
+        && let Err(e) = std::fs::copy(&src, profile_dir.join("WebView2Loader.dll"))
+    {
+        println!("cargo:warning=could not copy WebView2Loader.dll: {e}");
     }
 }
 

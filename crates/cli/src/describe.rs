@@ -246,14 +246,20 @@ pub const COMMANDS: &[Entry] = &[
     entry!(
         "snapshot save",
         Some("snapshots.save"),
-        "Save the current fence layout; keep the returned snapshot.id for restore",
-        "pecofence-cli snapshot save before-cleanup"
+        "Save the current fence layout; --wallpaper also stores the desktop wallpaper; keep the returned snapshot.id for restore",
+        "pecofence-cli snapshot save before-cleanup --wallpaper"
     ),
     entry!(
         "snapshot restore",
         Some("snapshots.restore"),
-        "Restore by id (names only while unique); the current layout is snapshotted first",
+        "Restore by id (names only while unique); the current layout is snapshotted first; a saved wallpaper is restored too",
         "pecofence-cli snapshot restore 3f9c2a1e"
+    ),
+    entry!(
+        "snapshot rename",
+        Some("snapshots.rename"),
+        "Rename a snapshot by id (or unique name)",
+        "pecofence-cli snapshot rename 3f9c2a1e work-setup"
     ),
     entry!(
         "snapshot delete",

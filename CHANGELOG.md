@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4
+
+- The new **3D Shelf Mode** (per-fence setting) turns a fence into a slanted parallelogram: two vertical edge handles replace the eight-way resize frame — dragging one slides that whole edge up or down while rows stay strictly parallel. Icons scale progressively toward the lower, nearer edge by a **Depth Scale Factor** slider (0–100%); the transparent corners of the bounding box stay click-through so the desktop behind them still works.
+- Layout snapshots can now capture and restore the desktop wallpaper with each layout, entries can be renamed inline, and a snapshot exports to a single portable `.pfence` file whose payload embeds any referenced wallpaper.
+- `pecofence.exe` run straight from `target/` now finds `WebView2Loader.dll` beside it; the build copies it there, as the packaging already did for the installer and portable zip.
+- A full Arabic translation of the README (`docs/readme/README.ar.md`) joins the language menu in every localized README; all translations are in step with the English source again.
+
 ## 0.2.3
 
 - Signing out or shutting down while a PecoFence menu is open shows the Windows desktop icons again and keeps the last changes. With a menu open, Windows closes the menu and ends PecoFence at once, before it is told about the sign-out, so the icons stayed hidden until PecoFence started again (in 0.2.2 and earlier), and a fence moved just before the menu opened was back where it had been. PecoFence now shows the icons when Windows closes the menu for a sign-out, and saves its changes before any menu opens.

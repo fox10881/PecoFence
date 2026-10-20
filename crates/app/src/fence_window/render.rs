@@ -441,6 +441,17 @@ impl FenceViewState {
             _ => None,
         };
         let badges: Vec<Option<String>> = self.tabs.iter().map(|t| self.tab_badge(t.id)).collect();
+        // 3D shelf: the whole chrome — plate, title row, tab pills, rail, rim — is drawn
+        // in slab coordinates under the Y-shear, ending at the slab height instead of the
+        // (taller) window's. Filled rects map onto the parallelogram exactly, so no
+        // geometric mask is needed.
+        let (w_dip, _) = self.window_dips();
+        let (shear_m12, shear_m32) = if self.skew_active() {
+            self.shear_m(w_dip)
+        } else {
+            (0.0, 0.0)
+        };
+        let slab_dip = self.slab_h();
         let tabs: Vec<TabDraw<'_>> = self
             .tabs
             .iter()
@@ -465,26 +476,48 @@ impl FenceViewState {
                 badge: badges[i].as_deref(),
             })
             .collect();
+        let sheared = self.skew_active();
         let ok = self.chrome_panel.draw(self.dpi, |session, wd, hd| {
-            chrome.draw(
-                session,
-                &mut bitmaps.borrow_mut(),
-                &theme,
-                scale,
-                wd,
-                hd,
-                backdrop,
-                &title,
-                count.as_deref(),
-                rolled,
-                roll_t,
-                opacity,
-                &tabs,
-                pill,
-                deco,
-                state,
-                style,
-            )
+            let draw = |s: &DrawingSession<'_>| {
+                chrome.draw(
+                    s,
+                    &mut bitmaps.borrow_mut(),
+                    &theme,
+                    scale,
+                    wd,
+                    if sheared { slab_dip } else { hd },
+                    backdrop,
+                    &title,
+                    count.as_deref(),
+                    rolled,
+                    roll_t,
+                    opacity,
+                    &tabs,
+                    pill,
+                    deco,
+                    state,
+                    style,
+                )
+            };
+            if sheared {
+                let shear = Matrix3x2 {
+                    m11: 1.0,
+                    m12: shear_m12,
+                    m21: 0.0,
+                    m22: 1.0,
+                    m31: 0.0,
+                    m32: shear_m32,
+                };
+                // `with_transform` replaces the transform, and the panel's session
+                // starts with the DIP->px scale on it: compose, or the scale is
+                // lost and everything draws microscopic at high DPI.
+                let m = shear * session.transform();
+                let mut out = Ok(());
+                session.with_transform(&m, || out = draw(session));
+                out
+            } else {
+                draw(session)
+            }
         })?;
         self.note_draw_result(ok);
         let inset = (state.plate_top * scale).round() as i32;
@@ -612,12 +645,25 @@ impl FenceViewState {
         self.rail_dip = self.measure_rail_w();
         self.content_x = self.rail_px();
         self.content_y = self.head_px();
-        let content_h = (h - self.content_y).max(1);
-        self.content_panel
-            .resize((w - self.content_x).max(1), content_h)?;
+        // 3D shelf: the surface covers the slab's content band plus the shear amplitude
+        // inside it, and sits at the higher end of its x range — the shear transform in
+        // `redraw_content` then tilts the rows into the parallelogram (see `shelf.rs`).
+        let scale = self.scale();
+        let w_dip = w as f32 / scale;
+        let title = self.content_y as f32 / scale;
+        let band = self.slab_h();
+        let a_end = self.shear_at(self.rail_w() / w_dip.max(1.0));
+        let b_end = self.shear_at(1.0);
+        let amp = (a_end - b_end).abs();
+        let content_h = ((band - title).max(1.0) + amp) * scale;
+        self.content_panel.resize(
+            (w - self.content_x).max(1),
+            content_h.ceil().max(1.0) as i32,
+        )?;
+        let off_y = ((title + a_end.min(b_end)) * scale).round() as i32;
         self.content_panel
             .visual
-            .set_offset(self.content_x as f32, self.content_y as f32, 0.0);
+            .set_offset(self.content_x as f32, off_y as f32, 0.0);
         self.content_panel
             .visual
             .set_visible(!self.rolled_up || self.roll_anim.is_some());
@@ -818,7 +864,11 @@ impl FenceViewState {
         };
         let view_h = self.scroll_view_h(&layout);
         // 锁定滚动 pins the offset at the top: the draw itself enforces the 0 max.
-        let max = if self.lock_scroll { 0.0 } else { grid.max_scroll(view_h) };
+        let max = if self.lock_scroll {
+            0.0
+        } else {
+            grid.max_scroll(view_h)
+        };
         self.scroll_y = self.scroll_y.clamp(0.0, max);
         let scroll = self.scroll_y;
         // The rows in view plus one viewport above and below, and the same around where a
@@ -908,6 +958,7 @@ impl FenceViewState {
                 alpha: l.alpha.value_at(now),
                 icon_alpha: 1.0,
                 full_label: None,
+                depth: 1.0,
             })
             .collect();
         cells.extend(placed.iter().zip(&keys).map(|(&(i, x, y, alpha), key)| {
@@ -931,6 +982,7 @@ impl FenceViewState {
                 alpha: alpha * alphas[i].3,
                 icon_alpha: item.icon_fade.map_or(1.0, |t| t.value_at(now)),
                 full_label: if unfold == Some(i) { full } else { None },
+                depth: self.depth_at(x + c.w / 2.0 + self.content_x as f32 / scale),
             }
         }));
         let group_headers = group_header_draws(&layout, scroll, 0.0);
@@ -972,19 +1024,43 @@ impl FenceViewState {
             .with_label_color(self.behavior.label_color.get());
         let chrome = self.chrome.clone();
         let bitmaps = self.bitmaps.clone();
+        // 3D shelf: rows tilt inside the surface (m32 lifts the content at its higher
+        // end, matching where `layout_panels` placed the surface).
+        let (shear_m12, shear_m32) = self.content_shear();
+        let sheared = self.skew_active();
         let ok = self
             .content_panel
             .draw_ex(self.dpi, |session, clip, wd, hd| {
-                chrome.draw_content(
-                    session,
-                    Some(clip),
-                    &theme,
-                    scale,
-                    &mut bitmaps.borrow_mut(),
-                    wd,
-                    hd,
-                    &content,
-                )
+                let draw = |s: &DrawingSession<'_>| {
+                    chrome.draw_content(
+                        s,
+                        Some(clip),
+                        &theme,
+                        scale,
+                        &mut bitmaps.borrow_mut(),
+                        wd,
+                        hd,
+                        &content,
+                    )
+                };
+                if sheared {
+                    let shear = Matrix3x2 {
+                        m11: 1.0,
+                        m12: shear_m12,
+                        m21: 0.0,
+                        m22: 1.0,
+                        m31: 0.0,
+                        m32: shear_m32,
+                    };
+                    // Compose over the panel's DIP->px scale — `with_transform`
+                    // replaces the transform, it does not multiply it.
+                    let m = shear * session.transform();
+                    let mut out = Ok(());
+                    session.with_transform(&m, || out = draw(session));
+                    out
+                } else {
+                    draw(session)
+                }
             })?;
         self.note_draw_result(ok);
         self.note_content_fades(now);
@@ -1002,7 +1078,11 @@ impl FenceViewState {
         let layout = self.layout(width_dip);
         let view_h = self.scroll_view_h(&layout);
         // 锁定滚动 pins the offset at the top: the draw itself enforces the 0 max.
-        let max = if self.lock_scroll { 0.0 } else { layout.max_scroll(view_h) };
+        let max = if self.lock_scroll {
+            0.0
+        } else {
+            layout.max_scroll(view_h)
+        };
         self.scroll_y = self.scroll_y.clamp(0.0, max);
         let cols = self.columns_for(width_dip);
         let text_w = (cols.name_w - metrics.icon - 8.0 - 4.0).max(20.0);
@@ -1188,20 +1268,42 @@ impl FenceViewState {
             None
         };
         let opacity = self.material_opacity();
+        let (shear_m12, shear_m32) = self.content_shear();
+        let sheared = self.skew_active();
         let ok = self
             .content_panel
             .draw_ex(self.dpi, |session, clip, wd, hd| {
-                chrome.draw_rows(
-                    session,
-                    Some(clip),
-                    &theme,
-                    scale,
-                    &mut bitmaps.borrow_mut(),
-                    wd,
-                    hd,
-                    &draw,
-                    backdrop.as_ref().map(|b| (b, opacity, self.style.tint)),
-                )
+                let paint = |s: &DrawingSession<'_>| {
+                    chrome.draw_rows(
+                        s,
+                        Some(clip),
+                        &theme,
+                        scale,
+                        &mut bitmaps.borrow_mut(),
+                        wd,
+                        hd,
+                        &draw,
+                        backdrop.as_ref().map(|b| (b, opacity, self.style.tint)),
+                    )
+                };
+                if sheared {
+                    let shear = Matrix3x2 {
+                        m11: 1.0,
+                        m12: shear_m12,
+                        m21: 0.0,
+                        m22: 1.0,
+                        m31: 0.0,
+                        m32: shear_m32,
+                    };
+                    // Compose over the panel's DIP->px scale — `with_transform`
+                    // replaces the transform, it does not multiply it.
+                    let m = shear * session.transform();
+                    let mut out = Ok(());
+                    session.with_transform(&m, || out = paint(session));
+                    out
+                } else {
+                    paint(session)
+                }
             })?;
         self.note_draw_result(ok);
         self.note_content_fades(now);

@@ -37,6 +37,22 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 PecoFence fournit la grille rigide et les conteneurs de posters 2:3 sans interstice, mais Windows génère toujours des icônes carrées standard.
 Pour obtenir l'aspect exact d'une étagère de boîtiers de jeux comme sur la capture d'écran, il vous faut **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. BoxArt Studio est l'outil compagnon indispensable qui transforme par lots vos raccourcis de jeux et dossiers Windows en magnifiques boîtiers 2:3 haute résolution.
 
+### 📸 Instantanés de disposition portables
+
+Les instantanés de disposition sont désormais des sauvegardes entièrement portables : renommez un fichier de sauvegarde directement dans la liste des instantanés et, si vous le souhaitez, embarquez le fond d'écran actuel dans le fichier lui-même. La disposition se restaure alors au pixel près sur n'importe quel PC — même s'il n'a jamais vu votre fond d'écran.
+
+### 🧊 Étagère 3D inclinée (expérimental)
+
+Ciselez n'importe quel groupe en un parfait parallélogramme afin que ses rangées suivent les planches d'un fond d'écran en perspective : faites glisser les poignées verticales en haut d'un côté pour incliner le groupe, et les icônes se mettent à l'échelle progressivement vers le bord le plus proche et le plus bas — réglable via le curseur **Facteur de profondeur** dans les réglages du groupe.
+
+> **⚠️ Problème connu — aide bienvenue.** Le déplacement de la souris, l'alignement et les tests de collision dans le parallélogramme incliné fonctionnent parfaitement. En revanche, avec un fond d'écran en perspective 3D, la première rangée s'aligne parfaitement sur sa planche, mais les suivantes non, à cause du point de fuite du fond d'écran. Si un développeur sait résoudre parfaitement ce calcul de perspective sur plusieurs rangées, les pull requests sont les bienvenues !
+
+### 🖼️ Fonds d'écran 2D prêts à l'emploi
+
+Le dépôt embarque une sélection de fonds d'écran d'étagères en vue frontale plane dans [`assets/wallpapers/`](../../assets/wallpapers/), parfaitement alignés avec les groupes plats non inclinés — choisissez-en un, disposez vos étagères, c'est prêt.
+
+> **💡 Astuce de pro :** Nous fournissons des fonds d'écran 2D prêts à l'emploi qui s'alignent parfaitement avec les groupes plats. Pour une configuration spectaculaire, nous vous recommandons vivement de faire passer ces images 2D dans un générateur vidéo IA pour les animer, puis de les appliquer à votre bureau avec [Lively Wallpaper](https://github.com/rocksdanister/lively).
+
 <a id="demandez-à-votre-ia-de-ranger"></a>
 
 ## Votre Bureau, configuré par votre IA
@@ -113,6 +129,7 @@ en cours. Prenez ce qu’il vous faut, puis appuyez sur **Échap** pour y reveni
 | **Gardez vos dossiers à portée de main** | Posez un dossier en direct sur votre Bureau. Parcourez ses sous-dossiers et voyez les changements au moment où ils se produisent. |
 | **De la place quand il en faut** | Repliez un groupe sur son titre. Survolez-le pour le développer. Verrouillez une disposition qui vous convient. Double-cliquez sur le Bureau pour masquer vos groupes. Double-cliquez à nouveau pour les retrouver. |
 | **Un retour toujours possible** | Instantanés de disposition, sauvegardes quotidiennes, import/export de la configuration et échange entre écrans. |
+| **Étagère 3D inclinée (expérimental)** | Ciselez un groupe en parallélogramme pour que ses rangées suivent les planches d’un fond d’écran en perspective, avec mise à l’échelle de profondeur des icônes vers le bord proche. |
 | **Une empreinte légère** | Une application native en Rust qui occupe environ 40 Mo de mémoire au repos (d’après le Gestionnaire des tâches). La fenêtre Paramètres en WebView2 se charge à la demande. |
 
 Les règles de classement automatique laissent les fichiers à leur emplacement d’origine.

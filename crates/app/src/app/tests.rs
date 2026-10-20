@@ -465,7 +465,9 @@ mod ipc {
             FenceProp::LockScroll(true)
         );
         assert_eq!(
-            parse_fence_prop("lockScroll", &json!("yes")).unwrap_err().code,
+            parse_fence_prop("lockScroll", &json!("yes"))
+                .unwrap_err()
+                .code,
             ErrorCode::InvalidValue
         );
         assert_eq!(
@@ -488,6 +490,8 @@ mod ipc {
             name: name.to_string(),
             ts,
             layouts: Vec::new(),
+            wallpaper_path: None,
+            is_auto_backup: None,
         }
     }
 
@@ -501,6 +505,8 @@ mod ipc {
             work_w: 1920.0,
             work_h: 1032.0,
             anchor: pecofence_core::Anchor::LeftTop,
+            skew_left: None,
+            skew_right: None,
         };
         pecofence_core::Layout {
             shown: 0,

@@ -51,10 +51,10 @@ impl App {
             shown.view.effective_icon_size(),
             shown.view.effective_label_lines(),
         )
-                .with_shape(shown.view.effective_icon_shape())
-                .with_line_h(self.ctx.chrome.label_line_h())
-                .with_spacing(shown.view.spacing)
-                .with_gaps(shown.view.spacing_x, shown.view.spacing_y);
+        .with_shape(shown.view.effective_icon_shape())
+        .with_line_h(self.ctx.chrome.label_line_h())
+        .with_spacing(shown.view.spacing)
+        .with_gaps(shown.view.spacing_x, shown.view.spacing_y);
         // A left tab column sits before the first icon column, and replaces the title row.
         let rail = self.fences.get(&id).map_or(0.0, |w| w.tab_rail_dip());
         let title_h = if rail > 0.0 {

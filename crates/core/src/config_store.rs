@@ -13,6 +13,9 @@ pub const DAILY_BACKUPS_KEPT: usize = 7;
 /// Unreadable primaries moved aside by [`ConfigStore::load_reporting`]; the oldest go first.
 pub const UNREADABLE_KEPT: usize = 5;
 const UNREADABLE_PREFIX: &str = "config.unreadable-";
+/// Cap for embedded/extracted snapshot wallpapers — real wallpapers are a few MB; this
+/// only stops absurd payloads from being read, decoded or written.
+const MAX_WALLPAPER_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug)]
 pub enum LoadOutcome {
@@ -102,9 +105,133 @@ impl ConfigStore {
         Ok(migrate(cfg))
     }
 
-    /// Writes the config as pretty JSON to an arbitrary path (export).
+    /// Writes the config as pretty JSON to an arbitrary path (export). Snapshots whose
+    /// `wallpaperPath` resolves to a readable file additionally carry `wallpaperBase64`,
+    /// a copy of the image, so the file is self-contained on another machine. The payload
+    /// exists only in the exported document — it is never written to `config.json`
+    /// ([`Self::save`] goes through [`Self::to_json`], not this function).
     pub fn export_to(cfg: &Config, path: &Path) -> io::Result<()> {
-        fs::write(path, Self::to_json(cfg)?)
+        fs::write(path, Self::embed_wallpapers(&Self::to_json(cfg)?))
+    }
+
+    /// Inserts a `wallpaperBase64` string into every snapshot whose `wallpaperPath` is a
+    /// readable file. Anything that cannot be read is left as a plain path reference;
+    /// missing or oversized images never fail the export itself.
+    fn embed_wallpapers(text: &str) -> String {
+        if !text.contains("\"wallpaperPath\"") {
+            return text.into();
+        }
+        let Ok(mut doc) = serde_json::from_str::<serde_json::Value>(text) else {
+            return text.into();
+        };
+        let mut touched = false;
+        if let Some(snaps) = doc
+            .get_mut("snapshots")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for snap in snaps.iter_mut() {
+                let Some(obj) = snap.as_object_mut() else {
+                    continue;
+                };
+                let Some(wp) = obj
+                    .get("wallpaperPath")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                else {
+                    continue;
+                };
+                if fs::metadata(&wp).map(|m| m.len()).unwrap_or(u64::MAX)
+                    > MAX_WALLPAPER_BYTES as u64
+                {
+                    continue;
+                }
+                let Ok(bytes) = fs::read(&wp) else { continue };
+                obj.insert(
+                    "wallpaperBase64".into(),
+                    serde_json::Value::String(crate::base64::encode(&bytes)),
+                );
+                touched = true;
+            }
+        }
+        if !touched {
+            return text.into();
+        }
+        serde_json::to_string_pretty(&doc).unwrap_or_else(|_| text.into())
+    }
+
+    /// Like [`Self::parse_file`], but for files that may come from another machine:
+    /// `wallpaperBase64` payloads (see [`Self::export_to`]) are written out under
+    /// `imported_wallpapers/` next to `config.json` and `wallpaperPath` is repointed at
+    /// that local copy. The payload key is always removed before the document becomes a
+    /// [`Config`], so it can never reach the running configuration.
+    pub fn import_file(&self, path: &Path) -> Result<Config, String> {
+        let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
+        let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
+        let mut doc: serde_json::Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        self.materialize_wallpapers(&mut doc);
+        let cfg: Config = serde_json::from_value(doc).map_err(|e| e.to_string())?;
+        validate(&cfg)?;
+        Ok(migrate(cfg))
+    }
+
+    /// Extracts every snapshot's `wallpaperBase64` into `imported_wallpapers/<id>.<ext>`
+    /// and rewrites `wallpaperPath`. Undecodable or unwritable payloads are dropped and
+    /// the original `wallpaperPath` is kept — a stale reference is no worse than today.
+    fn materialize_wallpapers(&self, doc: &mut serde_json::Value) {
+        let Some(snaps) = doc
+            .get_mut("snapshots")
+            .and_then(serde_json::Value::as_array_mut)
+        else {
+            return;
+        };
+        for snap in snaps.iter_mut() {
+            let Some(obj) = snap.as_object_mut() else {
+                continue;
+            };
+            let Some(payload) = obj.remove("wallpaperBase64") else {
+                continue;
+            };
+            let Some(b64) = payload.as_str() else {
+                continue;
+            };
+            // ~3/4 of the base64 length; refuse absurd payloads before decoding.
+            if b64.len() > MAX_WALLPAPER_BYTES * 4 / 3 + 8 {
+                continue;
+            }
+            let Some(bytes) = crate::base64::decode(b64) else {
+                continue;
+            };
+            let id = obj
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .map(|s| {
+                    s.chars()
+                        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+                        .collect::<String>()
+                })
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            let ext = obj
+                .get("wallpaperPath")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|p| Path::new(p).extension())
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase())
+                .filter(|e| {
+                    ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tif", "tiff"]
+                        .contains(&e.as_str())
+                })
+                .unwrap_or_else(|| "jpg".into());
+            let dir = self.dir.join("imported_wallpapers");
+            let target = dir.join(format!("{id}.{ext}"));
+            if fs::create_dir_all(&dir).is_err() || fs::write(&target, &bytes).is_err() {
+                continue;
+            }
+            obj.insert(
+                "wallpaperPath".into(),
+                serde_json::Value::String(target.to_string_lossy().into_owned()),
+            );
+        }
     }
 
     /// The file text: pretty JSON with the `$schema` field pointing at the published schema
@@ -593,7 +720,41 @@ pub fn migrate(mut cfg: Config) -> Config {
     if peek.chosen_hotkey() == peek.hotkey.combo() {
         peek.hotkey = crate::model::PeekHotkey::CtrlAltSpace;
     }
+    dedupe_restore_backups(&mut cfg);
     cfg
+}
+
+/// The restore backup used to append a `恢复快照前` entry (in whatever language the UI was in)
+/// on every restore; it is now the single [`AUTO_BACKUP_SNAPSHOT_ID`] entry. Fold the saved
+/// duplicates into the newest one and drop the rest.
+fn dedupe_restore_backups(cfg: &mut Config) {
+    use crate::model::AUTO_BACKUP_SNAPSHOT_ID;
+    let names: std::collections::HashSet<&str> = std::iter::once("恢复快照前")
+        .chain(crate::i18n::SUPPORTED.iter().filter_map(|&l| {
+            crate::i18n::catalog(l)
+                .get("恢复快照前")
+                .map(String::as_str)
+        }))
+        .collect();
+    let is_backup = |s: &crate::model::Snapshot| {
+        s.id == AUTO_BACKUP_SNAPSHOT_ID
+            || s.is_auto_backup == Some(true)
+            || names.contains(s.name.as_str())
+    };
+    let Some(keep_id) = cfg
+        .snapshots
+        .iter()
+        .filter(|s| is_backup(s))
+        .max_by_key(|s| s.ts)
+        .map(|s| s.id)
+    else {
+        return;
+    };
+    cfg.snapshots.retain(|s| !is_backup(s) || s.id == keep_id);
+    if let Some(s) = cfg.snapshots.iter_mut().find(|s| s.id == keep_id) {
+        s.id = AUTO_BACKUP_SNAPSHOT_ID;
+        s.is_auto_backup = Some(true);
+    }
 }
 
 /// Local-date string without pulling in a date crate (civil-from-days algorithm, UTC-based;
@@ -645,6 +806,8 @@ mod tests {
                     work_w: 1920.0,
                     work_h: 1000.0,
                     anchor: Anchor::LeftTop,
+                    skew_left: None,
+                    skew_right: None,
                 },
             )],
         });
@@ -720,6 +883,94 @@ mod tests {
         fs::write(store.primary_path(), bytes).unwrap();
         assert!(ConfigStore::parse_file(&store.primary_path()).is_ok());
         assert!(matches!(store.load(), LoadOutcome::Primary(_)));
+    }
+
+    #[test]
+    fn export_embeds_wallpaper_and_import_restores_it() {
+        let dir = tmpdir("portable-wp");
+        fs::create_dir_all(&dir).unwrap();
+        let image = dir.join("my-wallpaper.png");
+        let bytes: Vec<u8> = (0..5000u32).map(|i| (i * 31) as u8).collect();
+        fs::write(&image, &bytes).unwrap();
+
+        let mut cfg = sample();
+        cfg.snapshots.push(Snapshot {
+            id: uuid::Uuid::new_v4(),
+            name: "with wallpaper".into(),
+            ts: 100,
+            layouts: vec![],
+            wallpaper_path: Some(image.to_string_lossy().into_owned()),
+            is_auto_backup: None,
+        });
+
+        // Export: the image travels inside the JSON.
+        let exported = dir.join("exported.json");
+        ConfigStore::export_to(&cfg, &exported).unwrap();
+        let text = fs::read_to_string(&exported).unwrap();
+        assert!(text.contains("\"wallpaperBase64\""));
+
+        // A normal save of the same config must not carry the payload.
+        let home = ConfigStore::new(tmpdir("portable-wp-home"));
+        home.save(&cfg).unwrap();
+        assert!(
+            !fs::read_to_string(home.primary_path())
+                .unwrap()
+                .contains("wallpaperBase64"),
+            "save() must stay payload-free"
+        );
+
+        // Import on another machine (fresh store): the image lands under
+        // imported_wallpapers/, wallpaperPath is repointed, the payload is gone.
+        let elsewhere = ConfigStore::new(tmpdir("portable-wp-elsewhere"));
+        let imported = elsewhere.import_file(&exported).unwrap();
+        let snap = &imported.snapshots[0];
+        let new_path = Path::new(snap.wallpaper_path.as_deref().unwrap());
+        assert!(new_path.starts_with(elsewhere.dir().join("imported_wallpapers")));
+        assert_eq!(new_path.extension().unwrap(), "png");
+        assert_eq!(fs::read(new_path).unwrap(), bytes);
+        // And what came back serializes cleanly — no base64 in the internal model.
+        elsewhere.save(&imported).unwrap();
+        assert!(
+            !fs::read_to_string(elsewhere.primary_path())
+                .unwrap()
+                .contains("wallpaperBase64")
+        );
+    }
+
+    #[test]
+    fn import_drops_a_broken_wallpaper_payload() {
+        let dir = tmpdir("broken-wp");
+        fs::create_dir_all(&dir).unwrap();
+        let mut cfg = sample();
+        cfg.snapshots.push(Snapshot {
+            id: uuid::Uuid::new_v4(),
+            name: "corrupt".into(),
+            ts: 100,
+            layouts: vec![],
+            wallpaper_path: Some("D:\\elsewhere\\old.jpg".into()),
+            is_auto_backup: None,
+        });
+        let exported = dir.join("exported.json");
+        ConfigStore::export_to(&cfg, &exported).unwrap();
+        // No readable file → no payload was embedded; the plain path imports untouched.
+        let store = ConfigStore::new(tmpdir("broken-wp-home"));
+        let imported = store.import_file(&exported).unwrap();
+        assert_eq!(
+            imported.snapshots[0].wallpaper_path.as_deref(),
+            Some("D:\\elsewhere\\old.jpg")
+        );
+
+        // Hand-injected garbage payload: dropped, original path survives.
+        let mut doc: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&exported).unwrap()).unwrap();
+        doc["snapshots"][0]["wallpaperBase64"] = "!!not-base64!!".into();
+        let tampered = dir.join("tampered.json");
+        fs::write(&tampered, serde_json::to_string_pretty(&doc).unwrap()).unwrap();
+        let imported = store.import_file(&tampered).unwrap();
+        assert_eq!(
+            imported.snapshots[0].wallpaper_path.as_deref(),
+            Some("D:\\elsewhere\\old.jpg")
+        );
     }
 
     #[cfg(windows)]
@@ -839,6 +1090,36 @@ mod tests {
     }
 
     #[test]
+    fn restore_backup_duplicates_fold_into_the_fixed_id_entry() {
+        let mk = |name: &str, ts: i64| Snapshot {
+            id: uuid::Uuid::new_v4(),
+            name: name.into(),
+            ts,
+            layouts: vec![],
+            wallpaper_path: None,
+            is_auto_backup: None,
+        };
+        let mut c = Config::default();
+        c.snapshots = vec![
+            mk("恢复快照前", 1),
+            // The same label saved while the UI language was English.
+            mk("Before snapshot restore", 5),
+            mk("mine", 3),
+        ];
+        let c = migrate(c);
+        let auto: Vec<_> = c
+            .snapshots
+            .iter()
+            .filter(|s| s.is_auto_backup == Some(true))
+            .collect();
+        assert_eq!(auto.len(), 1);
+        assert_eq!(auto[0].id, AUTO_BACKUP_SNAPSHOT_ID);
+        assert_eq!(auto[0].ts, 5);
+        assert_eq!(c.snapshots.len(), 2);
+        assert!(c.snapshots.iter().any(|s| s.name == "mine"));
+    }
+
+    #[test]
     fn an_out_of_range_size_costs_only_that_size() {
         // A hand edit: one fence 1e9 wide and -500 tall, another 0 tall. The file still loads
         // as it is, `config check` warns, and the sizes come into range.
@@ -909,6 +1190,8 @@ mod tests {
                 fingerprint: vec![],
                 fences: vec![portal],
             }],
+            wallpaper_path: None,
+            is_auto_backup: None,
         });
         assert!(repair_unc_portals(&mut c));
         let path_of = |f: &Fence| match &f.source {

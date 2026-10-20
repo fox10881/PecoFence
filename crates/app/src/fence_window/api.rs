@@ -255,6 +255,11 @@ impl FenceWindow {
             title_hidden: false,
             hide_scrollbar: false,
             lock_scroll: false,
+            shelf_3d: false,
+            skew_left: 0.0,
+            skew_right: 0.0,
+            depth_scale: 0.0,
+            skew_drag: None,
             style: FenceStyle::default(),
             spacing: Spacing::Normal,
             icon_shape: IconShape::default(),
@@ -1610,6 +1615,40 @@ impl FenceWindow {
         });
     }
 
+    /// 3D 层架 (FenceView.shelf_3d + NormGeometry skews + FenceView.depth_scale): the
+    /// whole parallelogram at once, pushed by `apply_fence_view`. Turning it off clears
+    /// any edge drag; the caller also refits the bounds (the spread may leave).
+    pub fn set_shelf(&self, on: bool, skew_left: f32, skew_right: f32, depth: f32) {
+        self.with_view(|v| {
+            let depth = depth.clamp(0.0, 1.0);
+            if v.shelf_3d == on
+                && v.skew_left == skew_left
+                && v.skew_right == skew_right
+                && v.depth_scale == depth
+            {
+                return;
+            }
+            v.shelf_3d = on;
+            v.set_skew(skew_left, skew_right);
+            v.depth_scale = depth;
+            if !on {
+                v.skew_drag = None;
+            }
+            let (w, h) = window::window_rect_size(v.hwnd);
+            if let Err(error) = v.layout_panels(w, h).and_then(|_| v.redraw()) {
+                tracing::warn!(%error, "shelf relayout failed");
+            }
+        });
+    }
+
+    /// The live edge skews (DIPs) the bounds record stores; (0,0) when 3D shelf is off.
+    pub fn skew_dips(&self) -> (f32, f32) {
+        self.view
+            .borrow()
+            .as_ref()
+            .map_or((0.0, 0.0), |v| v.skew_dips())
+    }
+
     /// Per-fence colour wash, title colour and title size.
     pub fn set_style(&self, style: FenceStyle) {
         self.with_view(|v| {
@@ -1641,12 +1680,7 @@ impl FenceWindow {
     /// 「图标形状」 and the per-axis gap overrides (FenceView.icon_shape / spacing_x /
     /// spacing_y): a cell-size change refits the labels and relayouts, like `set_spacing`;
     /// a shape change also refetches the icons (poster boxes need a taller thumbnail).
-    pub fn set_grid_extras(
-        &self,
-        shape: IconShape,
-        gap_x: Option<f32>,
-        gap_y: Option<f32>,
-    ) {
+    pub fn set_grid_extras(&self, shape: IconShape, gap_x: Option<f32>, gap_y: Option<f32>) {
         self.with_view(|v| {
             if v.icon_shape == shape && v.spacing_x == gap_x && v.spacing_y == gap_y {
                 return;

@@ -246,6 +246,8 @@
     "布局快照": "Layout-Momentaufnahmen",
     "把当前布局存为快照": "Aktuelles Layout als Momentaufnahme speichern",
     "快照名称（可选）": "Name der Momentaufnahme (optional)",
+    "包含当前壁纸": "Aktuelles Hintergrundbild einschließen",
+    "已随壁纸保存": "Mit Hintergrundbild gespeichert",
     "保存快照": "Momentaufnahme speichern",
     "多显示器": "Mehrere Bildschirme",
     "交换两个显示器上的栅栏": "Bereiche zwischen zwei Bildschirmen tauschen",
@@ -558,5 +560,9 @@
     "隐藏滚动条": "Scrollleiste ausblenden",
     "完全不绘制滚动条；鼠标滚轮仍可滚动": "Die Scrollleiste wird nie gezeichnet; das Mausrad scrollt weiter",
     "锁定滚动": "Scrollen sperren",
-    "完全禁止滚动；滚轮、拖动和自动滚动都不起作用，内容固定在顶部，适合静态橱窗布局": "Deaktiviert das Scrollen vollständig; Mausrad, Ziehen und Auto-Scrollen bleiben wirkungslos, der Inhalt bleibt oben fixiert — für statische Schaufenster-Layouts"
+    "完全禁止滚动；滚轮、拖动和自动滚动都不起作用，内容固定在顶部，适合静态橱窗布局": "Deaktiviert das Scrollen vollständig; Mausrad, Ziehen und Auto-Scrollen bleiben wirkungslos, der Inhalt bleibt oben fixiert — für statische Schaufenster-Layouts",
+    "3D 倾斜层架": "3D-Schrägregal",
+    "把栅栏沿纵向倾斜成平行四边形以贴合斜置壁纸；左右边缘顶部各留一个手柄，分别调整两侧高度": "Neigt den Zaun zu einem Parallelogramm passend zu schrägen Hintergründen; ein Griff oben an jeder Seitenkante stellt deren Höhe ein",
+    "纵深缩放": "Tiefenskalierung",
+    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Symbole werden zur ferneren Kante hin kleiner für einen Tiefeneffekt; bei 0 bleiben alle gleich groß"
 }

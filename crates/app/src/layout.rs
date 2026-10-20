@@ -55,11 +55,7 @@ impl GridMetrics {
 
     /// Icon→label gap; 0 while labels are hidden so nothing pushes the icon off the top pad.
     fn gap(label_lines: u8) -> f32 {
-        if label_lines == 0 {
-            0.0
-        } else {
-            4.0
-        }
+        if label_lines == 0 { 0.0 } else { 4.0 }
     }
 
     /// 「图标形状」 per-fence override: Poster makes the icon box 2:3 (H = W × 1.5) so the
@@ -114,8 +110,7 @@ impl GridMetrics {
         }
         if let Some(gy) = gap_y {
             self.icon_top = 0.0;
-            self.cell_h =
-                self.icon_h + Self::label_h(self.line_h, self.label_lines) + gy.max(0.0);
+            self.cell_h = self.icon_h + Self::label_h(self.line_h, self.label_lines) + gy.max(0.0);
         }
         self
     }
@@ -1410,9 +1405,17 @@ mod tests {
             let icon_f = icon as f32;
             let normal = GridMetrics::for_icon_size(icon, 0);
             assert_eq!((normal.label_gap, normal.label_lines), (0.0, 0));
-            assert_eq!(normal.cell_h, icon_f + 8.0 + 4.0, "top pad + icon + bottom pad");
+            assert_eq!(
+                normal.cell_h,
+                icon_f + 8.0 + 4.0,
+                "top pad + icon + bottom pad"
+            );
             let compact = normal.with_spacing(pecofence_core::Spacing::Compact);
-            assert_eq!(compact.cell_h, icon_f + 4.0 + 4.0, "compact only trims the top pad");
+            assert_eq!(
+                compact.cell_h,
+                icon_f + 4.0 + 4.0,
+                "compact only trims the top pad"
+            );
             assert_eq!(compact.label_gap, 0.0);
             let loose = normal.with_spacing(pecofence_core::Spacing::Loose);
             assert_eq!(loose.cell_h, icon_f + 8.0 + 4.0 + 12.0);
@@ -1572,7 +1575,10 @@ mod tests {
         // becomes bottom padding the viewport can scroll past, keeping the rows'
         // phase intact at the last stop.
         let raw = l.content_height() - 100.0;
-        assert_eq!(l.max_scroll(100.0), (raw / l.row_step()).ceil() * l.row_step());
+        assert_eq!(
+            l.max_scroll(100.0),
+            (raw / l.row_step()).ceil() * l.row_step()
+        );
         for i in 0..8 {
             for j in 0..8 {
                 assert!(i == j || !overlaps(l.cell(i), l.cell(j)), "{i} vs {j}");

@@ -857,6 +857,7 @@ impl FenceViewState {
         if self.rolled_up || self.sort != SortMode::Manual || self.is_portal {
             return None;
         }
+        let (x_px, y_px) = self.unskew_px(x_px, y_px)?;
         let title_h = self.content_y;
         let (cw, ch) = self.content_size_px();
         let x_px = x_px - self.content_x;
@@ -1127,8 +1128,13 @@ impl FenceViewState {
         let win = window::window_rect(self.hwnd);
         let (px, py) = self.ole_drag_press;
         let (press_x, press_y) = (win.left + px, win.top + py);
-        let origin_x = win.left + self.content_x + (l * scale).round() as i32;
-        let origin_y = win.top + self.content_y + (t * scale).round() as i32;
+        // The footprint's slab corner shears onto the window the same way the live icons do.
+        let (ox, oy) = self.shear_point(
+            self.content_x as f32 / scale + l,
+            self.content_y as f32 / scale + t,
+        );
+        let origin_x = win.left + (ox * scale).round() as i32;
+        let origin_y = win.top + (oy * scale).round() as i32;
         if press_x < origin_x
             || press_x >= origin_x + w_px as i32
             || press_y < origin_y
@@ -1182,6 +1188,7 @@ impl FenceViewState {
                             alpha: 1.0,
                             icon_alpha: 1.0,
                             full_label: None,
+                            depth: 1.0,
                         }
                     })
                     .collect();

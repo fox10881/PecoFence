@@ -75,6 +75,8 @@ pub(super) const FENCE_PROPS: &[&str] = &[
     "spacingY",
     "hideScrollbar",
     "lockScroll",
+    "shelf3d",
+    "depthScale",
     "portalNavigate",
     "portalTitleIcon",
     "hideWhenEmpty",
@@ -147,6 +149,11 @@ pub(super) enum FenceProp {
     HideScrollbar(bool),
     /// 锁定滚动 (FenceView.lock_scroll): no scrolling at all; the offset pins to the top.
     LockScroll(bool),
+    /// 3D 层架 (FenceView.shelf_3d): the fence shears into a parallelogram with two
+    /// top-edge handles instead of the eight-way resize border.
+    Shelf3d(bool),
+    /// 纵深缩放 (FenceView.depth_scale): progressive icon shrink toward the far edge.
+    DepthScale(f32),
 }
 
 /// Parses `prop` / `value` as the settings page and `fence get` spell them. Unknown property
@@ -312,6 +319,15 @@ pub(super) fn parse_fence_prop(
         }
         "hideScrollbar" => FenceProp::HideScrollbar(as_bool()?),
         "lockScroll" => FenceProp::LockScroll(as_bool()?),
+        "shelf3d" => FenceProp::Shelf3d(as_bool()?),
+        "depthScale" => {
+            const ALLOWED: &[&str] = &["0.0..=1.0"];
+            let n = value
+                .as_f64()
+                .filter(|n| (0.0..=1.0).contains(n))
+                .ok_or_else(|| bad(ALLOWED))?;
+            FenceProp::DepthScale(n as f32)
+        }
         "portalNavigate" => FenceProp::PortalNavigate(as_bool()?),
         "portalTitleIcon" => FenceProp::PortalTitleIcon(as_bool()?),
         "hideWhenEmpty" => FenceProp::HideWhenEmpty(as_bool()?),
@@ -554,8 +570,7 @@ impl App {
             Some([0x00, 0x00, 0x00]) => "black".to_string(),
             Some(rgb) => hex(rgb),
         };
-        let title_on_hover = if h.appearance.as_ref().and_then(|a| a.title_hidden) == Some(true)
-        {
+        let title_on_hover = if h.appearance.as_ref().and_then(|a| a.title_hidden) == Some(true) {
             "never"
         } else {
             match h.appearance.as_ref().and_then(|a| a.title_on_hover) {
@@ -603,6 +618,8 @@ impl App {
             "spacingY": f.view.spacing_y,
             "hideScrollbar": f.view.hide_scrollbar.unwrap_or(false),
             "lockScroll": f.view.lock_scroll.unwrap_or(false),
+            "shelf3d": f.view.shelf_3d(),
+            "depthScale": f.view.depth_scale(),
             "autoHeight": h.view.auto_height,
             "locked": h.locked,
             "excludeFromQuickHide": h.exclude_from_quick_hide,
@@ -652,6 +669,45 @@ impl App {
         self.push_settings_state();
     }
 
+    /// Pushes the shown fence's 3D-shelf view into its window and re-fits the bounding
+    /// box: turning the mode on adds the stored skew's spread, turning it off drops
+    /// whatever spread the window has (the slab — the unsheared rect — does not move).
+    fn apply_shelf(&mut self, fence: FenceId) {
+        let host = self.state.host_of(fence);
+        if self.state.active_tab_of(host) != fence {
+            return;
+        }
+        let (Some(f), Some(h)) = (
+            self.state.fence(fence).cloned(),
+            self.state.fence(host).cloned(),
+        ) else {
+            return;
+        };
+        let on = f.view.shelf_3d();
+        let (sl, sr) = (
+            h.geometry.skew_left.unwrap_or(0.0),
+            h.geometry.skew_right.unwrap_or(0.0),
+        );
+        let depth = f.view.depth_scale();
+        let Some(w) = self.fences.get(&host) else {
+            return;
+        };
+        w.set_shelf(on, sl, sr, depth);
+        let r = w.rect();
+        let scale = monitors::dpi_for_window(w.hwnd()).max(96) as f32 / 96.0;
+        let spread_px = ((sl - sr).abs() * scale).round() as i32;
+        let height = if on {
+            r.bottom - r.top + spread_px
+        } else {
+            (r.bottom - r.top - spread_px).max(1)
+        };
+        if height != r.bottom - r.top {
+            let _ = window::set_window_bounds(w.hwnd(), r.left, r.top, r.right - r.left, height);
+            let rect = window::window_rect(w.hwnd());
+            self.record_bounds(host, rect, h.rolled_up, w.expanded_height_px());
+        }
+    }
+
     /// Pushes the shown fence's effective label rows to its window: `labelLines`, or 0 while
     /// `showLabels` is off (the saved line count survives either way).
     fn push_label_lines(&mut self, fence: FenceId) {
@@ -685,7 +741,10 @@ impl App {
     /// Pushes `effective_icon_size` (custom size while set, else the preset) to the window —
     /// `set_icon_size` reloads the icons when the edge actually changes.
     fn push_effective_icon_size(&mut self, fence: FenceId) {
-        let Some(size) = self.state.fence(fence).map(|f| f.view.effective_icon_size())
+        let Some(size) = self
+            .state
+            .fence(fence)
+            .map(|f| f.view.effective_icon_size())
         else {
             return;
         };
@@ -855,6 +914,20 @@ impl App {
                 {
                     w.set_lock_scroll(on);
                 }
+                self.schedule_save();
+            }
+            FenceProp::Shelf3d(on) => {
+                self.state.set_shelf_3d(fence, on);
+                if !on {
+                    // The shear is gone for good: its offsets leave the geometry too.
+                    self.state.clear_geometry_skew(self.state.host_of(fence));
+                }
+                self.apply_shelf(fence);
+                self.schedule_save();
+            }
+            FenceProp::DepthScale(factor) => {
+                self.state.set_depth_scale(fence, factor);
+                self.apply_shelf(fence);
                 self.schedule_save();
             }
         }

@@ -597,13 +597,15 @@ impl FenceViewState {
     /// leaves the same tall sliver — a bare plate strip — so a rolled fence stays findable.
     pub(super) fn rolled_h_px(&self) -> i32 {
         let title_h = (self.theme.title_height * self.scale()).round() as i32;
-        if self.tabs_on_rail() {
+        // A sheared rolled fence keeps its skew: the window is the band plus the spread.
+        let base = if self.tabs_on_rail() {
             self.rail_rows_height_px(RAIL_COLLAPSED_BOTTOM)
                 .min(self.expanded_h_px)
                 .max(title_h)
         } else {
             title_h
-        }
+        };
+        base + self.spread_px()
     }
 
     /// Room under the last row of the left tab column (DIPs): the chevron's, or once the fence
@@ -630,11 +632,11 @@ impl FenceViewState {
         (self.rail_w() * self.scale()).round() as i32
     }
 
-    /// Height of the tab column in DIPs: the window's. While the fence collapses or expands
-    /// the content keeps its expanded size, and so do the tab rows (only the chevron under them
-    /// follows the moving bottom edge).
+    /// Height of the tab column in DIPs: the slab's (the shear's spread is not part of it).
+    /// While the fence collapses or expands the content keeps its expanded size, and so do
+    /// the tab rows (only the chevron under them follows the moving bottom edge).
     fn rail_len(&self) -> f32 {
-        let h = self.chrome_panel.size_px().1;
+        let h = self.chrome_panel.size_px().1 - self.spread_px();
         let px = if self.roll_anim.is_some() {
             h.max(self.content_size_px().1)
         } else {
@@ -902,6 +904,7 @@ impl FenceViewState {
 
     /// Tab header under a client-pixel point.
     pub(super) fn tab_at(&self, x_px: i32, y_px: i32) -> Option<usize> {
+        let (x_px, y_px) = self.unskew_px(x_px, y_px)?;
         let on_strip = if self.tabs_on_rail() {
             // The column stays when the fence collapses to it.
             x_px >= 0 && x_px < self.rail_px() && y_px >= 0

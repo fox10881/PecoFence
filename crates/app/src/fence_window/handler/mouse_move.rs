@@ -24,7 +24,27 @@ pub(super) fn on_mousemove(
         return Some(0);
     };
     v.set_mouse_inside(true);
+    if v.skew_drag.is_some() {
+        // The window top follows the higher edge mid-drag, so the pointer is
+        // tracked in screen px; `move_skew_drag` re-derives the skew and hands
+        // back the bounding box to place.
+        let pt = window::cursor_pos();
+        let moved = v.move_skew_drag(pt.y);
+        drop(guard);
+        if let Some((top, height)) = moved {
+            let r = window::window_rect(hwnd);
+            // WM_SIZE arrives synchronously (the guard is dropped): it re-lays the
+            // panels and repaints under the skew already stored on the view.
+            let _ = window::set_window_bounds(hwnd, r.left, top, r.right - r.left, height);
+        }
+        window::set_standard_cursor(StandardCursor::SizeNS);
+        return Some(0);
+    }
     if v.marquee.is_some() {
+        // The band's coords are slab px (a sheared fence keeps its marquee
+        // anchored to the slanted surface); the pointer maps into the same
+        // space even outside the parallelogram, where auto-scroll runs.
+        let (x, y) = v.unskew_unbounded(x, y);
         // Pointer outside the item area: auto-scroll per frame while the
         // button is down (`marquee_autoscroll` in `tick`).
         let (top, bottom) = v.marquee_band_px();
@@ -51,7 +71,10 @@ pub(super) fn on_mousemove(
         if let Some(g) = v.scrollbar_geometry()
             && g.track_h > g.thumb_h
         {
-            let dy = (y - start_y) as f32 / v.scale();
+            // The press stored the slab-space start: the delta is measured on the
+            // unskewed surface, where the thumb actually travels.
+            let (_, slab_y) = v.unskew_unbounded(x, y);
+            let dy = (slab_y - start_y) as f32 / v.scale();
             // Direct manipulation: the thumb drives the offset, no glide;
             // every drag frame lands on a whole device pixel (Explorer
             // tracks the thumb in integer positions). Hard-clamped: dragging past the
@@ -160,7 +183,8 @@ pub(super) fn on_mousemove(
         // step, repeated so a fast sweep can cross several neighbours in one
         // message; `tab_reorder_step` is stable for any pair of widths.
         let now = Instant::now();
-        let pointer_x = v.tab_axis(x, y);
+        let (ux, uy) = v.unskew_unbounded(x, y);
+        let pointer_x = v.tab_axis(ux, uy);
         if let Some(td) = v.tab_drag.as_mut() {
             td.moved = true;
             td.pointer_x = pointer_x;
@@ -416,12 +440,8 @@ pub(super) fn on_mousemove(
     let header_changed = std::mem::replace(&mut v.header_hover, header) != header;
     // Client-area pointer inside the title row (a control's box) still
     // counts as hovering the row, so the pill / chevron do not drop; a
-    // left tab column is the title bar.
-    let in_title = if v.tabs_on_rail() {
-        x < v.content_x
-    } else {
-        y < v.title_h_px()
-    };
+    // left tab column is the title bar. `title_row_at` unskews the point.
+    let in_title = v.title_row_at(x, y);
     let (item_changed, title_changed) = v.set_hover(hit, in_title);
     if chrome_changed || title_changed {
         let _ = v.redraw_chrome_only();

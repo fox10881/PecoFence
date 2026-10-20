@@ -253,6 +253,8 @@
     "布局快照": "Instantanés de disposition",
     "把当前布局存为快照": "Enregistrer la disposition comme instantané",
     "快照名称（可选）": "Nom de l’instantané (facultatif)",
+    "包含当前壁纸": "Inclure le fond d'écran actuel",
+    "已随壁纸保存": "Enregistré avec le fond d'écran",
     "保存快照": "Enregistrer l’instantané",
     "多显示器": "Plusieurs écrans",
     "交换两个显示器上的栅栏": "Échanger les groupes entre deux écrans",
@@ -558,5 +560,9 @@
     "隐藏滚动条": "Masquer la barre de défilement",
     "完全不绘制滚动条；鼠标滚轮仍可滚动": "La barre n'est jamais dessinée ; la molette défile toujours",
     "锁定滚动": "Verrouiller le défilement",
-    "完全禁止滚动；滚轮、拖动和自动滚动都不起作用，内容固定在顶部，适合静态橱窗布局": "Désactive tout défilement ; la molette, le glisser et le défilement automatique sont sans effet et le contenu reste épinglé en haut — pour les mises en page statiques"
+    "完全禁止滚动；滚轮、拖动和自动滚动都不起作用，内容固定在顶部，适合静态橱窗布局": "Désactive tout défilement ; la molette, le glisser et le défilement automatique sont sans effet et le contenu reste épinglé en haut — pour les mises en page statiques",
+    "3D 倾斜层架": "Étagère 3D inclinée",
+    "把栅栏沿纵向倾斜成平行四边形以贴合斜置壁纸；左右边缘顶部各留一个手柄，分别调整两侧高度": "Incline la barrière en parallélogramme pour les fonds d'écran inclinés ; une poignée en haut de chaque bord latéral règle la hauteur de ce côté",
+    "纵深缩放": "Échelle de profondeur",
+    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Les icônes rétrécissent vers le bord éloigné pour un effet de profondeur ; à 0 elles gardent la même taille"
 }

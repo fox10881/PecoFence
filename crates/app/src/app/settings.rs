@@ -188,7 +188,7 @@ impl App {
     }
 
     pub(super) fn restore_from_file(&mut self, path: &std::path::Path, source: ConfigSource) {
-        match pecofence_core::ConfigStore::parse_file(path) {
+        match self.state.parse_import_file(path) {
             Ok(cfg) => {
                 // Keep a snapshot of what we are replacing so the step can be undone; a list
                 // full of the user's own snapshots has no room for it, so nothing is replaced.
@@ -196,7 +196,7 @@ impl App {
                     self.settings_error(&snapshot_limit_text());
                     return;
                 }
-                self.state.save_snapshot(source.before());
+                self.state.save_snapshot(source.before(), None);
                 self.adopt_config(cfg, source);
             }
             Err(e) => self.settings_error(&pecofence_core::i18n::format(
@@ -292,6 +292,8 @@ impl App {
                     "ts": s.ts,
                     "date": pecofence_platform::fileinfo::format_local_datetime(s.ts),
                     "fenceCount": super::ipc::snapshot_dto(s, &self.state.work_areas).fence_count,
+                    "wallpaperPath": s.wallpaper_path,
+                    "isAutoBackup": s.is_auto_backup == Some(true),
                 })
             })
             .collect();
@@ -520,7 +522,14 @@ impl App {
                         self.settings_error(&snapshot_limit_text());
                     } else {
                         let name = v.get("snapshotName").and_then(|n| n.as_str()).unwrap_or("");
-                        self.state.save_snapshot(name);
+                        let include_wallpaper = v
+                            .get("includeWallpaper")
+                            .and_then(|f| f.as_bool())
+                            .unwrap_or(false);
+                        let wallpaper = include_wallpaper
+                            .then(pecofence_platform::sysparams::desktop_wallpaper)
+                            .flatten();
+                        self.state.save_snapshot(name, wallpaper);
                         self.schedule_save();
                         self.push_settings_state();
                         self.settings_toast(pecofence_core::i18n::text("已保存快照"));
@@ -535,11 +544,21 @@ impl App {
                     {
                         // Snapshot of the current state first, so "restore" is reversible;
                         // a list full of the user's own snapshots has no room for it, so
-                        // nothing is restored.
-                        if !auto_snapshot_room(&mut self.state.config.snapshots, Some(id)) {
+                        // nothing is restored. The fixed-id restore backup overwrites itself
+                        // and needs the room only until it is first taken.
+                        let has_backup = self
+                            .state
+                            .config
+                            .snapshots
+                            .iter()
+                            .any(|s| s.id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID);
+                        if !has_backup
+                            && !auto_snapshot_room(&mut self.state.config.snapshots, Some(id))
+                        {
                             self.settings_error(&snapshot_limit_text());
                             return;
                         }
+                        let wallpaper = self.state.snapshot_wallpaper(id);
                         self.state.restore_snapshot_with_backup(
                             id,
                             pecofence_core::i18n::text("恢复快照前"),
@@ -549,6 +568,13 @@ impl App {
                         // Portals restored with the snapshot need enumerating; stale
                         // runtime state of the replaced ones is pruned on the way.
                         self.refresh_portals();
+                        // A snapshot saved with a wallpaper restores it too; a missing file
+                        // or a failing shell reports but never blocks the layout restore.
+                        if let Some(path) = wallpaper {
+                            if !pecofence_platform::sysparams::set_desktop_wallpaper(&path) {
+                                tracing::warn!(path, "restoreSnapshot: wallpaper not applied");
+                            }
+                        }
                         self.schedule_save();
                         self.push_settings_state();
                         self.settings_toast(pecofence_core::i18n::text("已恢复快照"));
@@ -563,6 +589,24 @@ impl App {
                     {
                         self.schedule_save();
                         self.push_settings_state();
+                    }
+                }
+                Some("renameSnapshot") => {
+                    if let (Some(id), Some(name)) = (
+                        v.get("id")
+                            .and_then(|i| i.as_str())
+                            .and_then(|i| uuid::Uuid::parse_str(i).ok()),
+                        v.get("snapshotName").and_then(|n| n.as_str()),
+                    ) {
+                        match super::ipc::checked_name("snapshot name", name) {
+                            Ok(name) => {
+                                if self.state.rename_snapshot(id, &name) {
+                                    self.schedule_save();
+                                    self.push_settings_state();
+                                }
+                            }
+                            Err(e) => self.settings_error(&e.message),
+                        }
                     }
                 }
                 Some("swapMonitors") => {

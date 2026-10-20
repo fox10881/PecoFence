@@ -37,6 +37,22 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 PecoFence liefert das starre Rasterlayout und die lückenlosen 2:3-Poster-Container – Windows erzeugt jedoch weiterhin quadratische Standard-Symbole.
 Für den exakten Look eines physischen Spieleregals wie im Screenshot brauchen Sie **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. BoxArt Studio ist das unverzichtbare Begleitwerkzeug, das Ihre normalen Windows-Spieleverknüpfungen und -Ordner gesammelt in hochauflösende 2:3-Spieleboxen verwandelt.
 
+### 📸 Portable Layout-Snapshots
+
+Layout-Snapshots sind jetzt vollständig portable Backups: Benenne eine Sicherungsdatei direkt in der Snapshot-Liste um und packe optional das aktuelle Desktop-Hintergrundbild mit in die Datei. Das Layout wird dann auf jedem PC pixelgenau wiederhergestellt – selbst auf einem, der dein Hintergrundbild nie gesehen hat.
+
+### 🧊 3D-Schrägregal (experimentell)
+
+Schere einen Bereich zu einem perfekten Parallelogramm, damit seine Reihen den Brettern eines schrägen Hintergrundbilds folgen: Ziehe die vertikalen Griffe am oberen Rand einer Seite, und die Symbole skalieren progressiv zur näheren, tieferen Kante – einstellbar über den **Tiefenfaktor**-Schieberegler in den Bereichs-Einstellungen.
+
+> **⚠️ Bekanntes Problem – Hilfe gesucht.** Mausbewegung, Ausrichtung und Treffererkennung innerhalb des schrägen Parallelogramms funktionieren einwandfrei. Bei einem 3D-Perspektiv-Hintergrundbild sitzt jedoch nur die erste Reihe perfekt auf dem Brett – die folgenden Reihen verziehen sich wegen der Fluchtpunkt-Perspektive des Bildes. Wenn du weißt, wie man diese mehrzeilige Perspektiv-Mathematik perfekt löst, sind Pull Requests herzlich willkommen!
+
+### 🖼️ Fertige 2D-Hintergrundbilder
+
+Das Repository enthält ein kuratiertes Paket flacher Frontansicht-Regal-Hintergrundbilder in [`assets/wallpapers/`](../../assets/wallpapers/), die perfekt zu den ungescherten, geraden Bereichen passen – eines auswählen, Regale anordnen, fertig.
+
+> **💡 Profi-Tipp:** Wir stellen einsatzbereite 2D-Hintergrundbilder bereit, die perfekt zu den geraden Bereichen passen. Für ein beeindruckendes Setup empfehlen wir, diese 2D-Bilder durch einen KI-Videogenerator zu animieren und mit [Lively Wallpaper](https://github.com/rocksdanister/lively) als Desktop-Hintergrund zu nutzen.
+
 <a id="lassen-sie-ihre-ki-aufräumen"></a>
 
 ## Dein Desktop. Von deiner KI eingerichtet
@@ -113,6 +129,7 @@ Hol dir, was du brauchst, und kehre mit **Esc** zurück.
 | **Ordner in Reichweite** | Hol dir einen Live-Ordner auf den Desktop. Stöbere in Unterordnern und sieh Änderungen sofort. |
 | **Platz, wenn du ihn brauchst** | Klappe einen Bereich bis auf den Titel ein. Zum Ausklappen einfach mit der Maus darauf zeigen. Sperre ein Layout, das dir gefällt. Ein Doppelklick auf den Desktop blendet alle Bereiche aus. Ein zweiter holt sie zurück. |
 | **Ein Weg zurück** | Layout-Momentaufnahmen, tägliche Sicherungen, Import/Export der Konfiguration und Tausch zwischen Bildschirmen. |
+| **3D-Schrägregal (experimentell)** | Schere einen Bereich zu einem Parallelogramm, damit seine Reihen den Brettern eines schrägen Hintergrundbilds folgen – mit Tiefenskalierung der Symbole zur näheren Kante. |
 | **Ein kleiner Fußabdruck** | Eine native Rust-Anwendung, die im Leerlauf etwa 40 MB Arbeitsspeicher belegt (laut Task-Manager). Das Einstellungsfenster (WebView2) wird erst bei Bedarf geladen. |
 
 Automatische Sortierregeln lassen Dateien an ihrem ursprünglichen Speicherort. Verschiebungen,

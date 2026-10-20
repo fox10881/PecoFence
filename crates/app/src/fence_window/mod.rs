@@ -38,8 +38,8 @@ use pecofence_render::fence_chrome::{
 };
 use pecofence_render::motion::{self, Curve, Fades, Motion, Prop, Tween};
 use pecofence_render::{
-    BitmapCache, ColorF, ContainerVisual, DesktopWindowTarget, Image, Matrix3x2, MonitorBackdrop,
-    Panel, Rect, RenderStack, Theme,
+    BitmapCache, ColorF, ContainerVisual, DesktopWindowTarget, DrawingSession, Image, Matrix3x2,
+    MonitorBackdrop, Panel, Rect, RenderStack, Theme,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -60,6 +60,7 @@ mod render;
 mod roll;
 mod scroll;
 mod selection;
+mod shelf;
 mod snap;
 mod state;
 mod tabs;
@@ -80,6 +81,7 @@ use self::render::*;
 use self::roll::*;
 use self::scroll::*;
 use self::selection::*;
+use self::shelf::*;
 use self::snap::*;
 use self::state::*;
 use self::tabs::*;

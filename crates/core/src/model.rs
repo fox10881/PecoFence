@@ -63,7 +63,18 @@ pub struct Snapshot {
     pub name: String,
     pub ts: i64,
     pub layouts: Vec<Layout>,
+    /// Windows desktop wallpaper path captured at save time; a restore re-applies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallpaper_path: Option<String>,
+    /// `true` on the single automatic restore backup ([`AUTO_BACKUP_SNAPSHOT_ID`]): its name
+    /// is a locale-resolved label, not user text, and it is never editable in the UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_auto_backup: Option<bool>,
 }
+
+/// The fixed id of the automatic "restore backup" snapshot. Keeping it constant means every
+/// restore overwrites the same entry in place instead of appending another `…前` one.
+pub const AUTO_BACKUP_SNAPSHOT_ID: Uuid = Uuid::from_u128(0xDEC0DEA4_7000_4E38_84C4_000000000001);
 
 pub const MAX_SNAPSHOTS: usize = 20;
 
@@ -585,6 +596,40 @@ pub struct NormGeometry {
     pub work_w: f32,
     pub work_h: f32,
     pub anchor: Anchor,
+    /// Y-axis shear of the left edge in DIPs (3D shelf): the left edge of the base
+    /// rectangle {x..x+w, y..y+h} runs from y to y+skew_left. Positive tilts the edge
+    /// downward; the fence window is the parallelogram's bounding box.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skew_left: Option<f32>,
+    /// Same for the right edge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skew_right: Option<f32>,
+}
+
+impl NormGeometry {
+    pub fn skew_left(&self) -> f32 {
+        self.skew_left.unwrap_or(0.0)
+    }
+
+    pub fn skew_right(&self) -> f32 {
+        self.skew_right.unwrap_or(0.0)
+    }
+
+    /// Whether either edge is sheared.
+    pub fn skewed(&self) -> bool {
+        self.skew_left.is_some() || self.skew_right.is_some()
+    }
+
+    /// Vertical spread the shear adds beyond the base height (DIPs): the parallelogram's
+    /// bounding box is `h + spread` tall and sits `spread_above` lower than the base top.
+    pub fn skew_spread(&self) -> f32 {
+        self.skew_left().abs().max(self.skew_right().abs())
+    }
+
+    /// How far the bounding box's top edge lies above the base top (DIPs, >= 0).
+    pub fn skew_top_pad(&self) -> f32 {
+        -self.skew_left().min(0.0).min(self.skew_right().min(0.0))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -667,6 +712,16 @@ pub struct FenceView {
     /// pinned to the top (the fence is a fixed display case).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lock_scroll: Option<bool>,
+    /// 3D 层架: the fence is a Y-sheared parallelogram (NormGeometry.skew_left /
+    /// skew_right carry the edge offsets) with two vertical edge handles instead of
+    /// the eight-way resize border.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shelf_3d: Option<bool>,
+    /// 纵深缩放: 0.0 draws every icon at its own size under the shear; higher values
+    /// scale icons down progressively toward the higher (farther) edge and keep the
+    /// closer edge at full size. Clamped to 0.0..=1.0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depth_scale: Option<f32>,
 }
 
 /// Shape of an icon cell's icon box (「图标形状」).
@@ -702,6 +757,16 @@ impl FenceView {
     pub fn effective_icon_shape(&self) -> IconShape {
         self.icon_shape.unwrap_or_default()
     }
+
+    /// Whether 3D shelf (Y-shear) mode is on.
+    pub fn shelf_3d(&self) -> bool {
+        self.shelf_3d == Some(true)
+    }
+
+    /// Depth scaling intensity, clamped to 0.0..=1.0.
+    pub fn depth_scale(&self) -> f32 {
+        self.depth_scale.unwrap_or(0.0).clamp(0.0, 1.0)
+    }
 }
 
 impl Default for FenceView {
@@ -724,6 +789,8 @@ impl Default for FenceView {
             spacing_y: None,
             hide_scrollbar: None,
             lock_scroll: None,
+            shelf_3d: None,
+            depth_scale: None,
         }
     }
 }
@@ -1772,6 +1839,30 @@ mod tests {
         assert_eq!(serde_json::from_value::<Settings>(json).unwrap(), settings);
     }
 
+    #[test]
+    fn snapshot_wallpaper_defaults_none_for_old_files_and_omits_it() {
+        // Configs written before wallpaper capture have no `wallpaperPath`.
+        let mut snap = Snapshot {
+            id: Uuid::new_v4(),
+            name: "旧".into(),
+            ts: 1,
+            layouts: vec![],
+            wallpaper_path: None,
+            is_auto_backup: None,
+        };
+        let mut json = serde_json::to_value(&snap).unwrap();
+        assert!(json.get("wallpaperPath").is_none());
+        json.as_object_mut().unwrap().remove("wallpaperPath");
+        let legacy: Snapshot = serde_json::from_value(json).unwrap();
+        assert_eq!(legacy.wallpaper_path, None);
+
+        snap.wallpaper_path = Some(r"C:\Wallpapers\a.jpg".into());
+        let json = serde_json::to_value(&snap).unwrap();
+        assert_eq!(json["wallpaperPath"], r"C:\Wallpapers\a.jpg");
+        let back: Snapshot = serde_json::from_value(json).unwrap();
+        assert_eq!(back.wallpaper_path.as_deref(), Some(r"C:\Wallpapers\a.jpg"));
+    }
+
     fn geo() -> NormGeometry {
         NormGeometry {
             monitor: "m".into(),
@@ -1782,6 +1873,8 @@ mod tests {
             work_w: 1920.0,
             work_h: 1040.0,
             anchor: Anchor::LeftTop,
+            skew_left: None,
+            skew_right: None,
         }
     }
 
@@ -1805,6 +1898,8 @@ mod tests {
             name: "旧布局".into(),
             ts: 1,
             layouts: config.layouts.clone(),
+            wallpaper_path: None,
+            is_auto_backup: None,
         });
 
         for legacy in ["micaLike", "solid", "acrylic"] {

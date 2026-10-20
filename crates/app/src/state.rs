@@ -173,6 +173,12 @@ impl AppState {
         canonical_path(self.config_path())
     }
 
+    /// Parses a config file that may come from another machine: embedded snapshot
+    /// wallpapers are extracted under this store's `imported_wallpapers/` folder first.
+    pub fn parse_import_file(&self, path: &Path) -> Result<Config, String> {
+        self.store.import_file(path)
+    }
+
     /// Where the configuration lives, as a fixed name for the log and feedback: the portable
     /// folder next to the program, %APPDATA% (under the old OpenFence name when that is
     /// reused), or the Store package's private copy of %APPDATA%.
@@ -239,7 +245,9 @@ impl AppState {
 
     // ---- snapshots ---------------------------------------------------------------------------
 
-    pub fn save_snapshot(&mut self, name: &str) -> uuid::Uuid {
+    /// `wallpaper_path` is the desktop wallpaper captured by the caller (the Settings page
+    /// or CLI when asked to include it); automatic backup snapshots pass `None`.
+    pub fn save_snapshot(&mut self, name: &str, wallpaper_path: Option<String>) -> uuid::Uuid {
         let name = name.trim();
         let name = if name.is_empty() {
             pecofence_core::i18n::format(
@@ -254,6 +262,8 @@ impl AppState {
             name,
             ts: pecofence_core::now_unix(),
             layouts: self.config.layouts.clone(),
+            wallpaper_path,
+            is_auto_backup: None,
         };
         let id = snap.id;
         self.config.snapshots.push(snap);
@@ -274,9 +284,34 @@ impl AppState {
         backup_name: &str,
     ) -> Option<uuid::Uuid> {
         let snap = self.config.snapshots.iter().find(|s| s.id == id).cloned()?;
-        let backup = self.save_snapshot(backup_name);
+        let backup = self.save_restore_backup(backup_name);
         self.apply_snapshot_layouts(snap.layouts);
         Some(backup)
+    }
+
+    /// Saves the current layouts as THE restore backup. The fixed id means the next restore
+    /// overwrites the same entry in place instead of appending another `…前` snapshot; its
+    /// name is stored only for CLI consumers — the UI shows the localized label.
+    pub fn save_restore_backup(&mut self, name: &str) -> uuid::Uuid {
+        let snap = pecofence_core::Snapshot {
+            id: pecofence_core::AUTO_BACKUP_SNAPSHOT_ID,
+            name: name.trim().to_string(),
+            ts: pecofence_core::now_unix(),
+            layouts: self.config.layouts.clone(),
+            wallpaper_path: None,
+            is_auto_backup: Some(true),
+        };
+        match self
+            .config
+            .snapshots
+            .iter_mut()
+            .find(|s| s.id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID)
+        {
+            Some(slot) => *slot = snap,
+            None => self.config.snapshots.push(snap),
+        }
+        self.dirty = true;
+        pecofence_core::AUTO_BACKUP_SNAPSHOT_ID
     }
 
     /// Restores a snapshot's layouts without taking a backup first. False when `id` is unknown.
@@ -295,6 +330,35 @@ impl AppState {
         self.normalize_tabs();
         self.portal_cwd.clear();
         self.dirty = true;
+    }
+
+    /// Renames the snapshot; `name` is stored trimmed. False when `id` is unknown or the
+    /// trimmed name is empty or unchanged. The automatic restore backup's name is a
+    /// locale-resolved label, never user text, so it refuses a rename.
+    pub fn rename_snapshot(&mut self, id: uuid::Uuid, name: &str) -> bool {
+        if id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID {
+            return false;
+        }
+        let name = name.trim();
+        let Some(snap) = self.config.snapshots.iter_mut().find(|s| s.id == id) else {
+            return false;
+        };
+        if name.is_empty() || snap.name == name {
+            return false;
+        }
+        snap.name = name.to_string();
+        self.dirty = true;
+        true
+    }
+
+    /// The wallpaper path captured in the snapshot, when it was saved with one.
+    pub fn snapshot_wallpaper(&self, id: uuid::Uuid) -> Option<String> {
+        self.config
+            .snapshots
+            .iter()
+            .find(|s| s.id == id)
+            .and_then(|s| s.wallpaper_path.clone())
+            .filter(|p| !p.is_empty())
     }
 
     pub fn delete_snapshot(&mut self, id: uuid::Uuid) -> bool {
@@ -332,7 +396,10 @@ impl AppState {
             match areas.iter().find(|w| w.device_path == to) {
                 Some(w) => {
                     let px = geometry::denormalize(&f.geometry, w);
-                    f.geometry = geometry::normalize(px, w);
+                    let mut geo = geometry::normalize(px, w);
+                    geo.skew_left = f.geometry.skew_left;
+                    geo.skew_right = f.geometry.skew_right;
+                    f.geometry = geo;
                 }
                 None => f.geometry.monitor = to.to_string(),
             }
@@ -1750,8 +1817,32 @@ impl AppState {
 
     // ---- fences -----------------------------------------------------------------------------
 
-    pub fn set_fence_bounds(&mut self, id: FenceId, rect: RECT, rolled: bool, expanded_h_px: i32) {
-        let px = PxRect {
+    /// Records a fence window's rectangle. `skew` is the window's live edge shear in
+    /// DIPs (0,0 when 3D shelf is off): the stored geometry keeps the un-sheared base
+    /// rect plus the edge offsets, and `window_rect` rebuilds the bounding box later.
+    pub fn set_fence_bounds(
+        &mut self,
+        id: FenceId,
+        rect: RECT,
+        rolled: bool,
+        expanded_h_px: i32,
+        skew: (f32, f32),
+    ) {
+        let (cx, cy) = PxRect {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+        }
+        .center();
+        let work = self
+            .work_areas
+            .iter()
+            .find(|w| cx >= w.left && cx < w.right && cy >= w.top && cy < w.bottom)
+            .or(self.work_areas.first())
+            .cloned();
+        let Some(work) = work else { return };
+        let window = PxRect {
             left: rect.left,
             top: rect.top,
             right: rect.right,
@@ -1761,15 +1852,12 @@ impl AppState {
                 rect.bottom
             },
         };
-        let (cx, cy) = px.center();
-        let work = self
-            .work_areas
-            .iter()
-            .find(|w| cx >= w.left && cx < w.right && cy >= w.top && cy < w.bottom)
-            .or(self.work_areas.first())
-            .cloned();
-        let Some(work) = work else { return };
-        let geo = geometry::normalize(px, &work);
+        let px = geometry::window_base(window, skew.0, skew.1, work.scale());
+        let mut geo = geometry::normalize(px, &work);
+        // Offsets persist normalised (the higher edge at 0), matching window space.
+        let m = skew.0.min(skew.1);
+        geo.skew_left = ((skew.0 - m) > 0.0).then_some(skew.0 - m);
+        geo.skew_right = ((skew.1 - m) > 0.0).then_some(skew.1 - m);
         if let Some(f) = self.fence_mut(id) {
             if f.geometry != geo || f.rolled_up != rolled {
                 f.expanded_h = geo.h;
@@ -1797,7 +1885,17 @@ impl AppState {
                 mon_right: 1920,
                 mon_bottom: 1040,
             });
-        geometry::denormalize(&fence.geometry, &work)
+        // The window bounding box contains the sheared parallelogram only while the
+        // shown tab's view is in 3D shelf mode; otherwise it is the plain base rect.
+        let sheared = fence.geometry.skewed()
+            && self
+                .fence(self.active_tab_of(fence.id))
+                .is_some_and(|f| f.view.shelf_3d());
+        if sheared {
+            geometry::window_rect(&fence.geometry, &work)
+        } else {
+            geometry::denormalize(&fence.geometry, &work)
+        }
     }
 
     #[allow(dead_code)]
@@ -1959,6 +2057,40 @@ impl AppState {
                 f.view.lock_scroll = next;
                 self.dirty = true;
             }
+        }
+    }
+
+    /// 3D 层架 (FenceView.shelf_3d): the fence window shears into a parallelogram and
+    /// resizes through two edge handles instead of the eight-way border.
+    pub fn set_shelf_3d(&mut self, id: FenceId, on: bool) {
+        if let Some(f) = self.fence_mut(id) {
+            let next = on.then_some(true);
+            if f.view.shelf_3d != next {
+                f.view.shelf_3d = next;
+                self.dirty = true;
+            }
+        }
+    }
+
+    /// 纵深缩放 (FenceView.depth_scale): how strongly icons shrink toward the far edge.
+    pub fn set_depth_scale(&mut self, id: FenceId, factor: f32) {
+        let next = (factor.clamp(0.0, 1.0) > 0.0).then_some(factor.clamp(0.0, 1.0));
+        if let Some(f) = self.fence_mut(id)
+            && f.view.depth_scale != next
+        {
+            f.view.depth_scale = next;
+            self.dirty = true;
+        }
+    }
+
+    /// Clears the persisted edge shear of a fence's geometry (3D shelf switched off).
+    pub fn clear_geometry_skew(&mut self, id: FenceId) {
+        if let Some(f) = self.fence_mut(id)
+            && f.geometry.skewed()
+        {
+            f.geometry.skew_left = None;
+            f.geometry.skew_right = None;
+            self.dirty = true;
         }
     }
 
@@ -2312,6 +2444,8 @@ mod tests {
             name,
             ts,
             layouts: Vec::new(),
+            wallpaper_path: None,
+            is_auto_backup: None,
         };
         let mut state = test_state();
         state.config.snapshots = vec![snap("home".into(), 1), snap("work".into(), 2)];
@@ -2327,6 +2461,33 @@ mod tests {
         assert!(local.iter().all(|id| kept.iter().any(|s| s.id == *id)));
         assert!(kept.iter().any(|s| s.id == newest));
         assert!(kept.windows(2).all(|w| w[0].ts <= w[1].ts));
+    }
+
+    /// Every restore overwrites the same fixed-id backup entry, and that entry's name is a
+    /// locale label that refuses renames.
+    #[test]
+    fn restore_backups_share_one_fixed_id_and_stay_locked() {
+        let mut state = test_state();
+        let target = state.save_snapshot("user layout", None);
+        assert_eq!(
+            state.restore_snapshot_with_backup(target, "恢复快照前"),
+            Some(pecofence_core::AUTO_BACKUP_SNAPSHOT_ID)
+        );
+        assert_eq!(
+            state.restore_snapshot_with_backup(target, "恢复快照前"),
+            Some(pecofence_core::AUTO_BACKUP_SNAPSHOT_ID)
+        );
+        let backups: Vec<_> = state
+            .config
+            .snapshots
+            .iter()
+            .filter(|s| s.id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID)
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(backups[0].is_auto_backup, Some(true));
+        assert_eq!(state.config.snapshots.len(), 2);
+        assert!(!state.rename_snapshot(pecofence_core::AUTO_BACKUP_SNAPSHOT_ID, "nope"));
+        assert!(state.rename_snapshot(target, "mine"));
     }
 
     /// An import saved at another resolution: relayout_from_state runs ensure_layout again,
@@ -2376,7 +2537,7 @@ mod tests {
         // The same fences; all were on the big monitor, so none has a spot here yet.
         assert_eq!(ids(&state), docked.iter().map(|f| f.id).collect::<Vec<_>>());
         assert_eq!(state.unplaced.len(), docked.len());
-        state.set_fence_bounds(first, rect(-1900, 20, 300, 200), false, 200);
+        state.set_fence_bounds(first, rect(-1900, 20, 300, 200), false, 200, (0.0, 0.0));
         state.rename_fence(first, "Laptop title");
         let made = state
             .new_fence("Made on the laptop", rect(-1500, 600, 300, 200))
@@ -2446,7 +2607,7 @@ mod tests {
         state.ensure_layout();
         assert_eq!((state.layout, state.config.layouts.len()), (1, 2));
         assert_eq!(state.unplaced.len(), at_4k.len());
-        state.set_fence_bounds(first, rect(20, 20, 300, 200), false, 200);
+        state.set_fence_bounds(first, rect(20, 20, 300, 200), false, 200, (0.0, 0.0));
 
         state.work_areas = vec![monitor(id, 0, 3840, 2064, 192)];
         state.ensure_layout();

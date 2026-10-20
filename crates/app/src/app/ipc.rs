@@ -458,6 +458,8 @@ pub(super) fn snapshot_dto(s: &Snapshot, monitors: &[geometry::WorkArea]) -> Sna
         name: s.name.clone(),
         ts: s.ts,
         fence_count: current.map_or(0, |l| l.fences.len()),
+        wallpaper_path: s.wallpaper_path.clone(),
+        is_auto_backup: s.is_auto_backup == Some(true),
     }
 }
 
@@ -828,7 +830,10 @@ impl App {
                 ))
             }
 
-            Method::SnapshotsSave { name } => {
+            Method::SnapshotsSave {
+                name,
+                include_wallpaper,
+            } => {
                 let name = checked_name("snapshot name", name)?;
                 if self.state.config.snapshots.len() >= pecofence_core::MAX_SNAPSHOTS {
                     return Err(IpcError::new(
@@ -840,7 +845,10 @@ impl App {
                     )
                     .hint("Delete one with `pecofence-cli snapshot delete <id>` first"));
                 }
-                let id = self.state.save_snapshot(&name);
+                let wallpaper = include_wallpaper
+                    .then(pecofence_platform::sysparams::desktop_wallpaper)
+                    .flatten();
+                let id = self.state.save_snapshot(&name, wallpaper);
                 self.schedule_save();
                 self.push_settings_state();
                 let snap = self
@@ -855,10 +863,21 @@ impl App {
             }
             Method::SnapshotsRestore { id } => {
                 let target = self.resolve_snapshot(id)?;
+                let wallpaper = self.state.snapshot_wallpaper(target);
+                // The fixed-id restore backup overwrites itself, so an existing one needs no
+                // free slot; the room check applies only until it is first taken.
+                let has_backup = self
+                    .state
+                    .config
+                    .snapshots
+                    .iter()
+                    .any(|s| s.id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID);
                 // The backup the existing mechanism takes is this call's auto snapshot; when
                 // the list is full of the user's snapshots the layout is restored without one
                 // (warned) rather than evicting theirs.
-                let backup = if auto_snapshot_slot(&mut self.state.config.snapshots, Some(target)) {
+                let backup = if has_backup
+                    || auto_snapshot_slot(&mut self.state.config.snapshots, Some(target))
+                {
                     Some(
                         self.state
                             .restore_snapshot_with_backup(target, &auto_snapshot_name())
@@ -876,6 +895,13 @@ impl App {
                 // Portals restored with the snapshot need enumerating; stale runtime state of
                 // the replaced ones is pruned on the way.
                 self.refresh_portals();
+                // A snapshot saved with `include_wallpaper` restores the desktop wallpaper too;
+                // a missing file or a failing shell reports but never blocks the layout restore.
+                if let Some(path) = wallpaper {
+                    if !pecofence_platform::sysparams::set_desktop_wallpaper(&path) {
+                        tracing::warn!(path, "snapshots.restore: wallpaper not applied");
+                    }
+                }
                 self.schedule_save();
                 self.push_settings_state();
                 Ok(mutation(true, backup, json!({ "restored": target })))
@@ -888,6 +914,16 @@ impl App {
                     self.push_settings_state();
                 }
                 Ok(mutation(changed, None, json!({ "deleted": target })))
+            }
+            Method::SnapshotsRename { id, name } => {
+                let name = checked_name("snapshot name", name)?;
+                let target = self.resolve_snapshot(id)?;
+                let changed = self.state.rename_snapshot(target, &name);
+                if changed {
+                    self.schedule_save();
+                    self.push_settings_state();
+                }
+                Ok(mutation(changed, None, json!({ "renamed": target })))
             }
 
             Method::ConfigExport { path } => self.ipc_config_export(path),
@@ -1053,7 +1089,7 @@ impl App {
         key: &str,
         origin: super::settings::ConfigSource,
     ) -> IpcResult {
-        let cfg = pecofence_core::ConfigStore::parse_file(source).map_err(|e| {
+        let cfg = self.state.parse_import_file(source).map_err(|e| {
             IpcError::new(
                 ErrorCode::ValidationFailed,
                 format!(
@@ -1328,6 +1364,8 @@ impl App {
             spacing_y: f.view.spacing_y,
             hide_scrollbar: f.view.hide_scrollbar.unwrap_or(false),
             lock_scroll: f.view.lock_scroll.unwrap_or(false),
+            shelf_3d: f.view.shelf_3d(),
+            depth_scale: f.view.depth_scale(),
             portal,
             // Only the fence the window currently shows has a measured layout.
             fit: (connected && measure)
@@ -1568,7 +1606,7 @@ impl App {
             return None;
         }
         // Room is guaranteed now, so `save_snapshot`'s eviction cannot trigger.
-        Some(self.state.save_snapshot(&auto_snapshot_name()))
+        Some(self.state.save_snapshot(&auto_snapshot_name(), None))
     }
 
     /// Quick-hide state; `None` before the desktop anchor exists.

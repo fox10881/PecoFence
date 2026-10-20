@@ -147,6 +147,12 @@
     border: 1px solid var(--control-stroke); border-bottom-color: var(--control-stroke-bottom); font-size: 14px; line-height: 20px; user-select: text; }
   input[type=text]:focus, input[type=time]:focus, input[type=number]:focus, input[type=email]:focus, textarea:focus { outline: none; border-bottom: 2px solid var(--accent); background-color: var(--card); }
   input::placeholder { color: var(--text3); }
+  .snapname { display: block; width: 100%; min-width: 0; height: 22px; padding: 0 4px; margin: -1px -5px;
+    background: transparent; border-color: transparent; }
+  .snapname:hover { border-bottom-color: var(--control-stroke-bottom); }
+  .snapname:focus { background: var(--control); border-color: var(--control-stroke); border-bottom: 2px solid var(--accent); }
+  .snapwall { display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
+  .snapwall input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
   button { padding: 0 12px; min-width: 96px; }
   button:active, select:active { background-color: var(--control-pressed); color: var(--text2); }
   button:disabled, select:disabled { color: var(--text-disabled); background-color: var(--control-disabled); border-color: var(--control-stroke); }
@@ -479,6 +485,9 @@
         <div class="sliderctl"><input type="range" id="fenceGapY" min="0" max="64" step="4"><span class="sliderval" id="fenceGapYVal"></span><div class="toggle" role="switch" tabindex="0" id="fenceGapYOn"></div></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE762;</span><div><div class="t">隐藏滚动条</div><div class="s">完全不绘制滚动条；鼠标滚轮仍可滚动</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="hideScrollbar"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE72E;</span><div><div class="t">锁定滚动</div><div class="s">完全禁止滚动；滚轮、拖动和自动滚动都不起作用，内容固定在顶部，适合静态橱窗布局</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="lockScroll"></div></div>
+      <div class="card"><div class="l"><span class="ic">&#xF0CE;</span><div><div class="t">3D 倾斜层架</div><div class="s">把栅栏沿纵向倾斜成平行四边形以贴合斜置壁纸；左右边缘顶部各留一个手柄，分别调整两侧高度</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="shelf3d"></div></div>
+      <div class="card"><div class="l"><span class="ic">&#xE799;</span><div><div class="t">纵深缩放</div><div class="s">图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大</div></div></div>
+        <div class="sliderctl"><input type="range" id="fenceDepth" min="0" max="1" step="0.05"><span class="sliderval" id="fenceDepthVal"></span></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE745;</span><div><div class="t">自动高度</div><div class="s">高度跟随内容行数，内容增减时平滑过渡</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="autoHeight"></div></div>
       <h3>行为</h3>
       <div class="card"><div class="l"><span class="ic">&#xE72E;</span><div><div class="t">锁定位置和大小</div><div class="s">边框不再可拖动缩放；标题仍可点击、右键、双击</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="locked"></div></div>
@@ -535,7 +544,7 @@
       <h3>布局快照</h3>
       <div class="group">
         <div class="card"><div class="l"><span class="ic">&#xE722;</span><div><div class="t">把当前布局存为快照</div><div class="s">记录所有栅栏的位置、大小和内容，随时恢复</div></div></div>
-          <div class="actions"><input type="text" id="snapName" aria-label="快照名称（可选）" placeholder="快照名称（可选）"><button class="accent" id="snapSave">保存快照</button></div></div>
+          <div class="actions"><input type="text" id="snapName" aria-label="快照名称（可选）" placeholder="快照名称（可选）"><label class="snapwall"><input type="checkbox" id="snapWall">包含当前壁纸</label><button class="accent" id="snapSave">保存快照</button></div></div>
         <div class="rows" id="snapList"></div>
       </div>
       <h3 id="swapHeading">多显示器</h3>
@@ -1013,6 +1022,13 @@
     bindSlider('fenceCustomSizeOn', 'fenceCustomSize', 'fenceCustomSizeVal', 'customIconSize');
     bindSlider('fenceGapXOn', 'fenceGapX', 'fenceGapXVal', 'spacingX');
     bindSlider('fenceGapYOn', 'fenceGapY', 'fenceGapYVal', 'spacingY');
+    // 纵深缩放: a plain 0..1 slider (not an optional override), shown as a percent.
+    const depth = document.getElementById('fenceDepth'), depthVal = document.getElementById('fenceDepthVal');
+    depth.disabled = !f.shelf3d;
+    if (document.activeElement !== depth) depth.value = f.depthScale ?? 0;
+    depthVal.textContent = Math.round((f.depthScale ?? 0) * 100) + '%';
+    depth.oninput = () => { depthVal.textContent = Math.round(depth.value * 100) + '%'; };
+    depth.onchange = () => setFence(f.id, 'depthScale', Number(depth.value));
     document.getElementById('fenceDock').onclick = () => { setFence(f.id, 'dockTop', null); toast(t("已停靠到屏幕顶部")); };
     ringFence();
   }
@@ -1201,7 +1217,7 @@
   };
   document.getElementById('applyRules').onclick = () => send({ type: 'action', name: 'applyRules' });
   document.querySelectorAll('#templates [data-template]').forEach(b => { b.onclick = () => send({ type: 'action', name: 'addTemplate', template: b.dataset.template }); });
-  document.getElementById('snapSave').onclick = () => { const n = document.getElementById('snapName').value; send({ type: 'action', name: 'saveSnapshot', snapshotName: n }); document.getElementById('snapName').value = ''; };
+  document.getElementById('snapSave').onclick = () => { const n = document.getElementById('snapName').value; send({ type: 'action', name: 'saveSnapshot', snapshotName: n, includeWallpaper: document.getElementById('snapWall').checked }); document.getElementById('snapName').value = ''; };
   document.getElementById('cfgExport').onclick = () => send({ type: 'action', name: 'exportConfig' });
   document.getElementById('cfgImport').onclick = () => send({ type: 'action', name: 'importConfig' });
   document.getElementById('swapDo').onclick = () => { const a = document.getElementById('swapA').value, b = document.getElementById('swapB').value; if (a && b && a !== b) send({ type: 'action', name: 'swapMonitors', a, b }); else toast(t("请选择两个不同的显示器"), true); };
@@ -1214,12 +1230,37 @@
       const div = document.createElement('div');
       div.className = 'card';
       div.dataset.rowId = sn.id;
-      div.innerHTML = `<div class="l"><div><div class="t">${esc(sn.name)}</div><div class="s">${esc(sn.date)} · ${esc(tf("{0} 个栅栏", sn.fenceCount))}</div></div></div>
+      // The automatic restore backup has a fixed id and no user-owned name: it renders as the
+      // localized label (whatever its stored name says) and is never editable.
+      const auto = !!sn.isAutoBackup;
+      div.innerHTML = `<div class="l"><div><div class="t">${auto ? esc(t("恢复快照前")) : `<input type="text" class="snapname" data-act="name" aria-label="${esc(t("快照名称（可选）"))}">`}</div><div class="s">${esc(sn.date)} · ${esc(tf("{0} 个栅栏", sn.fenceCount))}</div>${sn.wallpaperPath ? `<div class="s">${esc(t("已随壁纸保存"))}</div>` : ''}</div></div>
         <div class="actions"><button data-act="restore">${esc(t("恢复"))}</button><button class="iconbtn" title="${esc(t("删除"))}" data-act="del">&#xE74D;</button></div>`;
       div.querySelector('[data-act=restore]').onclick = () => send({ type: 'action', name: 'restoreSnapshot', id: sn.id });
       div.querySelector('[data-act=del]').onclick = () => send({ type: 'action', name: 'deleteSnapshot', id: sn.id });
-      div.querySelector('[data-act=restore]').setAttribute('aria-label', t("恢复快照：") + sn.name);
-      div.querySelector('[data-act=del]').setAttribute('aria-label', t("删除快照：") + sn.name);
+      if (!auto) {
+        // The name is the edit affordance: it never goes through innerHTML (user text stays
+        // out of markup), and a commit fires once per focus session — Enter commits then
+        // blurs, blur commits, Escape restores without committing.
+        const nameIn = div.querySelector('.snapname');
+        nameIn.value = sn.name;
+        let committed = false;
+        const commitName = () => {
+          if (committed) return;
+          committed = true;
+          const name = nameIn.value.trim();
+          if (name && name !== sn.name) send({ type: 'action', name: 'renameSnapshot', id: sn.id, snapshotName: name });
+          else nameIn.value = sn.name;
+        };
+        nameIn.addEventListener('focus', () => { committed = false; });
+        nameIn.addEventListener('blur', commitName);
+        nameIn.addEventListener('keydown', e => {
+          if (e.key === 'Enter') { commitName(); nameIn.blur(); }
+          else if (e.key === 'Escape') { committed = true; nameIn.value = sn.name; nameIn.blur(); }
+        });
+      }
+      const displayName = auto ? t("恢复快照前") : sn.name;
+      div.querySelector('[data-act=restore]').setAttribute('aria-label', t("恢复快照：") + displayName);
+      div.querySelector('[data-act=del]').setAttribute('aria-label', t("删除快照：") + displayName);
       sl.appendChild(div);
     });
     restoreFocus(sl, focus);

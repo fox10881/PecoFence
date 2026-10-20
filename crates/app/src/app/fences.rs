@@ -264,6 +264,14 @@ impl App {
             );
             w.set_hide_scrollbar(shown.view.hide_scrollbar == Some(true));
             w.set_lock_scroll(shown.view.lock_scroll == Some(true));
+            // 3D shelf: the shown tab's flags drive the window; the skew itself lives
+            // on the host's geometry (the parallelogram is the window's shape).
+            w.set_shelf(
+                shown.view.shelf_3d(),
+                f.geometry.skew_left.unwrap_or(0.0),
+                f.geometry.skew_right.unwrap_or(0.0),
+                shown.view.depth_scale(),
+            );
             w.set_column_widths(
                 shown
                     .view

@@ -505,6 +505,7 @@ pub fn set_standard_cursor(kind: StandardCursor) {
         StandardCursor::Arrow => IDC_ARROW,
         StandardCursor::SizeAll => IDC_SIZEALL,
         StandardCursor::SizeWE => IDC_SIZEWE,
+        StandardCursor::SizeNS => IDC_SIZENS,
         StandardCursor::Hand => IDC_HAND,
         StandardCursor::IBeam => IDC_IBEAM,
     };
@@ -520,6 +521,7 @@ pub enum StandardCursor {
     Arrow,
     SizeAll,
     SizeWE,
+    SizeNS,
     Hand,
     IBeam,
 }

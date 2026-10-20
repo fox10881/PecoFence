@@ -16,7 +16,8 @@ portal folders.
 
 1. **Snapshot first.** Before bulk changes run `snapshot save before-<task>`, keep `.snapshot.id` and
    tell the user `pecofence-cli snapshot restore <id>` undoes the layout. Snapshots hold layouts only
-   (fences, geometry, membership), never settings, rules or files.
+   (fences, geometry, membership), never settings, rules or files — `snapshot save --wallpaper`
+   optionally adds the desktop wallpaper path, and `snapshot rename <id> <name>` renames one.
 2. **Portals are real folders.** A fence with `"kind": "portal"` shows a folder on disk; `item move`
    into or out of it moves the real files (undo only via Explorer). Run such a move with `--dry-run`
    first and show the user the `fileMove` entries and their `destination`. Pair `--glob` with `--from`.

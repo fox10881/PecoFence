@@ -39,6 +39,22 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 While PecoFence provides the rigid grid layout and zero-gap 2:3 poster containers, Windows still natively generates standard square icons. 
 To achieve the exact physical game shelf look shown in the screenshot, you need **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. BoxArt Studio is the essential companion tool that batch-transforms your standard Windows game shortcuts and folders into beautiful, high-resolution 2:3 physical game boxes. 
 
+### 📸 Portable Layout Snapshots
+
+Layout snapshots are fully portable backups now: rename a save file right in the snapshot list, and optionally bundle the current desktop wallpaper into the save file itself. The layout then restores pixel-perfect on any PC — even one that has never seen your wallpaper.
+
+### 🧊 3D Shelf Mode (Experimental)
+
+Shear any fence into a perfect parallelogram so its rows can follow the shelves of an angled wallpaper: drag the vertical edge handles to tilt one side of the fence, and icons scale progressively toward the nearer, lower edge — adjustable with the **Depth Scale Factor** slider in the fence's settings.
+
+> **⚠️ Known issue — help wanted.** The mouse movement, alignment, and hit-testing inside the skewed parallelogram are working perfectly. However, when using a 3D perspective wallpaper, the first row aligns perfectly with the shelf, but subsequent rows do not due to the wallpaper's vanishing point perspective. If any developer knows how to perfectly solve this multi-row perspective math, pull requests are highly welcome!
+
+### 🖼️ Ready-made 2D Wallpapers
+
+The repository ships a curated pack of flat front-elevation shelf wallpapers in [`assets/wallpapers/`](assets/wallpapers/) that align perfectly with the flat, unsheared fences — pick one, arrange your shelves, done.
+
+> **💡 Pro Tip:** We have provided ready-to-use 2D wallpapers that align perfectly with the flat fences. For an amazing setup, we highly recommend taking these 2D images, running them through an AI video generator to animate them, and applying them to your desktop using [Lively Wallpaper](https://github.com/rocksdanister/lively).
+
 <a id="ask-your-ai-to-organize-it"></a>
 
 ## Your desktop. Configured by your AI
@@ -114,7 +130,8 @@ Grab what you need, then press **Esc** to return.
 | **Familiar file handling** | File Explorer context menus, drag and drop, copy/paste, multi-select, thumbnails and icon/list/details views. |
 | **Keep folders close** | Put a live folder on your desktop. Browse subfolders and see changes as they happen. |
 | **Space when you need it** | Roll a fence up to its title. Hover to expand. Lock a layout you like. Double-click the desktop to hide your fences. Double-click again to bring them back. |
-| **A way back** | Layout snapshots, daily backups, configuration import/export and swapping fences between displays. |
+| **A way back** | Layout snapshots — rename them and embed the wallpaper for a fully portable backup — daily backups, configuration import/export and swapping fences between displays. |
+| **3D Shelf Mode (experimental)** | Shear a fence into a parallelogram so its rows follow the shelves of an angled wallpaper, with per-icon depth scaling toward the nearer edge. |
 | **A small footprint** | A native Rust application that idles at about 40 MB of memory in Task Manager. The WebView2 settings panel loads on demand. |
 
 Automatic sorting rules keep files in their original locations. File moves you

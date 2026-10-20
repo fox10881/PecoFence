@@ -836,8 +836,12 @@ pub fn build_conds(args: &RuleAddArgs) -> Result<Vec<Cond>, IpcError> {
 fn run_snapshot(ctx: &Ctx, cmd: SnapshotCmd) -> Result<Reply, IpcError> {
     match cmd {
         SnapshotCmd::List => ctx.call(Method::SnapshotsList),
-        SnapshotCmd::Save { name } => ctx.call(Method::SnapshotsSave { name }),
+        SnapshotCmd::Save { name, wallpaper } => ctx.call(Method::SnapshotsSave {
+            name,
+            include_wallpaper: wallpaper,
+        }),
         SnapshotCmd::Restore { id } => ctx.call(Method::SnapshotsRestore { id }),
+        SnapshotCmd::Rename { id, name } => ctx.call(Method::SnapshotsRename { id, name }),
         SnapshotCmd::Delete { id } => ctx.call(Method::SnapshotsDelete { id }),
     }
 }

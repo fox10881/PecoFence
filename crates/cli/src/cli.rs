@@ -516,17 +516,30 @@ pub enum SnapshotCmd {
     #[command(after_help = "Example: pecofence-cli snapshot list")]
     List,
     /// Save the current layout as a snapshot
-    #[command(after_help = "Example: pecofence-cli snapshot save before-cleanup")]
+    #[command(
+        after_help = "Example: pecofence-cli snapshot save before-cleanup\n         pecofence-cli snapshot save gaming-setup --wallpaper\n\n--wallpaper also stores the current desktop wallpaper; a restore of this snapshot re-applies it."
+    )]
     Save {
         /// Snapshot name
         name: String,
+        /// Also store the current desktop wallpaper and restore it with the snapshot
+        #[arg(long)]
+        wallpaper: bool,
     },
     /// Restore a snapshot (the current layout is snapshotted first)
     #[command(after_help = "Example: pecofence-cli snapshot restore 3f9c2a1e
-         (snapshot.id or a unique id prefix from `snapshot save` / `snapshot list`; a name works only while it is unique)")]
+         (snapshot.id or a unique id prefix from `snapshot save` / `snapshot list`; a name works only while it is unique)\n\nA snapshot saved with --wallpaper restores the desktop wallpaper too.")]
     Restore {
         /// Snapshot id, unique id prefix, or (unique) name
         id: String,
+    },
+    /// Rename a snapshot
+    #[command(after_help = "Example: pecofence-cli snapshot rename 3f9c2a1e work-setup")]
+    Rename {
+        /// Snapshot id, unique id prefix, or (unique) name
+        id: String,
+        /// New snapshot name
+        name: String,
     },
     /// Delete a snapshot
     #[command(after_help = "Example: pecofence-cli snapshot delete 3f9c2a1e")]

@@ -246,6 +246,8 @@
     "布局快照": "Instantáneas de distribución",
     "把当前布局存为快照": "Guardar la distribución actual",
     "快照名称（可选）": "Nombre de la instantánea (opcional)",
+    "包含当前壁纸": "Incluir el fondo actual",
+    "已随壁纸保存": "Guardado con el fondo",
     "保存快照": "Guardar instantánea",
     "多显示器": "Varias pantallas",
     "交换两个显示器上的栅栏": "Intercambiar grupos entre dos pantallas",
@@ -558,5 +560,9 @@
     "隐藏滚动条": "Ocultar barra de desplazamiento",
     "完全不绘制滚动条；鼠标滚轮仍可滚动": "La barra nunca se dibuja; la rueda del ratón sigue desplazando",
     "锁定滚动": "Bloquear desplazamiento",
-    "完全禁止滚动；滚轮、拖动和自动滚动都不起作用，内容固定在顶部，适合静态橱窗布局": "Desactiva todo el desplazamiento; la rueda, el arrastre y el desplazamiento automático no hacen nada y el contenido queda fijo arriba — para diseños estáticos"
+    "完全禁止滚动；滚轮、拖动和自动滚动都不起作用，内容固定在顶部，适合静态橱窗布局": "Desactiva todo el desplazamiento; la rueda, el arrastre y el desplazamiento automático no hacen nada y el contenido queda fijo arriba — para diseños estáticos",
+    "3D 倾斜层架": "Estantería 3D inclinada",
+    "把栅栏沿纵向倾斜成平行四边形以贴合斜置壁纸；左右边缘顶部各留一个手柄，分别调整两侧高度": "Inclina la valla formando un paralelogramo para fondos angulados; un asa en la parte superior de cada borde lateral ajusta la altura de ese lado",
+    "纵深缩放": "Escala de profundidad",
+    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Los iconos se reducen hacia el borde lejano simulando profundidad; con 0 todos tienen el mismo tamaño"
 }

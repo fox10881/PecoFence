@@ -281,6 +281,19 @@ pub struct FenceViewState {
     /// 锁定滚动 (FenceView.lock_scroll): no scrolling at all — `scroll_max()` reports 0,
     /// so every existing clamp pins the offset to the top and the bar never appears.
     pub(super) lock_scroll: bool,
+    /// 3D 层架 (FenceView.shelf_3d): the window is the axis-aligned bounding box of a
+    /// Y-sheared parallelogram. `skew_left` / `skew_right` are how far the left / right
+    /// edge tops sit below the window top in DIPs (at least one is 0 — the higher edge);
+    /// they persist as `NormGeometry.skew_*` and every slab point (x, y) maps to window
+    /// (x, y + lerp(skew_left, skew_right, x / width)). See `shelf.rs`.
+    pub(super) shelf_3d: bool,
+    pub(super) skew_left: f32,
+    pub(super) skew_right: f32,
+    /// 纵深缩放 (FenceView.depth_scale): icon scale intensity toward the far edge (0..=1).
+    pub(super) depth_scale: f32,
+    /// A 3D-shelf edge handle is being dragged (which edge, the slab height when the
+    /// drag began, and the screen pixel it grabbed the handle at).
+    pub(super) skew_drag: Option<SkewDrag>,
     /// Per-fence colour wash / title colour / title size.
     pub(super) style: FenceStyle,
     /// Icon grid spacing (FenceView.spacing).

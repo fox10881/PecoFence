@@ -37,6 +37,22 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 PecoFence aporta la cuadrícula rígida y los contenedores de póster 2:3 sin huecos, pero Windows sigue generando iconos cuadrados estándar.
 Para conseguir el aspecto exacto de estantería física de videojuegos que se ve en la captura, necesitas **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. BoxArt Studio es la herramienta complementaria esencial que convierte por lotes tus accesos directos de juegos y carpetas de Windows en elegantes carátulas 2:3 de alta resolución.
 
+### 📸 Instantáneas de distribución portátiles
+
+Las instantáneas de distribución ahora son copias de seguridad totalmente portátiles: renombra un archivo guardado directamente en la lista de instantáneas y, si quieres, empaqueta el fondo de pantalla actual dentro del propio archivo. La distribución se restaura entonces al píxel en cualquier PC — incluso en uno que nunca haya visto tu fondo.
+
+### 🧊 Estantería 3D inclinada (experimental)
+
+Cizalla cualquier grupo hasta convertirlo en un paralelogramo perfecto para que sus filas sigan las baldas de un fondo de pantalla en ángulo: arrastra los tiradores verticales del borde superior de un lado para inclinar el grupo, y los iconos se escalan progresivamente hacia el borde más cercano y bajo — ajustable con el deslizador **Factor de profundidad** en la configuración del grupo.
+
+> **⚠️ Problema conocido — se agradece ayuda.** El movimiento del ratón, la alineación y la detección de clics dentro del paralelogramo inclinado funcionan perfectamente. Sin embargo, con un fondo de pantalla de perspectiva 3D, la primera fila se alinea perfectamente con la balda, pero las siguientes no, debido a la perspectiva del punto de fuga del fondo. Si algún desarrollador sabe resolver perfectamente esta matemática de perspectiva en varias filas, ¡los pull requests son más que bienvenidos!
+
+### 🖼️ Fondos de pantalla 2D listos para usar
+
+El repositorio incluye un paquete seleccionado de fondos de estanterías en vista frontal plana en [`assets/wallpapers/`](../../assets/wallpapers/), que se alinean a la perfección con los grupos planos sin inclinar: elige uno, coloca tus baldas y listo.
+
+> **💡 Consejo profesional:** Hemos incluido fondos 2D listos para usar que se alinean perfectamente con los grupos planos. Para una configuración espectacular, te recomendamos pasar estas imágenes 2D por un generador de vídeo con IA para animarlas y aplicarlas a tu escritorio con [Lively Wallpaper](https://github.com/rocksdanister/lively).
+
 <a id="pídele-a-tu-ia-que-lo-organice"></a>
 
 ## Tu escritorio, configurado por tu IA
@@ -113,6 +129,7 @@ Toma lo que necesites y presiona **Esc** para volver.
 | **Ten tus carpetas a mano** | Coloca una carpeta en vivo sobre el escritorio. Navega por sus subcarpetas y ve los cambios al momento. |
 | **Espacio cuando lo necesitas** | Contrae un grupo hasta su título. Pasa el cursor para expandirlo. Bloquea la distribución que te gusta. Haz doble clic en el escritorio para ocultar los grupos. Vuelve a hacer doble clic para recuperarlos. |
 | **Siempre puedes volver atrás** | Instantáneas de distribución, copias de seguridad diarias, importación y exportación de la configuración e intercambio entre pantallas. |
+| **Estantería 3D inclinada (experimental)** | Cizalla un grupo hasta formar un paralelogramo para que sus filas sigan las baldas de un fondo en ángulo, con escalado de profundidad de los iconos hacia el borde cercano. |
 | **Huella mínima** | Una aplicación nativa escrita en Rust que en reposo ocupa unos 40 MB de memoria (según el Administrador de tareas). El panel de Configuración en WebView2 se carga solo cuando hace falta. |
 
 Las reglas de organización automática dejan los archivos en su ubicación original. Los movimientos

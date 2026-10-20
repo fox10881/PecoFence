@@ -81,6 +81,67 @@ pub(super) fn on_nchittest(
     if left < 0 || top < 0 || left >= w || top >= h {
         return Some(msg::HTNOWHERE);
     }
+    if v.shelf_3d && !v.rolled_up {
+        // The two top-edge handles are client-side drags (WM_LBUTTONDOWN starts
+        // them). They are checked first: a handle's grab zone reaches a few DIPs
+        // above its edge top — outside the slab for the lower edge — and that
+        // overshoot must still be grabbable, not transparent or a resize corner.
+        if v.handle_at(left as f32 / scale, top as f32 / scale)
+            .is_some()
+        {
+            return Some(msg::HTCLIENT);
+        }
+        let in_rail = left < v.content_x;
+        // The standard 8-way borders still resize the bounding box in shelf mode.
+        // They are checked before the parallelogram's transparent test, so even
+        // the empty corner zones resize — a resize never "misses" the fence.
+        if !v.locked {
+            let right_border = if right <= border
+                && top >= title_h.max(border)
+                && !in_rail
+                && bottom > border
+                && v.scroll_max() > 0.0
+            {
+                (SCROLLBAR_RESIZE_BORDER_DIP * scale).round() as i32
+            } else {
+                border
+            };
+            let code = match (
+                left < border,
+                right <= right_border,
+                top < border,
+                bottom <= border,
+            ) {
+                (true, _, true, _) => msg::HTTOPLEFT,
+                (_, true, true, _) => msg::HTTOPRIGHT,
+                (true, _, _, true) => msg::HTBOTTOMLEFT,
+                (_, true, _, true) => msg::HTBOTTOMRIGHT,
+                (true, _, _, _) => msg::HTLEFT,
+                (_, true, _, _) => msg::HTRIGHT,
+                (_, _, true, _) => msg::HTTOP,
+                (_, _, _, true) => msg::HTBOTTOM,
+                _ => 0,
+            };
+            if code != 0 {
+                return Some(code);
+            }
+        }
+        // The visible fence is the parallelogram inside this rectangle; the rest
+        // of the HWND is transparent to clicks.
+        let Some((_, sy)) = v.slab_point(left, top) else {
+            return Some(msg::HTTRANSPARENT);
+        };
+        let sy = (sy * scale).round() as i32;
+        // The title row (or the tab column) still moves the window; controls and
+        // content stay client.
+        let on_control =
+            v.tab_at(left, top).is_some() || v.up_button_at(left, top) || v.chevron_at(left, top);
+        return Some(if !on_control && (sy < title_h || in_rail) {
+            msg::HTCAPTION
+        } else {
+            msg::HTCLIENT
+        });
+    }
     let rolled = v.rolled_up;
     // Tab headers and the title bar's buttons take clicks (switch / drag out,
     // up, roll); the rest of the title row moves the window, and so does the

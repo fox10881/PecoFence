@@ -253,6 +253,8 @@
     "布局快照": "Layout snapshots",
     "把当前布局存为快照": "Save current layout",
     "快照名称（可选）": "Snapshot name (optional)",
+    "包含当前壁纸": "Include current wallpaper",
+    "已随壁纸保存": "Saved with wallpaper",
     "保存快照": "Save snapshot",
     "多显示器": "Multiple displays",
     "交换两个显示器上的栅栏": "Swap fences between two displays",
@@ -558,5 +560,9 @@
     "隐藏滚动条": "Hide scrollbar",
     "完全不绘制滚动条；鼠标滚轮仍可滚动": "The scrollbar is never drawn; the mouse wheel still scrolls",
     "锁定滚动": "Lock scrolling",
-    "完全禁止滚动；滚轮、拖动和自动滚动都不起作用，内容固定在顶部，适合静态橱窗布局": "Disables all scrolling; the wheel, dragging and auto-scroll do nothing and content stays pinned to the top — for static display layouts"
+    "完全禁止滚动；滚轮、拖动和自动滚动都不起作用，内容固定在顶部，适合静态橱窗布局": "Disables all scrolling; the wheel, dragging and auto-scroll do nothing and content stays pinned to the top — for static display layouts",
+    "3D 倾斜层架": "3D shelf mode",
+    "把栅栏沿纵向倾斜成平行四边形以贴合斜置壁纸；左右边缘顶部各留一个手柄，分别调整两侧高度": "Shears the fence into a parallelogram to match angled wallpapers; a handle at the top of each side edge adjusts that side's height",
+    "纵深缩放": "Depth scale",
+    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Icons shrink progressively toward the far edge for a perspective effect; at 0 they all stay the same size"
 }
