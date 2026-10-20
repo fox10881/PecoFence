@@ -8,10 +8,16 @@ pub struct FenceViewState {
     pub title: String,
     pub rolled_up: bool,
     pub is_inbox: bool,
+    pub desktop: bool,
+    pub desktop_cells: Vec<CellRect>,
+    pub desktop_regions: Vec<RECT>,
     /// Expanded window height in physical pixels (restored when un-rolling).
     pub expanded_h_px: i32,
     pub icon_size: u32,
     pub label_lines: u8,
+    pub(super) content_dirty: bool,
+    pub(super) content_ink: Option<ColorF>,
+    pub(super) content_draws: u64,
     pub items: Vec<ItemView>,
     /// Tabs shown in the title row (the host itself first). One entry = plain title.
     pub(super) tabs: Vec<TabView>,
@@ -145,6 +151,8 @@ pub struct FenceViewState {
     pub(super) icons_pending: bool,
     pub(super) hover: Option<usize>,
     pub(super) title_hover: bool,
+    /// An explicit collapse stays collapsed until explicitly opened; hover cannot undo it.
+    pub(super) manual_fold_latched: bool,
     pub(super) selected: HashSet<usize>,
     /// Scroll offset in DIPs as drawn and hit-tested; while `scroll_anim` runs it is the
     /// animated value (WinUI ScrollPresenter: wheel, keyboard and paging glide, thumb drags and
@@ -317,6 +325,8 @@ pub struct FenceViewState {
     /// Auto-height settle (250 ms point-to-point): the bottom edge glides to the fitting
     /// height. Separate from `roll_anim` so it never blocks hover-peek or the chevron.
     pub(super) height_anim: Option<Tween>,
+    /// Liquid-glass frame already drawn before SetWindowPos publishes its new bounds.
+    pub(super) prepared_height_frame: Option<(i32, i32)>,
     /// Whole-window fade in progress and its generation (see `VisFade`).
     pub(super) vis_fade: Option<VisFade>,
     pub(super) vis_gen: usize,
@@ -434,7 +444,7 @@ impl FenceViewState {
     /// content starts at the window top — every title hit zone and the content offset
     /// (`head_px`) follow this one number.
     pub(super) fn title_h_px(&self) -> i32 {
-        if self.title_hidden {
+        if self.title_hidden || self.desktop {
             0
         } else {
             (self.theme.title_height * self.scale()).round() as i32

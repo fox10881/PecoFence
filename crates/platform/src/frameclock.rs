@@ -7,7 +7,8 @@
 //! at 15.6 ms granularity and drifts against vsync; the compositor clock does not.
 //!
 //! One thread waits on the clock and calls `on_frame` (typically a `PostMessage`) once per
-//! vsync **while armed**. Consumers call [`FrameClock::request`] whenever they still have
+//! compositor tick (60 Hz idle material, up to 120 Hz interaction) **while armed**.
+//! Consumers call [`FrameClock::request`] whenever they still have
 //! work for the next frame; the clock disarms itself after each delivered frame, so an idle
 //! app costs nothing.
 
@@ -22,8 +23,9 @@ use windows_core::{PCSTR, PCWSTR};
 const COMPOSITOR_TIMEOUT_MS: u32 = 16;
 /// Some Windows builds occasionally return from the zero-handle wait without waiting at all.
 const IMMEDIATE_WAIT: Duration = Duration::from_millis(1);
-/// Pace that fast-return path without limiting a real high-refresh compositor signal.
-const FALLBACK_FRAME: Duration = Duration::from_micros(8_333);
+/// Idle material cadence and faster interaction cadence, both with bounded delivery.
+const CLIENT_FRAME: Duration = Duration::from_nanos(16_666_667);
+const INTERACTION_FRAME: Duration = Duration::from_nanos(8_333_334);
 
 /// `DCompositionWaitForCompositorClock(count, handles, timeout_ms)`.
 type WaitForCompositorClock = unsafe extern "system" fn(u32, *const HANDLE, u32) -> u32;
@@ -56,6 +58,8 @@ fn compositor_clock() -> Option<WaitForCompositorClock> {
 
 struct Shared {
     armed: AtomicBool,
+    delivery_busy: AtomicBool,
+    fast_motion: AtomicBool,
     quit: AtomicBool,
     wake: Mutex<()>,
     cv: Condvar,
@@ -71,6 +75,8 @@ impl FrameClock {
     pub fn start(on_frame: impl Fn() + Send + 'static) -> Self {
         let shared = Arc::new(Shared {
             armed: AtomicBool::new(false),
+            delivery_busy: AtomicBool::new(false),
+            fast_motion: AtomicBool::new(false),
             quit: AtomicBool::new(false),
             wake: Mutex::new(()),
             cv: Condvar::new(),
@@ -83,10 +89,12 @@ impl FrameClock {
                 if clock.is_none() {
                     tracing::info!("compositor clock unavailable; pacing frames with DwmFlush");
                 }
+                let mut last_frame = None;
                 loop {
                     {
                         let mut guard = worker.wake.lock().unwrap();
-                        while !worker.armed.load(Ordering::Acquire)
+                        while (!worker.armed.load(Ordering::Acquire)
+                            || worker.delivery_busy.load(Ordering::Acquire))
                             && !worker.quit.load(Ordering::Acquire)
                         {
                             guard = worker.cv.wait(guard).unwrap();
@@ -112,14 +120,23 @@ impl FrameClock {
                         }
                     };
                     let waited_for = wait_started.elapsed();
-                    if waited == WAIT_FAILED || waited_for < IMMEDIATE_WAIT {
-                        // On unsupported or fast-returning implementations, prevent a busy loop
-                        // while still giving short client tweens several samples.
-                        if let Some(left) = FALLBACK_FRAME.checked_sub(waited_for) {
+                    let elapsed = last_frame.map_or(waited_for, |t: Instant| t.elapsed());
+                    let period = if worker.fast_motion.load(Ordering::Acquire) {
+                        INTERACTION_FRAME
+                    } else {
+                        CLIENT_FRAME
+                    };
+                    if last_frame.is_some() || waited == WAIT_FAILED || waited_for < IMMEDIATE_WAIT
+                    {
+                        if let Some(left) = period.checked_sub(elapsed) {
                             std::thread::sleep(left);
+                        } else if waited == WAIT_FAILED || waited_for < IMMEDIATE_WAIT {
+                            std::thread::sleep(IMMEDIATE_WAIT);
                         }
                     }
                     if worker.armed.swap(false, Ordering::AcqRel) {
+                        worker.delivery_busy.store(true, Ordering::Release);
+                        last_frame = Some(Instant::now());
                         on_frame();
                     }
                 }
@@ -134,6 +151,26 @@ impl FrameClock {
             let _guard = self.shared.wake.lock().unwrap();
             self.shared.cv.notify_one();
         }
+    }
+
+    /// Interaction starts without waiting for the next idle-material frame.
+    pub fn request_fast(&self) {
+        self.shared.fast_motion.store(true, Ordering::Release);
+        self.request();
+    }
+
+    /// A posted frame remains outstanding until UI work completes, not merely until
+    /// PostMessage returns. At most one frame can be queued or executing at a time.
+    pub fn finish_frame(&self, more: bool, fast_motion: bool) {
+        self.shared
+            .fast_motion
+            .store(fast_motion, Ordering::Release);
+        if more {
+            self.shared.armed.store(true, Ordering::Release);
+        }
+        self.shared.delivery_busy.store(false, Ordering::Release);
+        let _guard = self.shared.wake.lock().unwrap();
+        self.shared.cv.notify_one();
     }
 }
 

@@ -139,7 +139,9 @@ impl App {
 
     /// The window a fence is shown in (its own, or its tab host's).
     pub(super) fn window_for(&self, fence: FenceId) -> Option<&FenceWindow> {
-        self.fences.get(&self.state.host_of(fence))
+        self.fences
+            .get(&self.state.host_of(fence))
+            .or_else(|| self.desktop_windows.values().find(|w| w.id == fence))
     }
 
     /// After tabs/fences were added, removed, merged or split: create/destroy windows, put new
@@ -155,6 +157,7 @@ impl App {
                 w.show(true);
             }
         }
+        self.refresh_desktop();
         self.push_settings_state();
     }
 
@@ -311,6 +314,7 @@ impl App {
             self.apply_auto_height(id);
         }
         self.sync_inbox_window();
+        self.refresh_desktop();
         // Cut items that were moved away (Explorer pasted them) stop being dimmed.
         let before = self.cut_items.len();
         self.cut_items.retain(|id| self.state.item(*id).is_some());
@@ -744,16 +748,10 @@ impl App {
         }
         let mut text = i18n::format("要删除栅栏“{0}”吗？", std::slice::from_ref(&f.title));
         if icons > 0 {
-            let inbox = self
-                .state
-                .inbox_id()
-                .and_then(|id| self.state.fence(id))
-                .map(|f| f.title.clone())
-                .unwrap_or_default();
             text.push_str("\n\n");
             text.push_str(&i18n::format(
-                "其中的 {0} 个图标会回到“{1}”栅栏，文件本身不受影响。",
-                &[icons.to_string(), inbox],
+                "其中的 {0} 个图标会放回桌面，文件本身不受影响。",
+                &[icons.to_string()],
             ));
         }
         if rules > 0 {
@@ -810,6 +808,9 @@ impl App {
         self.record_bounds(fence, rect, rolled, expanded);
         if !rolled {
             self.toggle_roll(fence);
+        }
+        if let Some(w) = self.fences.get(&fence) {
+            w.allow_hover_expansion();
         }
         self.schedule_save();
     }

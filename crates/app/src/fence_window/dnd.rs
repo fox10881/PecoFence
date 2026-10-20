@@ -757,6 +757,13 @@ impl DropHandler for FenceDropHandler {
                         break 'resolve DropEffect::Move;
                     }
                     if to == d.from {
+                        if self.view.borrow().as_ref().is_some_and(|v| v.desktop) {
+                            self.queue.push(Command::MoveItemsToDesktop {
+                                items: d.items,
+                                position: Some((pt.x, pt.y)),
+                            });
+                            break 'resolve DropEffect::Move;
+                        }
                         break 'resolve DropEffect::None;
                     }
                     if let (false, Some(dest)) = (on_desktop, dest) {
@@ -933,6 +940,9 @@ impl FenceViewState {
         let exclude: &[ItemId] = internal.map(|d| d.items.as_slice()).unwrap_or(&[]);
         spot.folder = self.folder_drop_target(cx, cy, exclude);
         if spot.folder.is_some() {
+            return spot;
+        }
+        if self.desktop {
             return spot;
         }
         if let Some(d) = internal

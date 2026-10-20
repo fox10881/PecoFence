@@ -12,6 +12,28 @@ impl App {
     pub(super) fn on_desktop_marquee(&mut self, event: MarqueeEvent) {
         match event {
             MarqueeEvent::Pressed { additive } => {
+                self.desktop_marquee_base = self
+                    .desktop_windows
+                    .values()
+                    .map(|w| {
+                        (
+                            w.id,
+                            if additive {
+                                w.desktop_selection()
+                            } else {
+                                Vec::new()
+                            },
+                        )
+                    })
+                    .collect();
+                for w in self.desktop_windows.values() {
+                    let base = self
+                        .desktop_marquee_base
+                        .get(&w.id)
+                        .cloned()
+                        .unwrap_or_default();
+                    w.select_desktop_rect(RECT::default(), &base);
+                }
                 let kept = if additive {
                     self.ctx.behavior.selection.borrow().clone()
                 } else {
@@ -23,6 +45,14 @@ impl App {
                 self.marquee_draws_band = pecofence_platform::shell_icons::desktop_icons_hidden();
             }
             MarqueeEvent::Moved(rect) => {
+                for w in self.desktop_windows.values() {
+                    let base = self
+                        .desktop_marquee_base
+                        .get(&w.id)
+                        .cloned()
+                        .unwrap_or_default();
+                    w.select_desktop_rect(rect, &base);
+                }
                 let selection = self.marquee_selection(rect);
                 self.set_fence_selection(selection);
                 if self.marquee_draws_band {
@@ -31,12 +61,27 @@ impl App {
             }
             MarqueeEvent::Released(rect) => {
                 self.hide_marquee_band();
+                let desktop_count: usize = self
+                    .desktop_windows
+                    .values()
+                    .map(|w| {
+                        let base = self
+                            .desktop_marquee_base
+                            .get(&w.id)
+                            .cloned()
+                            .unwrap_or_default();
+                        w.select_desktop_rect(rect, &base)
+                    })
+                    .sum();
+                self.desktop_marquee_base.clear();
                 let touched = !self.fences_touching(rect).is_empty();
                 let selection = self.marquee_selection(rect);
                 self.marquee_base = None;
                 let count = selection.len();
                 self.set_fence_selection(selection);
-                if touched {
+                if desktop_count > 0 {
+                    tracing::info!(count = desktop_count, "loose desktop icons selected");
+                } else if touched {
                     tracing::info!(count, "fences selected on the desktop");
                 } else if rect.right - rect.left >= MARQUEE_MIN_PX
                     && rect.bottom - rect.top >= MARQUEE_MIN_PX

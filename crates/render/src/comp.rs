@@ -5498,6 +5498,303 @@ unsafe impl Send for CompositionObject {}
 unsafe impl Sync for CompositionObject {}
 #[repr(transparent)]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompositionPath(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(
+    CompositionPath,
+    windows_core::IUnknown,
+    windows_core::IInspectable
+);
+windows_core::imp::required_hierarchy!(CompositionPath, IGeometrySource2D);
+impl CompositionPath {
+    pub(crate) fn Create<P0>(source: P0) -> windows_core::Result<Self>
+    where
+        P0: windows_core::Param<IGeometrySource2D>,
+    {
+        Self::ICompositionPathFactory(|this| unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).Create)(
+                windows_core::Interface::as_raw(this),
+                source.param().abi(),
+                &mut result__,
+            )
+            .and_then(|| windows_core::imp::Type::from_abi(result__))
+        })
+    }
+    fn ICompositionPathFactory<
+        R,
+        F: FnOnce(&ICompositionPathFactory) -> windows_core::Result<R>,
+    >(
+        callback: F,
+    ) -> windows_core::Result<R> {
+        static SHARED: windows_core::imp::FactoryCache<CompositionPath, ICompositionPathFactory> =
+            windows_core::imp::FactoryCache::new();
+        SHARED.call(callback)
+    }
+}
+impl windows_core::RuntimeType for CompositionPath {
+    const SIGNATURE: windows_core::imp::ConstBuffer =
+        windows_core::imp::ConstBuffer::for_class::<Self, ICompositionPath>();
+}
+unsafe impl windows_core::Interface for CompositionPath {
+    type Vtable = <ICompositionPath as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <ICompositionPath as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for CompositionPath {
+    const NAME: &'static str = "Windows.UI.Composition.CompositionPath";
+}
+unsafe impl Send for CompositionPath {}
+unsafe impl Sync for CompositionPath {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompositionPathGeometry(windows_core::IUnknown);
+windows_core::imp::interface_hierarchy!(
+    CompositionPathGeometry,
+    windows_core::IUnknown,
+    windows_core::IInspectable
+);
+windows_core::imp::required_hierarchy!(
+    CompositionPathGeometry,
+    IAnimationObject,
+    CompositionGeometry,
+    CompositionObject
+);
+impl CompositionPathGeometry {
+    pub(crate) fn TrimEnd(&self) -> windows_core::Result<f32> {
+        let this = &windows_core::Interface::cast::<ICompositionGeometry>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).TrimEnd)(
+                windows_core::Interface::as_raw(this),
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+    pub(crate) fn SetTrimEnd(&self, value: f32) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<ICompositionGeometry>(self)?;
+        unsafe {
+            (windows_core::Interface::vtable(this).SetTrimEnd)(
+                windows_core::Interface::as_raw(this),
+                value,
+            )
+            .ok()
+        }
+    }
+    pub(crate) fn TrimOffset(&self) -> windows_core::Result<f32> {
+        let this = &windows_core::Interface::cast::<ICompositionGeometry>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).TrimOffset)(
+                windows_core::Interface::as_raw(this),
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+    pub(crate) fn SetTrimOffset(&self, value: f32) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<ICompositionGeometry>(self)?;
+        unsafe {
+            (windows_core::Interface::vtable(this).SetTrimOffset)(
+                windows_core::Interface::as_raw(this),
+                value,
+            )
+            .ok()
+        }
+    }
+    pub(crate) fn TrimStart(&self) -> windows_core::Result<f32> {
+        let this = &windows_core::Interface::cast::<ICompositionGeometry>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).TrimStart)(
+                windows_core::Interface::as_raw(this),
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+    pub(crate) fn SetTrimStart(&self, value: f32) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<ICompositionGeometry>(self)?;
+        unsafe {
+            (windows_core::Interface::vtable(this).SetTrimStart)(
+                windows_core::Interface::as_raw(this),
+                value,
+            )
+            .ok()
+        }
+    }
+    pub(crate) fn Compositor(&self) -> windows_core::Result<Compositor> {
+        let this = &windows_core::Interface::cast::<ICompositionObject>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).Compositor)(
+                windows_core::Interface::as_raw(this),
+                &mut result__,
+            )
+            .and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub(crate) fn Dispatcher(&self) -> windows_core::Result<CoreDispatcher> {
+        let this = &windows_core::Interface::cast::<ICompositionObject>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).Dispatcher)(
+                windows_core::Interface::as_raw(this),
+                &mut result__,
+            )
+            .and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub(crate) fn Properties(&self) -> windows_core::Result<CompositionPropertySet> {
+        let this = &windows_core::Interface::cast::<ICompositionObject>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).Properties)(
+                windows_core::Interface::as_raw(this),
+                &mut result__,
+            )
+            .and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub(crate) fn StartAnimation<P1>(
+        &self,
+        propertyname: &windows_core::HSTRING,
+        animation: P1,
+    ) -> windows_core::Result<()>
+    where
+        P1: windows_core::Param<CompositionAnimation>,
+    {
+        let this = &windows_core::Interface::cast::<ICompositionObject>(self)?;
+        unsafe {
+            (windows_core::Interface::vtable(this).StartAnimation)(
+                windows_core::Interface::as_raw(this),
+                core::mem::transmute_copy(propertyname),
+                animation.param().abi(),
+            )
+            .ok()
+        }
+    }
+    pub(crate) fn StopAnimation(
+        &self,
+        propertyname: &windows_core::HSTRING,
+    ) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<ICompositionObject>(self)?;
+        unsafe {
+            (windows_core::Interface::vtable(this).StopAnimation)(
+                windows_core::Interface::as_raw(this),
+                core::mem::transmute_copy(propertyname),
+            )
+            .ok()
+        }
+    }
+    pub(crate) fn Comment(&self) -> windows_core::Result<windows_core::HSTRING> {
+        let this = &windows_core::Interface::cast::<ICompositionObject2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).Comment)(
+                windows_core::Interface::as_raw(this),
+                &mut result__,
+            )
+            .map(|| core::mem::transmute(result__))
+        }
+    }
+    pub(crate) fn SetComment(&self, value: &windows_core::HSTRING) -> windows_core::Result<()> {
+        let this = &windows_core::Interface::cast::<ICompositionObject2>(self)?;
+        unsafe {
+            (windows_core::Interface::vtable(this).SetComment)(
+                windows_core::Interface::as_raw(this),
+                core::mem::transmute_copy(value),
+            )
+            .ok()
+        }
+    }
+    pub(crate) fn ImplicitAnimations(&self) -> windows_core::Result<ImplicitAnimationCollection> {
+        let this = &windows_core::Interface::cast::<ICompositionObject2>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).ImplicitAnimations)(
+                windows_core::Interface::as_raw(this),
+                &mut result__,
+            )
+            .and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub(crate) fn SetImplicitAnimations<P0>(&self, value: P0) -> windows_core::Result<()>
+    where
+        P0: windows_core::Param<ImplicitAnimationCollection>,
+    {
+        let this = &windows_core::Interface::cast::<ICompositionObject2>(self)?;
+        unsafe {
+            (windows_core::Interface::vtable(this).SetImplicitAnimations)(
+                windows_core::Interface::as_raw(this),
+                value.param().abi(),
+            )
+            .ok()
+        }
+    }
+    pub(crate) fn StartAnimationGroup<P0>(&self, value: P0) -> windows_core::Result<()>
+    where
+        P0: windows_core::Param<ICompositionAnimationBase>,
+    {
+        let this = &windows_core::Interface::cast::<ICompositionObject2>(self)?;
+        unsafe {
+            (windows_core::Interface::vtable(this).StartAnimationGroup)(
+                windows_core::Interface::as_raw(this),
+                value.param().abi(),
+            )
+            .ok()
+        }
+    }
+    pub(crate) fn StopAnimationGroup<P0>(&self, value: P0) -> windows_core::Result<()>
+    where
+        P0: windows_core::Param<ICompositionAnimationBase>,
+    {
+        let this = &windows_core::Interface::cast::<ICompositionObject2>(self)?;
+        unsafe {
+            (windows_core::Interface::vtable(this).StopAnimationGroup)(
+                windows_core::Interface::as_raw(this),
+                value.param().abi(),
+            )
+            .ok()
+        }
+    }
+    pub(crate) fn Path(&self) -> windows_core::Result<CompositionPath> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Path)(
+                windows_core::Interface::as_raw(self),
+                &mut result__,
+            )
+            .and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
+    pub(crate) fn SetPath<P0>(&self, value: P0) -> windows_core::Result<()>
+    where
+        P0: windows_core::Param<CompositionPath>,
+    {
+        unsafe {
+            (windows_core::Interface::vtable(self).SetPath)(
+                windows_core::Interface::as_raw(self),
+                value.param().abi(),
+            )
+            .ok()
+        }
+    }
+}
+impl windows_core::RuntimeType for CompositionPathGeometry {
+    const SIGNATURE: windows_core::imp::ConstBuffer =
+        windows_core::imp::ConstBuffer::for_class::<Self, ICompositionPathGeometry>();
+}
+unsafe impl windows_core::Interface for CompositionPathGeometry {
+    type Vtable = <ICompositionPathGeometry as windows_core::Interface>::Vtable;
+    const IID: windows_core::GUID = <ICompositionPathGeometry as windows_core::Interface>::IID;
+}
+impl windows_core::RuntimeName for CompositionPathGeometry {
+    const NAME: &'static str = "Windows.UI.Composition.CompositionPathGeometry";
+}
+unsafe impl Send for CompositionPathGeometry {}
+unsafe impl Sync for CompositionPathGeometry {}
+#[repr(transparent)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompositionPropertySet(windows_core::IUnknown);
 windows_core::imp::interface_hierarchy!(
     CompositionPropertySet,
@@ -7615,6 +7912,17 @@ impl Compositor {
             .and_then(|| windows_core::imp::Type::from_abi(result__))
         }
     }
+    pub(crate) fn CreatePathGeometry(&self) -> windows_core::Result<CompositionPathGeometry> {
+        let this = &windows_core::Interface::cast::<ICompositor5>(self)?;
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(this).CreatePathGeometry)(
+                windows_core::Interface::as_raw(this),
+                &mut result__,
+            )
+            .and_then(|| windows_core::imp::Type::from_abi(result__))
+        }
+    }
     pub(crate) fn CreateRoundedRectangleGeometry(
         &self,
     ) -> windows_core::Result<CompositionRoundedRectangleGeometry> {
@@ -8488,6 +8796,17 @@ impl windows_core::RuntimeName for CubicBezierEasingFunction {
 }
 unsafe impl Send for CubicBezierEasingFunction {}
 unsafe impl Sync for CubicBezierEasingFunction {}
+pub type D2D1_COMBINE_MODE = i32;
+pub type D2D1_GEOMETRY_RELATION = i32;
+pub type D2D1_GEOMETRY_SIMPLIFICATION_OPTION = i32;
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct D2D_RECT_F {
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+}
 #[repr(transparent)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DistantLight(windows_core::IUnknown);
@@ -10314,6 +10633,66 @@ pub struct ICompositionObjectStatics_Vtbl {
         -> windows_core::HRESULT,
 }
 windows_core::imp::define_interface!(
+    ICompositionPath,
+    ICompositionPath_Vtbl,
+    0x66da1d5f_2e10_4f22_8a06_0a8151919e60
+);
+impl windows_core::RuntimeType for ICompositionPath {
+    const SIGNATURE: windows_core::imp::ConstBuffer =
+        windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer =
+        windows_core::imp::ConstBuffer::from_slice(b"Windows.UI.Composition.ICompositionPath");
+}
+#[repr(C)]
+pub struct ICompositionPath_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+}
+windows_core::imp::define_interface!(
+    ICompositionPathFactory,
+    ICompositionPathFactory_Vtbl,
+    0x9c1e8c6a_0f33_4751_9437_eb3fb9d3ab07
+);
+impl windows_core::RuntimeType for ICompositionPathFactory {
+    const SIGNATURE: windows_core::imp::ConstBuffer =
+        windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(
+        b"Windows.UI.Composition.ICompositionPathFactory",
+    );
+}
+#[repr(C)]
+pub struct ICompositionPathFactory_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Create: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *mut core::ffi::c_void,
+        *mut *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(
+    ICompositionPathGeometry,
+    ICompositionPathGeometry_Vtbl,
+    0x0b6a417e_2c77_4c23_af5e_6304c147bb61
+);
+impl windows_core::RuntimeType for ICompositionPathGeometry {
+    const SIGNATURE: windows_core::imp::ConstBuffer =
+        windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer = windows_core::imp::ConstBuffer::from_slice(
+        b"Windows.UI.Composition.ICompositionPathGeometry",
+    );
+}
+#[repr(C)]
+pub struct ICompositionPathGeometry_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
+    pub Path: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *mut *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+    pub SetPath: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(
     ICompositionPropertySet,
     ICompositionPropertySet_Vtbl,
     0xc9d6d202_5f67_4453_9117_9eadd430d3c2
@@ -10843,7 +11222,10 @@ pub struct ICompositor5_Vtbl {
     CreateContainerShape: usize,
     CreateEllipseGeometry: usize,
     CreateLineGeometry: usize,
-    CreatePathGeometry: usize,
+    pub CreatePathGeometry: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *mut *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
     CreatePathGeometryWithPath: usize,
     CreatePathKeyFrameAnimation: usize,
     CreateRectangleGeometry: usize,
@@ -10943,6 +11325,439 @@ pub struct ICubicBezierEasingFunction_Vtbl {
     pub base__: windows_core::IInspectable_Vtbl,
 }
 windows_core::imp::define_interface!(
+    ID2D1Geometry,
+    ID2D1Geometry_Vtbl,
+    0x2cd906a1_12e2_11dc_9fed_001143a055f9
+);
+impl core::ops::Deref for ID2D1Geometry {
+    type Target = ID2D1Resource;
+    fn deref(&self) -> &Self::Target {
+        unsafe { core::mem::transmute(self) }
+    }
+}
+windows_core::imp::interface_hierarchy!(ID2D1Geometry, windows_core::IUnknown, ID2D1Resource);
+impl ID2D1Geometry {
+    pub(crate) unsafe fn GetBounds(
+        &self,
+        worldtransform: Option<*const windows_numerics::Matrix3x2>,
+    ) -> windows_core::Result<D2D_RECT_F> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetBounds)(
+                windows_core::Interface::as_raw(self),
+                worldtransform.unwrap_or(core::mem::zeroed()) as _,
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+    pub(crate) unsafe fn GetWidenedBounds<P1>(
+        &self,
+        strokewidth: f32,
+        strokestyle: P1,
+        worldtransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+    ) -> windows_core::Result<D2D_RECT_F>
+    where
+        P1: windows_core::Param<ID2D1StrokeStyle>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).GetWidenedBounds)(
+                windows_core::Interface::as_raw(self),
+                strokewidth,
+                strokestyle.param().abi(),
+                worldtransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+    pub(crate) unsafe fn StrokeContainsPoint<P2>(
+        &self,
+        point: windows_numerics::Vector2,
+        strokewidth: f32,
+        strokestyle: P2,
+        worldtransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+    ) -> windows_core::Result<windows_core::BOOL>
+    where
+        P2: windows_core::Param<ID2D1StrokeStyle>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).StrokeContainsPoint)(
+                windows_core::Interface::as_raw(self),
+                point,
+                strokewidth,
+                strokestyle.param().abi(),
+                worldtransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+    pub(crate) unsafe fn FillContainsPoint(
+        &self,
+        point: windows_numerics::Vector2,
+        worldtransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+    ) -> windows_core::Result<windows_core::BOOL> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).FillContainsPoint)(
+                windows_core::Interface::as_raw(self),
+                point,
+                worldtransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+    pub(crate) unsafe fn CompareWithGeometry<P0>(
+        &self,
+        inputgeometry: P0,
+        inputgeometrytransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+    ) -> windows_core::Result<D2D1_GEOMETRY_RELATION>
+    where
+        P0: windows_core::Param<Self>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).CompareWithGeometry)(
+                windows_core::Interface::as_raw(self),
+                inputgeometry.param().abi(),
+                inputgeometrytransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+    pub(crate) unsafe fn Simplify<P3>(
+        &self,
+        simplificationoption: D2D1_GEOMETRY_SIMPLIFICATION_OPTION,
+        worldtransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+        geometrysink: P3,
+    ) -> windows_core::HRESULT
+    where
+        P3: windows_core::Param<ID2D1SimplifiedGeometrySink>,
+    {
+        unsafe {
+            (windows_core::Interface::vtable(self).Simplify)(
+                windows_core::Interface::as_raw(self),
+                simplificationoption,
+                worldtransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                geometrysink.param().abi(),
+            )
+        }
+    }
+    pub(crate) unsafe fn Tessellate<P2>(
+        &self,
+        worldtransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+        tessellationsink: P2,
+    ) -> windows_core::HRESULT
+    where
+        P2: windows_core::Param<ID2D1TessellationSink>,
+    {
+        unsafe {
+            (windows_core::Interface::vtable(self).Tessellate)(
+                windows_core::Interface::as_raw(self),
+                worldtransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                tessellationsink.param().abi(),
+            )
+        }
+    }
+    pub(crate) unsafe fn CombineWithGeometry<P0, P4>(
+        &self,
+        inputgeometry: P0,
+        combinemode: D2D1_COMBINE_MODE,
+        inputgeometrytransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+        geometrysink: P4,
+    ) -> windows_core::HRESULT
+    where
+        P0: windows_core::Param<Self>,
+        P4: windows_core::Param<ID2D1SimplifiedGeometrySink>,
+    {
+        unsafe {
+            (windows_core::Interface::vtable(self).CombineWithGeometry)(
+                windows_core::Interface::as_raw(self),
+                inputgeometry.param().abi(),
+                combinemode,
+                inputgeometrytransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                geometrysink.param().abi(),
+            )
+        }
+    }
+    pub(crate) unsafe fn Outline<P2>(
+        &self,
+        worldtransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+        geometrysink: P2,
+    ) -> windows_core::HRESULT
+    where
+        P2: windows_core::Param<ID2D1SimplifiedGeometrySink>,
+    {
+        unsafe {
+            (windows_core::Interface::vtable(self).Outline)(
+                windows_core::Interface::as_raw(self),
+                worldtransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                geometrysink.param().abi(),
+            )
+        }
+    }
+    pub(crate) unsafe fn ComputeArea(
+        &self,
+        worldtransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+    ) -> windows_core::Result<f32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ComputeArea)(
+                windows_core::Interface::as_raw(self),
+                worldtransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+    pub(crate) unsafe fn ComputeLength(
+        &self,
+        worldtransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+    ) -> windows_core::Result<f32> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).ComputeLength)(
+                windows_core::Interface::as_raw(self),
+                worldtransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+    pub(crate) unsafe fn ComputePointAtLength(
+        &self,
+        length: f32,
+        worldtransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+        point: Option<*mut windows_numerics::Vector2>,
+        unittangentvector: Option<*mut windows_numerics::Vector2>,
+    ) -> windows_core::HRESULT {
+        unsafe {
+            (windows_core::Interface::vtable(self).ComputePointAtLength)(
+                windows_core::Interface::as_raw(self),
+                length,
+                worldtransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                point.unwrap_or(core::mem::zeroed()) as _,
+                unittangentvector.unwrap_or(core::mem::zeroed()) as _,
+            )
+        }
+    }
+    pub(crate) unsafe fn Widen<P1, P4>(
+        &self,
+        strokewidth: f32,
+        strokestyle: P1,
+        worldtransform: Option<*const windows_numerics::Matrix3x2>,
+        flatteningtolerance: f32,
+        geometrysink: P4,
+    ) -> windows_core::HRESULT
+    where
+        P1: windows_core::Param<ID2D1StrokeStyle>,
+        P4: windows_core::Param<ID2D1SimplifiedGeometrySink>,
+    {
+        unsafe {
+            (windows_core::Interface::vtable(self).Widen)(
+                windows_core::Interface::as_raw(self),
+                strokewidth,
+                strokestyle.param().abi(),
+                worldtransform.unwrap_or(core::mem::zeroed()) as _,
+                flatteningtolerance,
+                geometrysink.param().abi(),
+            )
+        }
+    }
+}
+#[repr(C)]
+pub struct ID2D1Geometry_Vtbl {
+    pub base__: ID2D1Resource_Vtbl,
+    pub GetBounds: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *const windows_numerics::Matrix3x2,
+        *mut D2D_RECT_F,
+    ) -> windows_core::HRESULT,
+    pub GetWidenedBounds: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        f32,
+        *mut core::ffi::c_void,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut D2D_RECT_F,
+    ) -> windows_core::HRESULT,
+    pub StrokeContainsPoint: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        windows_numerics::Vector2,
+        f32,
+        *mut core::ffi::c_void,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut windows_core::BOOL,
+    ) -> windows_core::HRESULT,
+    pub FillContainsPoint: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        windows_numerics::Vector2,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut windows_core::BOOL,
+    ) -> windows_core::HRESULT,
+    pub CompareWithGeometry: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *mut core::ffi::c_void,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut D2D1_GEOMETRY_RELATION,
+    ) -> windows_core::HRESULT,
+    pub Simplify: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        D2D1_GEOMETRY_SIMPLIFICATION_OPTION,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+    pub Tessellate: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+    pub CombineWithGeometry: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *mut core::ffi::c_void,
+        D2D1_COMBINE_MODE,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+    pub Outline: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+    pub ComputeArea: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut f32,
+    ) -> windows_core::HRESULT,
+    pub ComputeLength: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut f32,
+    ) -> windows_core::HRESULT,
+    pub ComputePointAtLength: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        f32,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut windows_numerics::Vector2,
+        *mut windows_numerics::Vector2,
+    ) -> windows_core::HRESULT,
+    pub Widen: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        f32,
+        *mut core::ffi::c_void,
+        *const windows_numerics::Matrix3x2,
+        f32,
+        *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+}
+impl windows_core::RuntimeName for ID2D1Geometry {}
+windows_core::imp::define_interface!(
+    ID2D1Resource,
+    ID2D1Resource_Vtbl,
+    0x2cd90691_12e2_11dc_9fed_001143a055f9
+);
+windows_core::imp::interface_hierarchy!(ID2D1Resource, windows_core::IUnknown);
+#[repr(C)]
+pub struct ID2D1Resource_Vtbl {
+    pub base__: windows_core::IUnknown_Vtbl,
+    GetFactory: usize,
+}
+impl windows_core::RuntimeName for ID2D1Resource {}
+windows_core::imp::define_interface!(
+    ID2D1SimplifiedGeometrySink,
+    ID2D1SimplifiedGeometrySink_Vtbl,
+    0x2cd9069e_12e2_11dc_9fed_001143a055f9
+);
+windows_core::imp::interface_hierarchy!(ID2D1SimplifiedGeometrySink, windows_core::IUnknown);
+#[repr(C)]
+pub struct ID2D1SimplifiedGeometrySink_Vtbl {
+    pub base__: windows_core::IUnknown_Vtbl,
+    SetFillMode: usize,
+    SetSegmentFlags: usize,
+    BeginFigure: usize,
+    AddLines: usize,
+    AddBeziers: usize,
+    EndFigure: usize,
+    Close: usize,
+}
+impl windows_core::RuntimeName for ID2D1SimplifiedGeometrySink {}
+windows_core::imp::define_interface!(
+    ID2D1StrokeStyle,
+    ID2D1StrokeStyle_Vtbl,
+    0x2cd9069d_12e2_11dc_9fed_001143a055f9
+);
+impl core::ops::Deref for ID2D1StrokeStyle {
+    type Target = ID2D1Resource;
+    fn deref(&self) -> &Self::Target {
+        unsafe { core::mem::transmute(self) }
+    }
+}
+windows_core::imp::interface_hierarchy!(ID2D1StrokeStyle, windows_core::IUnknown, ID2D1Resource);
+#[repr(C)]
+pub struct ID2D1StrokeStyle_Vtbl {
+    pub base__: ID2D1Resource_Vtbl,
+    GetStartCap: usize,
+    GetEndCap: usize,
+    GetDashCap: usize,
+    GetMiterLimit: usize,
+    GetLineJoin: usize,
+    GetDashOffset: usize,
+    GetDashStyle: usize,
+    GetDashesCount: usize,
+    GetDashes: usize,
+}
+impl windows_core::RuntimeName for ID2D1StrokeStyle {}
+windows_core::imp::define_interface!(
+    ID2D1TessellationSink,
+    ID2D1TessellationSink_Vtbl,
+    0x2cd906c1_12e2_11dc_9fed_001143a055f9
+);
+windows_core::imp::interface_hierarchy!(ID2D1TessellationSink, windows_core::IUnknown);
+#[repr(C)]
+pub struct ID2D1TessellationSink_Vtbl {
+    pub base__: windows_core::IUnknown_Vtbl,
+    AddTriangles: usize,
+    Close: usize,
+}
+impl windows_core::RuntimeName for ID2D1TessellationSink {}
+windows_core::imp::define_interface!(
     IDistantLight,
     IDistantLight_Vtbl,
     0x318cfafc_5ce3_4b55_ab5d_07a00353ac99
@@ -11026,6 +11841,40 @@ pub struct IExpressionAnimation_Vtbl {
         *mut core::ffi::c_void,
         *mut core::ffi::c_void,
     ) -> windows_core::HRESULT,
+}
+windows_core::imp::define_interface!(
+    IGeometrySource2D,
+    IGeometrySource2D_Vtbl,
+    0xcaff7902_670c_4181_a624_da977203b845
+);
+impl windows_core::RuntimeType for IGeometrySource2D {
+    const SIGNATURE: windows_core::imp::ConstBuffer =
+        windows_core::imp::ConstBuffer::for_interface::<Self>();
+    const NAME: windows_core::imp::ConstBuffer =
+        windows_core::imp::ConstBuffer::from_slice(b"Windows.Graphics.IGeometrySource2D");
+}
+windows_core::imp::interface_hierarchy!(
+    IGeometrySource2D,
+    windows_core::IUnknown,
+    windows_core::IInspectable
+);
+impl windows_core::RuntimeName for IGeometrySource2D {
+    const NAME: &'static str = "Windows.Graphics.IGeometrySource2D";
+}
+pub trait IGeometrySource2D_Impl: windows_core::IUnknownImpl {}
+impl IGeometrySource2D_Vtbl {
+    pub const fn new<Identity: IGeometrySource2D_Impl, const OFFSET: isize>() -> Self {
+        Self {
+            base__: windows_core::IInspectable_Vtbl::new::<Identity, IGeometrySource2D, OFFSET>(),
+        }
+    }
+    pub fn matches(iid: &windows_core::GUID) -> bool {
+        iid == &<IGeometrySource2D as windows_core::Interface>::IID
+    }
+}
+#[repr(C)]
+pub struct IGeometrySource2D_Vtbl {
+    pub base__: windows_core::IInspectable_Vtbl,
 }
 windows_core::imp::define_interface!(
     IGraphicsEffect,

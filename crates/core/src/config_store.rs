@@ -544,15 +544,6 @@ pub fn lint(cfg: &Config) -> Vec<Lint> {
     }
     let mut all_fences: Vec<(&crate::model::Fence, usize)> = Vec::new();
     for (li, layout) in cfg.layouts.iter().enumerate() {
-        let subject = format!("layout:{li}");
-        if layout.fences.iter().all(|f| f.kind != FenceKind::Inbox) {
-            lint_at(
-                &mut out,
-                LintLevel::Warning,
-                &subject,
-                "no inbox fence; the app adds one on load".into(),
-            );
-        }
         let mut seen = std::collections::HashSet::new();
         for f in &layout.fences {
             if !seen.insert(f.id) {
@@ -792,6 +783,7 @@ mod tests {
     fn sample() -> Config {
         let mut c = Config::default();
         c.layouts.push(Layout {
+            desktop_items: Default::default(),
             shown: 0,
             fingerprint: vec![],
             fences: vec![Fence::new(
@@ -1189,6 +1181,7 @@ mod tests {
                 shown: 0,
                 fingerprint: vec![],
                 fences: vec![portal],
+                desktop_items: Default::default(),
             }],
             wallpaper_path: None,
             is_auto_backup: None,

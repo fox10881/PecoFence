@@ -2,6 +2,7 @@
 //! Args: output.bmp left top width height dpi-scale [gpu] [tab-mode] [title-size]
 //! `--background image` renders over that image instead, as one monitor at its own size
 //! placed at the desktop origin (for comparisons over detailed backgrounds).
+//! `title-hover` is a single-title header with its fold control hovered.
 use pecofence_platform::{com::OleGuard, wallpaper, window};
 use pecofence_render::{
     BitmapCache, Image, Matrix3x2, MonitorBackdrop, Theme, WallpaperPosition,
@@ -114,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let material = RefCell::new(GpuGlass::default());
     let tab_mode = args.get(8).map(String::as_str).unwrap_or("");
     let title_size = args.get(9).and_then(|s| s.parse::<u8>().ok()).unwrap_or(1);
-    let tabs: Vec<_> = if tab_mode.is_empty() {
+    let tabs: Vec<_> = if tab_mode.is_empty() || tab_mode == "title-hover" {
         Vec::new()
     } else {
         let mut x = 8.0;
@@ -206,6 +207,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             TitleDeco::default(),
             TitleState {
                 title: 1.0,
+                hover: if tab_mode == "title-hover" { 1.0 } else { 0.0 },
+                chevron_hover: if tab_mode == "title-hover" { 1.0 } else { 0.0 },
                 ..Default::default()
             },
             FenceStyle {
@@ -226,7 +229,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let qx = (x as f32 + 0.5 - w as f32 * 0.5).abs() - (w as f32 * 0.5 - radius);
             let qy = (y as f32 + 0.5 - h as f32 * 0.5).abs() - (h as f32 * 0.5 - radius);
             let distance = qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - radius;
-            let coverage = (0.5 - distance).clamp(0.0, 1.0);
+            // GPU output already carries its continuous-corner mask. A circular
+            // preview mask would cut off the very corners being evaluated.
+            let coverage = if gpu_material {
+                1.0
+            } else {
+                (0.5 - distance).clamp(0.0, 1.0)
+            };
             let src = ((y * w + x) * 4) as usize;
             let dst = (((y + pad) as u32 * result.width + (x + pad) as u32) * 4) as usize;
             let alpha = plate[src + 3] as f32 / 255.0 * coverage;

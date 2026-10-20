@@ -565,5 +565,9 @@
     "3D 倾斜层架": "Scaffale 3D inclinato",
     "把栅栏沿纵向倾斜成平行四边形以贴合斜置壁纸；左右边缘顶部各留一个手柄，分别调整两侧高度": "Inclina il riquadro in un parallelogramma per seguire gli scaffali degli sfondi angolati; una maniglia in cima a ciascun lato regola l’altezza di quel lato",
     "纵深缩放": "Fattore di profondità",
-    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Le icone rimpiccioliscono progressivamente verso il bordo lontano per un effetto prospettico; a 0 hanno tutte la stessa dimensione"
+    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Le icone rimpiccioliscono progressivamente verso il bordo lontano per un effetto prospettico; a 0 hanno tutte la stessa dimensione",
+    "动态壁纸玻璃捕获": "Cattura dello sfondo animato per il vetro",
+    "液态玻璃实时透出 Wallpaper Engine、Lively 等动态壁纸的画面；关闭后改用静态截图，更省 GPU": "Liquid Glass mostra in tempo reale gli sfondi animati di Wallpaper Engine, Lively e simili; disattivata, usa una cattura statica e risparmia la GPU",
+    "移出栅栏，放到桌面": "Sposta fuori dalla barriera sul desktop",
+    "其中的 {0} 个图标会放回桌面，文件本身不受影响。": "{0} di queste icone torneranno sul desktop; i file stessi non sono interessati."
 }

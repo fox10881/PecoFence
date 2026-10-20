@@ -139,6 +139,7 @@ impl App {
                             path: p.clone(),
                             since: Instant::now(),
                             rename: false,
+                            desktop_position: None,
                         });
                         self.shell_drop_claim = None;
                     }

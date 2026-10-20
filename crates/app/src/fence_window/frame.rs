@@ -72,7 +72,10 @@ impl FenceViewState {
             }
             more |= self.content_busy;
         }
-        if self.chrome_busy && draw_chrome {
+        let rolling_live_glass = self.height_animating()
+            && self.theme.liquid_glass
+            && self.gpu_glass.borrow().strength() > 0.0;
+        if draw_chrome && (self.chrome_busy || rolling_live_glass) {
             let _ = self.draw_chrome_panel();
             more |= self.chrome_busy;
         }
@@ -99,12 +102,23 @@ impl FenceWindow {
                 .as_ref()
                 .and_then(|a| a.width)
                 .map(|t| t.value_at(now).round() as i32);
+            if let Some(t) = v.roll_anim.as_ref().and_then(|a| a.content_alpha) {
+                v.content_panel
+                    .visual
+                    .set_opacity(t.value_at(now).clamp(0.0, 1.0));
+            }
             let height = v
                 .roll_anim
                 .as_ref()
                 .map(|a| (a.height, Some(a.rolled_at_end)))
                 .or_else(|| v.height_anim.map(|t| (t, None)))
-                .map(|(t, rolled)| (t.value_at(now).round() as i32, t.is_done(now), rolled));
+                .map(|(t, rolled)| {
+                    (
+                        (t.value_at(now).round() as i32).max(v.title_h_px()),
+                        t.is_done(now),
+                        rolled,
+                    )
+                });
             // If the size changes, WM_SIZE will render the new chrome. Drawing hover
             // feedback here would first publish the same frame at the previous size.
             let draw_chrome = !moved
@@ -125,7 +139,35 @@ impl FenceWindow {
         };
         let r = window::window_rect(hwnd);
         let w = w.unwrap_or(r.right - r.left);
-        let _ = window::set_window_bounds(hwnd, r.left, r.top, w, h);
+        if h != r.bottom - r.top || w != r.right - r.left {
+            // Publish a complete liquid-glass frame before enlarging the native window.
+            // Repeated surface Resize followed by a later WM_SIZE draw could expose an
+            // old collapsed capsule while the window had already become full height.
+            self.with_view(|v| {
+                if v.theme.liquid_glass {
+                    let next = RECT {
+                        right: r.left + w,
+                        bottom: r.top + h,
+                        ..r
+                    };
+                    v.update_backdrop_at(next);
+                    let drawn = v
+                        .update_shape_clip(w, h)
+                        .and_then(|_| v.resize_chrome_viewport(w, h))
+                        .and_then(|_| v.draw_chrome_panel());
+                    match drawn {
+                        Ok(()) => v.prepared_height_frame = Some((w, h)),
+                        Err(error) => tracing::error!(%error, "prepare height frame failed"),
+                    }
+                }
+            });
+            if let Err(error) = window::set_window_bounds(hwnd, r.left, r.top, w, h) {
+                tracing::error!(%error, "apply height frame failed");
+            }
+            self.with_view(|v| v.prepared_height_frame = None);
+        }
+        tracing::trace!(target: "pecofence::height_motion", height = h, done,
+            rolled = ?rolled_at_end, "height frame");
         if !done {
             return true;
         }
@@ -139,6 +181,8 @@ impl FenceWindow {
             v.height_anim = None;
             if let Some(rolled) = rolled_at_end {
                 v.rolled_up = rolled;
+                v.roll_t = Tween::at(rolled as u8 as f32, Instant::now());
+                let _ = v.motion.stop(&v.content_panel.visual, Prop::Opacity);
                 v.content_panel.visual.set_opacity(1.0);
                 v.content_panel.visual.set_visible(!rolled);
             }
@@ -146,7 +190,16 @@ impl FenceWindow {
             // animation, in the pass that redraws everything anyway).
             v.update_backdrop();
             let (w, h) = window::window_rect_size(hwnd);
-            if let Err(e) = v.layout_panels(w, h).and_then(|_| v.redraw()) {
+            if let Err(e) = v.layout_panels(w, h).and_then(|_| {
+                if !v.rolled_up
+                    && (v.content_dirty
+                        || v.content_ink != Some(v.material_foreground().text_primary))
+                {
+                    v.redraw()
+                } else {
+                    v.redraw_chrome_only()
+                }
+            }) {
                 tracing::error!(error = %e, "redraw after height animation failed");
             }
             v.update_shadow_now();

@@ -17,6 +17,7 @@ pub(super) struct RollAnim {
     /// A fence with a left tab column collapses to that column: its width moves too.
     pub(super) width: Option<Tween>,
     pub(super) rolled_at_end: bool,
+    pub(super) content_alpha: Option<Tween>,
 }
 
 /// Whole-window fade (root visual opacity, plus a 0.97 scale for entrances / exits). The
@@ -101,6 +102,10 @@ pub(super) fn show_shadow(shadow: HWND, fence: HWND) {
 
 impl FenceViewState {
     pub(super) fn update_shadow(&mut self) {
+        if self.desktop {
+            self.shadow.hide();
+            return;
+        }
         if pecofence_core::brand::var_os("PECOFENCE_NO_SHADOW").is_some() {
             self.shadow.hide();
             return;
@@ -429,21 +434,33 @@ impl FenceViewState {
             self.expanded_h_px.max(self.title_h_px() + 40)
         };
         let mid_roll = self.roll_anim.is_some();
-        if rolled {
-            // WinUI Expander: the content cross-fades out (83 ms linear) while the height
-            // collapses; the surface stays at its expanded size and the shrinking HWND
-            // conceals it, so nothing is re-rasterised.
-            let _ = self.motion.fade_to(
-                &self.content_panel.visual,
-                0.0,
-                motion::FASTER,
-                Curve::Linear,
-            );
-        } else {
+        let velocity = self.roll_anim.as_ref().map(|a| a.height.velocity_at(now));
+        let roll_from = self.roll_t.value_at(now);
+        let roll_velocity = mid_roll.then(|| self.roll_t.velocity_at(now));
+        let alpha_from = self
+            .roll_anim
+            .as_ref()
+            .and_then(|a| a.content_alpha)
+            .map_or(if rolled { 1.0 } else { 0.0 }, |t| t.value_at(now));
+        if self.theme.liquid_glass {
+            // No per-frame CompositionDrawingSurface::Resize. Only the viewport and
+            // its continuous parent clip move; the brush keeps its original pixel scale.
+            let (w, _) = self.chrome_panel.size_px();
+            if let Err(error) = self.chrome_panel.reserve_height(w, cur_h.max(to_h)) {
+                tracing::error!(%error, "reserve roll surface failed");
+            }
+            let _ = self.motion.stop(&self.content_panel.visual, Prop::Opacity);
+            self.content_panel
+                .visual
+                .set_opacity(alpha_from.clamp(0.0, 1.0));
+        }
+        if !rolled {
             self.rolled_up = false;
             // Rasterise the content once at its final size; the growing HWND reveals it.
             let w = to_w.unwrap_or_else(|| self.chrome_panel.size_px().0);
             let top = self.content_y;
+            self.content_dirty |=
+                self.content_panel.size_px() != ((w - self.content_x).max(1), (to_h - top).max(1));
             let _ = self
                 .content_panel
                 .resize((w - self.content_x).max(1), (to_h - top).max(1));
@@ -454,42 +471,48 @@ impl FenceViewState {
                 self.content_panel.visual.set_opacity(0.0);
             }
             self.content_panel.visual.set_visible(true);
-            let _ = self.redraw_content();
-            let _ = self.motion.fade_to(
-                &self.content_panel.visual,
-                1.0,
-                motion::FASTER,
-                Curve::Linear,
-            );
+            if self.content_dirty
+                || self.content_ink != Some(self.material_foreground().text_primary)
+            {
+                let _ = self.redraw_content();
+            }
         }
-        // WinUI Expander: open 333 ms decelerate, close 167 ms with the collapse curve.
+        // Start the clock only after all raster preparation. A cold icon draw must
+        // not consume the first part of the height animation before it is visible.
+        let now = Instant::now();
         let (dur, curve) = if rolled {
-            (motion::FAST, Curve::Collapse)
+            (Duration::from_millis(240), Curve::PointToPoint)
         } else {
-            (motion::SLOW, Curve::Decelerate)
+            (Duration::from_millis(320), Curve::PointToPoint)
         };
-        let curve = if self.theme.liquid_glass {
-            Curve::Smooth
+        let alpha_to = if rolled { 0.0 } else { 1.0 };
+        let content_alpha = if self.theme.liquid_glass {
+            Some(self.motion.tween(alpha_from, alpha_to, dur, curve, now))
         } else {
-            curve
+            let _ = self
+                .motion
+                .fade_to(&self.content_panel.visual, alpha_to, dur, curve);
+            None
         };
         self.roll_anim = Some(RollAnim {
             height: self
                 .motion
-                .tween(cur_h as f32, to_h as f32, dur, curve, now),
+                .height_tween(cur_h as f32, to_h as f32, dur, velocity, now),
             width: to_w.map(|w| self.motion.tween(cur_w as f32, w as f32, dur, curve, now)),
             rolled_at_end: rolled,
+            content_alpha,
         });
         // Chevron angle (and anything else reading the roll progress) moves with the height:
         // same duration and curve, continuous when a roll is reversed mid-flight.
-        self.roll_t
-            .retarget(rolled as u8 as f32, self.anim_dur(dur), curve, now);
+        self.roll_t =
+            self.motion
+                .height_tween(roll_from, rolled as u8 as f32, dur, roll_velocity, now);
         // A left tab column keeps its pills where they are (it has no item count to make room
         // for, and it is hidden while rolled).
         if self.tabs.len() > 1 && self.tab_drag.is_none() && !self.tabs_on_rail() {
             self.sync_tab_slides(&prev, now);
         }
-        self.frames.request();
+        self.frames.request_fast();
     }
 
     /// Starts (or retargets) the auto-height settle towards `to_h`: 250 ms point-to-point,
@@ -524,7 +547,7 @@ impl FenceViewState {
             let _ = self.content_panel.resize(w, target_ch);
             let _ = self.redraw_content();
         }
-        self.frames.request();
+        self.frames.request_fast();
         true
     }
 }

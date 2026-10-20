@@ -509,6 +509,7 @@ mod ipc {
             skew_right: None,
         };
         pecofence_core::Layout {
+            desktop_items: Default::default(),
             shown: 0,
             fingerprint: devices
                 .iter()

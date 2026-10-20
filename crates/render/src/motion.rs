@@ -130,6 +130,8 @@ impl Prop {
 /// Compositor-side animation helper bound to the app's compositor.
 pub struct Motion {
     raw: comp::Compositor,
+    geometry_device: windows_canvas::GpuDevice,
+    continuous_clips: RefCell<std::collections::HashMap<usize, [f32; 4]>>,
     enabled: Cell<bool>,
     easings: RefCell<Vec<(Curve, comp::CompositionEasingFunction)>>,
 }
@@ -147,6 +149,8 @@ impl Motion {
     pub fn new(stack: &RenderStack) -> Result<Self> {
         Ok(Self {
             raw: stack.compositor.as_raw().cast::<comp::Compositor>()?,
+            geometry_device: stack.geometry_device(),
+            continuous_clips: RefCell::new(std::collections::HashMap::new()),
             enabled: Cell::new(true),
             easings: RefCell::new(Vec::new()),
         })
@@ -350,6 +354,9 @@ impl Motion {
     }
 
     pub fn clear_clip(&self, v: &Visual) -> Result<()> {
+        self.continuous_clips
+            .borrow_mut()
+            .remove(&(v.as_raw().as_raw() as usize));
         raw_visual(v)?.SetClip(None::<&comp::CompositionClip>)
     }
 
@@ -369,6 +376,9 @@ impl Motion {
         height: f32,
         radius: f32,
     ) -> Result<()> {
+        self.continuous_clips
+            .borrow_mut()
+            .remove(&(v.as_raw().as_raw() as usize));
         let visual = raw_visual(v)?;
         let existing = visual
             .Clip()
@@ -392,12 +402,56 @@ impl Motion {
 
     /// Read back the actual clip properties for frame-by-frame geometry diagnostics.
     pub fn rounded_clip_bounds(&self, v: &Visual) -> Result<(Vector2, Vector2)> {
+        if let Some([_, w, h, r]) = self
+            .continuous_clips
+            .borrow()
+            .get(&(v.as_raw().as_raw() as usize))
+        {
+            return Ok((Vector2::new(*w, *h), Vector2::new(*r, *r)));
+        }
         let geometry = raw_visual(v)?
             .Clip()?
             .cast::<comp::CompositionGeometricClip>()?
             .Geometry()?
             .cast::<comp::CompositionRoundedRectangleGeometry>()?;
         Ok((geometry.Size()?, geometry.CornerRadius()?))
+    }
+
+    /// Continuous corners shared with GPU glass; every height/fold frame updates the path.
+    pub fn clip_glass_at(
+        &self,
+        v: &Visual,
+        top: f32,
+        width: f32,
+        height: f32,
+        radius: f32,
+    ) -> Result<()> {
+        let key = v.as_raw().as_raw() as usize;
+        let bounds = [top, width, height, radius];
+        if self.continuous_clips.borrow().get(&key) == Some(&bounds) {
+            return Ok(());
+        }
+        let visual = raw_visual(v)?;
+        let geometry = visual
+            .Clip()
+            .ok()
+            .and_then(|c| c.cast::<comp::CompositionGeometricClip>().ok())
+            .and_then(|c| c.Geometry().ok())
+            .and_then(|g| g.cast::<comp::CompositionPathGeometry>().ok());
+        let geometry = match geometry {
+            Some(g) => g,
+            None => {
+                let g = self.raw.CreatePathGeometry()?;
+                visual.SetClip(&self.raw.CreateGeometricClipWithGeometry(&g)?)?;
+                g
+            }
+        };
+        let shape = crate::glass_shape::GlassShape::new(width, height, radius);
+        geometry.SetPath(&crate::geometry_source::composition_path(
+            shape.path(&self.geometry_device, top)?,
+        )?)?;
+        self.continuous_clips.borrow_mut().insert(key, bounds);
+        Ok(())
     }
 
     /// Runs `start` (which should start one or more animations) inside a scoped batch and
@@ -438,6 +492,22 @@ impl Motion {
         };
         Tween::new(from, to, dur, curve, now)
     }
+
+    pub fn height_tween(
+        &self,
+        from: f32,
+        to: f32,
+        dur: Duration,
+        velocity: Option<f32>,
+        now: Instant,
+    ) -> Tween {
+        let dur = if self.enabled.get() {
+            dur
+        } else {
+            Duration::ZERO
+        };
+        Tween::with_velocity(from, to, dur, velocity, now)
+    }
 }
 
 /// One eased `f32` value moving from `from` to `to` over `dur`. The caller samples it with
@@ -449,6 +519,7 @@ pub struct Tween {
     start: Instant,
     dur: Duration,
     curve: Curve,
+    velocity: Option<f32>,
 }
 
 impl Tween {
@@ -459,7 +530,28 @@ impl Tween {
             start: now,
             dur,
             curve,
+            velocity: None,
         }
+    }
+
+    /// Finite Hermite motion: respond immediately, decelerate into the exact endpoint,
+    /// and inherit the presentation velocity when an in-flight height is reversed.
+    pub fn with_velocity(
+        from: f32,
+        to: f32,
+        dur: Duration,
+        velocity: Option<f32>,
+        now: Instant,
+    ) -> Self {
+        let mut tween = Self::new(from, to, dur, Curve::Linear, now);
+        tween.velocity = Some(velocity.unwrap_or_else(|| {
+            if dur.is_zero() {
+                0.0
+            } else {
+                (to - from) / dur.as_secs_f32()
+            }
+        }));
+        tween
     }
 
     /// A tween that is already at `value`.
@@ -479,8 +571,29 @@ impl Tween {
     }
 
     pub fn value_at(&self, now: Instant) -> f32 {
+        if let Some(velocity) = self.velocity {
+            let t = self.progress(now);
+            let delta = self.to - self.from;
+            let tangent = velocity * self.dur.as_secs_f32();
+            return self.from
+                + delta * (3.0 * t * t - 2.0 * t * t * t)
+                + tangent * (t * t * t - 2.0 * t * t + t);
+        }
         let p = ease(self.curve, self.progress(now));
         self.from + (self.to - self.from) * p
+    }
+
+    pub fn velocity_at(&self, now: Instant) -> f32 {
+        if self.is_done(now) || self.dur.is_zero() {
+            return 0.0;
+        }
+        if let Some(velocity) = self.velocity {
+            let t = self.progress(now);
+            return (self.to - self.from) * (6.0 * t - 6.0 * t * t) / self.dur.as_secs_f32()
+                + velocity * (3.0 * t * t - 4.0 * t + 1.0);
+        }
+        let step = Duration::from_millis(1);
+        (self.value_at(now + step) - self.value_at(now)) / step.as_secs_f32()
     }
 
     pub fn is_done(&self, now: Instant) -> bool {
@@ -507,6 +620,7 @@ impl Tween {
         self.start = now;
         self.dur = dur;
         self.curve = curve;
+        self.velocity = None;
     }
 }
 
@@ -595,6 +709,43 @@ impl<K: Hash + Eq + Copy> Fades<K> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn height_motion_responds_immediately_and_reverses_with_continuous_velocity() {
+        let now = Instant::now();
+        let duration = Duration::from_millis(320);
+        let height = Tween::with_velocity(45.0, 1000.0, duration, None, now);
+        let first = height.value_at(now + Duration::from_millis(16));
+        assert!(
+            first > 85.0 && first < 105.0,
+            "first frame must respond without jumping: {first}"
+        );
+        let mut prev = 45.0;
+        for ms in (8..=320).step_by(8) {
+            let next = height.value_at(now + Duration::from_millis(ms));
+            assert!(next > prev && next - prev < 35.0);
+            prev = next;
+        }
+        assert_eq!(prev, 1000.0);
+        assert_eq!(height.velocity_at(now + duration), 0.0);
+        let reversed = now + Duration::from_millis(120);
+        let value = height.value_at(reversed);
+        let velocity = height.velocity_at(reversed);
+        let close = Tween::with_velocity(
+            value,
+            45.0,
+            Duration::from_millis(240),
+            Some(velocity),
+            reversed,
+        );
+        assert_eq!(close.value_at(reversed), value);
+        assert!((close.velocity_at(reversed) - velocity).abs() < 0.001);
+        assert_eq!(close.value_at(reversed + Duration::from_millis(240)), 45.0);
+        assert_eq!(
+            Tween::with_velocity(45.0, 1000.0, Duration::ZERO, None, now).value_at(now),
+            1000.0
+        );
+    }
 
     #[test]
     fn liquid_height_changes_smoothly_at_display_frame_intervals() {

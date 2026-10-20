@@ -23,6 +23,9 @@ pub struct Config {
     /// only, the app ignores its value.
     #[serde(rename = "$schema", default, skip_serializing_if = "Option::is_none")]
     pub schema: Option<String>,
+    /// Migration marker for the desktop-container interaction model.
+    #[serde(default)]
+    pub container_model: u32,
     pub schema_version: u32,
     pub settings: Settings,
     /// Global item table keyed by id.
@@ -42,6 +45,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            container_model: 1,
             schema: None,
             schema_version: SCHEMA_VERSION,
             settings: Settings::default(),
@@ -149,6 +153,10 @@ pub struct Settings {
     /// have its item records re-pointed instead of orphaned.
     #[serde(default)]
     pub desktop_path: Option<String>,
+    /// Liquid Glass captures Wallpaper Engine / Lively player frames on the GPU so the
+    /// material shows the moving wallpaper. Off = a still capture is frosted instead.
+    #[serde(default = "default_true")]
+    pub live_wallpaper_capture: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -244,6 +252,7 @@ impl Default for Settings {
             zorder: ZOrderSetting::InsertAboveHost,
             autostart: true,
             telemetry: false,
+            live_wallpaper_capture: true,
             peek: PeekSettings::default(),
             icons: IconSettings::default(),
             desktop_path: None,
@@ -532,10 +541,23 @@ pub struct Layout {
     /// by id, model or GDI name).
     pub fingerprint: Vec<MonitorIdentity>,
     pub fences: Vec<Fence>,
+    /// Explicit desktop placements are manual: automatic rules cannot collect them again.
+    #[serde(default)]
+    pub desktop_items: HashMap<ItemId, Option<DesktopPosition>>,
     /// Raised each time the layout is shown; the highest one is the layout shown last. 0 in
     /// files from 0.1.3 and earlier, which kept separate fences per monitor set.
     #[serde(default)]
     pub shown: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopPosition {
+    pub monitor: String,
+    /// Cell origin relative to the monitor work area; survives DPI and resolution changes.
+    pub x: f32,
+    pub y: f32,
 }
 
 /// [`Config::layout_for`]'s answer.
@@ -1549,6 +1571,20 @@ impl Config {
             }
         }
         self.layouts[to].fences = fences;
+        let target_spots = self.layouts[to].desktop_items.clone();
+        self.layouts[to].desktop_items = self.layouts[from]
+            .desktop_items
+            .iter()
+            .map(|(id, position)| {
+                (
+                    *id,
+                    target_spots
+                        .get(id)
+                        .cloned()
+                        .unwrap_or_else(|| position.clone()),
+                )
+            })
+            .collect();
         unplaced
     }
 
@@ -1645,6 +1681,7 @@ impl Config {
         }
         let l = self.layouts.get_mut(layout)?;
         let tpos = l.fences.iter().position(|f| f.id == to)?;
+        l.desktop_items.remove(&item);
         for f in &mut l.fences {
             f.items.retain(|r| r.item_id != item);
         }
@@ -1893,6 +1930,7 @@ mod tests {
             ..Default::default()
         });
         config.layouts.push(Layout {
+            desktop_items: Default::default(),
             shown: 0,
             fingerprint: vec![],
             fences: vec![fence],
@@ -1961,6 +1999,7 @@ mod tests {
         });
         c.items.insert(item.id, item);
         c.layouts.push(Layout {
+            desktop_items: Default::default(),
             shown: 0,
             fingerprint: vec![MonitorIdentity {
                 gdi_name: String::new(),
@@ -1988,6 +2027,7 @@ mod tests {
         let b = Fence::new("B", FenceKind::Inbox, geo());
         let (aid, bid) = (a.id, b.id);
         c.layouts.push(Layout {
+            desktop_items: Default::default(),
             shown: 0,
             fingerprint: vec![],
             fences: vec![a, b],
@@ -2016,6 +2056,7 @@ mod tests {
             shown: 0,
             fingerprint: vec![],
             fences: vec![a, b, dup],
+            desktop_items: Default::default(),
         });
         let (x, y) = (Uuid::new_v4(), Uuid::new_v4());
         let member = |item_id| ItemRef {
@@ -2088,6 +2129,7 @@ mod tests {
                         fences[0].rolled_up = rolled;
                         let before = fences.clone();
                         let mut layout = Layout {
+                            desktop_items: Default::default(),
                             shown: 0,
                             fingerprint: vec![],
                             fences,
@@ -2147,6 +2189,7 @@ mod tests {
         b.tab_host = Some(aid);
         a.tab_order = vec![aid, bid];
         let mut layout = Layout {
+            desktop_items: Default::default(),
             shown: 0,
             fingerprint: vec![],
             fences: vec![a, b],
@@ -2168,6 +2211,7 @@ mod tests {
         layout.fences[0].tab_host = Some(bid);
         assert!(!layout.cancel_tab_detach(&change));
         let mut single = Layout {
+            desktop_items: Default::default(),
             shown: 0,
             fingerprint: vec![],
             fences: vec![Fence::new("only", FenceKind::Virtual, geo())],
@@ -2185,6 +2229,7 @@ mod tests {
         c.tab_host = Some(bid); // chain: c hosted by a tab
         a.active_tab = Some(cid); // not (yet) a direct tab of a
         let mut l = Layout {
+            desktop_items: Default::default(),
             shown: 0,
             fingerprint: vec![],
             fences: vec![a, b, c],
@@ -2215,6 +2260,7 @@ mod tests {
             shown: 0,
             fingerprint: vec![],
             fences: vec![a, b, c],
+            desktop_items: Default::default(),
         };
         assert!(l.normalize_tabs());
         assert_eq!(l.host_of(aid), aid);
@@ -2232,6 +2278,7 @@ mod tests {
         b.tab_host = Some(aid);
         c.tab_host = Some(aid);
         let mut l = Layout {
+            desktop_items: Default::default(),
             shown: 0,
             fingerprint: vec![],
             fences: vec![a, b, c],
@@ -2277,6 +2324,7 @@ mod tests {
                 .map(|(id, gdi)| MonitorIdentity::of(&monitor(id, gdi)))
                 .collect(),
             fences: vec![],
+            desktop_items: Default::default(),
             shown: 0,
         }
     }

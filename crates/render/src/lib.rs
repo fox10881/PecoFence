@@ -20,6 +20,8 @@ pub mod comp;
 pub mod backdrop;
 pub mod bitmaps;
 pub mod fence_chrome;
+mod geometry_source;
+pub mod glass_shape;
 #[allow(
     non_snake_case,
     non_upper_case_globals,

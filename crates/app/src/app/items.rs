@@ -99,6 +99,7 @@ impl App {
                     path,
                     since: Instant::now(),
                     rename: true,
+                    desktop_position: None,
                 });
             }
             Err(e) => {
@@ -123,13 +124,17 @@ impl App {
         self.pending_routes
             .retain(|p| match self.state.item_id_for_path(&p.path) {
                 Some(id) => {
-                    landed.push((id, p.fence, p.rename));
+                    landed.push((id, p.fence, p.rename, p.desktop_position));
                     false
                 }
                 None => true,
             });
-        for (id, fence, rename) in landed {
-            self.move_items(&[id], fence);
+        for (id, fence, rename, position) in landed {
+            if fence.is_nil() {
+                self.release_to_desktop(&[id], position);
+            } else {
+                self.move_items(&[id], fence);
+            }
             if rename {
                 // The rules may have filed the item here already: then nothing moved, the
                 // window does not list it yet, and the label the edit box needs has no rect.
@@ -140,7 +145,12 @@ impl App {
     }
 
     /// Moves portal items out to the real desktop and routes them into `to` once they appear.
-    pub(super) fn move_portal_items_to_desktop(&mut self, items: &[ItemId], to: FenceId) {
+    pub(super) fn move_portal_items_to_desktop(
+        &mut self,
+        items: &[ItemId],
+        to: FenceId,
+        position: Option<(i32, i32)>,
+    ) {
         let Some(desktop) = shell::user_desktop() else {
             return;
         };
@@ -166,6 +176,7 @@ impl App {
                 path: path.clone(),
                 since: Instant::now(),
                 rename: false,
+                desktop_position: position,
             });
         }
         let owner = self.window_for(to).map(|w| w.hwnd());
@@ -242,7 +253,7 @@ impl App {
             }
             None => (None, None),
         };
-        for w in self.fences.values() {
+        for w in self.fences.values().chain(self.desktop_windows.values()) {
             if keep_item.is_none() || w.renaming_item() != keep_item {
                 w.set_renaming(None);
             }
@@ -376,7 +387,7 @@ impl App {
             // Portal ids are path hashes. Update the old view's identity before the folder
             // refresh so rename does not clear selection and focus.
             let new_id = crate::state::portal_item_id(&new.to_string_lossy());
-            for w in self.fences.values() {
+            for w in self.fences.values().chain(self.desktop_windows.values()) {
                 w.rekey_item(item, new_id);
             }
             self.refresh_portals_in(&[parent]);
@@ -502,7 +513,7 @@ impl App {
     }
 
     pub(super) fn push_cut_items(&self) {
-        for w in self.fences.values() {
+        for w in self.fences.values().chain(self.desktop_windows.values()) {
             w.set_cut_items(&self.cut_items);
         }
     }
@@ -621,6 +632,11 @@ impl App {
     /// Moves items into `to`. Virtual fences only change membership (files stay put); a portal
     /// as source or target means a real file move (portal = folder view).
     pub(super) fn move_items(&mut self, items: &[ItemId], to: FenceId) {
+        if to.is_nil() || self.desktop_windows.values().any(|w| w.id == to) {
+            let pt = window::cursor_pos();
+            self.release_to_desktop(items, (!to.is_nil()).then_some((pt.x, pt.y)));
+            return;
+        }
         if self.state.portal_path(to).is_some() {
             // Namespace items cannot be moved into a folder; they stay where they are.
             let paths: Vec<PathBuf> = items
@@ -637,7 +653,7 @@ impl App {
             .copied()
             .partition(|id| self.state.is_portal_item(*id));
         if !portal_items.is_empty() {
-            self.move_portal_items_to_desktop(&portal_items, to);
+            self.move_portal_items_to_desktop(&portal_items, to, None);
         }
         if desktop_items.is_empty() {
             return;
@@ -650,6 +666,7 @@ impl App {
             .map(|f| f.id)
             .collect();
         if self.state.move_items(&desktop_items, to) > 0 {
+            self.refresh_desktop();
             for id in affected {
                 self.refresh_fence(id);
             }

@@ -96,6 +96,19 @@ impl FenceViewState {
     pub(super) fn material_foreground(&self) -> Theme {
         let label_color = self.behavior.label_color.get();
         let theme = self.theme.with_label_color(label_color);
+        if self.desktop {
+            return Theme {
+                liquid_glass: false,
+                text_halo: false,
+                text_primary: ColorF {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                    a: 1.0,
+                },
+                ..theme
+            };
+        }
         if self.theme.liquid_glass && self.gpu_glass.borrow().failed() {
             return theme;
         }
@@ -361,6 +374,10 @@ impl FenceViewState {
 
     /// Draws the chrome (backdrop, tabs or title, rim, chevron).
     pub(super) fn draw_chrome_panel(&mut self) -> Result<()> {
+        if self.desktop {
+            self.chrome_panel.visual.set_visible(false);
+            return Ok(());
+        }
         let now = Instant::now();
         let state = self.title_state(now);
         // DIP size the crop covers (larger than the surface mid size animation).
@@ -560,6 +577,9 @@ impl FenceViewState {
     /// Also accepts a pending pure move, so the GPU surface is prepared before Windows
     /// changes the HWND position. Only a tiny contrast sample is computed on the CPU.
     pub(super) fn update_backdrop_at(&mut self, r: RECT) -> bool {
+        if self.desktop {
+            return false;
+        }
         let mut w = r.right - r.left;
         let mut h = r.bottom - r.top;
         // Liquid Glass's displacement field is rebuilt by the GPU renderer only on
@@ -638,7 +658,7 @@ impl FenceViewState {
         self.motion
             .set_center(&self.root, w as f32 / 2.0, h as f32 / 2.0);
         self.update_shape_clip(w, h)?;
-        self.chrome_panel.resize(w, h)?;
+        self.resize_chrome_viewport(w, h)?;
         // A fence collapsed (or collapsing) to its left tab column keeps the width it returns
         // to; the column's width follows the expanded fence.
         if !self.column_collapsed && self.roll_anim.as_ref().is_none_or(|a| a.width.is_none()) {
@@ -647,21 +667,31 @@ impl FenceViewState {
         self.rail_dip = self.measure_rail_w();
         self.content_x = self.rail_px();
         self.content_y = self.head_px();
-        // 3D shelf: the surface covers the slab's content band plus the shear amplitude
-        // inside it, and sits at the higher end of its x range — the shear transform in
-        // `redraw_content` then tilts the rows into the parallelogram (see `shelf.rs`).
         let scale = self.scale();
         let w_dip = w as f32 / scale;
         let title = self.content_y as f32 / scale;
+        // 3D shelf: the surface covers the slab's content band plus the shear amplitude
+        // inside it, and sits at the higher end of its x range — the shear transform in
+        // `redraw_content` then tilts the rows into the parallelogram (see `shelf.rs`).
         let band = self.slab_h();
         let a_end = self.shear_at(self.rail_w() / w_dip.max(1.0));
         let b_end = self.shear_at(1.0);
         let amp = (a_end - b_end).abs();
-        let content_h = ((band - title).max(1.0) + amp) * scale;
-        self.content_panel.resize(
-            (w - self.content_x).max(1),
-            content_h.ceil().max(1.0) as i32,
-        )?;
+        let content_w = (w - self.content_x).max(1);
+        // Keep the expanded raster while folded. Shrinking it to one pixel at the
+        // end of every collapse forced a large allocation and icon redraw on open.
+        let content_h = if self.height_animating() {
+            self.content_panel
+                .size_px()
+                .1
+                .max((self.height_target_px().unwrap_or(h).max(h) - self.title_h_px()).max(1))
+        } else if self.rolled_up && self.roll_anim.is_none() {
+            self.content_panel.size_px().1.max(1)
+        } else {
+            (((band - title).max(1.0) + amp) * scale).ceil().max(1.0) as i32
+        };
+        self.content_dirty |= self.content_panel.size_px() != (content_w, content_h);
+        self.content_panel.resize(content_w, content_h)?;
         let off_y = ((title + a_end.min(b_end)) * scale).round() as i32;
         self.content_panel
             .visual
@@ -672,13 +702,29 @@ impl FenceViewState {
         Ok(())
     }
 
+    pub(super) fn resize_chrome_viewport(&mut self, w: i32, h: i32) -> Result<()> {
+        if self.desktop {
+            self.chrome_panel.resize(1, 1)?;
+            return Ok(());
+        }
+        if self.theme.liquid_glass {
+            self.chrome_panel.resize_viewport(w, h)?;
+        } else {
+            self.chrome_panel.resize(w, h)?;
+        }
+        Ok(())
+    }
+
     /// The clip must follow every height-animation frame even while content stays frozen. It
     /// starts at the plate top: a title row folded away by title on hover is cut off too (a
     /// Fluent window is otherwise rounded by DWM alone).
     pub(super) fn update_shape_clip(&self, w: i32, h: i32) -> Result<()> {
+        if self.desktop {
+            return self.motion.clear_clip(&self.root);
+        }
         let inset = self.plate_inset_px.clamp(0, (h - 1).max(0));
         if self.theme.liquid_glass {
-            self.motion.clip_rounded_at(
+            self.motion.clip_glass_at(
                 &self.root,
                 inset as f32,
                 w as f32,
@@ -807,6 +853,7 @@ impl FenceViewState {
     pub fn redraw(&mut self) -> Result<()> {
         self.draw_chrome_panel()?;
         if self.rolled_up && self.roll_anim.is_none() {
+            self.content_dirty = true;
             return Ok(());
         }
         self.redraw_content()
@@ -854,6 +901,10 @@ impl FenceViewState {
     }
 
     pub(super) fn redraw_content(&mut self) -> Result<()> {
+        if self.rolled_up && self.roll_anim.is_none() {
+            self.content_dirty = true;
+            return Ok(());
+        }
         if self.row_metrics().is_some() {
             return self.redraw_rows();
         }
@@ -1013,7 +1064,7 @@ impl FenceViewState {
             label_gap: grid.metrics.label_gap,
             scrollbar,
             // `cells` holds the viewport only; the hint is for a fence without items.
-            empty_text: self.items.is_empty().then(|| self.empty_text()),
+            empty_text: (!self.desktop && self.items.is_empty()).then(|| self.empty_text()),
             drop_highlight: self.drop_wash.value_at(now),
             marquee: self.marquee_rect_dip(),
             insert_caret: self.insert_caret_dip(0.0),
@@ -1064,8 +1115,45 @@ impl FenceViewState {
                     draw(session)
                 }
             })?;
+        let full_lines = full.map(|(_, lines)| lines);
         self.note_draw_result(ok);
         self.note_content_fades(now);
+        if self.desktop {
+            let regions: Vec<_> = self
+                .desktop_cells
+                .iter()
+                .enumerate()
+                .map(|(i, cell)| {
+                    let expanded = if shortened == Some(i) {
+                        full_lines.map_or(cell.h, |lines| {
+                            cell.h.max(
+                                grid.metrics.icon_top
+                                    + grid.metrics.icon
+                                    + grid.metrics.label_gap
+                                    + lines as f32 * grid.metrics.line_h
+                                    + 4.0,
+                            )
+                        })
+                    } else {
+                        cell.h
+                    };
+                    RECT {
+                        left: (cell.x * scale).floor() as i32,
+                        top: (cell.y * scale).floor() as i32,
+                        right: ((cell.x + cell.w) * scale).ceil() as i32,
+                        bottom: ((cell.y + expanded) * scale).ceil() as i32,
+                    }
+                })
+                .collect();
+            if self.desktop_regions != regions && window::set_hit_regions(self.hwnd, &regions) {
+                self.desktop_regions = regions;
+            }
+        }
+        if ok {
+            self.content_dirty = false;
+            self.content_ink = Some(theme.text_primary);
+            self.content_draws += 1;
+        }
         Ok(())
     }
 
@@ -1309,6 +1397,11 @@ impl FenceViewState {
             })?;
         self.note_draw_result(ok);
         self.note_content_fades(now);
+        if ok {
+            self.content_dirty = false;
+            self.content_ink = Some(theme.text_primary);
+            self.content_draws += 1;
+        }
         Ok(())
     }
 }

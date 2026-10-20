@@ -84,7 +84,8 @@ impl FenceViewState {
         let scale = self.scale();
         let (cw, _) = self.content_size_px();
         let width_dip = cw as f32 / scale;
-        let animate = self.motion.enabled()
+        let animate = !self.desktop
+            && self.motion.enabled()
             && !self.rolled_up
             && self.roll_anim.is_none()
             && !self.ole_drag

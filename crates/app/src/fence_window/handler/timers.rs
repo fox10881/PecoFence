@@ -234,6 +234,7 @@ pub(super) fn on_timer_peek_open(
         if let Some(v) = guard.as_mut()
             && !v.retired
             && v.rolled_up
+            && !v.manual_fold_latched
             && !v.peeking
             && v.roll_anim.is_none()
             && v.title_hover

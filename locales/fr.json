@@ -565,5 +565,9 @@
     "3D 倾斜层架": "Étagère 3D inclinée",
     "把栅栏沿纵向倾斜成平行四边形以贴合斜置壁纸；左右边缘顶部各留一个手柄，分别调整两侧高度": "Incline la barrière en parallélogramme pour les fonds d'écran inclinés ; une poignée en haut de chaque bord latéral règle la hauteur de ce côté",
     "纵深缩放": "Échelle de profondeur",
-    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Les icônes rétrécissent vers le bord éloigné pour un effet de profondeur ; à 0 elles gardent la même taille"
+    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Les icônes rétrécissent vers le bord éloigné pour un effet de profondeur ; à 0 elles gardent la même taille",
+    "动态壁纸玻璃捕获": "Capture en verre du fond d’écran animé",
+    "液态玻璃实时透出 Wallpaper Engine、Lively 等动态壁纸的画面；关闭后改用静态截图，更省 GPU": "Liquid Glass montre en temps réel les fonds d’écran animés (Wallpaper Engine, Lively…) ; désactivée, une capture fixe est utilisée et le GPU est épargné",
+    "移出栅栏，放到桌面": "Sortir du panneau vers le bureau",
+    "其中的 {0} 个图标会放回桌面，文件本身不受影响。": "{0} de ces icônes retournent sur le bureau ; les fichiers eux-mêmes ne sont pas affectés."
 }

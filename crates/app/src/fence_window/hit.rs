@@ -92,7 +92,7 @@ impl FenceViewState {
     /// Is the client-pixel point on the portal "up" button? A tab strip in the title row has
     /// none; a left tab column has it at the end of the shown tab's row (`rail_up_box`).
     pub(super) fn up_button_at(&self, x_px: i32, y_px: i32) -> bool {
-        if !self.deco.up_button || self.title_row_strip() || self.title_hidden {
+        if self.desktop || !self.deco.up_button || self.title_row_strip() || self.title_hidden {
             return false;
         }
         let Some((x_px, y_px)) = self.unskew_px(x_px, y_px) else {
@@ -151,6 +151,9 @@ impl FenceViewState {
 
     /// Is the client-pixel point on the roll-up chevron button (right end of the title row)?
     pub(super) fn chevron_at(&self, x_px: i32, y_px: i32) -> bool {
+        if self.desktop {
+            return false;
+        }
         let scale = self.scale();
         let (w_px, h_px) = self.chrome_panel.size_px();
         // Under the tabs of a left tab column (the fence's title bar). Collapsed to the column
@@ -220,6 +223,24 @@ impl FenceViewState {
     /// The item layout at `width_dip`. Its rows keep their pitch at any fence height; with
     /// 「调整大小时按整行整列对齐」 the viewport shows only the whole rows (`scroll_view_h`).
     pub(super) fn layout(&self, width_dip: f32) -> ItemLayout {
+        if self.desktop {
+            return ItemLayout::Grid(Grid::free(
+                self.grid_metrics(),
+                width_dip,
+                self.desktop_cells.clone(),
+            ));
+        }
+        let layout = self.natural_layout(width_dip);
+        if !self.behavior.size_to_cells.get() {
+            return layout;
+        }
+        let view_h =
+            (self.viewport_h_px() - FIT_SLACK_PX) as f32 / self.scale() - layout.fixed_top();
+        layout.fill_rows(view_h)
+    }
+
+    /// The item layout at `width_dip` with rows at their own height (fitting heights).
+    fn natural_layout(&self, width_dip: f32) -> ItemLayout {
         let spans = self.group_spans();
         let n = self.items.len();
         match self.layout {

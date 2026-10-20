@@ -486,6 +486,7 @@ impl AppState {
                 self.config.layouts.push(Layout {
                     fingerprint,
                     fences,
+                    desktop_items: Default::default(),
                     shown: 0,
                 });
                 self.dirty = true;
@@ -524,6 +525,92 @@ impl AppState {
             self.dirty = true;
         }
         self.layout = target;
+        self.migrate_desktop_containers();
+    }
+
+    fn migrate_desktop_containers(&mut self) {
+        if self.config.container_model == 0 {
+            self.config.rules.keep_updated = false;
+            self.config.settings.hide_real_icons = true;
+            self.config.container_model = 1;
+            self.dirty = true;
+        }
+        for layout in &mut self.config.layouts {
+            for fence in &mut layout.fences {
+                if fence.kind == FenceKind::Inbox {
+                    fence.kind = FenceKind::Virtual;
+                    self.dirty = true;
+                }
+            }
+        }
+    }
+
+    /// Files remain on the desktop; only their visual membership changes.
+    pub fn release_items(
+        &mut self,
+        ids: &[ItemId],
+        position: Option<pecofence_core::DesktopPosition>,
+    ) -> usize {
+        let (step_x, step_y) = position
+            .as_ref()
+            .and_then(|p| self.work_areas.iter().find(|w| w.device_path == p.monitor))
+            .map(|w| {
+                let icon = self.config.settings.icon_size as f32;
+                (
+                    (icon + 40.0) * w.scale() / (w.right - w.left).max(1) as f32,
+                    (icon + 56.0) * w.scale() / (w.bottom - w.top).max(1) as f32,
+                )
+            })
+            .unwrap_or((0.05, 0.1));
+        let max_columns = (1.0 / step_x).floor().max(1.0) as usize;
+        let max_rows = (1.0 / step_y).floor().max(1.0) as usize;
+        let columns = position
+            .as_ref()
+            .map_or(5, |p| (((1.0 - p.x) / step_x).floor() as usize).clamp(1, 5))
+            .max(ids.len().div_ceil(max_rows))
+            .min(max_columns);
+        let rows = ids.len().div_ceil(columns).min(max_rows);
+        let position = position.map(|mut p| {
+            p.x = p.x.clamp(0.0, (1.0 - columns as f32 * step_x).max(0.0));
+            p.y = p.y.clamp(0.0, (1.0 - rows as f32 * step_y).max(0.0));
+            p
+        });
+        let layout = &mut self.config.layouts[self.layout];
+        let mut released = 0;
+        for (i, &id) in ids.iter().enumerate() {
+            if !self.config.items.contains_key(&id) {
+                continue;
+            }
+            for fence in &mut layout.fences {
+                fence.items.retain(|r| r.item_id != id);
+            }
+            let mut at = (i < columns * max_rows).then(|| position.clone()).flatten();
+            if let Some(at) = &mut at {
+                // A multi-item drop keeps the group together without piling up its icons.
+                at.x += (i % columns) as f32 * step_x;
+                at.y += (i / columns) as f32 * step_y;
+            }
+            layout.desktop_items.insert(id, at);
+            released += 1;
+        }
+        if released > 0 {
+            self.dirty = true;
+        }
+        released
+    }
+
+    pub fn loose_items(&self) -> Vec<&Item> {
+        let mut items: Vec<_> = self
+            .config
+            .items
+            .values()
+            .filter(|it| {
+                it.orphaned_since.is_none()
+                    && self.config.fence_of_item(self.layout, it.id).is_none()
+            })
+            .collect();
+        items.sort_by(|a, b| natural_cmp(&a.display_name, &b.display_name));
+        items
     }
 
     /// The matched layout takes the connected monitors as they are: one found under another id
@@ -607,24 +694,8 @@ impl AppState {
             fences.push(f);
             y += h + gap;
         }
-        let inbox_h = (wh - gap - y).max(160.0);
-        let inbox_geo = geometry::normalize(
-            PxRect {
-                left: work.left + (x * work.scale()) as i32,
-                top: work.top + (y * work.scale()) as i32,
-                right: work.left + ((x + col_w) * work.scale()) as i32,
-                bottom: work.top + ((y + inbox_h) * work.scale()) as i32,
-            },
-            &work,
-        );
-        let mut inbox = Fence::new(
-            pecofence_core::i18n::text("桌面"),
-            FenceKind::Inbox,
-            inbox_geo,
-        );
-        inbox.view.icon_size = icon;
-        fences.push(inbox);
         self.config.rules = RuleSet::default_presets(ids[0], ids[1], ids[2]);
+        self.config.rules.keep_updated = false;
         fences
     }
 
@@ -963,13 +1034,6 @@ impl AppState {
         let mut report = SyncReport::default();
         let now = pecofence_core::now_unix();
         let mut seen: HashSet<ItemId> = HashSet::new();
-        // One pass over the fences instead of a search per entry (quadratic on a crowded
-        // desktop).
-        let in_fence: HashSet<ItemId> = self
-            .fences()
-            .iter()
-            .flat_map(|f| f.items.iter().map(|r| r.item_id))
-            .collect();
         // Naming new entries one at a time costs several ms each on a OneDrive desktop: a batch
         // of them (first run, an unpacked archive) is named per folder in one go, as
         // `refresh_portal` does.
@@ -1038,17 +1102,7 @@ impl AppState {
                         self.dirty = true;
                     }
                 }
-                // An item that exists but is in no fence (e.g. its fence was deleted, or a .tmp
-                // skipped while fresh) → route. Counted, so the caller refreshes the windows.
-                if !in_fence.contains(&id) {
-                    let decision = self.route_decision(entry);
-                    if let Some((fence, by)) = self.target_fence(decision)
-                        && self.config.assign(self.layout, id, fence, by).is_some()
-                    {
-                        report.updated += 1;
-                        self.dirty = true;
-                    }
-                }
+                // Existing loose items belong on the desktop. Only arrivals are auto-routed.
                 continue;
             }
             // New item.
@@ -1140,6 +1194,7 @@ impl AppState {
         for f in &mut self.config.layouts[self.layout].fences {
             f.items.retain(|r| r.item_id != id);
         }
+        self.config.layouts[self.layout].desktop_items.remove(&id);
         self.dirty = true;
     }
 
@@ -1730,6 +1785,12 @@ impl AppState {
             let Some(&id) = self.catalog.get(&key) else {
                 continue;
             };
+            if self.config.layouts[self.layout]
+                .desktop_items
+                .contains_key(&id)
+            {
+                continue;
+            }
             let current = self.fences().iter().find(|f| f.contains_item(id));
             if let Some(f) = current
                 && f.items
@@ -1774,45 +1835,6 @@ impl AppState {
             });
         }
         plan
-    }
-
-    /// Re-files `ids` by the rules as if they had just arrived on the desktop (the user dragged
-    /// them out of a fence onto the desktop: an explicit "let go", so an earlier manual
-    /// placement no longer pins them). Unmatched items stay where they are (the inbox).
-    /// Returns the fences whose membership changed.
-    pub fn apply_rules_to(&mut self, ids: &[ItemId], entries: &[DesktopEntry]) -> Vec<FenceId> {
-        let mut touched = Vec::new();
-        for entry in entries {
-            if entry.origin == EntryOrigin::Namespace {
-                continue;
-            }
-            let key = ItemKey::from_path(&entry.path.to_string_lossy());
-            let Some(&id) = self.catalog.get(&key) else {
-                continue;
-            };
-            if !ids.contains(&id) {
-                continue;
-            }
-            let from = self
-                .fences()
-                .iter()
-                .find(|f| f.contains_item(id))
-                .map(|f| f.id);
-            let decision = self.config.rules.evaluate(&self.facts_for(entry));
-            if let Some((fence, by)) = self.target_fence(decision)
-                && Some(fence) != from
-                && self.config.assign(self.layout, id, fence, by).is_some()
-            {
-                touched.extend(from);
-                touched.push(fence);
-            }
-        }
-        if !touched.is_empty() {
-            self.dirty = true;
-            touched.sort_unstable();
-            touched.dedup();
-        }
-        touched
     }
 
     // ---- fences -----------------------------------------------------------------------------
@@ -2260,14 +2282,8 @@ impl AppState {
             .any(|c| matches!(c, Cond::IdleDays { .. }))
     }
 
-    /// Deletes a fence; its items go back to the inbox. The inbox itself cannot be deleted.
+    /// Deletes any container. Its files stay put and its icons return to the free desktop.
     pub fn delete_fence(&mut self, id: FenceId) -> bool {
-        let Some(inbox) = self.inbox_id() else {
-            return false;
-        };
-        if inbox == id {
-            return false;
-        }
         // Out of its tab group first: a deleted host hands its place to the next tab, which
         // keeps the others (they would otherwise all open on the host's rect).
         self.detach_tab(id);
@@ -2279,10 +2295,7 @@ impl AppState {
         self.portal_missing.remove(&id);
         self.evict_portal_members(id);
         let ids: Vec<ItemId> = removed.items.iter().map(|r| r.item_id).collect();
-        for item in ids {
-            self.config
-                .assign(self.layout, item, inbox, AssignedBy::Migration);
-        }
+        self.release_items(&ids, None);
         self.config
             .rules
             .list
@@ -2670,7 +2683,7 @@ mod tests {
     #[test]
     fn many_desktop_items_never_make_the_config_unsavable() {
         let mut state = test_state();
-        let inbox = state.inbox_id().unwrap();
+        let inbox = state.fences()[0].id;
         for i in 0..5200 {
             add_item(&mut state, inbox, &format!("file{i}"));
         }
@@ -2940,7 +2953,7 @@ mod tests {
     fn safe_save_keeps_the_document_in_its_fence() {
         let desk = |name: &str| PathBuf::from(format!("C:/Users/Me/Desktop/{name}"));
         let mut state = test_state();
-        let (inbox, work) = (state.inbox_id().unwrap(), state.fences()[1].id);
+        let (inbox, work) = (state.fences()[0].id, state.fences()[1].id);
         let doc = add_item(&mut state, work, "report");
         // Word: the document goes to ~WRL0001.tmp, the new copy ~WRD0000.tmp takes its name.
         state.rename_item(&desk("report.txt"), &desk("~WRL0001.tmp"));
@@ -2965,19 +2978,20 @@ mod tests {
         assert_eq!(state.item_id_for_path(&desk("report.txt")), Some(doc));
         assert_eq!(state.config.fence_of_item(0, doc), Some(work));
         assert!(state.config.items[&copy].orphaned_since.is_some());
-        // A sync that catches the fresh copy mid-save puts it in no fence. Once the file has
-        // lasted a minute, the next sync (nothing else changed) puts it in a fence and reports
-        // that, so housekeeping refreshes the windows.
+        // A sync that catches the fresh copy mid-save catalogues it loose. Once the file has
+        // lasted a minute it is still loose — existing loose items are not re-routed, only
+        // arrivals are.
         let mut fresh = desktop_entry("~WRD0002.tmp");
         fresh.created = pecofence_core::now_unix();
         state.sync_desktop(&[desktop_entry("report.txt"), fresh.clone()]);
         let tmp = state.item_id_for_path(&desk("~WRD0002.tmp")).unwrap();
         assert!(state.fences().iter().all(|f| !f.contains_item(tmp)));
         fresh.created -= pecofence_core::rules::TMP_SETTLE_SECS as i64;
-        let report = state.sync_desktop(&[desktop_entry("report.txt"), fresh]);
-        assert!(report.changed(), "a routed .tmp must show up in the report");
-        assert_eq!(state.config.fence_of_item(0, tmp), Some(inbox));
-        // A .tmp that has been around for a while, or a .bak, shows like any other file.
+        state.sync_desktop(&[desktop_entry("report.txt"), fresh]);
+        assert_eq!(state.config.fence_of_item(0, tmp), None);
+        assert!(state.loose_items().iter().any(|i| i.id == tmp));
+        // A .tmp that has been around for a while, or a .bak, is a loose desktop item like
+        // any other file no rule files.
         state.sync_desktop(&[
             desktop_entry("report.txt"),
             desktop_entry("leftover.tmp"),
@@ -2985,10 +2999,7 @@ mod tests {
         ]);
         for name in ["leftover.tmp", "notes.bak"] {
             let id = state.item_id_for_path(&desk(name)).unwrap();
-            assert!(
-                state.config.fence_of_item(0, id).is_some(),
-                "{name} shows nowhere"
-            );
+            assert_eq!(state.config.fence_of_item(0, id), None, "{name} stays loose");
         }
         // AutoCAD: the drawing is renamed to .bak and the new copy (catalogued by a sync while
         // it was written) is renamed over its name. The drawing keeps its record and fence; the
@@ -3002,7 +3013,7 @@ mod tests {
         assert_eq!(state.item_id_for_path(&desk("report.txt")), Some(doc));
         assert_eq!(state.config.fence_of_item(0, doc), Some(work));
         let bak = state.item_id_for_path(&desk("report.bak")).unwrap();
-        assert_eq!(state.config.fence_of_item(0, bak), Some(inbox));
+        assert_eq!(state.config.fence_of_item(0, bak), None);
     }
 
     /// #69 / #71: the shortcut rule is disabled and type rules plus a final 「普通文件」 rule are
@@ -3017,7 +3028,6 @@ mod tests {
             state.fences()[1].id,
             state.fences()[2].id,
         );
-        let inbox = state.inbox_id().unwrap();
         let [archives, images, other] =
             ["压缩", "图片", "其它"].map(|t| state.new_fence(t, rect(0, 0, 300, 200)).unwrap());
         let mut folder = desktop_entry("Projects");
@@ -3037,7 +3047,9 @@ mod tests {
         .map(desktop_entry)
         .into();
         entries.push(folder);
-        // The first-run rules put the programs and shortcuts into 程序.
+        // Auto-filing on: arrivals run the first-run rules, so the programs and shortcuts
+        // land in 程序.
+        state.config.rules.keep_updated = true;
         state.sync_desktop(&entries);
         let id = |state: &AppState, name: &str| {
             state
@@ -3047,7 +3059,8 @@ mod tests {
         let fence_of =
             |state: &AppState, name: &str| state.config.fence_of_item(0, id(state, name));
         assert_eq!(fence_of(&state, "Notepad.lnk"), Some(programs));
-        assert_eq!(fence_of(&state, "query.sql"), Some(inbox));
+        // No inbox exists any more: an item no rule files stays loose on the desktop.
+        assert_eq!(fence_of(&state, "query.sql"), None);
         let type_rule = |cat, to| Rule::new("t", Target::Fence(to), vec![Cond::Type(vec![cat])]);
         let rules = &mut state.config.rules;
         rules.list[0].enabled = false;
@@ -3061,9 +3074,13 @@ mod tests {
         ]);
         let shortcuts = ["Notepad.lnk", "tool.exe", "site.url"];
         let plan = state.plan_rules(&entries, false);
+        // A move "to the desktop" is a release to loose items, not a fence switch: nothing
+        // is planned for the items that fell back to the desktop default.
         for name in shortcuts {
-            let m = plan.iter().find(|m| m.item == id(&state, name)).unwrap();
-            assert_eq!((m.from, m.to), (Some(programs), inbox), "{name}");
+            assert!(
+                plan.iter().all(|m| m.item != id(&state, name)),
+                "{name} leaves {programs:?} only by staying loose or staying put"
+            );
         }
         state.config.rules.unmatched = Unmatched::Stay;
         let plan = state.plan_rules(&entries, false);
@@ -3089,7 +3106,7 @@ mod tests {
         }
         entries.push(desktop_entry("New.lnk"));
         state.sync_desktop(&entries);
-        assert_eq!(fence_of(&state, "New.lnk"), Some(inbox));
+        assert_eq!(fence_of(&state, "New.lnk"), None, "the new item lands loose");
         assert!(state.plan_rules(&entries, false).is_empty());
     }
 
@@ -3099,7 +3116,7 @@ mod tests {
     fn a_rename_over_a_recently_deleted_name_keeps_the_item_in_its_fence() {
         let desk = |name: &str| PathBuf::from(format!("C:/Users/Me/Desktop/{name}"));
         let mut state = test_state();
-        let (inbox, work) = (state.inbox_id().unwrap(), state.fences()[1].id);
+        let (inbox, work) = (state.fences()[0].id, state.fences()[1].id);
         let gone = add_item(&mut state, inbox, "b");
         state.config.items.get_mut(&gone).unwrap().orphaned_since = Some(1);
         let kept = add_item(&mut state, work, "a");
@@ -3151,29 +3168,76 @@ mod tests {
         assert!(state.config.items[&id].is_folder);
     }
 
-    /// Issue #39: the inbox cannot be deleted, but 为空时自动隐藏 keeps an empty one out of sight.
     #[test]
-    fn an_empty_inbox_hides_only_when_asked_and_on_its_own() {
+    fn legacy_desktop_container_can_be_deleted_without_losing_files() {
         let mut state = test_state();
-        let inbox = state.inbox_id().unwrap();
-        let other = state.fences().iter().find(|f| f.id != inbox).unwrap().id;
-        let item = add_item(&mut state, inbox, "new");
-        state.set_hide_when_empty(inbox, true);
-        assert_eq!(state.hidden_inbox(), None, "it still holds an item");
-        state.move_items(&[item], other);
-        assert_eq!(state.hidden_inbox(), Some(inbox));
-        // A deleted file stays catalogued for a while (orphaned) but is not shown.
-        let gone = add_item(&mut state, inbox, "gone");
-        assert_eq!(state.hidden_inbox(), None);
-        state.config.items.get_mut(&gone).unwrap().orphaned_since = Some(1);
-        assert_eq!(state.hidden_inbox(), Some(inbox));
-        // As a tab, or with tabs of its own, it is part of a window that stays.
-        state.attach_tab(other, inbox);
-        assert_eq!(state.hidden_inbox(), None);
-        state.detach_tab(other);
-        assert_eq!(state.hidden_inbox(), Some(inbox));
-        state.set_hide_when_empty(inbox, false);
-        assert_eq!(state.hidden_inbox(), None);
+        let fence = state.fences().last().unwrap().id;
+        state.fence_mut(fence).unwrap().kind = FenceKind::Inbox;
+        state.config.container_model = 0;
+        let item = add_item(&mut state, fence, "keep");
+        let key = state.config.items[&item].key.clone();
+        state.migrate_desktop_containers();
+        assert_eq!(state.fence(fence).unwrap().kind, FenceKind::Virtual);
+        assert!(!state.config.rules.keep_updated);
+        assert!(state.config.settings.hide_real_icons);
+        assert!(state.delete_fence(fence));
+        assert_eq!(state.config.items[&item].key, key);
+        assert_eq!(state.config.fence_of_item(state.layout, item), None);
+        assert!(
+            state.config.layouts[state.layout]
+                .desktop_items
+                .contains_key(&item)
+        );
+        assert_eq!(state.loose_items().len(), 1);
+    }
+
+    #[test]
+    fn manual_desktop_placement_survives_refresh_rules_and_serialization() {
+        let mut state = test_state();
+        let fence = state.fences()[0].id;
+        let id = add_item(&mut state, fence, "report");
+        state.config.rules.keep_updated = true;
+        let position = pecofence_core::DesktopPosition {
+            monitor: "test".into(),
+            x: 0.42,
+            y: 0.23,
+        };
+        assert_eq!(state.release_items(&[id], Some(position.clone())), 1);
+        let entries = [desktop_entry("report.txt")];
+        state.sync_desktop(&entries);
+        assert_eq!(state.apply_rules_all(&entries), 0);
+        assert_eq!(state.config.fence_of_item(state.layout, id), None);
+        let text = serde_json::to_string(&state.config).unwrap();
+        let reloaded: Config = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            reloaded.layouts[state.layout].desktop_items[&id],
+            Some(position)
+        );
+        assert_eq!(state.move_items(&[id], fence), 1);
+        assert!(
+            !state.config.layouts[state.layout]
+                .desktop_items
+                .contains_key(&id)
+        );
+        assert_eq!(state.config.fence_of_item(state.layout, id), Some(fence));
+    }
+
+    #[test]
+    fn deleting_all_containers_keeps_a_valid_free_desktop() {
+        let mut state = test_state();
+        let ids: Vec<_> = state.fences().iter().map(|f| f.id).collect();
+        let item = add_item(&mut state, ids[0], "keep");
+        for id in ids {
+            assert!(state.delete_fence(id));
+        }
+        assert!(state.fences().is_empty());
+        assert_eq!(state.loose_items()[0].id, item);
+        assert!(pecofence_core::config_store::validate(&state.config).is_ok());
+        state.ensure_layout();
+        assert!(
+            state.fences().is_empty(),
+            "no mandatory container is recreated"
+        );
     }
 
     /// Feedback #4 and #21: with the Windows icons shown, the inbox can stay out of sight even
@@ -3181,7 +3245,10 @@ mod tests {
     #[test]
     fn the_inbox_hides_while_the_windows_icons_show_when_asked() {
         let mut state = test_state();
-        let inbox = state.inbox_id().unwrap();
+        // The desktop-container migration already ran in `ensure_layout`, so a fence made
+        // Inbox now keeps the kind for the rest of the test.
+        let inbox = state.new_fence("桌面", rect(0, 0, 300, 200)).unwrap();
+        state.fence_mut(inbox).unwrap().kind = FenceKind::Inbox;
         let other = state.fences().iter().find(|f| f.id != inbox).unwrap().id;
         add_item(&mut state, inbox, "new");
         state.config.settings.hide_inbox_when_icons_shown = true;

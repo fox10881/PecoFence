@@ -80,6 +80,9 @@ fn create_gpu(compositor: &Compositor, generation: u32, allow_warp: bool) -> Res
 }
 
 impl RenderStack {
+    pub(crate) fn geometry_device(&self) -> GpuDevice {
+        self.gpu.borrow().device.clone()
+    }
     pub fn new() -> Result<Self> {
         let (queue, queue_path) = match DispatcherQueueController::create_on_current_thread() {
             Ok(q) => (QueueOwner::Wrapper(q), "wrapper(DQTAT_COM_ASTA)"),

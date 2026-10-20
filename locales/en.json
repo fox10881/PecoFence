@@ -565,5 +565,9 @@
     "3D 倾斜层架": "3D shelf mode",
     "把栅栏沿纵向倾斜成平行四边形以贴合斜置壁纸；左右边缘顶部各留一个手柄，分别调整两侧高度": "Shears the fence into a parallelogram to match angled wallpapers; a handle at the top of each side edge adjusts that side's height",
     "纵深缩放": "Depth scale",
-    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Icons shrink progressively toward the far edge for a perspective effect; at 0 they all stay the same size"
+    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Icons shrink progressively toward the far edge for a perspective effect; at 0 they all stay the same size",
+    "动态壁纸玻璃捕获": "Live wallpaper glass capture",
+    "液态玻璃实时透出 Wallpaper Engine、Lively 等动态壁纸的画面；关闭后改用静态截图，更省 GPU": "Liquid Glass shows Wallpaper Engine, Lively and other live wallpapers in real time; off falls back to a still capture and saves GPU power",
+    "移出栅栏，放到桌面": "Move out of the fence to the desktop",
+    "其中的 {0} 个图标会放回桌面，文件本身不受影响。": "{0} of these icons go back to the desktop; the files themselves are not affected."
 }

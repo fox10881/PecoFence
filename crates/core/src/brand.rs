@@ -6,7 +6,7 @@ use std::ffi::OsString;
 pub const NAME: &str = "PecoFence";
 /// Microsoft Store product id (Partner Center, packaging/msix/identity.json).
 pub const STORE_PRODUCT_ID: &str = "9MV6WG3XNWSX";
-pub const REPOSITORY_URL: &str = "https://github.com/DayuanJiang/PecoFence";
+pub const REPOSITORY_URL: &str = "https://github.com/fox10881/PecoFence";
 pub const LEGACY_DATA_DIR: &str = "OpenFence";
 pub const LEGACY_AUTOSTART: &str = "openFence";
 

@@ -289,9 +289,7 @@ impl App {
             }
             CMD_ITEM_PROPERTIES => self.show_properties(fence, &items),
             CMD_ITEM_TO_INBOX => {
-                if let Some(inbox) = self.state.inbox_id() {
-                    self.move_items(&items, inbox);
-                }
+                self.release_to_desktop(&items, None);
             }
             CMD_ITEM_PORTAL => {
                 if let Some(folder) = self.single_folder_of(&items) {
@@ -377,7 +375,7 @@ impl App {
                 false,
             );
         }
-        let inbox = self.state.inbox_id();
+        let on_desktop = self.desktop_windows.values().any(|w| w.id == fence);
         let from_portal = self.state.portal_path(fence).is_some();
         let move_menu = PopupMenu::new();
         let targets: Vec<(u32, String, bool)> = self
@@ -411,10 +409,10 @@ impl App {
             if self.state.portal_path(fence).is_some() {
                 pecofence_core::i18n::text("移出到桌面（移动文件）")
             } else {
-                pecofence_core::i18n::text("移出栅栏（放回“桌面”）")
+                pecofence_core::i18n::text("移出栅栏，放到桌面")
             },
             false,
-            inbox == Some(fence),
+            on_desktop,
         );
         menu.separator();
         // Explorer's own menu (send to / copy / delete / pin / extensions …) appended below ours.
@@ -962,7 +960,14 @@ impl App {
     /// Marquee on the empty desktop: confirm with a one-item menu, then create the fence there.
     pub(super) fn offer_new_fence(&mut self, rect: RECT) {
         // Menus need a visible owner window from this thread; any fence will do.
-        let Some(owner) = self.fences.values().map(|w| w.hwnd()).next() else {
+        let Some(owner) = self
+            .fences
+            .values()
+            .chain(self.desktop_windows.values())
+            .map(|w| w.hwnd())
+            .next()
+            .or(Some(self.control.hwnd()))
+        else {
             return;
         };
         // The marquee's clicks went to Explorer, so the plain SetForegroundWindow in

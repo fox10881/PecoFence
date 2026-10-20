@@ -159,6 +159,15 @@ impl GroupSpan {
     }
 }
 
+/// The row pitch that splits a `view_h`-DIPs-tall viewport into whole rows (`pad_y` top and
+/// bottom): rows never split, and the taller pitch spreads them over the viewport.
+pub fn row_pitch(view_h: f32, pad_y: f32, row_h: f32) -> f32 {
+    let usable = view_h - pad_y * 2.0;
+    // The small tolerance keeps a whole-row height from losing a row to float error.
+    let rows = (usable / row_h + 1e-3).floor().max(1.0);
+    (usable / rows).max(row_h)
+}
+
 /// Splits the items into runs of equal bucket, in delivered order (`reverse` may flip the
 /// sort, so runs are detected rather than assumed descending). Empty input = no spans.
 pub fn group_spans(buckets: impl IntoIterator<Item = Option<DateBucket>>) -> Vec<GroupSpan> {
@@ -262,6 +271,10 @@ impl Bands {
 
     fn is_grouped(&self) -> bool {
         self.groups.len() > 1 || self.groups[0].span.has_header()
+    }
+
+    fn with_row_h(&self, row_h: f32, pad_y: f32) -> Self {
+        Self::new(self.cols, row_h, pad_y, self.count, &[])
     }
 
     /// Index of the band holding `index`; indices past the end land in the last band (the
@@ -432,6 +445,7 @@ pub struct Grid {
     pub rows: usize,
     pub content_height: f32,
     bands: Bands,
+    free_cells: Option<Vec<CellRect>>,
 }
 
 impl Grid {
@@ -451,12 +465,28 @@ impl Grid {
             rows: bands.total_rows(),
             content_height: bands.content_height,
             bands,
+            free_cells: None,
         }
+    }
+
+    pub fn free(metrics: GridMetrics, width: f32, cells: Vec<CellRect>) -> Self {
+        let mut grid = Self::grouped(metrics, width, cells.len(), &[]);
+        grid.content_height = cells.iter().map(|c| c.y + c.h).fold(0.0, f32::max);
+        grid.free_cells = Some(cells);
+        grid
     }
 
     /// Rect of item `index` in content coordinates (before scrolling). Cells sit centred in
     /// their column pitch.
     pub fn cell(&self, index: usize) -> CellRect {
+        if let Some(cells) = &self.free_cells {
+            return cells.get(index).copied().unwrap_or(CellRect {
+                x: 0.0,
+                y: 0.0,
+                w: 0.0,
+                h: 0.0,
+            });
+        }
         let (gi, row, col) = self.bands.place(index);
         CellRect {
             x: self.metrics.pad_x
@@ -470,6 +500,9 @@ impl Grid {
 
     /// Index of the item under a content-local point (already adjusted for scroll).
     pub fn hit_test(&self, x: f32, y: f32, count: usize) -> Option<usize> {
+        if let Some(cells) = &self.free_cells {
+            return cells.iter().take(count).position(|c| c.contains(x, y));
+        }
         if x < self.metrics.pad_x || y < self.metrics.pad_y {
             return None;
         }
@@ -732,6 +765,41 @@ impl ItemLayout {
         (pad_y * 2.0 + rows * bands.row_h).min(view_h)
     }
 
+    /// 「调整大小时按整行整列对齐」: the rows share the height of a viewport `view_h` DIPs
+    /// tall (below the fixed header) like the icon columns share the width, so only whole rows
+    /// show at any fence height; a height of exactly whole rows keeps its layout. Icon cells
+    /// sit centred in the taller pitch, list rows grow to it. Grouped layouts keep their rows:
+    /// the header bands have no row rhythm to fill.
+    pub fn fill_rows(self, view_h: f32) -> Self {
+        match self {
+            Self::Grid(g) if !g.bands.is_grouped() => {
+                let m = g.metrics;
+                let bands = g
+                    .bands
+                    .with_row_h(row_pitch(view_h, m.pad_y, m.cell_h), m.pad_y);
+                Self::Grid(Grid {
+                    rows: bands.total_rows(),
+                    content_height: bands.content_height,
+                    bands,
+                    ..g
+                })
+            }
+            Self::Rows {
+                metrics,
+                width,
+                bands,
+            } if !bands.is_grouped() => Self::Rows {
+                metrics,
+                width,
+                bands: bands.with_row_h(
+                    row_pitch(view_h, metrics.pad_y, metrics.row_h),
+                    metrics.pad_y,
+                ),
+            },
+            other => other,
+        }
+    }
+
     fn bands(&self) -> &Bands {
         match self {
             Self::Grid(g) => &g.bands,
@@ -776,6 +844,9 @@ impl ItemLayout {
 
     /// Scrollable content height, excluding a fixed details header.
     pub fn content_height(&self) -> f32 {
+        if let Self::Grid(g) = self {
+            return g.content_height;
+        }
         self.bands().content_height
     }
 
@@ -816,6 +887,36 @@ impl ItemLayout {
     /// rows up / down — the item of the target row whose centre is nearest horizontally,
     /// crossing group headers — or None when there is no such row (no wrap between rows).
     pub fn neighbour(&self, index: usize, dx: i32, dy: i32, count: usize) -> Option<usize> {
+        if let Self::Grid(g) = self
+            && let Some(cells) = &g.free_cells
+        {
+            let current = cells.get(index)?;
+            return cells
+                .iter()
+                .take(count)
+                .enumerate()
+                .filter(|(i, c)| {
+                    *i != index
+                        && if dx != 0 {
+                            (c.x - current.x) * dx as f32 > 0.5
+                        } else {
+                            (c.y - current.y) * dy as f32 > 0.5
+                        }
+                })
+                .min_by(|(_, a), (_, b)| {
+                    let cost = |c: &CellRect| {
+                        let x = c.x - current.x;
+                        let y = c.y - current.y;
+                        if dx != 0 {
+                            x * x + 4.0 * y * y
+                        } else {
+                            y * y + 4.0 * x * x
+                        }
+                    };
+                    cost(a).total_cmp(&cost(b))
+                })
+                .map(|(i, _)| i);
+        }
         match self {
             Self::Grid(g) => g.bands.neighbour(index, dx, dy, count, |i| g.centre_x(i)),
             Self::Rows { bands, .. } => bands.neighbour(index, dx, dy, count, |_| 0.0),
@@ -1746,5 +1847,36 @@ mod tests {
             "down across the 昨天 header"
         );
         assert_eq!(l.neighbour(2, 0, -1, 3), Some(1));
+    }
+
+    #[test]
+    fn free_desktop_hits_only_icons_and_navigates_by_position() {
+        let cells = vec![
+            CellRect {
+                x: 300.0,
+                y: 100.0,
+                w: 80.0,
+                h: 100.0,
+            },
+            CellRect {
+                x: 100.0,
+                y: 100.0,
+                w: 80.0,
+                h: 100.0,
+            },
+            CellRect {
+                x: 300.0,
+                y: 350.0,
+                w: 80.0,
+                h: 100.0,
+            },
+        ];
+        let l = ItemLayout::Grid(Grid::free(GridMetrics::for_icon_size(48, 2), 1000.0, cells));
+        assert_eq!(l.hit_test(340.0, 150.0, 3), Some(0));
+        assert_eq!(l.hit_test(230.0, 150.0, 3), None);
+        assert_eq!(l.hit_test(340.0, 400.0, 3), Some(2));
+        assert_eq!(l.neighbour(0, -1, 0, 3), Some(1));
+        assert_eq!(l.neighbour(0, 0, 1, 3), Some(2));
+        assert_eq!(l.neighbour(0, 1, 0, 3), None);
     }
 }

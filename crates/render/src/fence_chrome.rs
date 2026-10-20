@@ -892,8 +892,7 @@ fn draw_plate(
                     inset as f32,
                     scale,
                     radius,
-                    level,
-                    plate_a,
+                    opacity.min(1.0) * plate_a,
                     hover,
                 );
                 if let Err(error) = result {
@@ -1046,23 +1045,23 @@ fn draw_plate(
     // A single 1 px rim, lit from the upper left and snapped to device pixels at every DPI.
     let rim_rect = px.ring(outer, radius);
     if sampled_material && theme.liquid_glass {
-        // iOS 27's darkened edge, just inside the specular rim.
-        let shade = if theme.mode == ThemeMode::Dark {
-            0.5
-        } else {
-            0.08
-        };
-        let hair = px.hair();
-        let inner = Rect {
-            left: outer.left + hair,
-            top: outer.top + hair,
-            right: (outer.right - hair).max(outer.left + hair),
-            bottom: (outer.bottom - hair).max(outer.top + hair),
-        };
-        let edge = session.create_solid_brush(ColorF::new(0.0, 0.0, 0.0, shade * plate_a))?;
-        session.draw_rounded_rect(&px.ring(inner, (radius - hair).max(0.0)), &edge, hair);
-        // The GPU material lights its own rim (kube's specular ring).
+        // The GPU material includes its own continuous-corner mask and directional glints;
+        // iOS 27's darkened edge, just inside the specular rim, only helps the software path.
         if !matches!(backdrop, Backdrop::GpuGlass { .. }) {
+            let shade = if theme.mode == ThemeMode::Dark {
+                0.5
+            } else {
+                0.08
+            };
+            let hair = px.hair();
+            let inner = Rect {
+                left: outer.left + hair,
+                top: outer.top + hair,
+                right: (outer.right - hair).max(outer.left + hair),
+                bottom: (outer.bottom - hair).max(outer.top + hair),
+            };
+            let edge = session.create_solid_brush(ColorF::new(0.0, 0.0, 0.0, shade * plate_a))?;
+            session.draw_rounded_rect(&px.ring(inner, (radius - hair).max(0.0)), &edge, hair);
             let saved = session.transform();
             session.set_transform(&(Matrix3x2::translation(0.0, plate_top) * saved));
             let drawn = crate::liquid_glass::draw_reflection(
@@ -1104,7 +1103,7 @@ fn draw_plate(
     Ok(())
 }
 
-/// Halo under a caption drawn in `ink` straight over wallpaper (Liquid Glass labels, a fully
+/// Optional halo under a caption drawn in `ink` straight over wallpaper (a fully
 /// transparent plate): a dark rim under light text, a light one under dark text.
 fn halo_color(ink: ColorF, alpha: f32) -> ColorF {
     if ink.r > 0.5 {
@@ -2030,19 +2029,16 @@ impl FenceChrome {
         }
 
         // No header band, no divider: the title sits directly on the glass. Hovering a
-        // single-title fence shows an inset pill (SubtleFill, 83 ms fade), never a full-width
-        // strip; a tab strip gets its feedback from the individual tab pills instead.
-        if pill_a > 0.0 && tabs.len() <= 1 {
+        // Fluent shows an inset hover pill; Liquid Glass keeps one continuous outer
+        // lens rather than superimposing a capsule whose corners cut across the rim.
+        // A tab strip gets its feedback from the individual tab pills instead.
+        if pill_a > 0.0 && tabs.len() <= 1 && !theme.liquid_glass {
             let row = Rect::from_xywh(4.0, 4.0, (width - 8.0).max(0.0), (title_h - 8.0).max(0.0));
-            if theme.liquid_glass {
-                draw_header_glass(session, &backdrop, theme, scale, 1, row, 0.28, pill_a)?;
-            } else {
-                let pill = session.create_solid_brush(with_alpha(theme.subtle_hover, pill_a))?;
-                session.fill_rounded_rect(
-                    &RoundedRect::uniform(row, header_control_radius(theme, row)),
-                    &pill,
-                );
-            }
+            let pill = session.create_solid_brush(with_alpha(theme.subtle_hover, pill_a))?;
+            session.fill_rounded_rect(
+                &RoundedRect::uniform(row, header_control_radius(theme, row)),
+                &pill,
+            );
         }
 
         if state.merge_hint > 0.0 {
@@ -2141,7 +2137,7 @@ impl FenceChrome {
             style.tint,
         );
         // Captions over bare wallpaper (a fully transparent plate) get a halo.
-        let halo = if theme.text_halo {
+        let halo = if theme.text_halo && !theme.liquid_glass {
             Some(session.create_solid_brush(ColorF::TRANSPARENT)?)
         } else {
             None
@@ -3501,7 +3497,7 @@ impl FenceChrome {
         } else {
             resting
         };
-        // A local halo protects labels over mixed light/dark wallpaper (Liquid Glass, a fully
+        // A local halo protects labels on an explicitly transparent non-glass plate (a fully
         // transparent plate). It does not frost or darken the glass between icons.
         let halo = (!shadowed && (theme.liquid_glass || theme.text_halo))
             .then(|| state.halo(halo_color(theme.text_primary, alpha)));
@@ -3604,15 +3600,15 @@ mod tests {
     #[test]
     fn glass_header_controls_follow_the_plate_and_leave_room_for_captions() {
         let theme = Theme::light().with_liquid_glass();
-        // 16 DIP plate minus the 4 DIP inset; a 2 DIP row would clamp to its own half height.
+        // The broad plate radius clamps to each small control's own half height.
         for width in [40.0, 80.0, 160.0] {
             let rect = Rect::from_xywh(8.0, 4.0, width, 28.0);
-            assert_eq!(header_control_radius(&theme, rect), 12.0);
+            assert_eq!(header_control_radius(&theme, rect), 14.0);
         }
         let chevron = TitleDeco::chevron_box(320.0, 36.0);
         assert_eq!(
             header_control_radius(&theme, chevron),
-            12.0f32.min(chevron.width().min(chevron.height()) * 0.5)
+            28.0f32.min(chevron.width().min(chevron.height()) * 0.5)
         );
         assert_eq!(
             header_control_radius(&theme, Rect::from_xywh(0.0, 0.0, 40.0, 2.0)),

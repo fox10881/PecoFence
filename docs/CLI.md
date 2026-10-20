@@ -1,3 +1,5 @@
+> 自用版 we.12 的桌面归属与迁移见 [DESKTOP_CONTAINERS.md](DESKTOP_CONTAINERS.md)。`desktop` 表示散放图标；规则目标 `inbox` 是旧配置兼容别名，同样表示散放。
+
 # pecofence-cli
 
 `pecofence-cli.exe` is a small console program shipped next to `pecofence.exe`. It drives the
@@ -93,8 +95,7 @@ after an exit 4 read the state back (`fence list`) before retrying a mutation.
 
 Every leaf has `--help` with an example. `FENCE` accepts an id, a unique id prefix of at least six
 hex digits, or a title (exact match first, then a unique case-insensitive substring); the word
-`inbox` always means the desktop fence (the one `fence list` shows with `"kind": "inbox"`), whatever
-its localised title. `RULE` accepts an id, a 0-based index, or a name. Snapshots accept an id, a
+`desktop` selects loose icons for `item list`, `item move --to`, and `watch`. It is not a fence; all visible fences can be deleted. `RULE` accepts an id, a 0-based index, or a name. Snapshots accept an id, a
 unique id prefix, or a name (only while that name is unique).
 
 | Command | Example |
@@ -119,14 +120,14 @@ unique id prefix, or a name (only while that name is unique).
 | `fence detach <FENCE>` | `pecofence-cli fence detach Games` |
 | `fence hide-all` / `fence show-all` | `pecofence-cli fence hide-all` |
 | `fence open-options <FENCE>` | `pecofence-cli fence open-options Work` |
-| `item list [--fence <FENCE>] [--kind <KIND>] [--ext <EXT>]` | `pecofence-cli item list --fence inbox --kind documents` |
-| `item move (<ITEM>... \| --glob <PATTERN> [--from <FENCE>]) --to <FENCE> [--dry-run]` | `pecofence-cli item move --glob "*.pdf" --from inbox --to Docs` |
+| `item list [--fence <FENCE>] [--kind <KIND>] [--ext <EXT>]` | `pecofence-cli item list --fence desktop --kind documents` |
+| `item move (<ITEM>... \| --glob <PATTERN> [--from <FENCE>]) --to <FENCE> [--dry-run]` | `pecofence-cli item move --glob "*.pdf" --from desktop --to Docs` |
 | `item rename <ITEM> <NAME> [--keep-ext false]` | `pecofence-cli item rename "C:\Users\me\Desktop\IMG_2031.pdf" "2026-09 electricity bill"` |
 | `settings get [PATH]` | `pecofence-cli settings get peek.enabled` |
 | `settings set <PATH> <VALUE> [--string]` | `pecofence-cli settings set peek.enabled false` |
 | `settings open-ui` | `pecofence-cli settings open-ui` |
 | `rule list` | `pecofence-cli rule list` |
-| `rule add --name <N> --to <FENCE\|inbox> <conditions...> [--index <N>]` | `pecofence-cli rule add --name PDFs --ext pdf --to Docs` |
+| `rule add --name <N> --to <FENCE\|desktop> <conditions...> [--index <N>]` | `pecofence-cli rule add --name PDFs --ext pdf --to Docs` |
 | `rule remove <RULE>` | `pecofence-cli rule remove PDFs` |
 | `rule enable <RULE>` / `rule disable <RULE>` | `pecofence-cli rule disable 0` |
 | `rule move <RULE> --to <INDEX>` | `pecofence-cli rule move PDFs --to 0` |
@@ -142,7 +143,7 @@ unique id prefix, or a name (only while that name is unique).
 | `backup list` | `pecofence-cli backup list` (daily backups beside config.json, newest first) |
 | `backup restore <FILE>` | `pecofence-cli backup restore "C:\Users\me\AppData\Roaming\PecoFence\backups\2026-09-23.json"` (a path from `backup list`) |
 | `peek start` / `peek end` | `pecofence-cli peek start` |
-| `watch [--fence <FENCE>] [--events <E,...>] [--once] [--heartbeat]` | `pecofence-cli watch --fence inbox --once` |
+| `watch [--fence <FENCE>] [--events <E,...>] [--once] [--heartbeat]` | `pecofence-cli watch --fence desktop --once` |
 | `log [-f] [-n <N>]` | `pecofence-cli log -n 100` (text, not JSON) |
 | `paths` | `pecofence-cli paths` (config, backups, log, crash dumps; offline) |
 
@@ -168,8 +169,8 @@ its tint), `titleColor` theme/tint/white/black/`"#RRGGBB"`, `titleSize` small/no
 `titleOnHover` default/hover/always (hover: the title row folds away until the pointer is over the
 fence; default follows `rollUp.titleOnHover`), `layout` icons/list/details,
 `sort` manual/name/type/date/size/openCount, `reverse`, `groupByDate`, `labelLines`,
-`portalNavigate`, `portalTitleIcon`, `hideWhenEmpty` (inbox only: no window while it is empty; the inbox
-cannot be deleted). `--all` applies the option to every fence one call at a time and
+`portalNavigate`, `portalTitleIcon`, `hideWhenEmpty` (retained for legacy configuration;
+we.12 has no inbox fence). `--all` applies the option to every fence one call at a time and
 skips tabs hosted inside another fence (their options belong to the host).
 
 `item list` describes every item with `kind` (`folders`, `programs`, `installers`, `shortcuts`,
@@ -299,7 +300,7 @@ entering or leaving that fence and fence events to that fence; `--events a,b` li
 `heartbeat` every 30 s keeps a quiet stream alive and is hidden unless `--heartbeat`. At most four
 streams are open at a time (`limit_reached`). `describe --schema EventDto` has the exact shape.
 
-The intended use is not a long-running agent but a trigger: `watch --fence inbox --once` blocks
+The intended use is not a long-running agent but a trigger: `watch --fence desktop --once` blocks
 until one item lands on the desktop and exits 0 with that event as its output; a script or a
 scheduled task then runs one batch (`item list`, decide, `item move` / `item rename`) and goes back
 to waiting. Events are produced by diffing the app's state every 500 ms (and right after each CLI
@@ -391,7 +392,7 @@ The app ignores the field's value.
 | `invalid_path` | The `settings` path does not exist in Settings. |
 | `validation_failed` | The patched object did not deserialize; `details.expected` says what was expected. |
 | `limit_reached` | The maximum number of fences or snapshots already exists, or four `watch` streams are already open. |
-| `unsupported` | The operation does not apply to this target (inbox fence, hosted tab, ...). |
+| `unsupported` | The operation does not apply to this target (hosted tab, ...). |
 | `internal` | Unexpected failure in the app or in the transport. |
 
 ## Units and coordinates
@@ -440,8 +441,7 @@ instance and needs neither.
   `config export` first if you may want the old values back.
 - Tabs hosted inside another fence's window share its geometry: `fence move`/`resize` on a tab fails
   with `unsupported` (address the host fence, or `fence detach` first), and `--all` batches skip tabs.
-- Deleting a fence also deletes the rules that target it; its items return to the desktop fence.
-  The desktop (inbox) fence cannot be deleted.
+- Deleting a fence also deletes the rules that target it; its icons return to the free desktop. All fences can be deleted; no files are deleted or moved by deleting a fence.
 - Titles, rule names and snapshot names are limited to 256 characters; `rule add` needs at least one
   condition.
 - Changing `autostart` on the Microsoft Store build opens Windows' Startup Apps settings page instead

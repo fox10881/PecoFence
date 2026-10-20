@@ -67,6 +67,9 @@ pub(super) fn on_nchittest(
     let Some(v) = guard.as_ref() else {
         return Some(msg::HTCLIENT);
     };
+    if v.desktop {
+        return Some(msg::HTCLIENT);
+    }
     let scale = v.scale();
     let border = (RESIZE_BORDER_DIP * scale).round() as i32;
     // Beside a left tab column there is no title row: the column is the title bar.
@@ -263,6 +266,7 @@ pub(super) fn on_ncmousemove(
             }
         }
         if v.rolled_up
+            && !v.manual_fold_latched
             && !v.peeking
             && v.roll_anim.is_none()
             && behavior.hover_peek.get()
@@ -466,16 +470,8 @@ pub(super) fn on_nclbuttondblclk(
             // already expanded (click-to-expand): same click, nothing to do.
             return Some(0);
         }
-        let was_peeking = view.borrow_mut().as_mut().map(|v| {
-            let p = v.peeking;
-            v.peeking = false;
-            p
-        });
-        if was_peeking == Some(true) {
-            // Already expanded by peek: commit the expanded state.
-            queue.push(Command::CommitExpanded(fence_id));
-        } else {
-            queue.push(Command::ToggleRollUp(fence_id));
+        if let Some(v) = view.borrow().as_ref() {
+            queue.push(Command::SetRollUp(fence_id, !v.roll_target()));
         }
         return Some(0);
     }
@@ -533,23 +529,28 @@ pub(super) fn on_ncrbuttonup(
     None
 }
 
-pub(super) fn on_size(h: &HandlerCtx, hwnd: HWND, _wparam: usize, lparam: isize) -> Option<isize> {
+pub(super) fn on_size(h: &HandlerCtx, hwnd: HWND, _wparam: usize, _lparam: isize) -> Option<isize> {
     let HandlerCtx { view, .. } = h;
     let started = Instant::now();
-    let w = msg::lo_i16(lparam);
-    let h = msg::hi_i16(lparam);
+    // Reconcile against actual geometry; an old size notification must never shrink
+    // the composition surfaces of an already-expanded HWND back to a title strip.
+    let (w, h) = window::window_rect_size(hwnd);
     let mut guard = view.borrow_mut();
     if let Some(v) = guard.as_mut() {
         // A window created during early logon may have reported 96 DPI
         // before the display settled; re-read it on every size change.
-        v.apply_dpi(monitors::dpi_for_window(hwnd));
+        let dpi_changed = v.apply_dpi(monitors::dpi_for_window(hwnd));
+        if v.prepared_height_frame.take() == Some((w, h)) && !dpi_changed {
+            v.update_shadow();
+            return Some(0);
+        }
         v.update_backdrop();
         let crop_done = Instant::now();
         let drawn = if v.height_animating() {
             // Frame-clock resize: the content surface is frozen at its
             // expanded size; only the chrome (backdrop, rim) follows.
             v.update_shape_clip(w, h)
-                .and_then(|_| v.chrome_panel.resize(w, h))
+                .and_then(|_| v.resize_chrome_viewport(w, h))
                 .and_then(|_| v.draw_chrome_panel())
         } else {
             // The cell grid is re-laid out for the new width: old origins

@@ -97,6 +97,23 @@ pub unsafe fn CoUninitialize() {
     unsafe { CoUninitialize() }
 }
 #[inline]
+pub unsafe fn CombineRgn(
+    hrgndst: Option<HRGN>,
+    hrgnsrc1: Option<HRGN>,
+    hrgnsrc2: Option<HRGN>,
+    imode: i32,
+) -> i32 {
+    windows_core::link!("gdi32.dll" "system" fn CombineRgn(hrgndst : HRGN, hrgnsrc1 : HRGN, hrgnsrc2 : HRGN, imode : i32) -> i32);
+    unsafe {
+        CombineRgn(
+            hrgndst.unwrap_or(core::mem::zeroed()) as _,
+            hrgnsrc1.unwrap_or(core::mem::zeroed()) as _,
+            hrgnsrc2.unwrap_or(core::mem::zeroed()) as _,
+            imode,
+        )
+    }
+}
+#[inline]
 pub unsafe fn ConnectNamedPipe(
     hnamedpipe: HANDLE,
     lpoverlapped: Option<*mut OVERLAPPED>,
@@ -378,6 +395,11 @@ where
             lpprocessinformation as _,
         )
     }
+}
+#[inline]
+pub unsafe fn CreateRectRgn(x1: i32, y1: i32, x2: i32, y2: i32) -> HRGN {
+    windows_core::link!("gdi32.dll" "system" fn CreateRectRgn(x1 : i32, y1 : i32, x2 : i32, y2 : i32) -> HRGN);
+    unsafe { CreateRectRgn(x1, y1, x2, y2) }
 }
 #[inline]
 pub unsafe fn CreateSolidBrush(color: COLORREF) -> HBRUSH {
@@ -2252,6 +2274,17 @@ pub unsafe fn SetWindowPos(
     }
 }
 #[inline]
+pub unsafe fn SetWindowRgn(hwnd: HWND, hrgn: Option<HRGN>, bredraw: bool) -> i32 {
+    windows_core::link!("user32.dll" "system" fn SetWindowRgn(hwnd : HWND, hrgn : HRGN, bredraw : windows_core::BOOL) -> i32);
+    unsafe {
+        SetWindowRgn(
+            hwnd,
+            hrgn.unwrap_or(core::mem::zeroed()) as _,
+            bredraw.into(),
+        )
+    }
+}
+#[inline]
 pub unsafe fn SetWindowSubclass(
     hwnd: HWND,
     pfnsubclass: SUBCLASSPROC,
@@ -3816,6 +3849,9 @@ pub struct HRAWINPUT(pub *mut core::ffi::c_void);
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct HRSRC(pub *mut core::ffi::c_void);
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct HRGN(pub *mut core::ffi::c_void);
 pub const HTBOTTOM: i32 = 15;
 pub const HTBOTTOMLEFT: i32 = 16;
 pub const HTBOTTOMRIGHT: i32 = 17;
@@ -15617,6 +15653,7 @@ pub struct RGBQUAD {
     pub rgbRed: u8,
     pub rgbReserved: u8,
 }
+pub const RGN_OR: i32 = 2;
 pub const RIDEV_INPUTSINK: i32 = 256;
 pub const RIDEV_REMOVE: i32 = 1;
 pub const RID_INPUT: i32 = 268435459;

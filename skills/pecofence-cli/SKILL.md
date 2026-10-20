@@ -22,7 +22,7 @@ portal folders.
    into or out of it moves the real files (undo only via Explorer). Run such a move with `--dry-run`
    first and show the user the `fileMove` entries and their `destination`. Pair `--glob` with `--from`.
 3. **Address by id.** After `fence list`, use ids (or a unique prefix of 6+ hex digits), not titles.
-   The desktop fence is always `inbox`, whatever its localised title (Desktop, 桌面, ...).
+   Loose desktop icons use `desktop` in item and watch selectors. There is no mandatory desktop fence. All visible fences can be deleted; their icons return to the free desktop without changing files.
 4. **Ask for less.** `--fields id,title,rect,fit` keeps only those keys (dotted paths, lists
    element-wise); a full fence is ~700 bytes. If your reader decodes stdout with a legacy code page
    (Python without `encoding="utf-8"` on a CJK system, Windows PowerShell 5), add `--ascii`.
@@ -36,7 +36,7 @@ portal folders.
 ```
 pecofence-cli status                                        # exit 3 = not running
 pecofence-cli fence list --fields id,title,kind,tabHost,rect,fit,portal
-pecofence-cli item list --fence inbox --fields id,fileName,kind,ext,modified,shortcutTarget,shortcutArguments
+pecofence-cli item list --fence desktop --fields id,fileName,kind,ext,modified,shortcutTarget,shortcutArguments
 pecofence-cli monitor list                                  # workArea of each monitor, for placement
 ```
 
@@ -75,7 +75,7 @@ pecofence-cli fence merge Games --into Work                    # Games becomes a
 pecofence-cli fence rename Work Projects
 pecofence-cli fence delete Temp                                # its items go back to the desktop fence
 pecofence-cli item move <id|path|name>... --to Work
-pecofence-cli item move --glob "*.pdf" --from inbox --to Docs --dry-run
+pecofence-cli item move --glob "*.pdf" --from desktop --to Docs --dry-run
 pecofence-cli item rename "C:\Users\me\Desktop\IMG_2031.pdf" "2026-09 electricity bill"   # keeps .pdf
 pecofence-cli rule add --name PDFs --ext pdf --to Docs         # or --type, --name-contains, --glob, --json '[Cond...]'
 pecofence-cli rule apply --dry-run && pecofence-cli rule apply
@@ -122,7 +122,7 @@ Report what you grouped and why.
 **Keep new desktop files sorted**: add rules; new desktop items are filed as they land. Files in
 other folders (Downloads) are only visible through a portal, and rules do not act on portals. For
 decisions a rule cannot express, a script can block on
-`pecofence-cli watch --fence inbox --events item.added --once` (exits with the event), then run one
+`pecofence-cli watch --fence desktop --events item.added --once` (exits with the event), then run one
 batch and wait again.
 
 **Restyle every fence**

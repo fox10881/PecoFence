@@ -565,5 +565,9 @@
     "3D 倾斜层架": "3D-Schrägregal",
     "把栅栏沿纵向倾斜成平行四边形以贴合斜置壁纸；左右边缘顶部各留一个手柄，分别调整两侧高度": "Neigt den Zaun zu einem Parallelogramm passend zu schrägen Hintergründen; ein Griff oben an jeder Seitenkante stellt deren Höhe ein",
     "纵深缩放": "Tiefenskalierung",
-    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Symbole werden zur ferneren Kante hin kleiner für einen Tiefeneffekt; bei 0 bleiben alle gleich groß"
+    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Symbole werden zur ferneren Kante hin kleiner für einen Tiefeneffekt; bei 0 bleiben alle gleich groß",
+    "动态壁纸玻璃捕获": "Live-Hintergrund-Glaserfassung",
+    "液态玻璃实时透出 Wallpaper Engine、Lively 等动态壁纸的画面；关闭后改用静态截图，更省 GPU": "Liquid Glass zeigt bewegte Hintergründe von Wallpaper Engine, Lively u. a. in Echtzeit; ausgeschaltet wird eine statische Aufnahme genutzt und die GPU geschont",
+    "移出栅栏，放到桌面": "Aus dem Zaun auf den Desktop verschieben",
+    "其中的 {0} 个图标会放回桌面，文件本身不受影响。": "Davon werden {0} Symbole auf den Desktop zurückgelegt; die Dateien selbst bleiben unberührt."
 }

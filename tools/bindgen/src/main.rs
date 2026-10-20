@@ -11,6 +11,7 @@ fn main() {
             "tools/bindgen/composition.txt".to_string(),
             "tools/bindgen/gpu-glass.txt".to_string(),
             "tools/bindgen/store.txt".to_string(),
+            "tools/bindgen/capture.txt".to_string(),
         ],
         v => v,
     };

@@ -903,6 +903,36 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     }
 }
 
+/// Shape a transparent desktop surface to its actual icon cells. Empty space belongs to
+/// Explorer, including cross-process mouse input and OLE drop targeting.
+pub fn set_hit_regions(hwnd: HWND, rects: &[RECT]) -> bool {
+    // SAFETY: GDI regions are owned locally until SetWindowRgn transfers the union to Windows.
+    unsafe {
+        let region = CreateRectRgn(0, 0, 0, 0);
+        if region.0.is_null() {
+            return false;
+        }
+        for rect in rects {
+            let cell = CreateRectRgn(rect.left, rect.top, rect.right, rect.bottom);
+            if cell.0.is_null() {
+                let _ = DeleteObject(HGDIOBJ(region.0));
+                return false;
+            }
+            let combined = CombineRgn(Some(region), Some(region), Some(cell), RGN_OR);
+            let _ = DeleteObject(HGDIOBJ(cell.0));
+            if combined == 0 {
+                let _ = DeleteObject(HGDIOBJ(region.0));
+                return false;
+            }
+        }
+        if SetWindowRgn(hwnd, Some(region), false) == 0 {
+            let _ = DeleteObject(HGDIOBJ(region.0));
+            return false;
+        }
+        true
+    }
+}
+
 #[cfg(test)]
 mod frame_tests {
     use super::*;

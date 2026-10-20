@@ -1,6 +1,6 @@
 //! GPU glass over a shared wallpaper texture. Movement only updates a transform:
 //! the displacement field, specular ring, source upload and effect graph stay resident.
-use crate::{Image, MonitorBackdrop, gpu_bindings as b, theme::GlassLevel};
+use crate::{Image, MonitorBackdrop, gpu_bindings as b};
 use std::{
     collections::HashMap,
     rc::{Rc, Weak},
@@ -215,30 +215,18 @@ pub struct Stats {
     pub control_map_builds: u64,
 }
 
-/// kube.io's SVG chain: displace the backdrop once, let a strongly saturated copy of the
-/// refracted backdrop show through the specular ring, then light the ring itself.
-const RIM_SATURATION: f32 = 6.0;
-const RIM_LIGHT: f32 = 0.48;
+/// Thin chroma-preserving glints; contact shading stays confined to the edge.
+const RIM_LIGHT: f32 = 0.28;
+const CONTOUR_OPACITY: f32 = 0.055;
 
-/// feColorMatrix `saturate` (Rec. 709 luma weights) in D2D's input-row layout.
-fn saturation_matrix(s: f32) -> [f32; 20] {
-    let luma = [0.213, 0.715, 0.072];
+/// Recolor sampled wallpaper for glints, preserving chroma with a limited lift.
+fn glint_matrix(level: f32) -> [f32; 20] {
     let mut values = [0.0; 20];
-    for input in 0..3 {
-        for output in 0..3 {
-            values[input * 4 + output] =
-                luma[input] * (1.0 - s) + if input == output { s } else { 0.0 };
-        }
+    for diagonal in [0, 5, 10] {
+        values[diagonal] = 0.45 * level;
     }
-    values[15] = 1.0;
-    values
-}
-
-/// Premultiplied white from the ring's alpha, scaled by `level`. `color_matrix` applies
-/// the matrix to premultiplied values, so colour must come from alpha, not an offset.
-fn light_matrix(level: f32) -> [f32; 20] {
-    let mut values = [0.0; 20];
-    values[12..16].fill(level);
+    values[12..15].fill(0.95 * level);
+    values[15] = level;
     values
 }
 
@@ -246,18 +234,23 @@ struct Effects {
     source: Option<Rc<Wallpaper>>,
     border: b::ID2D1Effect,
     position: b::ID2D1Effect,
-    frost: b::ID2D1Effect,
     displace: b::ID2D1Effect,
+    blur: b::ID2D1Effect,
+    soft_displace: b::ID2D1Effect,
+    frost: b::ID2D1Effect,
     rim: b::ID2D1Effect,
     light: b::ID2D1Effect,
+    shade: b::ID2D1Effect,
     output: b::ID2D1Effect,
+    layer: b::ID2D1Effect,
+    mask: b::ID2D1Effect,
     surface: Rc<Wallpaper>,
     geometry: Option<(u32, u32, u32, u32)>,
-    base_displacement: f32,
-    displacement: Option<u32>,
-    frost_px: Option<u32>,
     opacity: Option<u32>,
     light_level: Option<u32>,
+    optical_strength: Option<u32>,
+    displacement_px: f32,
+    blur_px: f32,
 }
 
 impl Effects {
@@ -275,12 +268,6 @@ impl Effects {
             b::D2D1_BORDER_EDGE_MODE_CLAMP,
         )?;
         let position = effect(&b::CLSID_D2D12DAffineTransform)?;
-        let frost = effect(&b::CLSID_D2D1GaussianBlur)?;
-        enumeration(
-            &frost,
-            b::D2D1_GAUSSIANBLUR_PROP_BORDER_MODE,
-            b::D2D1_BORDER_MODE_HARD,
-        )?;
         let displace = effect(&b::CLSID_D2D1DisplacementMap)?;
         enumeration(
             &displace,
@@ -292,50 +279,74 @@ impl Effects {
             b::D2D1_DISPLACEMENTMAP_PROP_Y_CHANNEL_SELECT,
             b::D2D1_CHANNEL_SELECTOR_G,
         )?;
-        let saturate = effect(&b::CLSID_D2D1ColorMatrix)?;
-        color_matrix(&saturate, saturation_matrix(RIM_SATURATION))?;
-        property(
-            &saturate,
-            b::D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT,
-            b::D2D1_PROPERTY_TYPE_BOOL,
-            &1u32,
+        let blur = effect(&b::CLSID_D2D1GaussianBlur)?;
+        enumeration(
+            &blur,
+            b::D2D1_GAUSSIANBLUR_PROP_BORDER_MODE,
+            b::D2D1_BORDER_MODE_HARD,
         )?;
-        // Input 1 (the ring) arrives with the geometry.
+        let soft_displace = effect(&b::CLSID_D2D1DisplacementMap)?;
+        enumeration(
+            &soft_displace,
+            b::D2D1_DISPLACEMENTMAP_PROP_X_CHANNEL_SELECT,
+            b::D2D1_CHANNEL_SELECTOR_R,
+        )?;
+        enumeration(
+            &soft_displace,
+            b::D2D1_DISPLACEMENTMAP_PROP_Y_CHANNEL_SELECT,
+            b::D2D1_CHANNEL_SELECTOR_G,
+        )?;
+        let frost = effect(&b::CLSID_D2D1AlphaMask)?;
         let rim = effect(&b::CLSID_D2D1AlphaMask)?;
         let light = effect(&b::CLSID_D2D1ColorMatrix)?;
-        color_matrix(&light, light_matrix(RIM_LIGHT))?;
+        color_matrix(&light, glint_matrix(RIM_LIGHT))?;
+        let shade = effect(&b::CLSID_D2D1ColorMatrix)?;
+        let mut contour = [0.0; 20];
+        contour[15] = CONTOUR_OPACITY;
+        color_matrix(&shade, contour)?;
         let composite = effect(&b::CLSID_D2D1Composite)?;
+        let mask = effect(&b::CLSID_D2D1AlphaMask)?;
         let output = effect(&b::CLSID_D2D1ColorMatrix)?;
+        let layer = effect(&b::CLSID_D2D1ColorMatrix)?;
         unsafe {
             position.SetInput(0, &border.GetOutput()?, true);
-            frost.SetInput(0, &position.GetOutput()?, true);
-            displace.SetInput(0, &frost.GetOutput()?, true);
-            saturate.SetInput(0, &displace.GetOutput()?, true);
-            rim.SetInput(0, &saturate.GetOutput()?, true);
-            composite.SetInputCount(3).ok()?;
+            displace.SetInput(0, &position.GetOutput()?, true);
+            blur.SetInput(0, &position.GetOutput()?, true);
+            soft_displace.SetInput(0, &blur.GetOutput()?, true);
+            frost.SetInput(0, &soft_displace.GetOutput()?, true);
+            light.SetInput(0, &displace.GetOutput()?, true);
+            rim.SetInput(0, &light.GetOutput()?, true);
+            composite.SetInputCount(4).ok()?;
             composite.SetInput(0, &displace.GetOutput()?, true);
-            composite.SetInput(1, &rim.GetOutput()?, true);
-            composite.SetInput(2, &light.GetOutput()?, true);
-            output.SetInput(0, &composite.GetOutput()?, true);
+            composite.SetInput(1, &frost.GetOutput()?, true);
+            composite.SetInput(2, &shade.GetOutput()?, true);
+            composite.SetInput(3, &rim.GetOutput()?, true);
+            mask.SetInput(0, &composite.GetOutput()?, true);
+            output.SetInput(0, &mask.GetOutput()?, true);
         }
         Ok(Self {
             source: None,
             border,
             position,
-            frost,
             displace,
+            blur,
+            soft_displace,
+            frost,
             rim,
             light,
+            shade,
             output,
+            layer,
+            mask: mask.clone(),
             surface: Rc::new(Wallpaper {
-                image: unsafe { composite.GetOutput()? },
+                image: unsafe { mask.GetOutput()? },
             }),
             geometry: None,
-            base_displacement: 0.0,
-            displacement: None,
-            frost_px: None,
             opacity: None,
             light_level: Some(RIM_LIGHT.to_bits()),
+            optical_strength: None,
+            displacement_px: 0.0,
+            blur_px: 0.0,
         })
     }
 
@@ -394,44 +405,96 @@ impl Effects {
             b::DXGI_FORMAT_A8_UNORM,
         )?
         .cast::<b::ID2D1Image>()?;
-        self.base_displacement = field.scale_px;
-        self.displacement = None;
+        let shade = bitmap(
+            context,
+            field.rim_width,
+            field.rim_height,
+            field.shade.as_ptr().cast(),
+            field.rim_width,
+            b::DXGI_FORMAT_A8_UNORM,
+        )?
+        .cast::<b::ID2D1Image>()?;
+        let coverage = bitmap(
+            context,
+            w,
+            h,
+            field.coverage.as_ptr().cast(),
+            w,
+            b::DXGI_FORMAT_A8_UNORM,
+        )?
+        .cast::<b::ID2D1Image>()?;
+        let frost = bitmap(
+            context,
+            w,
+            h,
+            field.frost.as_ptr().cast(),
+            w,
+            b::DXGI_FORMAT_A8_UNORM,
+        )?
+        .cast::<b::ID2D1Image>()?;
+        scalar(
+            &self.displace,
+            b::D2D1_DISPLACEMENTMAP_PROP_SCALE,
+            field.scale_px,
+        )?;
+        scalar(
+            &self.soft_displace,
+            b::D2D1_DISPLACEMENTMAP_PROP_SCALE,
+            field.scale_px,
+        )?;
+        scalar(
+            &self.blur,
+            b::D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION,
+            field.blur_px,
+        )?;
         unsafe {
             map_border.SetInput(0, &map.cast::<b::ID2D1Image>()?, true);
             map_scale.SetInput(0, &map_border.GetOutput()?, true);
             self.displace.SetInput(1, &map_scale.GetOutput()?, true);
+            self.soft_displace
+                .SetInput(1, &map_scale.GetOutput()?, true);
             self.rim.SetInput(1, &ring, true);
-            self.light.SetInput(0, &ring, true);
+            self.shade.SetInput(0, &shade, true);
+            self.frost.SetInput(1, &frost, true);
+            self.mask.SetInput(1, &coverage, true);
+            self.layer.SetInput(0, &coverage, true);
         }
         self.geometry = Some(key);
+        self.displacement_px = field.scale_px;
+        self.blur_px = field.blur_px;
+        self.optical_strength = None;
         Ok(true)
     }
 
-    /// One `Effects` draws every fence: re-applied only when the level changes.
-    fn set_material(&mut self, frost_px: f32, refraction: f32) -> Result<()> {
-        if self.frost_px != Some(frost_px.to_bits()) {
-            scalar(
-                &self.frost,
-                b::D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION,
-                frost_px.max(0.0),
-            )?;
-            self.frost_px = Some(frost_px.to_bits());
+    fn set_strength(&mut self, strength: f32) -> Result<()> {
+        if self.optical_strength == Some(strength.to_bits()) {
+            return Ok(());
         }
-        let displacement = self.base_displacement * refraction;
-        if self.displacement != Some(displacement.to_bits()) {
-            scalar(
-                &self.displace,
-                b::D2D1_DISPLACEMENTMAP_PROP_SCALE,
-                displacement,
-            )?;
-            self.displacement = Some(displacement.to_bits());
-        }
+        scalar(
+            &self.displace,
+            b::D2D1_DISPLACEMENTMAP_PROP_SCALE,
+            self.displacement_px * strength,
+        )?;
+        scalar(
+            &self.soft_displace,
+            b::D2D1_DISPLACEMENTMAP_PROP_SCALE,
+            self.displacement_px * strength,
+        )?;
+        scalar(
+            &self.blur,
+            b::D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION,
+            self.blur_px * strength,
+        )?;
+        let mut contour = [0.0; 20];
+        contour[15] = CONTOUR_OPACITY * strength;
+        color_matrix(&self.shade, contour)?;
+        self.optical_strength = Some(strength.to_bits());
         Ok(())
     }
 
     fn set_light(&mut self, level: f32) -> Result<()> {
         if self.light_level != Some(level.to_bits()) {
-            color_matrix(&self.light, light_matrix(level))?;
+            color_matrix(&self.light, glint_matrix(level))?;
             self.light_level = Some(level.to_bits());
         }
         Ok(())
@@ -440,6 +503,7 @@ impl Effects {
 
 #[derive(Default)]
 pub struct GpuGlass {
+    strength: Option<f32>,
     effects: Option<Effects>,
     /// Surface row (device px) the last `draw` placed the plate's lens at: a folded title row
     /// moves it down, and header lenses sample the refracted plate relative to it.
@@ -457,8 +521,66 @@ struct Control {
 }
 
 impl GpuGlass {
+    /// Pause optics without replacing the last real wallpaper or invalidating its maps.
+    pub fn set_strength(&mut self, strength: f32) {
+        self.strength = Some(strength.clamp(0.0, 1.0));
+    }
+
+    pub fn strength(&self) -> f32 {
+        self.strength.unwrap_or(1.0)
+    }
+    /// Tint and floating backing follow exactly the same continuous silhouette.
+    pub fn draw_layer(
+        &self,
+        session: &DrawingSession<'_>,
+        color: windows_canvas::ColorF,
+    ) -> Result<()> {
+        let Some(effects) = self.effects.as_ref().filter(|_| !self.failed) else {
+            return Ok(());
+        };
+        let Some((w, h, _, _)) = effects.geometry else {
+            return Ok(());
+        };
+        let color = windows_canvas::ColorF {
+            a: color.a * self.strength(),
+            ..color
+        };
+        if color.a <= 0.0 {
+            return Ok(());
+        }
+        let mut values = [0.0; 20];
+        values[12] = color.r * color.a;
+        values[13] = color.g * color.a;
+        values[14] = color.b * color.a;
+        values[15] = color.a;
+        color_matrix(&effects.layer, values)?;
+        let context: b::ID2D1DeviceContext = session.raw().cast()?;
+        let saved = session.transform();
+        session.set_transform(&Matrix3x2::identity());
+        let result = (|| -> Result<()> {
+            unsafe {
+                context.DrawImage(
+                    &effects.layer.GetOutput()?,
+                    Some(&Vector2::new(0.0, self.origin_y)),
+                    Some(&b::D2D_RECT_F {
+                        left: 0.0,
+                        top: 0.0,
+                        right: w as f32,
+                        bottom: h as f32,
+                    }),
+                    b::D2D1_INTERPOLATION_MODE_LINEAR,
+                    b::D2D1_COMPOSITE_MODE_SOURCE_OVER,
+                );
+            }
+            Ok(())
+        })();
+        session.set_transform(&saved);
+        result
+    }
     pub fn reset(&mut self) {
+        let strength = self.strength;
         *self = Self::default();
+        self.strength = strength;
     }
     pub fn stats(&self) -> Stats {
         self.stats
@@ -479,10 +601,12 @@ impl GpuGlass {
         origin_y: f32,
         scale: f32,
         radius: f32,
-        level: GlassLevel,
-        alpha: f32,
+        opacity: f32,
         hover: f32,
     ) -> Result<()> {
+        if self.strength() == 0.0 {
+            return Ok(());
+        }
         if self.failed {
             return Err(windows_core::Error::from_hresult(windows_core::HRESULT(
                 0x80004005u32 as i32,
@@ -491,24 +615,16 @@ impl GpuGlass {
         let saved = session.transform();
         self.controls
             .retain(|key, control| *key < 5 || control.frame + 1 >= self.stats.frames);
-        // Rows, column captions and section headers (keys 0x10000 to 0x3FFFF) are drawn on
-        // the content surface, which does not count frames: chrome-only frames (a title hover)
-        // must not forget their ink. Visible slots bound how many there are.
-        self.text_inks.retain(|key, (_, frame)| {
-            (0x10000..0x40000).contains(key) || *frame + 1 >= self.stats.frames
-        });
+        self.text_inks
+            .retain(|_, (_, frame)| *frame + 1 >= self.stats.frames);
         session.set_transform(&Matrix3x2::identity());
         self.origin_y = origin_y;
         let result = self.draw_inner(
-            session, cache, sources, rect, origin_y, scale, radius, level, alpha, hover,
+            session, cache, sources, rect, origin_y, scale, radius, opacity, hover,
         );
         session.set_transform(&saved);
         if let Err(error) = &result {
-            // E_OUTOFMEMORY, D3DERR_OUTOFVIDEOMEMORY: this frame is solid, the next tries again.
-            let out_of_memory = [0x8007000Eu32, 0x8876017C].contains(&(error.code().0 as u32));
-            if out_of_memory {
-                tracing::debug!(%error, "GPU glass out of memory for this frame");
-            } else if !windows_canvas::is_device_lost(error.code()) {
+            if !windows_canvas::is_device_lost(error.code()) {
                 tracing::warn!(%error, "GPU glass unavailable; using readable solid material");
                 self.failed = true;
             }
@@ -555,7 +671,7 @@ impl GpuGlass {
         let Some(parent) = self.effects.as_ref().filter(|_| !self.failed) else {
             return Ok(false);
         };
-        if rect.width() <= 0.0 || rect.height() <= 0.0 || opacity <= 0.0 {
+        if rect.width() <= 0.0 || rect.height() <= 0.0 || opacity <= 0.0 || self.strength() == 0.0 {
             return Ok(true);
         }
         let context: b::ID2D1DeviceContext = session.raw().cast()?;
@@ -598,8 +714,8 @@ impl GpuGlass {
         if effects.geometry(&context, w, h, scale, radius)? {
             self.stats.control_map_builds += 1;
         }
-        // The parent surface is already frosted.
-        effects.set_material(0.0, 1.0)?;
+        effects.set_strength(self.strength.unwrap_or(1.0))?;
+        effects.set_light(RIM_LIGHT * self.strength.unwrap_or(1.0))?;
         let (x, y) = (rect.left * scale, rect.top * scale);
         // The parent surface starts at the plate top (`origin_y`), not at the window top.
         matrix(
@@ -629,7 +745,9 @@ impl GpuGlass {
             control
                 .brush
                 .SetTransform(&windows_numerics::Matrix3x2::translation(x, y));
-            control.brush.SetOpacity(opacity.clamp(0.0, 1.0));
+            control
+                .brush
+                .SetOpacity(opacity.clamp(0.0, 1.0) * self.strength.unwrap_or(1.0));
             context.FillRoundedRectangle(&round, &control.brush);
         }
         session.set_transform(&saved);
@@ -647,8 +765,7 @@ impl GpuGlass {
         origin_y: f32,
         scale: f32,
         radius: f32,
-        level: GlassLevel,
-        alpha: f32,
+        opacity: f32,
         hover: f32,
     ) -> Result<()> {
         let context: b::ID2D1DeviceContext = session.raw().cast()?;
@@ -670,22 +787,24 @@ impl GpuGlass {
         if effects.geometry(&context, w, h, scale, radius)? {
             self.stats.map_builds += 1;
         }
+        effects.set_strength(self.strength.unwrap_or(1.0))?;
         matrix(
             &effects.position,
             [1.0, 0.0, 0.0, 1.0, -rect[0] as f32, -rect[1] as f32],
         )?;
-        effects.set_material(level.frost_sigma_dip * scale, level.refraction)?;
-        let alpha = alpha.clamp(0.0, 1.0);
-        if effects.opacity != Some(alpha.to_bits()) {
+        let opacity = opacity.clamp(0.0, 1.0) * self.strength.unwrap_or(1.0);
+        if effects.opacity != Some(opacity.to_bits()) {
             let mut values = [0.0; 20];
             for i in [0, 5, 10, 15] {
-                values[i] = alpha;
+                values[i] = opacity;
             }
             color_matrix(&effects.output, values)?;
-            effects.opacity = Some(alpha.to_bits());
+            effects.opacity = Some(opacity.to_bits());
         }
         // Hover lifts the rim light with the application's existing animation clock.
-        effects.set_light(RIM_LIGHT * level.light * (1.0 + 0.35 * hover.clamp(0.0, 1.0)))?;
+        effects.set_light(
+            RIM_LIGHT * (1.0 + 0.35 * hover.clamp(0.0, 1.0)) * self.strength.unwrap_or(1.0),
+        )?;
         let area = b::D2D_RECT_F {
             left: 0.0,
             top: 0.0,

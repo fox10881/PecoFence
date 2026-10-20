@@ -129,6 +129,14 @@ impl App {
                     tracing::info!(target: "pecofence::test", "feedback-info {info}");
                 }
                 #[cfg(debug_assertions)]
+                ["live-activity", state @ ("on" | "off" | "system")] => {
+                    self.test_live_activity(match *state {
+                        "on" => Some(true),
+                        "off" => Some(false),
+                        _ => None,
+                    });
+                }
+                #[cfg(debug_assertions)]
                 ["pace", ms] => {
                     if pecofence_core::brand::var_os("PECOFENCE_UI_TEST_WINDOWS").is_some()
                         && let Ok(ms) = ms.parse::<u32>()
@@ -441,8 +449,10 @@ impl App {
                             .fence(id)
                             .and_then(|f| f.items.first().map(|r| r.item_id))
                     {
-                        self.queue
-                            .push(Command::MoveItemsToInbox { items: vec![item] });
+                        self.queue.push(Command::MoveItemsToDesktop {
+                            position: None,
+                            items: vec![item],
+                        });
                     }
                 }
                 ["move", title, into] => {
@@ -605,6 +615,7 @@ impl App {
     }
 
     fn test_dump(&self, tag: &str) {
+        tracing::info!(target: "pecofence::test", "[{tag}] live_material {}", self.live_render_state());
         for (kind, w) in self
             .fences
             .values()
@@ -662,6 +673,10 @@ impl App {
         let band = self.marquee_band_shown().map(rect);
         tracing::info!(target: "pecofence::test", "[{tag}] selection={selected:?} ringed={ringed:?} band={band:?}");
         let peek = self.peek.is_some();
+        for (monitor, w) in &self.desktop_windows {
+            tracing::info!(target: "pecofence::test", "[{tag}] desktop monitor={monitor:?} state={}", w.debug_state());
+        }
+        tracing::info!(target: "pecofence::test", "[{tag}] loose-items={}", self.state.loose_items().len());
         let rename = crate::rename::active_target().is_some();
         tracing::info!(target: "pecofence::test", "[{tag}] fences={} dying={} peek={peek} rename={rename} hide_setting={} icons_hidden={}",
             self.fences.len(), self.dying.len(), self.state.config.settings.hide_real_icons,

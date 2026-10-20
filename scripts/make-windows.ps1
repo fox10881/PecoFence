@@ -38,7 +38,7 @@ try {
     throw "Package version must match Cargo.toml ($workspaceVersion)"
   }
   if (-not $Repository) { $Repository = $env:GITHUB_REPOSITORY }
-  if (-not $Repository) { $Repository = "DayuanJiang/PecoFence" }
+  if (-not $Repository) { $Repository = "fox10881/PecoFence" }
   if ($Repository -notmatch '^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$' -or $Repository.Split('/')[1] -in @('.', '..')) {
     throw "Repository must be a GitHub owner/repository name"
   }
@@ -80,6 +80,9 @@ try {
   Copy-Item -LiteralPath "third_party/webview2/LICENSE.txt" -Destination (Join-Path $common "LICENSE-WebView2Loader.txt")
   Copy-Item -LiteralPath "LICENSE" -Destination $common
   Copy-Item -LiteralPath "docs/UPGRADING.md" -Destination (Join-Path $common "UPGRADING.md")
+  Copy-Item -LiteralPath "docs/WALLPAPER_ENGINE.md" -Destination $common
+  Copy-Item -LiteralPath "docs/GLASS_RENDERING.md" -Destination $common
+  Copy-Item -LiteralPath "docs/DESKTOP_CONTAINERS.md" -Destination $common
   Copy-Item -LiteralPath "skills/pecofence-cli/SKILL.md" -Destination (Join-Path $common "SKILL.md")
   & $Python scripts/write-license-notices.py (Join-Path $common "THIRD-PARTY-LICENSES.txt")
   if ($LASTEXITCODE -ne 0) { throw "License notice generation failed" }

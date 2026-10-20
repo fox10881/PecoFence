@@ -60,6 +60,8 @@ mod group;
 mod ipc;
 mod items;
 mod live_wallpaper;
+mod live_wallpaper_still;
+mod loose_desktop;
 mod menus;
 mod motion;
 mod peek;
@@ -131,6 +133,7 @@ const TIMER_SHUTDOWN_CANCELLED: usize = 58;
 const TIMER_SYSTEM_SETTINGS_RETRY: usize = 52;
 /// Rebuilding the GPU device failed (driver reset in progress): try again, backing off.
 const TIMER_DEVICE_RETRY: usize = 59;
+const TIMER_LIVE_WALLPAPER: usize = 66;
 const DEVICE_RETRY_FIRST_MS: u32 = 1_000;
 /// Re-armed by every panel draw, like `TIMER_GPU_TRIM`: once drawing has been quiet this long,
 /// hands the memory the last burst of work touched back to Windows
@@ -188,6 +191,7 @@ struct PendingRoute {
     since: Instant,
     /// Open the inline rename popup once it lands ("新建").
     rename: bool,
+    desktop_position: Option<(i32, i32)>,
 }
 
 pub struct Args {
@@ -211,6 +215,9 @@ pub struct App {
     state: AppState,
     ctx: Rc<FenceContext>,
     fences: HashMap<FenceId, FenceWindow>,
+    desktop_windows: HashMap<String, FenceWindow>,
+    desktop_descriptor: pecofence_core::Fence,
+    desktop_marquee_base: HashMap<FenceId, Vec<ItemId>>,
     /// Windows of deleted / merged fences, kept alive while they fade out; dropped (destroyed)
     /// on `Command::FadeOutDone`.
     dying: Vec<FenceWindow>,
@@ -318,13 +325,14 @@ pub struct App {
     /// Fingerprint of the snapshot the current backdrops were built from.
     wallpaper_sig: Option<String>,
     wallpaper_cache: BackdropCache,
+    live_wallpaper: live_wallpaper::LiveBackdrop,
     /// Another virtual desktop's wallpaper being decoded ahead of a switch there.
     prewarm: Option<visuals::PrewarmJob>,
     /// The startup wallpaper worker, while Explorer has not answered it (see `StartupBackdrops`).
     startup_backdrops: Option<StartupBackdrops>,
     /// Monitors a live wallpaper covers, and the capture of them in progress.
-    live: Vec<live_wallpaper::LiveWallpaper>,
-    live_capture: Option<live_wallpaper::LiveCapture>,
+    live: Vec<live_wallpaper_still::LiveWallpaper>,
+    live_capture: Option<live_wallpaper_still::LiveCapture>,
     /// The worker of a given-up capture that has not returned yet (one at most).
     live_abandoned: Option<std::thread::JoinHandle<()>>,
     /// The hotkey currently registered (None = registration failed or Peek disabled).
@@ -543,7 +551,9 @@ impl App {
                             } else if let Ok(mut guard) = cell.try_borrow_mut()
                                 && let Some(app) = guard.as_mut()
                             {
-                                app.capture_live_wallpapers(live_wallpaper::LIVE_FRONT_REFRESH);
+                                app.capture_live_wallpapers(
+                                    live_wallpaper_still::LIVE_FRONT_REFRESH,
+                                );
                             }
                             Some(0)
                         }
@@ -712,6 +722,13 @@ impl App {
                                         && let Some(app) = guard.as_mut()
                                     {
                                         app.check_wallpaper("poll");
+                                    }
+                                }
+                                TIMER_LIVE_WALLPAPER => {
+                                    if let Ok(mut guard) = cell.try_borrow_mut()
+                                        && let Some(app) = guard.as_mut()
+                                    {
+                                        app.tick_live_wallpaper();
                                     }
                                 }
                                 TIMER_DESKTOP_ID => {
@@ -1134,10 +1151,30 @@ impl App {
             pecofence_platform::process::is_packaged(),
         );
 
+        let mut desktop_descriptor = pecofence_core::Fence::new(
+            "桌面散放",
+            FenceKind::Virtual,
+            pecofence_core::NormGeometry {
+                monitor: String::new(),
+                x: 0.0,
+                y: 0.0,
+                w: 1.0,
+                h: 1.0,
+                work_w: 1.0,
+                work_h: 1.0,
+                anchor: pecofence_core::Anchor::LeftTop,
+                skew_left: None,
+                skew_right: None,
+            },
+        );
+        desktop_descriptor.id = uuid::Uuid::nil();
         let mut app = App {
             state,
             ctx,
             fences: HashMap::new(),
+            desktop_windows: HashMap::new(),
+            desktop_descriptor,
+            desktop_marquee_base: HashMap::new(),
             anchor: anchor_cell,
             control,
             queue,
@@ -1208,6 +1245,7 @@ impl App {
             cut_paste: None,
             wallpaper_sig: None,
             wallpaper_cache: BackdropCache::default(),
+            live_wallpaper: live_wallpaper::LiveBackdrop::default(),
             prewarm: None,
             startup_backdrops: None,
             live: Vec::new(),
@@ -1323,6 +1361,7 @@ impl App {
         }
         // Fences never stay on top of each other: pull apart any overlap the layout brings.
         app.settle_unplaced(true);
+        app.refresh_desktop();
         if let Some(folder) = args.portal.as_deref() {
             let (cx, cy) = app
                 .state
@@ -1335,7 +1374,7 @@ impl App {
         if let Some(a) = app.anchor.borrow_mut().as_mut() {
             a.reanchor("startup");
         }
-        for f in app.fences.values() {
+        for f in app.fences.values().chain(app.desktop_windows.values()) {
             f.show(false);
         }
         if let Some(a) = app.anchor.borrow_mut().as_mut() {
@@ -1397,6 +1436,8 @@ impl App {
         window::set_coalescable_timer(app.control.hwnd(), TIMER_HOUSEKEEPING, 60_000, 5_000);
         window::set_coalescable_timer(app.control.hwnd(), TIMER_WALLPAPER_POLL, 5_000, 500);
         sync_desktops_differ(app.control.hwnd(), &desktops_differ);
+        window::set_coalescable_timer(app.control.hwnd(), TIMER_DESKTOP_ID, 100, 25);
+        window::set_timer(app.control.hwnd(), TIMER_LIVE_WALLPAPER, 100);
         // Close the gap between the startup snapshot and installing the registry watchers.
         if let Some(signature) = app.wallpaper_sig.clone() {
             // One check (no signal arrived, so no follow-ups), then prepare the other desktops.
@@ -1513,7 +1554,7 @@ impl App {
         }
         // A DPI that settled late re-lays the window out; its rectangle stays (it still shows
         // whole icons: the columns share the rest, the rows leave it empty).
-        for window in self.fences.values() {
+        for window in self.fences.values().chain(self.desktop_windows.values()) {
             window.check_dpi();
         }
         // Startup hide that kept failing: stop retrying for this run and tell the user. The
@@ -1626,6 +1667,7 @@ impl App {
             }
             Command::FenceDropped(fence) => self.move_out_of_overlap(fence),
             Command::ToggleRollUp(fence) => self.toggle_roll(fence),
+            Command::SetRollUp(fence, rolled) => self.set_roll(fence, rolled),
             Command::CommitExpanded(fence) => {
                 if let Some(w) = self.fences.get(&fence) {
                     w.commit_expanded();
@@ -1725,25 +1767,8 @@ impl App {
             } => self.detach_tab(tab, x, y, from_drag),
             Command::CancelDetach { change } => self.cancel_tab_detach(*change),
             Command::ReorderTab { host, tab, to } => self.reorder_tab(host, tab, to),
-            Command::MoveItemsToInbox { items } => {
-                // Dropped on the bare desktop: back to the inbox, then straight through the
-                // rules — the same routing a new desktop item gets, now instead of whenever the
-                // watcher next reconciles (which used to leave the icon in the rolled-up inbox
-                // for a second or two).
-                if let Some(inbox) = self.state.inbox_id() {
-                    self.move_items(&items, inbox);
-                    let entries = shell::enumerate_desktop();
-                    let touched = self.state.apply_rules_to(&items, &entries);
-                    tracing::debug!(
-                        items = items.len(),
-                        refiled = ?touched,
-                        "dropped on the desktop: inbox, then rules"
-                    );
-                    for id in touched {
-                        self.refresh_fence(id);
-                    }
-                    self.schedule_save();
-                }
+            Command::MoveItemsToDesktop { items, position } => {
+                self.release_to_desktop(&items, position);
             }
             Command::ExternalDrop { paths, to, mode } if self.state.portal_path(to).is_some() => {
                 self.transfer_files_into_portal(paths, to, mode);
@@ -1763,6 +1788,7 @@ impl App {
                             path,
                             since: Instant::now(),
                             rename: false,
+                            desktop_position: None,
                         });
                     }
                     let report = self.sync_desktop_if_available("shortcut drop");
@@ -1816,6 +1842,7 @@ impl App {
                                 path: path.clone(),
                                 since: Instant::now(),
                                 rename: false,
+                                desktop_position: None,
                             });
                         }
                         let owner = self.window_for(to).map(|w| w.hwnd());
@@ -2001,6 +2028,7 @@ impl App {
         self.end_peek_now();
         self.state.save_if_dirty();
         self.fences.clear();
+        self.desktop_windows.clear();
         self.dying.clear();
         if let Some(a) = self.anchor.borrow_mut().as_mut() {
             a.restore_desktop_icons();

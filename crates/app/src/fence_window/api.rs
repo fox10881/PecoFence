@@ -42,6 +42,58 @@ impl FenceWindow {
         expanded_h_px: i32,
         items: Vec<ItemView>,
     ) -> Result<Self> {
+        Self::create_mode(
+            ctx,
+            fence_id,
+            title,
+            is_inbox,
+            rolled_up,
+            icon_size,
+            label_lines,
+            auto_height,
+            bounds,
+            expanded_h_px,
+            items,
+            false,
+        )
+    }
+
+    pub fn create_desktop(
+        ctx: &FenceContext,
+        id: FenceId,
+        bounds: RECT,
+        icon_size: u32,
+    ) -> Result<Self> {
+        Self::create_mode(
+            ctx,
+            id,
+            "PecoFence 自由桌面",
+            false,
+            false,
+            icon_size,
+            2,
+            false,
+            bounds,
+            bounds.bottom - bounds.top,
+            Vec::new(),
+            true,
+        )
+    }
+
+    fn create_mode(
+        ctx: &FenceContext,
+        fence_id: FenceId,
+        title: &str,
+        is_inbox: bool,
+        rolled_up: bool,
+        icon_size: u32,
+        label_lines: u8,
+        auto_height: bool,
+        bounds: RECT,
+        expanded_h_px: i32,
+        items: Vec<ItemView>,
+        desktop: bool,
+    ) -> Result<Self> {
         let view: Rc<RefCell<Option<FenceViewState>>> = Rc::new(RefCell::new(None));
         let handler = Self::make_handler(ctx, fence_id, view.clone());
         let shadow = ShadowWindow::create(&ctx.shadow_class, ctx.shadow_style.get())?;
@@ -74,6 +126,9 @@ impl FenceWindow {
             )
             .create(handler)?;
         let hwnd = window.hwnd();
+        if desktop {
+            let _ = window::set_hit_regions(hwnd, &[]);
+        }
         apply_window_shape(hwnd, ctx.theme.borrow().liquid_glass);
         let _ = dwm::set_border_color_none(hwnd);
         // Not DWMWA_EXCLUDED_FROM_PEEK: DWM hides such windows for the whole virtual-desktop
@@ -111,6 +166,9 @@ impl FenceWindow {
             title: title.to_string(),
             rolled_up,
             is_inbox,
+            desktop,
+            desktop_cells: Vec::new(),
+            desktop_regions: Vec::new(),
             expanded_h_px: expanded_h_px.max(1),
             icon_size,
             label_lines,
@@ -132,6 +190,9 @@ impl FenceWindow {
             renaming: None,
             title_renaming: false,
             unfold_cache: None,
+            content_dirty: true,
+            content_ink: None,
+            content_draws: 0,
             detach_pending: false,
             detach_cancelled: false,
             remote_drag: None,
@@ -182,6 +243,7 @@ impl FenceWindow {
             icons_pending: false,
             hover: None,
             title_hover: false,
+            manual_fold_latched: false,
             selected: HashSet::new(),
             scroll_y: 0.0,
             scroll_memory: HashMap::new(),
@@ -272,6 +334,7 @@ impl FenceWindow {
             roll_anim: None,
             roll_t: Tween::at(rolled_up as u8 as f32, Instant::now()),
             height_anim: None,
+            prepared_height_frame: None,
             vis_fade: None,
             vis_gen: 0,
             vis_deadline: None,
@@ -329,7 +392,11 @@ impl FenceWindow {
         .ok();
 
         if let Some(a) = ctx.anchor.borrow_mut().as_mut() {
-            a.register_fence(hwnd, Some(shadow_hwnd));
+            if desktop {
+                a.register_desktop_surface(hwnd);
+            } else {
+                a.register_fence(hwnd, Some(shadow_hwnd));
+            }
         }
         Ok(Self {
             id: fence_id,
@@ -340,6 +407,71 @@ impl FenceWindow {
         })
     }
 
+    pub fn set_desktop_items(&self, items: Vec<ItemView>, cells: Vec<CellRect>) {
+        if let Some(v) = self.view.borrow_mut().as_mut() {
+            if v.desktop_cells == cells
+                && v.items.len() == items.len()
+                && v.items.iter().zip(&items).all(|(a, b)| {
+                    a.id == b.id
+                        && a.name == b.name
+                        && a.icon_key == b.icon_key
+                        && a.mtime == b.mtime
+                        && a.size == b.size
+                })
+            {
+                return;
+            }
+            v.desktop_cells = cells;
+            v.replace_items(items);
+            v.scroll_y = 0.0;
+            let _ = v.redraw_content();
+        }
+    }
+
+    pub fn is_desktop(&self) -> bool {
+        self.view.borrow().as_ref().is_some_and(|v| v.desktop)
+    }
+
+    pub fn desktop_selection(&self) -> Vec<ItemId> {
+        self.view
+            .borrow()
+            .as_ref()
+            .map(|v| v.selected_ids())
+            .unwrap_or_default()
+    }
+
+    pub fn select_desktop_rect(&self, rect: RECT, base: &[ItemId]) -> usize {
+        let mut guard = self.view.borrow_mut();
+        let Some(v) = guard.as_mut() else {
+            return 0;
+        };
+        let scale = v.scale();
+        let bounds = self.rect();
+        let selected: HashSet<_> = v
+            .items
+            .iter()
+            .zip(&v.desktop_cells)
+            .enumerate()
+            .filter(|(_, (item, cell))| {
+                let x = bounds.left as f32 + cell.x * scale;
+                let y = bounds.top as f32 + cell.y * scale;
+                base.contains(&item.id)
+                    || (x < rect.right as f32
+                        && (rect.left as f32) < x + cell.w * scale
+                        && y < rect.bottom as f32
+                        && (rect.top as f32) < y + cell.h * scale)
+            })
+            .map(|(i, _)| i)
+            .collect();
+        let count = selected.len();
+        if v.selected != selected {
+            v.selected = selected;
+            v.anchor_index = v.selected.iter().min().copied();
+            let _ = v.redraw_content();
+        }
+        count
+    }
+
     pub fn hwnd(&self) -> HWND {
         self.window.hwnd()
     }
@@ -347,6 +479,10 @@ impl FenceWindow {
     /// Shows the window with a 167 ms fade; `entrance` (a fence that did not exist a moment
     /// ago: new, torn off, new portal) adds the Fluent 0.97 → 1 scale. No-op when visible.
     pub fn show(&self, entrance: bool) {
+        if self.is_desktop() {
+            self.window.show_no_activate();
+            return;
+        }
         show_with_fade(&self.view, self.hwnd(), entrance);
     }
 
@@ -399,7 +535,7 @@ impl FenceWindow {
             },
         );
         format!(
-            "title={:?} opacity={:.2} scale={:.3} fade={fade} retired={} rolled={} rolling={} peeking={} items={} tabs={} selected={} focused={:?} shadow_visible={} shadow_alpha={} layout={:?} locked={} auto_height={} active={} scroll={:.1} client={:?} client_offset=({},{}) chrome={:?} glass={:?} wallpaper_uploads={} title_size={} tab_fonts={:?} tab_rects={:?} content_x={} content={:?} capture={} tab_drag={} window_drag={} detach_pending={} plate_inset={} plate_alpha={:.2} mouse_inside={}",
+            "title={:?} opacity={:.2} scale={:.3} fade={fade} retired={} rolled={} rolling={} peeking={} items={} tabs={} selected={} focused={:?} shadow_visible={} shadow_alpha={} layout={:?} locked={} auto_height={} active={} scroll={:.1} client={:?} client_offset=({},{}) chrome={:?} glass={:?} wallpaper_uploads={} title_size={} tab_fonts={:?} tab_rects={:?} content_x={} content={:?} capture={} tab_drag={} window_drag={} detach_pending={} plate_inset={} plate_alpha={:.2} mouse_inside={} content_surface={:?} content_dirty={} content_draws={} glass_strength={:.3} chrome_backing={:?} content_opacity={:.3} roll_progress={:.3}",
             v.title,
             v.root.opacity(),
             v.root.scale().x,
@@ -441,6 +577,13 @@ impl FenceWindow {
             v.plate_inset_px,
             v.plate_alpha,
             v.mouse_inside,
+            v.content_panel.size_px(),
+            v.content_dirty,
+            v.content_draws,
+            v.gpu_glass.borrow().strength(),
+            v.chrome_panel.backing_state(),
+            v.content_panel.visual.opacity(),
+            v.roll_t.value_at(Instant::now()),
         )
     }
 
@@ -509,6 +652,17 @@ impl FenceWindow {
         }
         let hwnd = self.hwnd();
         match action {
+            "auto-fold" => {
+                self.set_rolled(true);
+                self.allow_hover_expansion();
+            }
+            "peek-open" => {
+                self.with_view(|v| v.title_hover = true);
+                window::send_message(hwnd, msg::WM_TIMER, TIMER_PEEK_OPEN, 0);
+            }
+            "stale-size" => {
+                window::send_message(hwnd, msg::WM_SIZE, 0, msg::make_lparam(x, y));
+            }
             "pointer" => self.with_view(|v| {
                 if let Some(drag) = v.remote_drag.as_mut() {
                     drag.track_pointer((x, y), window::drag_threshold());
@@ -888,6 +1042,9 @@ impl FenceWindow {
 
     pub fn set_icon_size(&self, size: u32) {
         self.with_view(|v| {
+            if v.desktop && v.icon_size == size {
+                return;
+            }
             v.icon_size = size;
             v.reload_icons_and_labels();
             v.snap_item_motion();
@@ -1348,7 +1505,13 @@ impl FenceWindow {
         self.view
             .borrow()
             .as_ref()
-            .is_some_and(|v| v.rolled_up || v.peeking)
+            .is_some_and(|v| v.roll_target() || v.peeking)
+    }
+
+    pub fn wants_fast_frames(&self) -> bool {
+        self.view.borrow().as_ref().is_some_and(|v| {
+            v.height_animating() || v.remote_drag.as_ref().is_some_and(|d| d.started)
+        })
     }
 
     pub fn icon_size(&self) -> u32 {
@@ -1388,6 +1551,9 @@ impl FenceWindow {
     /// Animates to the rolled/expanded state.
     pub fn set_rolled(&self, rolled: bool) {
         self.with_view(|v| {
+            window::kill_timer(v.hwnd, TIMER_PEEK_OPEN);
+            window::kill_timer(v.hwnd, TIMER_PEEK_CLOSE);
+            v.manual_fold_latched = rolled;
             v.peeking = false;
             if v.rolled_up == rolled && v.roll_anim.is_none() {
                 return;
@@ -1397,6 +1563,11 @@ impl FenceWindow {
             }
             v.start_roll_anim(rolled);
         });
+    }
+
+    /// Screen-edge shelves are automatically collapsed and retain hover expansion.
+    pub fn allow_hover_expansion(&self) {
+        self.with_view(|v| v.manual_fold_latched = false);
     }
 
     /// Title-row height and the height the window settles at: the title row while it is rolled
@@ -1825,6 +1996,37 @@ impl FenceWindow {
         });
     }
 
+    /// Video frames retain the lens geometry and text-contrast hysteresis. Hidden windows
+    /// receive the latest source without spending GPU time rendering an invisible fence.
+    pub fn set_live_backdrops(&self, backdrops: Rc<BackdropSets>) {
+        self.with_view(|v| {
+            v.backdrops = backdrops;
+            v.backdrop_rect = None;
+            if desktop::is_visible(v.hwnd) && !v.height_animating() {
+                let old_ink = v.material_foreground().text_primary;
+                v.update_backdrop();
+                let changed_ink = old_ink != v.material_foreground().text_primary;
+                let result = if changed_ink || v.row_metrics().is_some() {
+                    v.redraw()
+                } else {
+                    v.redraw_chrome_only()
+                };
+                if let Err(error) = result {
+                    tracing::warn!(%error, "live wallpaper redraw failed");
+                }
+            }
+        });
+    }
+
+    pub fn set_live_glass_strength(&self, strength: f32, redraw: bool) {
+        self.with_view(|v| {
+            v.gpu_glass.borrow_mut().set_strength(strength);
+            if redraw && desktop::is_visible(v.hwnd) && !v.height_animating() {
+                let _ = v.redraw_chrome_only();
+            }
+        });
+    }
+
     /// Renders and presents the shadow again even at an unchanged rect (its layered window
     /// holds the only copy of the pixels, which a display change may drop).
     pub fn repaint_shadow(&self) {
@@ -1858,6 +2060,13 @@ impl FenceWindow {
     }
 
     pub fn set_theme(&self, theme: Theme, backdrops: Rc<BackdropSets>, shadow: ShadowStyle) {
+        if self.is_desktop() {
+            self.with_view(|v| {
+                v.theme = theme;
+                let _ = v.redraw_content();
+            });
+            return;
+        }
         let hwnd = self.hwnd();
         apply_window_shape(hwnd, theme.liquid_glass);
         let mode = self
@@ -1948,5 +2157,6 @@ impl FenceWindow {
 fn selection_ring(theme: &Theme) -> crate::shadow::SelectionRing {
     crate::shadow::SelectionRing {
         radius_dip: theme.corner_radius,
+        continuous: theme.liquid_glass,
     }
 }

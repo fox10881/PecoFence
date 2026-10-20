@@ -407,6 +407,13 @@ pub(super) fn is_inbox_alias(sel: &str) -> bool {
     sel.trim().eq_ignore_ascii_case(INBOX_ALIAS)
 }
 
+fn is_desktop_alias(sel: &str) -> bool {
+    matches!(
+        sel.trim().to_ascii_lowercase().as_str(),
+        "desktop" | "@desktop" | "桌面散放"
+    )
+}
+
 /// `rules.add` needs at least one condition; an empty `allOf` would match everything.
 pub(super) fn check_rule_conditions(
     all_of: &[pecofence_core::Cond],
@@ -580,7 +587,13 @@ impl App {
             Method::ItemsList { fence } => {
                 let only = fence
                     .as_deref()
-                    .map(|sel| self.resolve_fence(sel))
+                    .map(|sel| {
+                        if is_desktop_alias(sel) {
+                            Ok(uuid::Uuid::nil())
+                        } else {
+                            self.resolve_fence(sel)
+                        }
+                    })
                     .transpose()?;
                 to_json(&self.item_dtos(only))
             }
@@ -1136,6 +1149,12 @@ impl App {
         for f in self.state.fences() {
             all.extend(self.state.items_of(f).into_iter().map(|it| (it, f)));
         }
+        all.extend(
+            self.state
+                .loose_items()
+                .into_iter()
+                .map(|it| (it, &self.desktop_descriptor)),
+        );
         let not_found = || {
             IpcError::new(ErrorCode::ItemNotFound, format!("no item matches {sel:?}"))
                 .hint("Run `pecofence-cli item list` and use the id or the full path")
@@ -1407,11 +1426,22 @@ impl App {
                 out.push(self.item_dto(f, it));
             }
         }
+        if only.is_none_or(|id| id.is_nil()) {
+            out.extend(
+                self.state
+                    .loose_items()
+                    .into_iter()
+                    .map(|it| self.item_dto(&self.desktop_descriptor, it)),
+            );
+        }
         out
     }
 
     /// `assignedBy` and the filing rule's name for an item of `f`.
     fn assignment_of(&self, f: &Fence, item: ItemId) -> (&'static str, Option<String>) {
+        if f.id.is_nil() {
+            return ("user", None);
+        }
         if f.kind == FenceKind::FolderPortal {
             return ("portal", None);
         }
@@ -1526,8 +1556,12 @@ impl App {
             self.state.portal_of_item(id)
         } else {
             self.state.config.fence_of_item(self.state.layout, id)
-        }?;
-        self.state.fence(fence).map(|f| (f, it))
+        };
+        match fence.and_then(|f| self.state.fence(f)) {
+            Some(f) => Some((f, it)),
+            // Loose on the desktop: reported under the desktop descriptor.
+            None => Some((&self.desktop_descriptor, it)),
+        }
     }
 
     fn planned_move_dto(&self, m: &crate::state::PlannedRuleMove) -> PlannedMoveDto {
@@ -1775,13 +1809,7 @@ impl App {
     fn ipc_delete_fence(&mut self, sel: &str) -> IpcResult {
         let id = self.resolve_fence(sel)?;
         let f = self.fence_or_err(id)?.clone();
-        if f.kind == FenceKind::Inbox {
-            return Err(unsupported(format!(
-                "{:?} is the inbox fence (the desktop itself) and cannot be deleted; fence set inbox hideWhenEmpty true hides it while it is empty",
-                f.title
-            )));
-        }
-        // Memberships are about to move back to the inbox: keep a way back.
+        // Deleting a populated container releases its icons: keep a way back.
         let snapshot = (f.kind != FenceKind::FolderPortal && !self.state.items_of(&f).is_empty())
             .then(|| self.auto_snapshot())
             .flatten();
@@ -1941,7 +1969,11 @@ impl App {
         items: &[String],
         to: &str,
     ) -> std::result::Result<(FenceId, Vec<ItemMovePlanDto>), IpcError> {
-        let to = self.resolve_fence(to)?;
+        let to = if is_desktop_alias(to) {
+            uuid::Uuid::nil()
+        } else {
+            self.resolve_fence(to)?
+        };
         let mut ids: Vec<ItemId> = Vec::new();
         for sel in items {
             let id = self.resolve_item(sel)?;
@@ -2187,7 +2219,15 @@ impl App {
             )
             .hint("Stop one of the running `pecofence-cli watch` processes"));
         }
-        let fence_id = fence.map(|sel| self.resolve_fence(sel)).transpose()?;
+        let fence_id = fence
+            .map(|sel| {
+                if is_desktop_alias(sel) {
+                    Ok(uuid::Uuid::nil())
+                } else {
+                    self.resolve_fence(sel)
+                }
+            })
+            .transpose()?;
         let events: Option<Vec<String>> = match events {
             None => None,
             Some(list) => {
@@ -2232,7 +2272,19 @@ impl App {
         let mut state = EventState::default();
         for f in self.state.fences() {
             state.fences.insert(f.id, self.fence_dto_with(f, false));
-            for it in self.state.unsorted_items_of(f) {
+        }
+        for f in self
+            .state
+            .fences()
+            .iter()
+            .chain(std::iter::once(&self.desktop_descriptor))
+        {
+            let items: Vec<&Item> = if f.id.is_nil() {
+                self.state.loose_items()
+            } else {
+                self.state.unsorted_items_of(f).collect()
+            };
+            for it in items {
                 state.items.insert(
                     it.id,
                     ItemSig {
@@ -2471,7 +2523,7 @@ impl App {
     ) -> IpcResult {
         let name = checked_name("rule name", name)?;
         check_rule_conditions(all_of)?;
-        let target = if is_inbox_alias(target) {
+        let target = if is_inbox_alias(target) || is_desktop_alias(target) {
             Target::Inbox
         } else {
             let id = self.resolve_fence(target)?;
@@ -2479,7 +2531,7 @@ impl App {
                 return Err(unsupported(
                     "a folder portal cannot be a rule target (it shows a folder, not desktop items)",
                 )
-                .hint("Target a virtual fence or `inbox`"));
+                .hint("Target a virtual fence or `desktop`"));
             }
             Target::Fence(id)
         };

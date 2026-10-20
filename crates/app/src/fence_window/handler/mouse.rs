@@ -308,7 +308,12 @@ pub(super) fn on_lbuttonup(
     _wparam: usize,
     lparam: isize,
 ) -> Option<isize> {
-    let HandlerCtx { view, queue, .. } = h;
+    let HandlerCtx {
+        view,
+        queue,
+        peek_armed,
+        ..
+    } = h;
     let fence_id = h.fence_id;
     let x = msg::lo_i16(lparam);
     let y = msg::hi_i16(lparam);
@@ -451,14 +456,12 @@ pub(super) fn on_lbuttonup(
                 fence: v.active,
                 sort: column_sort(col),
             }),
-            PressTarget::Chevron if v.roll_anim.is_none() => {
-                if v.peeking {
-                    // Already expanded by peek: commit the expanded state.
-                    v.peeking = false;
-                    queue.push(Command::CommitExpanded(fence_id));
-                } else {
-                    queue.push(Command::ToggleRollUp(fence_id));
-                }
+            PressTarget::Chevron => {
+                // Toggle the visible target, including a hover-open fence and a
+                // roll still in flight. Clicking an up arrow always closes it.
+                window::kill_timer(hwnd, TIMER_PEEK_OPEN);
+                peek_armed.set(false);
+                queue.push(Command::SetRollUp(fence_id, !v.roll_target()));
             }
             // A fence collapsed to its left tab column has no chevron: a click on a tab (not
             // a drag) expands it on that tab, which the press already switched to.

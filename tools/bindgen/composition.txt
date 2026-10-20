@@ -11,6 +11,7 @@
     Windows.UI.Composition.ICompositor2
     Windows.UI.Composition.ICompositor4
     Windows.UI.Composition.ICompositor5.CreateRoundedRectangleGeometry
+    Windows.UI.Composition.ICompositor5.CreatePathGeometry
     Windows.UI.Composition.ICompositor6.CreateGeometricClipWithGeometry
     Windows.UI.Composition.ICompositorStatics
     Windows.UI.Composition.CompositionObject
@@ -37,6 +38,13 @@
     Windows.UI.Composition.CompositionGeometry
     Windows.UI.Composition.ICompositionGeometry
     Windows.UI.Composition.CompositionRoundedRectangleGeometry
+    Windows.UI.Composition.CompositionPathGeometry
+    Windows.UI.Composition.ICompositionPathGeometry
+    Windows.UI.Composition.CompositionPath
+    Windows.UI.Composition.ICompositionPath
+    Windows.UI.Composition.ICompositionPathFactory
+    Windows.Graphics.IGeometrySource2D
+    ID2D1Geometry
     Windows.UI.Composition.ICompositionRoundedRectangleGeometry
     Windows.UI.Composition.CompositionGeometricClip
     Windows.UI.Composition.ICompositionGeometricClip

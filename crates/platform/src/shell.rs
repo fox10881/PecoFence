@@ -753,12 +753,32 @@ fn link_overlay_source() -> Option<(PathBuf, i32)> {
         .ok()
         .ok()?;
     let len = info.path.iter().position(|&c| c == 0).unwrap_or(0);
-    (len > 0).then(|| {
-        (
-            PathBuf::from(String::from_utf16_lossy(&info.path[..len])),
-            info.icon_index,
-        )
-    })
+    if len == 0 {
+        return None;
+    }
+    let path = expand_environment(&info.path[..len]);
+    path.map(|p| (PathBuf::from(p), info.icon_index))
+}
+
+windows_core::link!("kernel32.dll" "system" fn ExpandEnvironmentStringsW(src: *const u16,
+    dst: *mut u16, size: u32) -> u32);
+
+/// `ExpandEnvironmentStringsW` on a NUL-free UTF-16 string: `SHGetStockIconInfo` can hand
+/// back paths like `%windir%\System32\shell32.dll`.
+fn expand_environment(s: &[u16]) -> Option<String> {
+    let mut s: Vec<u16> = s.to_vec();
+    s.push(0);
+    let n = unsafe { ExpandEnvironmentStringsW(s.as_ptr(), std::ptr::null_mut(), 0) };
+    if n == 0 {
+        return None;
+    }
+    let mut buf = vec![0u16; n as usize];
+    // SAFETY: `buf` is `n` UTF-16 code units, the size the first call reported.
+    if unsafe { ExpandEnvironmentStringsW(s.as_ptr(), buf.as_mut_ptr(), n) } != n {
+        return None;
+    }
+    buf.pop(); // the counted NUL
+    Some(String::from_utf16_lossy(&buf))
 }
 
 /// Premultiplied source-over of `top` onto `image`, their bottom-left corners aligned, clipped

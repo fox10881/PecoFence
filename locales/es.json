@@ -565,5 +565,9 @@
     "3D 倾斜层架": "Estantería 3D inclinada",
     "把栅栏沿纵向倾斜成平行四边形以贴合斜置壁纸；左右边缘顶部各留一个手柄，分别调整两侧高度": "Inclina la valla formando un paralelogramo para fondos angulados; un asa en la parte superior de cada borde lateral ajusta la altura de ese lado",
     "纵深缩放": "Escala de profundidad",
-    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Los iconos se reducen hacia el borde lejano simulando profundidad; con 0 todos tienen el mismo tamaño"
+    "图标朝远端边缘逐渐缩小，营造透视深度；为 0 时所有图标等大": "Los iconos se reducen hacia el borde lejano simulando profundidad; con 0 todos tienen el mismo tamaño",
+    "动态壁纸玻璃捕获": "Captura de cristal del fondo animado",
+    "液态玻璃实时透出 Wallpaper Engine、Lively 等动态壁纸的画面；关闭后改用静态截图，更省 GPU": "Liquid Glass muestra en tiempo real los fondos animados de Wallpaper Engine, Lively, etc.; desactivado, usa una captura estática y ahorra GPU",
+    "移出栅栏，放到桌面": "Sacar de la valla al escritorio",
+    "其中的 {0} 个图标会放回桌面，文件本身不受影响。": "{0} de estos iconos vuelven al escritorio; los archivos en sí no se ven afectados."
 }

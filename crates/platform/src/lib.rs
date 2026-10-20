@@ -26,10 +26,25 @@ mod bindings;
     clippy::upper_case_acronyms,
     clippy::missing_transmute_annotations,
     clippy::useless_transmute,
+    clippy::useless_conversion,
     dead_code,
     unused_imports
 )]
 mod store_bindings;
+
+#[allow(
+    non_snake_case,
+    non_upper_case_globals,
+    non_camel_case_types,
+    clippy::upper_case_acronyms,
+    clippy::missing_transmute_annotations,
+    clippy::useless_transmute,
+    dead_code,
+    unused_imports
+)]
+#[allow(clippy::useless_conversion)]
+mod capture_bindings;
+mod gpu_wallpaper;
 
 pub mod autostart;
 pub mod clipboard;
@@ -49,6 +64,7 @@ pub mod hotkey;
 pub mod http;
 pub mod layered;
 pub mod live_wallpaper;
+pub mod live_wallpaper_still;
 pub mod locale;
 pub mod memstats;
 pub mod monitors;

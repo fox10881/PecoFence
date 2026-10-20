@@ -275,6 +275,7 @@ pub(super) fn on_mousemove(
         // Where it landed, resolved before re-borrowing: WindowFromPoint
         // sends WM_NCHITTEST to our own windows synchronously. The Peek
         // dimmer stays see-through until then, so it is not the answer.
+        let pt = window::cursor_pos();
         let (_, class, on_desktop) = window_under_cursor();
         crate::peek::set_drag_click_through(false);
         let mut guard = view.borrow_mut();
@@ -301,16 +302,19 @@ pub(super) fn on_mousemove(
             // Esc / right button: Explorer cancels outright, so do we.
             Some(r) if !r.dropped => {}
             // Bare desktop (`skip_drop` ended the drag there, or a hidden
-            // ListView accepted nothing, so the effect is None): keep
-            // "back to the inbox". A Ctrl / Alt drop
+            // ListView accepted nothing, so the effect is None): release
+            // virtual membership at the pointer. A Ctrl / Alt drop
             // means duplicate, not relocate. A portal's files really moved
             // there; the desktop watcher files them.
             Some(r)
                 if on_desktop
-                    && !from_portal
+                    && (!from_portal || r.effect == DropEffect::None)
                     && matches!(r.effect, DropEffect::None | DropEffect::Move) =>
             {
-                queue.push(Command::MoveItemsToInbox { items: ids });
+                queue.push(Command::MoveItemsToDesktop {
+                    items: ids,
+                    position: Some((pt.x, pt.y)),
+                });
             }
             Some(r)
                 if matches!(r.effect, DropEffect::Move | DropEffect::Copy)
@@ -454,6 +458,7 @@ pub(super) fn on_mousemove(
     // client-area controls (chevron box, tabs) handled here.
     if in_title
         && v.rolled_up
+        && !v.manual_fold_latched
         && !v.peeking
         && v.roll_anim.is_none()
         && behavior.hover_peek.get()

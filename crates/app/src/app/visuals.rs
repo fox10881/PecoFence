@@ -1,6 +1,6 @@
 //! Theme / accent / backdrop / icon-variant / shadow / tray-glyph helpers and visual refresh.
 
-use super::live_wallpaper::{LIVE_REFRESH, LiveWallpaper};
+use super::live_wallpaper_still::{LIVE_REFRESH, LiveWallpaper};
 use super::wallpaper_refresh::LIVE_MARK;
 use super::*;
 
@@ -758,6 +758,7 @@ pub(super) fn shadow_style_for(theme: &Theme) -> ShadowStyle {
         shadow.sigma = 12.0;
         shadow.offset_y = 5.0;
         shadow.radius = theme.corner_radius;
+        shadow.continuous = true;
     }
     if theme.invisible_canvas {
         // No plate, so nothing casts: a fully transparent shadow bitmap keeps the
@@ -1114,7 +1115,7 @@ impl App {
         };
         self.wallpaper_sig = Some(signature);
         *self.ctx.backdrops.borrow_mut() = backdrops.clone();
-        for window in self.fences.values() {
+        for window in self.fences.values().chain(self.desktop_windows.values()) {
             window.set_backdrops(backdrops.clone());
         }
         tracing::info!(
@@ -1258,7 +1259,7 @@ impl App {
             }
             self.push_settings_state();
         }
-        for w in self.fences.values() {
+        for w in self.fences.values().chain(self.desktop_windows.values()) {
             w.set_theme(theme, backdrops.clone(), shadow);
         }
         // Leaving Liquid Glass stops the draws that would otherwise release old textures.
@@ -1277,7 +1278,7 @@ impl App {
         let variant = icon_variant_for(&self.state.config.settings.icons);
         if self.ctx.icons.borrow_mut().set_variant(variant) {
             self.ctx.bitmaps.borrow_mut().clear_keyed();
-            for w in self.fences.values() {
+            for w in self.fences.values().chain(self.desktop_windows.values()) {
                 w.drop_icons();
             }
         }

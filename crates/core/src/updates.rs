@@ -4,7 +4,7 @@
 
 use serde::Deserialize;
 
-pub const REPOSITORY: &str = "DayuanJiang/PecoFence";
+pub const REPOSITORY: &str = "fox10881/PecoFence";
 
 /// GitHub's newest published release; drafts and prereleases are never "latest".
 pub fn latest_release_url() -> String {
@@ -110,7 +110,7 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
 mod tests {
     use super::*;
 
-    const BASE: &str = "https://github.com/DayuanJiang/PecoFence/releases/download/";
+    const BASE: &str = "https://github.com/fox10881/PecoFence/releases/download/";
 
     fn release_json(tag: &str, assets: &[(&str, &str)]) -> String {
         let assets: Vec<_> = assets
@@ -164,7 +164,7 @@ mod tests {
         // Not the response's html_url: that is never opened.
         assert_eq!(
             release.page,
-            "https://github.com/DayuanJiang/PecoFence/releases/tag/v0.1.4"
+            "https://github.com/fox10881/PecoFence/releases/tag/v0.1.4"
         );
         assert_eq!(
             release.setup,

@@ -67,6 +67,7 @@ pub enum Command {
     /// if it now covers another fence, it moves to the nearest free spot.
     FenceDropped(FenceId),
     ToggleRollUp(FenceId),
+    SetRollUp(FenceId, bool),
     /// A hover-peeked fence was double-clicked: keep it expanded.
     CommitExpanded(FenceId),
     /// Open `item` from fence `from` (a folder opens in place when `from` is a navigating portal).
@@ -146,9 +147,10 @@ pub enum Command {
         tab: FenceId,
         to: usize,
     },
-    /// Internal drag dropped on the bare desktop: back to the inbox.
-    MoveItemsToInbox {
+    /// A manual release onto the free desktop, at the screen drop point when present.
+    MoveItemsToDesktop {
         items: Vec<ItemId>,
+        position: Option<(i32, i32)>,
     },
     /// Files dropped from Explorer onto a fence with the effect the drop reported (Explorer's
     /// modifier table: Ctrl copy, Alt / Ctrl+Shift shortcut, otherwise move).

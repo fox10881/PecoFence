@@ -715,6 +715,10 @@
     SHCreateDefaultContextMenu
     DEFCONTEXTMENU
     IShellFolder
+    CreateRectRgn
+    CombineRgn
+    SetWindowRgn
+    RGN_OR
     SHGetDesktopFolder
     SHParseDisplayName
     ILFree

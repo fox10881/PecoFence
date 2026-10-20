@@ -1,8 +1,7 @@
 //! Exercises the real D2D effect graph, cache invalidation and completed-frame timings.
 use pecofence_render::{
-    Image, MonitorBackdrop, Theme,
+    Image, MonitorBackdrop,
     gpu_glass::{GpuGlass, WallpaperCache},
-    theme::GlassLevel,
 };
 use std::{rc::Rc, time::Instant};
 use windows_canvas::{ColorF, GpuDevice, Rect};
@@ -24,7 +23,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let gpu = GpuDevice::new_or_warp()?;
     let mut cache = WallpaperCache::default();
     let mut glass = GpuGlass::default();
-    let level = Theme::light().with_liquid_glass().liquid_level(1.0);
     let background = source(Image::solid(1600, 1200, [80; 3]));
     let target = gpu.create_render_target(260, 160)?;
     target.draw(|s| {
@@ -37,7 +35,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             0.0,
             1.0,
             24.0,
-            level,
             1.0,
             0.0,
         )
@@ -62,17 +59,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             0.0,
             1.0,
             24.0,
-            level,
             0.5,
             0.0,
         )
     })?;
     let pixels = target.read_pixels()?;
-    println!("half-alpha centre: {:?}", &pixels[centre..centre + 4]);
+    println!("half-opacity centre: {:?}", &pixels[centre..centre + 4]);
     for value in &pixels[centre..centre + 3] {
         assert!(
             (*value as i32 - 40).abs() <= 1,
-            "the plate reveal must scale premultiplied RGB"
+            "opacity must scale premultiplied RGB"
         );
     }
     assert!((pixels[centre + 3] as i32 - 128).abs() <= 1);
@@ -91,10 +87,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pixel[..3].fill(if (i % 800 + i / 800) % 2 == 0 { 0 } else { 255 });
         }
         let checker = source(checker);
-        let unfrosted = GlassLevel {
-            frost_sigma_dip: 0.0,
-            ..level
-        };
         target.draw(|s| {
             s.clear(ColorF::TRANSPARENT);
             renderer.draw(
@@ -105,47 +97,132 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 0.0,
                 1.0,
                 24.0,
-                unfrosted,
                 1.0,
                 0.0,
             )
         })?;
         let pixels = target.read_pixels()?;
-        // kube's clear glass: without frost the flat face shows the wallpaper pixel for pixel.
-        assert_eq!(
-            [pixels[centre], pixels[centre + 4]],
-            [0, 255],
-            "the lens must not move the flat centre"
-        );
+        // The new regular material gently softens one-pixel detail, without tint.
+        for value in [pixels[centre], pixels[centre + 4]] {
+            assert!(
+                (value as i32 - 128).abs() <= 2,
+                "frost must preserve checker luminance"
+            );
+        }
         assert_eq!(
             pixels[centre + 3],
             255,
             "the centre must not be a transparent hole"
         );
-        target.draw(|s| {
-            s.clear(ColorF::TRANSPARENT);
-            renderer.draw(
-                s,
-                &mut cache,
-                &checker,
-                [-200, 80, 260, 160],
-                0.0,
-                1.0,
-                24.0,
-                level,
-                1.0,
-                0.0,
-            )
-        })?;
-        let pixels = target.read_pixels()?;
-        println!("frosted checker centre: {:?}", &pixels[centre..centre + 8]);
-        for value in [pixels[centre], pixels[centre + 4]] {
-            assert!(
-                (value as i32 - 127).abs() <= 3,
-                "the level's frost must diffuse pixel detail"
-            );
-        }
         let mut ramp = Image::solid(800, 500, [0; 3]);
+        for strength in [0.0, 0.25, 0.5, 1.0] {
+            renderer.set_strength(strength);
+            target.draw(|s| {
+                s.clear(ColorF::TRANSPARENT);
+                renderer.draw(
+                    s,
+                    &mut cache,
+                    &checker,
+                    [-200, 80, 260, 160],
+                    0.0,
+                    1.0,
+                    24.0,
+                    1.0,
+                    0.0,
+                )
+            })?;
+            let pixels = target.read_pixels()?;
+            assert!((pixels[centre + 3] as f32 - 255.0 * strength).abs() <= 1.0);
+            assert!(pixels[centre] <= pixels[centre + 3]);
+            if strength == 0.0 {
+                assert_eq!(&pixels[centre..centre + 4], &[0; 4]);
+            } else if strength == 1.0 {
+                assert!((pixels[centre] as i32 - 128).abs() <= 2);
+            }
+        }
+        assert_eq!(
+            renderer.stats().map_builds,
+            1,
+            "filling must reuse geometry"
+        );
+        assert_eq!(cache.uploads, 1, "filling must reuse the source upload");
+        let mut bars = Image::solid(800, 500, [0; 3]);
+        for (i, pixel) in bars.bgra.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+            pixel[..3].fill(if (i % 800 / 32) % 2 == 0 { 0 } else { 255 });
+        }
+        let bars = source(bars);
+        let mut samples = Vec::new();
+        for strength in [0.0, 0.25, 0.5, 1.0, 0.0] {
+            renderer.set_strength(strength);
+            target.draw(|s| {
+                s.clear(ColorF::TRANSPARENT);
+                renderer.draw(
+                    s,
+                    &mut cache,
+                    &bars,
+                    [-200, 80, 260, 160],
+                    0.0,
+                    1.0,
+                    24.0,
+                    1.0,
+                    0.0,
+                )
+            })?;
+            let pixels = target.read_pixels()?;
+            assert!((pixels[centre + 3] as f32 - 255.0 * strength).abs() <= 1.0);
+            samples.push(pixels[centre]);
+        }
+        assert!(
+            samples[0] == 0,
+            "inactive material must be transparent: {samples:?}"
+        );
+        assert!(
+            samples[3] > 235,
+            "normal glass must retain its original detail: {samples:?}"
+        );
+        assert!(
+            samples[..4].windows(2).all(|v| v[0] < v[1]),
+            "crossfade direction: {samples:?}"
+        );
+        assert_eq!(
+            samples[0], samples[4],
+            "resting endpoint must restore exactly"
+        );
+        assert_eq!(renderer.stats().map_builds, 1);
+        assert_eq!(cache.uploads, 2);
+        let idle_stats = renderer.stats();
+        for color in [
+            ColorF::new(0.8, 0.2, 0.1, 1.0),
+            ColorF::new(0.1, 0.2, 0.8, 1.0),
+        ] {
+            target.draw(|s| {
+                s.clear(color);
+                renderer.draw(
+                    s,
+                    &mut cache,
+                    &bars,
+                    [-200, 80, 260, 160],
+                    0.0,
+                    1.0,
+                    24.0,
+                    1.0,
+                    0.0,
+                )?;
+                renderer.draw_layer(s, ColorF::new(1.0, 1.0, 1.0, 0.4))
+            })?;
+            let pixels = target.read_pixels()?;
+            let expected = [color.b, color.g, color.r];
+            for (v, expected) in pixels[centre..centre + 3].iter().zip(expected) {
+                assert!((*v as f32 - expected * 255.0).abs() <= 1.0);
+            }
+        }
+        assert_eq!(renderer.stats().frames, idle_stats.frames);
+        assert_eq!(renderer.stats().map_builds, idle_stats.map_builds);
+        assert_eq!(cache.uploads, 2);
+        renderer.set_strength(1.0);
+        println!(
+            "transparent idle material passes changing backgrounds without GPU glass draws: {samples:?}"
+        );
         for (i, pixel) in ramp.bgra.as_chunks_mut::<4>().0.iter_mut().enumerate() {
             pixel[..3].fill((i % 800 / 4) as u8);
         }
@@ -162,7 +239,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     0.0,
                     1.0,
                     24.0,
-                    level,
                     1.0,
                     0.0,
                 )
@@ -181,10 +257,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         assert_eq!(renderer.stats().map_builds, 1);
         assert_eq!(
-            cache.uploads, 2,
+            cache.uploads, 3,
             "wallpaper refresh must upload only the changed source"
         );
-        println!("clear centre, source refresh and negative desktop coordinates passed");
+        println!("neutral frost, source refresh and negative desktop coordinates passed");
     }
 
     {
@@ -221,7 +297,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     0.0,
                     1.0,
                     24.0,
-                    level,
                     1.0,
                     0.0,
                 )
@@ -243,7 +318,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     0.0,
                     scale,
                     radius,
-                    level,
                     1.0,
                     0.0,
                 )
@@ -270,7 +344,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 0.0,
                 1.0,
                 24.0,
-                level,
                 1.0,
                 0.0,
             )
@@ -304,7 +377,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     0.0,
                     1.0,
                     24.0,
-                    level,
                     1.0,
                     0.0,
                 )
@@ -321,7 +393,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     0.0,
                     1.0,
                     24.0,
-                    level,
                     1.0,
                     0.0,
                 )?;
@@ -343,7 +414,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else if delta > 8 {
                         changed += 1;
                     }
-                    assert_eq!(lens[index + 3], 255);
+                    assert_eq!(
+                        lens[index + 3],
+                        plain[index + 3],
+                        "control changed the parent silhouette"
+                    );
                 }
             }
             assert!(
@@ -373,7 +448,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 0.0,
                 2.0,
                 24.0,
-                level,
                 1.0,
                 0.0,
             )
@@ -394,7 +468,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     0.0,
                     2.0,
                     24.0,
-                    level,
                     1.0,
                     0.0,
                 )
@@ -435,7 +508,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     0.0,
                     2.0,
                     16.0,
-                    level,
                     1.0,
                     0.0,
                 )

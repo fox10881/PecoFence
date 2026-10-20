@@ -101,7 +101,7 @@ pub enum Command {
     },
     /// Stream desktop events as JSON lines (item added/removed/moved, fence created/deleted/changed) until Ctrl+C
     #[command(
-        after_help = "Example: pecofence-cli watch --fence inbox --once\n         pecofence-cli watch --events item.added,item.moved\n\nEach line is an EventDto (`describe --schema EventDto`); a heartbeat arrives every 30 s on a quiet\nstream and is hidden unless --heartbeat. Typical use: a script waits with --once, then runs a batch."
+        after_help = "Example: pecofence-cli watch --fence desktop --once\n         pecofence-cli watch --events item.added,item.moved\n\nEach line is an EventDto (`describe --schema EventDto`); a heartbeat arrives every 30 s on a quiet\nstream and is hidden unless --heartbeat. Typical use: a script waits with --once, then runs a batch."
     )]
     Watch {
         /// Only items entering or leaving this fence, and that fence's own events
@@ -185,7 +185,7 @@ pub enum FenceCmd {
         #[arg(long, value_name = "W,H", value_parser = parse_size)]
         size: Option<(i32, i32)>,
     },
-    /// Delete a fence; its items return to the desktop (inbox) fence, rules targeting it are removed
+    /// Delete any fence; its icons return to the free desktop, rules targeting it are removed
     #[command(after_help = "Example: pecofence-cli fence delete Temp")]
     Delete {
         #[arg(help = FENCE_HELP)]
@@ -320,9 +320,9 @@ pub enum FenceCmd {
 
 #[derive(Subcommand, Debug)]
 pub enum ItemCmd {
-    /// Items of every fence, or of one fence, with kind, ext, size, modified, created, openCount, lastOpened, shortcutTarget
+    /// Items in containers and on the free desktop, with kind, ext, size and file metadata
     #[command(
-        after_help = "Example: pecofence-cli item list --fence Work\n         pecofence-cli item list --fence inbox --kind documents --ext pdf"
+        after_help = "Example: pecofence-cli item list --fence Work\n         pecofence-cli item list --fence desktop --kind documents --ext pdf"
     )]
     List {
         #[arg(long, value_name = "FENCE", help = FENCE_HELP)]
@@ -347,7 +347,7 @@ pub enum ItemCmd {
         #[arg(long, value_name = "BOOL", default_value_t = true, action = clap::ArgAction::Set)]
         keep_ext: bool,
     },
-    /// Move items into a fence (into or out of a folder portal moves the real files)
+    /// Move icons into a fence or --to desktop (a folder portal moves the real files)
     #[command(
         after_help = "Example: pecofence-cli item move --glob \"*.pdf\" --to Docs\n         pecofence-cli item move \"C:\\Users\\me\\Desktop\\report.pdf\" Steam --to Work\n         pecofence-cli item move --glob \"*.jpg\" --from Games --to Pictures --dry-run\n\n--dry-run lists per item: membership (icon only), fileMove (a real move, with destination),\nnone, or skip (reason exists / notAFile). A name that already exists at the destination is\nskipped by the real move too, instead of opening Explorer's replace dialog. Files moved through a\nportal arrive a moment after the reply: list the fence again to see them."
     )]
@@ -460,8 +460,8 @@ pub struct RuleAddArgs {
     /// Rule name
     #[arg(long, value_name = "NAME")]
     pub name: String,
-    /// Target fence selector, or `inbox` for the desktop fence
-    #[arg(long, value_name = "FENCE|inbox")]
+    /// Target fence selector, or `desktop` for loose desktop icons
+    #[arg(long, value_name = "FENCE|desktop")]
     pub to: String,
     /// Extensions, comma-separated (pdf,docx or .pdf,.docx)
     #[arg(long, value_name = "EXT,...", value_delimiter = ',', group = "cond")]

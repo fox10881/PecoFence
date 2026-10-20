@@ -1,3 +1,10 @@
+# Wallpaper Engine 自用版
+
+本 fork 的 `0.1.5-we.12` 支持 Wallpaper Engine 实时壁纸，并重新设计 Liquid Glass 的光学截面：
+更宽的椭圆弧面、轻微放大的中央曲面与柔和反光，去掉额外黑色阴影。
+已在当前 Windows 11 桌面验证网页、视频、DX11 场景之间切换；捕获条件、构建方法和回退说明见
+[动态壁纸兼容说明](docs/WALLPAPER_ENGINE.md)。we.12 还移除了强制收件栅栏，支持图标自由拖回桌面、任意栅栏删除、手动摆放优先；详见[桌面收纳逻辑](docs/DESKTOP_CONTAINERS.md)。上游作者与许可证保留如下。
+
 https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 
 <p align="center">

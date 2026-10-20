@@ -34,7 +34,13 @@ impl App {
     pub(super) fn recover_device(&mut self) {
         let back_to_gpu =
             self.ctx.stack.on_fallback_warp() && self.device_retry_ms < DEVICE_RETRY_MAX_MS;
-        if !self.fences.values().any(|w| w.device_lost()) && !back_to_gpu {
+        if !self
+            .fences
+            .values()
+            .chain(self.desktop_windows.values())
+            .any(|w| w.device_lost())
+            && !back_to_gpu
+        {
             self.device_retry_ms = DEVICE_RETRY_FIRST_MS;
             return;
         }
@@ -43,7 +49,13 @@ impl App {
             self.schedule_device_retry();
             return;
         }
-        if self.fences.values().any(|w| w.device_lost()) || self.ctx.stack.on_fallback_warp() {
+        if self
+            .fences
+            .values()
+            .chain(self.desktop_windows.values())
+            .any(|w| w.device_lost())
+            || self.ctx.stack.on_fallback_warp()
+        {
             // A window got no new surfaces (logged there), or WARP draws: rebuild everything
             // again later.
             self.schedule_device_retry();
@@ -79,7 +91,7 @@ impl App {
     fn rebuild_render_stack(&mut self) -> windows_core::Result<()> {
         self.rebuild_stack()?;
         self.ctx.bitmaps.borrow_mut().clear();
-        for w in self.fences.values() {
+        for w in self.fences.values().chain(self.desktop_windows.values()) {
             w.recreate_surfaces(&self.ctx.stack);
         }
         self.redraw_notices();
@@ -273,7 +285,7 @@ impl App {
             }
         }
         if n > 0 {
-            for w in self.fences.values() {
+            for w in self.fences.values().chain(self.desktop_windows.values()) {
                 w.redraw_if_pending_icons();
             }
         }
@@ -304,7 +316,12 @@ impl App {
         let mut more = false;
         // Dying windows are ticked too: their shadow fades on the frame clock until the exit
         // fade's completion drops them.
-        for w in self.fences.values().chain(self.dying.iter()) {
+        for w in self
+            .fences
+            .values()
+            .chain(self.desktop_windows.values())
+            .chain(self.dying.iter())
+        {
             more |= w.on_frame(now);
         }
         self.reflow_pushed();
@@ -318,15 +335,15 @@ impl App {
         if peek_done {
             self.end_peek_now();
         }
+        // Animation work goes first; live video joins this compositor tick instead
+        // of competing with it through a separate high-frequency WM_TIMER.
+        more |= self.tick_live_wallpaper();
         let spent = now.elapsed();
         self.frame_run.max_frame = self.frame_run.max_frame.max(spent);
-        if more {
-            self.ctx.frames.request();
-        } else {
-            // End of an animation run: one summary line, at info when it stuttered visibly (a
-            // gap of two 60 Hz frames, or a frame that took longer than a 60 Hz period to
-            // produce). Smaller hitches stay at debug: at 60 Hz a normal frame's jitter
-            // already passes 17 ms, and those lines filled most of the feedback logs.
+        if !more {
+            // End of an animation run: one summary line, at info when it stuttered (a gap of
+            // more than ~2 frames at 143 Hz / 1 frame at 60 Hz, or a frame that took longer
+            // than a 143 Hz period to produce).
             let r = &self.frame_run;
             let total = now.duration_since(r.started.unwrap_or(now));
             let ms = |d: Duration| (d.as_secs_f32() * 1000.0 * 10.0).round() / 10.0;
@@ -349,5 +366,11 @@ impl App {
             }
             self.frame_prev = None;
         }
+        let fast = self
+            .fences
+            .values()
+            .chain(self.desktop_windows.values())
+            .any(FenceWindow::wants_fast_frames);
+        self.ctx.frames.finish_frame(more, fast);
     }
 }
