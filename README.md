@@ -32,6 +32,8 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 ## Ultimate Static Desktop & Poster Shelves Integration
 
 ![Ultimate Static Desktop & Poster Shelves Integration](docs/assets/desktop-poster-shelves.png)
+<img width="3837" height="2034" alt="image" src="https://github.com/user-attachments/assets/311962e3-984b-4a7a-bc2c-48ffdaa9379b" />
+
 
 ### 🧩 The Essential Missing Piece: BoxArt Studio
 While PecoFence provides the rigid grid layout and zero-gap 2:3 poster containers, Windows still natively generates standard square icons. 
