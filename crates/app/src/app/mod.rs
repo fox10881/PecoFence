@@ -1902,6 +1902,14 @@ impl App {
             Command::NewFenceRect(rect) => self.offer_new_fence(rect),
             Command::DesktopMarquee(event) => self.on_desktop_marquee(event),
             Command::ClearFenceSelection => self.set_fence_selection(Vec::new()),
+            Command::ClearDesktopSelection { except } => {
+                // `select_desktop_rect` repaints the overlay only when its selection changed.
+                for w in self.desktop_windows.values() {
+                    if w.hwnd() != except {
+                        w.select_desktop_rect(RECT::default(), &[]);
+                    }
+                }
+            }
             Command::RaiseFence(hwnd) => {
                 if let Some(a) = self.anchor.borrow_mut().as_mut() {
                     a.raise_fence(hwnd);

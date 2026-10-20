@@ -890,9 +890,17 @@ impl DesktopAnchor {
     fn begin_marquee(&mut self, pt: POINT) -> bool {
         let hit = desktop::window_from_point(pt.x, pt.y);
         let root = desktop::root_ancestor(hit);
-        if self.all_windows().contains(&root) || !self.is_desktop_window(hit) || on_icon(hit, pt) {
+        if self.all_windows().contains(&root) || !self.is_desktop_window(hit) {
             self.quick.marquee_origin = None;
             self.quick.marquee_live = false;
+            return false;
+        }
+        if on_icon(hit, pt) {
+            self.quick.marquee_origin = None;
+            self.quick.marquee_live = false;
+            // Selecting a Windows icon ends the loose-icon and fence selections, just as a
+            // press on the bare desktop does.
+            self.emit_marquee(MarqueeEvent::Pressed { additive: false });
             return false;
         }
         if !self.quick.fences_hidden {
