@@ -602,16 +602,23 @@ async function runTests() {
       assert(current().settings.tabBar === value, 'Tab bar position not posted: ' + value);
     }
   });
-  await test('Icon name colour is shown and posted', async () => {
+  await test('Text colour is shown and posted; per fence only with Liquid Glass', async () => {
     doc.querySelector('[data-page=general]').click();
     const color = doc.querySelector('[data-bind=labelColor]');
-    assert(color.value === 'auto', 'Saved icon name colour not shown');
-    for (const value of ['white', 'black', 'auto']) {
+    assert(color.value === 'auto', 'Saved text colour not shown');
+    const perFence = color.querySelector('option[value=perFence]');
+    const shown = () => frame.contentWindow.getComputedStyle(perFence).display !== 'none';
+    assert(!shown(), 'Per fence offered with Fluent');
+    styleRadio(doc, 'liquidGlass').click(); await settle();
+    assert(shown(), 'Per fence hidden with Liquid Glass');
+    for (const value of ['perFence', 'white', 'black', 'auto']) {
       color.value = value;
       color.dispatchEvent(new frame.contentWindow.Event('change', { bubbles: true }));
       await settle();
-      assert(current().settings.labelColor === value, 'Icon name colour not posted: ' + value);
+      assert(current().settings.labelColor === value, 'Text colour not posted: ' + value);
     }
+    styleRadio(doc, 'fluent').click(); await settle();
+    assert(!shown(), 'Per fence still offered after switching back to Fluent');
   });
   await test('Rule rows are compact and the new-rule form opens when needed', async () => {
     doc = await reset();

@@ -6,7 +6,7 @@ use crate::backdrop::Image;
 use crate::bitmaps::BitmapCache;
 use crate::gpu_bindings as b;
 use crate::panel::Clip;
-use crate::theme::{Theme, font_small, font_text, lerp, with_alpha};
+use crate::theme::{Theme, ThemeMode, font_small, font_text, lerp, with_alpha};
 use std::cell::RefCell;
 use std::mem::ManuallyDrop;
 use std::rc::Rc;
@@ -685,6 +685,10 @@ fn header_foreground(
     opacity: f32,
     tint: Option<ColorF>,
 ) -> Theme {
+    // Only the default 文字颜色 picks ink per piece of text; the others already chose it.
+    if theme.label_color != pecofence_core::LabelColor::Auto {
+        return *theme;
+    }
     if let Backdrop::GpuGlass {
         material,
         wallpaper,
@@ -879,6 +883,7 @@ fn draw_plate(
                 // A folded title row moves the lens (and its bezel) down to the plate top.
                 let inset = (plate_top * scale).round() as i32;
                 let lens = [rect[0], rect[1] + inset, rect[2], (rect[3] - inset).max(1)];
+                let level = theme.liquid_level(opacity);
                 let result = material.borrow_mut().draw(
                     session,
                     &mut bitmaps.glass_wallpaper,
@@ -887,7 +892,8 @@ fn draw_plate(
                     inset as f32,
                     scale,
                     radius,
-                    opacity.min(1.0) * plate_a,
+                    level,
+                    plate_a,
                     hover,
                 );
                 if let Err(error) = result {
@@ -902,9 +908,7 @@ fn draw_plate(
                     let fill = session.create_solid_brush(with_alpha(fallback, plate_a))?;
                     session.fill_rounded_rect(&RoundedRect::uniform(outer, radius), &fill);
                 } else {
-                    let mut c = theme.glass_layer_fill;
-                    c.a *= opacity.min(1.0) * plate_a;
-                    let layer = session.create_solid_brush(c)?;
+                    let layer = session.create_solid_brush(with_alpha(level.fill, plate_a))?;
                     session.fill_rect(&outer, &layer);
                 }
             }
@@ -933,15 +937,15 @@ fn draw_plate(
                 } else {
                     bitmaps.get_or_upload(session, crop.key, crop.image)?
                 };
-                let alpha = if theme.liquid_glass {
-                    opacity.min(1.0)
+                let (alpha, fill) = if theme.liquid_glass {
+                    (1.0, theme.liquid_level(opacity).fill)
                 } else {
-                    glass_alpha(opacity)
+                    let mut c = theme.glass_layer_fill;
+                    c.a *= opacity.min(1.0);
+                    (glass_alpha(opacity), c)
                 };
                 session.draw_bitmap(&bitmap, &crop_rect(&crop), alpha * plate_a);
-                let mut c = theme.glass_layer_fill;
-                c.a *= opacity.min(1.0) * plate_a;
-                let layer = session.create_solid_brush(c)?;
+                let layer = session.create_solid_brush(with_alpha(fill, plate_a))?;
                 session.fill_rect(&outer, &layer);
                 // Acrylic grain: tile the noise texture at exactly one texel per device pixel.
                 if !theme.liquid_glass {
@@ -974,7 +978,7 @@ fn draw_plate(
         }
     }
 
-    if opacity > 1.0 {
+    if opacity > 1.0 && !theme.liquid_glass {
         let veil = session.create_solid_brush(with_alpha(theme.opacity_veil(opacity), plate_a))?;
         session.fill_rounded_rect(&RoundedRect::uniform(outer, radius), &veil);
     }
@@ -1042,6 +1046,21 @@ fn draw_plate(
     // A single 1 px rim, lit from the upper left and snapped to device pixels at every DPI.
     let rim_rect = px.ring(outer, radius);
     if sampled_material && theme.liquid_glass {
+        // iOS 27's darkened edge, just inside the specular rim.
+        let shade = if theme.mode == ThemeMode::Dark {
+            0.5
+        } else {
+            0.08
+        };
+        let hair = px.hair();
+        let inner = Rect {
+            left: outer.left + hair,
+            top: outer.top + hair,
+            right: (outer.right - hair).max(outer.left + hair),
+            bottom: (outer.bottom - hair).max(outer.top + hair),
+        };
+        let edge = session.create_solid_brush(ColorF::new(0.0, 0.0, 0.0, shade * plate_a))?;
+        session.draw_rounded_rect(&px.ring(inner, (radius - hair).max(0.0)), &edge, hair);
         // The GPU material lights its own rim (kube's specular ring).
         if !matches!(backdrop, Backdrop::GpuGlass { .. }) {
             let saved = session.transform();
@@ -1095,7 +1114,54 @@ fn halo_color(ink: ColorF, alpha: f32) -> ColorF {
     }
 }
 
-/// Draws `text` in `rect`, over a four-way `halo` outline (¾ DIP each way) when one is given.
+/// Soft shadow (DIPs) under text in a fixed 文字颜色.
+const SHADOW_SIGMA: f32 = 1.5;
+const SHADOW_DY: f32 = 0.5;
+
+/// The shadow a fixed 文字颜色 draws under text instead of the outline halo: the text keeps
+/// one colour, so the shadow has to carry it over both light and dark wallpaper.
+#[derive(Clone, Copy)]
+struct TextShadow {
+    color: ColorF,
+    /// DIPs the strokes are thickened by before the blur.
+    spread: f32,
+}
+
+fn text_shadow(theme: &Theme, ink: ColorF) -> Option<TextShadow> {
+    if theme.label_color == pecofence_core::LabelColor::Auto {
+        return None;
+    }
+    Some(if ink.r > 0.5 {
+        TextShadow {
+            color: ColorF::new(0.0, 0.0, 0.0, 0.5),
+            spread: 0.0,
+        }
+    } else {
+        // Dark text over dark wallpaper has no contrast of its own: a solid light glow.
+        TextShadow {
+            color: ColorF::new(1.0, 1.0, 1.0, 0.85),
+            spread: 1.0,
+        }
+    })
+}
+
+fn draw_text_shadow(
+    session: &DrawingSession<'_>,
+    shadow: TextShadow,
+    record: impl FnOnce(),
+) -> Result<()> {
+    crate::gpu_glass::draw_shadow(
+        session,
+        shadow.color,
+        shadow.spread,
+        SHADOW_SIGMA,
+        SHADOW_DY,
+        record,
+    )
+}
+
+/// Draws `text` over a soft `shadow`, or else a four-way `halo` outline (¾ DIP each way),
+/// when one is given.
 fn draw_caption(
     session: &DrawingSession<'_>,
     text: &str,
@@ -1103,7 +1169,17 @@ fn draw_caption(
     rect: &Rect,
     brush: &Brush,
     halo: Option<&Brush>,
+    shadow: Option<TextShadow>,
 ) {
+    if let Some(shadow) = shadow
+        && draw_text_shadow(session, shadow, || {
+            session.draw_text(text, format, rect, brush)
+        })
+        .is_ok()
+    {
+        session.draw_text(text, format, rect, brush);
+        return;
+    }
     let Some(halo) = halo else {
         session.draw_text(text, format, rect, brush);
         return;
@@ -1127,7 +1203,17 @@ fn draw_legible_text(
     brush: &Brush,
     halo: Option<&Brush>,
     spread: f32,
+    shadow: Option<TextShadow>,
 ) {
+    if let Some(shadow) = shadow
+        && draw_text_shadow(session, shadow, || {
+            session.draw_text(text, format, rect, brush)
+        })
+        .is_ok()
+    {
+        session.draw_text(text, format, rect, brush);
+        return;
+    }
     if let Some(halo) = halo {
         let shifted = Rect {
             top: rect.top + spread,
@@ -1894,7 +1980,12 @@ impl FenceChrome {
         session.clear(ColorF::TRANSPARENT);
         let px = Px::new(scale);
         // Per-fence opacity: <1 thins the layer over the glass, >1 adds a solid veil on top.
-        let opacity = opacity.clamp(0.4, 1.8);
+        // Liquid Glass maps the whole valid range onto its slider instead.
+        let opacity = if theme.liquid_glass {
+            opacity.clamp(0.2, 2.0)
+        } else {
+            opacity.clamp(0.4, 1.8)
+        };
         // The plate is the whole surface, or only the part below the title row while title on
         // hover keeps that row folded away (the compositor clip cuts the surface at its top).
         // A fully transparent fence fades the whole plate with `plate_a`.
@@ -2256,6 +2347,7 @@ impl FenceChrome {
                     &Rect::from_xywh(caption_x, 0.0, shown_w, title_h),
                     &brush,
                     halo.as_ref(),
+                    text_shadow(theme, color),
                 );
                 if let Some(badge) = tab.badge {
                     let r = Rect::from_xywh(
@@ -2360,6 +2452,7 @@ impl FenceChrome {
                 &Rect::from_xywh(x, 0.0, title_w, title_h),
                 &text,
                 halo.as_ref(),
+                text_shadow(theme, style.title_color.unwrap_or(foreground.text_primary)),
             );
         }
         if count_a > 0.0
@@ -2386,6 +2479,7 @@ impl FenceChrome {
                 &count_rect,
                 &count,
                 halo.as_ref(),
+                text_shadow(theme, foreground.text_tertiary),
             );
         }
 
@@ -2655,7 +2749,15 @@ impl FenceChrome {
                 }
                 let fmt = self.rail_title_format(tab.title_size, strong);
                 let fitted = crate::text::fit_width(tab.title, fmt, room);
-                draw_caption(session, &fitted, fmt, &caption, &brush, halo);
+                draw_caption(
+                    session,
+                    &fitted,
+                    fmt,
+                    &caption,
+                    &brush,
+                    halo,
+                    text_shadow(theme, color),
+                );
             }
             // Like the selection fill, the up button is gone from a collapsed column.
             let up_a = ta * expanded;
@@ -2733,7 +2835,9 @@ impl FenceChrome {
         let secondary = session.create_solid_brush(theme.text_secondary)?;
         let cols = rows.columns;
         let header_h = rows.header_h;
-        let halo = if theme.liquid_glass || theme.text_halo {
+        let halo = if (theme.liquid_glass || theme.text_halo)
+            && text_shadow(theme, theme.text_primary).is_none()
+        {
             Some(session.create_solid_brush(ColorF::TRANSPARENT)?)
         } else {
             None
@@ -2777,7 +2881,16 @@ impl FenceChrome {
                     ColorF::new(1.0, 1.0, 1.0, 0.28 * alpha)
                 });
             }
-            draw_legible_text(session, text, format, &rect, brush, halo.as_ref(), spread);
+            draw_legible_text(
+                session,
+                text,
+                format,
+                &rect,
+                brush,
+                halo.as_ref(),
+                spread,
+                text_shadow(theme, color),
+            );
         };
         // Dates, types, sizes and the column captions are not shortened like the names: each
         // is clipped to its column so a long one does not run into the next.
@@ -3119,7 +3232,9 @@ impl FenceChrome {
             if !content.group_headers.is_empty() {
                 let line = session.create_solid_brush(theme.stroke)?;
                 // The same local halo the labels get over mixed wallpaper.
-                let halo = if theme.liquid_glass || theme.text_halo {
+                let halo = if (theme.liquid_glass || theme.text_halo)
+                    && text_shadow(theme, theme.text_secondary).is_none()
+                {
                     Some(session.create_solid_brush(if theme.text_secondary.r > 0.5 {
                         ColorF::new(0.0, 0.0, 0.0, 0.28)
                     } else {
@@ -3147,6 +3262,7 @@ impl FenceChrome {
                         &label_dim,
                         halo.as_ref(),
                         spread,
+                        text_shadow(theme, theme.text_secondary),
                     );
                     draw_group_rule(session, px, h, text_x + text_w, right, &line);
                 }
@@ -3154,17 +3270,44 @@ impl FenceChrome {
 
             // The cell whose label unfolds is painted after every other cell: like the desktop's
             // focused icon it overdraws the row below.
-            let mut deferred: Option<&ItemCell<'_>> = None;
+            let visible = |cell: &ItemCell<'_>| cell.y + cell.h >= 0.0 && cell.y <= height;
+            let deferred = content
+                .items
+                .iter()
+                .find(|c| visible(c) && c.full_label.is_some());
+            // A fixed 文字颜色 shadows every resting label in one pass; the unfolding one draws
+            // its own above the row it overlaps.
+            let shadowed = text_shadow(theme, theme.text_primary).is_some_and(|shadow| {
+                let format = &self.label_font.borrow().format;
+                draw_text_shadow(session, shadow, || {
+                    for cell in content.items.iter().filter(|c| visible(c)) {
+                        let alpha = cell.alpha.clamp(0.0, 1.0);
+                        if alpha <= 0.0 || deferred.is_some_and(|d| std::ptr::eq(d, cell)) {
+                            continue;
+                        }
+                        let rect = self.label_rect(content, cell, None);
+                        // A brush of its own per fading label: the list may keep brushes by
+                        // reference, so the scratch brush cannot be recoloured mid-recording.
+                        let fading = (alpha < 1.0)
+                            .then(|| session.create_solid_brush(ColorF::new(0.0, 0.0, 0.0, alpha)))
+                            .and_then(|b| b.ok());
+                        session.draw_text(
+                            cell.label,
+                            format,
+                            &rect,
+                            fading.as_ref().unwrap_or(&label),
+                        );
+                    }
+                })
+                .is_ok()
+            });
             for cell in content.items {
-                if cell.y + cell.h < 0.0 || cell.y > height {
-                    continue;
-                }
-                if cell.full_label.is_some() && deferred.is_none() {
-                    deferred = Some(cell);
+                if !visible(cell) || deferred.is_some_and(|d| std::ptr::eq(d, cell)) {
                     continue;
                 }
                 self.draw_cell(
                     session, theme, bitmaps, &state, px, content, cell, &label, &label_dim, None,
+                    shadowed,
                 )?;
             }
             if let Some(cell) = deferred {
@@ -3173,6 +3316,7 @@ impl FenceChrome {
                 let unfold = cell.full_label.map(|(text, lines)| (text, lines.max(1)));
                 self.draw_cell(
                     session, theme, bitmaps, &state, px, content, cell, &label, &label_dim, unfold,
+                    shadowed,
                 )?;
             }
             Ok(())
@@ -3250,6 +3394,7 @@ impl FenceChrome {
         label: &Brush,
         label_dim: &Brush,
         unfold: Option<(&str, u32)>,
+        shadowed: bool,
     ) -> Result<()> {
         let depth = cell.depth.clamp(0.0, 1.0);
         if depth < 1.0 {
@@ -3261,12 +3406,13 @@ impl FenceChrome {
             session.set_transform(&(Matrix3x2::scale_around(depth, depth, centre) * saved));
             let r = self.draw_cell_unscaled(
                 session, theme, bitmaps, state, px, content, cell, label, label_dim, unfold,
+                shadowed,
             );
             session.set_transform(&saved);
             return r;
         }
         self.draw_cell_unscaled(
-            session, theme, bitmaps, state, px, content, cell, label, label_dim, unfold,
+            session, theme, bitmaps, state, px, content, cell, label, label_dim, unfold, shadowed,
         )
     }
 
@@ -3284,6 +3430,7 @@ impl FenceChrome {
         label: &Brush,
         label_dim: &Brush,
         unfold: Option<(&str, u32)>,
+        shadowed: bool,
     ) -> Result<()> {
         let alpha = cell.alpha.clamp(0.0, 1.0);
         if alpha <= 0.0 {
@@ -3340,12 +3487,7 @@ impl FenceChrome {
         if content.label_lines == 0 {
             return Ok(());
         }
-        let label_rect = Rect::from_xywh(
-            cell.x + ICON_LABEL_SIDE_INSET,
-            icon_y + content.icon_h + content.label_gap,
-            (cell.w - ICON_LABEL_SIDE_INSET * 2.0).max(1.0),
-            content.line_h * lines,
-        );
+        let label_rect = self.label_rect(content, cell, unfold);
         let text = unfold.map_or(cell.label, |(t, _)| t);
         let resting = if cell.dimmed { label_dim } else { label };
         // A fading cell recolours the scratch brush instead of allocating one per frame.
@@ -3361,8 +3503,14 @@ impl FenceChrome {
         };
         // A local halo protects labels over mixed light/dark wallpaper (Liquid Glass, a fully
         // transparent plate). It does not frost or darken the glass between icons.
-        let halo = (theme.liquid_glass || theme.text_halo)
+        let halo = (!shadowed && (theme.liquid_glass || theme.text_halo))
             .then(|| state.halo(halo_color(theme.text_primary, alpha)));
+        // Resting labels were shadowed in one pass before the cells.
+        let shadow = if shadowed && unfold.is_some() {
+            text_shadow(theme, theme.text_primary)
+        } else {
+            None
+        };
         draw_caption(
             session,
             text,
@@ -3370,9 +3518,27 @@ impl FenceChrome {
             &label_rect,
             brush,
             halo,
+            shadow,
         );
 
         Ok(())
+    }
+
+    /// Where a cell's label sits: under the icon, `unfold` lines tall when it unfolds.
+    fn label_rect(
+        &self,
+        content: &ContentDraw<'_>,
+        cell: &ItemCell<'_>,
+        unfold: Option<(&str, u32)>,
+    ) -> Rect {
+        let base_lines = content.label_lines as f32;
+        let lines = unfold.map_or(base_lines, |(_, n)| (n as f32).max(base_lines));
+        Rect::from_xywh(
+            cell.x + ICON_LABEL_SIDE_INSET,
+            cell.y + content.icon_top + content.icon_size + content.label_gap,
+            (cell.w - ICON_LABEL_SIDE_INSET * 2.0).max(1.0),
+            content.line_h * lines,
+        )
     }
 }
 

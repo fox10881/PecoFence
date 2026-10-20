@@ -18,6 +18,7 @@ Existing configurations without a `language` field retain Simplified Chinese.
 | `pt-BR` | Portuguese (Brazil) |
 | `ru` | Russian |
 | `ar` | Arabic |
+| `it` | Italian |
 
 Chinese display locales using Traditional Chinese resolve to `zh-TW`. Portuguese
 display locales use the supported Brazilian Portuguese catalog.

@@ -94,27 +94,28 @@ impl FenceViewState {
 
     /// Adapt content to the clear plate instead of darkening the whole wallpaper.
     pub(super) fn material_foreground(&self) -> Theme {
+        let label_color = self.behavior.label_color.get();
+        let theme = self.theme.with_label_color(label_color);
         if self.theme.liquid_glass && self.gpu_glass.borrow().failed() {
-            return self.theme;
+            return theme;
         }
-        match &self.backdrop_crop {
+        // The pickers choose the ink and plate feedback for the backdrop; a fixed 文字颜色 then
+        // takes over the text, after the hysteresis noted the backdrop's own choice.
+        let picked = match &self.backdrop_crop {
             Some(image) if self.is_clear() => {
                 // Captions sit on bare wallpaper at rest, on the default plate while hovered.
                 let foreground =
-                    self.theme
-                        .over_clear_plate(image, self.style.tint, self.glass_dark_text.get());
+                    theme.over_clear_plate(image, self.style.tint, self.glass_dark_text.get());
                 self.glass_dark_text
                     .set(Some(foreground.text_primary.r < 0.5));
                 foreground
             }
-            None if self.is_clear() => Theme {
-                text_halo: true,
-                ..self.theme
-            },
+            None if self.is_clear() => {
+                theme.over_clear_plate(&pecofence_render::Image::default(), self.style.tint, None)
+            }
             Some(image) if self.theme.liquid_glass => {
                 // The GPU renders a complete wallpaper-backed material, so floating
                 // fences do not expose application text through a transparent centre.
-                let theme = self.theme;
                 let foreground = theme.over_glass_with_previous_ink(
                     image,
                     self.material_opacity(),
@@ -125,8 +126,9 @@ impl FenceViewState {
                     .set(Some(foreground.text_primary.r < 0.5));
                 foreground
             }
-            _ => self.theme,
-        }
+            _ => theme,
+        };
+        picked.with_label_color(label_color)
     }
 
     /// Drops the per-item fades: the view now shows a different list (tab switch, layout

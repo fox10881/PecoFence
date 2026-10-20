@@ -75,6 +75,8 @@ pub struct Theme {
     /// Captions sit on bare wallpaper (a fully transparent plate): titles, tabs and labels
     /// get the legibility halo Liquid Glass labels always have.
     pub text_halo: bool,
+    /// The 文字颜色 setting the text was drawn for.
+    pub label_color: pecofence_core::LabelColor,
 }
 
 impl Theme {
@@ -110,6 +112,7 @@ impl Theme {
             corner_radius: 8.0,
             title_height: 36.0,
             text_halo: false,
+            label_color: pecofence_core::LabelColor::Auto,
         }
     }
 
@@ -145,6 +148,7 @@ impl Theme {
             corner_radius: 8.0,
             title_height: 36.0,
             text_halo: false,
+            label_color: pecofence_core::LabelColor::Auto,
         }
     }
 
@@ -262,10 +266,52 @@ impl Theme {
 
     /// The solid veil used by the "more opaque" preset. Share the recipe with
     /// foreground selection so text is evaluated against the material actually drawn.
+    /// Fluent only: Liquid Glass gets its opacity from [`Theme::liquid_level`].
     pub fn opacity_veil(self, opacity: f32) -> ColorF {
+        if self.liquid_glass {
+            return ColorF::TRANSPARENT;
+        }
         ColorF {
             a: ((opacity.clamp(0.4, 1.8) - 1.0) * 0.7).clamp(0.0, 0.6),
             ..self.solid_fill
+        }
+    }
+
+    /// Modelled on iOS 27's Liquid Glass slider: towards Tinted, more frost and fill, slightly
+    /// less lensing; the lens itself never fades. Shared with foreground selection.
+    pub fn liquid_level(self, opacity: f32) -> GlassLevel {
+        let t = liquid_glass_position(opacity);
+        let rgba = |rgb: u32, a: f32| ColorF {
+            r: ((rgb >> 16) & 0xFF) as f32 / 255.0,
+            g: ((rgb >> 8) & 0xFF) as f32 / 255.0,
+            b: (rgb & 0xFF) as f32 / 255.0,
+            a,
+        };
+        // Tuned for the desktop: iOS's own light glass reads as a creamy wash at rest.
+        let fills = match self.mode {
+            ThemeMode::Light => [
+                rgba(0xFFFFFF, 0.02),
+                rgba(0xFFFFFF, 0.07),
+                rgba(0xF7F7FA, 0.22),
+            ],
+            ThemeMode::Dark => [
+                rgba(0xFFFFFF, 0.02),
+                rgba(0x4D4D52, 0.10),
+                rgba(0x38383D, 0.22),
+            ],
+        };
+        let mut fill = across(t, fills[0], fills[1], fills[2], lerp);
+        // Floating fences keep their near-opaque backing.
+        if self.glass_layer_fill.a > fill.a {
+            fill = self.glass_layer_fill;
+        }
+        let scalar =
+            |c: f32, r: f32, tinted: f32| across(t, c, r, tinted, |a, b, t| a + (b - a) * t);
+        GlassLevel {
+            frost_sigma_dip: scalar(1.0, 4.0, 8.0),
+            refraction: scalar(1.14, 1.0, 0.86),
+            light: scalar(1.4, 1.0, 1.0),
+            fill,
         }
     }
 
@@ -287,7 +333,10 @@ impl Theme {
         tint: Option<ColorF>,
         previous_dark_text: Option<bool>,
     ) -> Self {
-        if !self.liquid_glass || image.bgra.is_empty() {
+        if !self.liquid_glass {
+            return self;
+        }
+        if image.bgra.is_empty() {
             return self;
         }
         let foreground = if self.prefers_dark_text(image, opacity, tint, previous_dark_text) {
@@ -324,7 +373,9 @@ impl Theme {
     }
 
     /// Whether dark text reads better over `image` once the plate's own layers (glass layer,
-    /// opacity veil, tint wash) are composited over it.
+    /// opacity veil, tint wash) are composited over it. One colour for a whole fence (按栅栏自动)
+    /// judges by its darkest quarter: white text with its shadow survives pale sky far better
+    /// than dark text survives trees.
     fn prefers_dark_text(
         &self,
         image: &crate::Image,
@@ -332,8 +383,7 @@ impl Theme {
         tint: Option<ColorF>,
         previous_dark_text: Option<bool>,
     ) -> bool {
-        let mut sum = 0.0;
-        let mut count = 0;
+        let mut samples = Vec::with_capacity(256);
         let (cols, rows) = (image.width.min(16), image.height.min(16));
         for row in 0..rows {
             for col in 0..cols {
@@ -341,14 +391,24 @@ impl Theme {
                 let y = ((2 * row + 1) * image.height / (2 * rows)).min(image.height - 1);
                 let i = ((y * image.width + x) * 4) as usize;
                 let p = &image.bgra[i..i + 4];
-                sum += (0.2126 * p[2] as f32 + 0.7152 * p[1] as f32 + 0.0722 * p[0] as f32) / 255.0;
-                count += 1;
+                samples.push(
+                    (0.2126 * p[2] as f32 + 0.7152 * p[1] as f32 + 0.0722 * p[0] as f32) / 255.0,
+                );
             }
         }
+        if self.label_color == pecofence_core::LabelColor::PerFence {
+            samples.sort_by(f32::total_cmp);
+            samples.truncate(samples.len().div_ceil(4));
+        }
         let luminance = |c: ColorF| 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
-        let mut brightness = sum / count.max(1) as f32;
-        let mut layer = self.glass_layer_fill;
-        layer.a *= opacity.clamp(0.4, 1.0);
+        let mut brightness = samples.iter().sum::<f32>() / samples.len().max(1) as f32;
+        let layer = if self.liquid_glass {
+            self.liquid_level(opacity).fill
+        } else {
+            let mut layer = self.glass_layer_fill;
+            layer.a *= opacity.clamp(0.4, 1.0);
+            layer
+        };
         for overlay in [
             Some(layer),
             Some(self.opacity_veil(opacity)),
@@ -367,12 +427,15 @@ impl Theme {
         brightness > threshold
     }
 
-    /// The theme the item names are drawn with. 「图标名称颜色」 白色 / 黑色 takes the text of
-    /// this material's dark / light theme whatever the backdrop; the plate, hover and focus
-    /// tokens stay as picked for it, and the halo follows the text.
+    /// The theme the text is drawn with. 「文字颜色」 白色 / 黑色 takes the text of this
+    /// material's dark / light theme whatever the backdrop; the plate, hover and focus tokens
+    /// stay as picked for it. 按栅栏自动 is kept for the ink pickers to read.
     pub fn with_label_color(mut self, color: pecofence_core::LabelColor) -> Self {
+        self.label_color = color;
         let mode = match color {
-            pecofence_core::LabelColor::Auto => return self,
+            pecofence_core::LabelColor::Auto | pecofence_core::LabelColor::PerFence => {
+                return self;
+            }
             pecofence_core::LabelColor::White => ThemeMode::Dark,
             pecofence_core::LabelColor::Black => ThemeMode::Light,
         };
@@ -425,6 +488,36 @@ impl Theme {
     pub fn accent_rgb8(&self) -> [u8; 3] {
         let c = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
         [c(self.accent.r), c(self.accent.g), c(self.accent.b)]
+    }
+}
+
+/// One position on the Liquid Glass slider (see [`Theme::liquid_level`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GlassLevel {
+    /// Blur applied before refraction (DIP).
+    pub frost_sigma_dip: f32,
+    /// Lens and rim light multipliers (1 = Regular).
+    pub refraction: f32,
+    pub light: f32,
+    pub fill: ColorF,
+}
+
+/// 0 ("More Clear") to 1 ("More Tinted"): 更透明 0.55 is the left end, the default 1.0 the
+/// middle and 更厚实 1.6 the right end.
+pub fn liquid_glass_position(opacity: f32) -> f32 {
+    let o = opacity.clamp(0.55, 1.6);
+    if o <= 1.0 {
+        0.5 * (o - 0.55) / 0.45
+    } else {
+        0.5 + 0.5 * (o - 1.0) / 0.6
+    }
+}
+
+fn across<T: Copy>(t: f32, clear: T, regular: T, tinted: T, mix: impl Fn(T, T, f32) -> T) -> T {
+    if t <= 0.5 {
+        mix(clear, regular, t * 2.0)
+    } else {
+        mix(regular, tinted, (t - 0.5) * 2.0)
     }
 }
 
@@ -542,7 +635,7 @@ mod tests {
     #[test]
     fn glass_foreground_accounts_for_opacity_and_tint_without_changing_material() {
         let dark = Theme::dark().with_liquid_glass().with_accent([0, 120, 212]);
-        let bright = crate::Image::solid(16, 16, [180, 180, 180]);
+        let bright = crate::Image::solid(16, 16, [158, 158, 158]);
         assert!(dark.over_glass(&bright).text_primary.r < 0.2);
         let veiled = dark.over_glass_with_appearance(&bright, 1.6, None);
         assert!(veiled.text_primary.r > 0.9);
@@ -550,7 +643,7 @@ mod tests {
         assert_eq!(veiled.accent_rgb8(), dark.accent_rgb8());
         assert_eq!(veiled.focus_outer, Theme::dark().focus_outer);
         let light = Theme::light().with_liquid_glass();
-        let dim = crate::Image::solid(16, 16, [110, 110, 110]);
+        let dim = crate::Image::solid(16, 16, [125, 125, 125]);
         assert!(light.over_glass(&dim).text_primary.r > 0.9);
         assert!(
             light
@@ -559,7 +652,7 @@ mod tests {
                 .r
                 < 0.2
         );
-        let mid = crate::Image::solid(16, 16, [165, 165, 165]);
+        let mid = crate::Image::solid(16, 16, [185, 185, 185]);
         let tinted =
             dark.over_glass_with_appearance(&mid, 1.0, Some(ColorF::new(0.0, 0.0, 0.0, 1.0)));
         assert!(tinted.text_primary.r > 0.9);
@@ -571,6 +664,46 @@ mod tests {
                 .text_primary,
             fluent.text_primary
         );
+    }
+
+    #[test]
+    fn liquid_presets_sit_on_the_slider_with_default_in_the_middle() {
+        let close = |a: f32, b: f32| (a - b).abs() < 1e-4;
+        assert!(close(liquid_glass_position(0.55), 0.0));
+        assert!(close(liquid_glass_position(1.0), 0.5));
+        assert!(close(liquid_glass_position(1.6), 1.0));
+        assert!(close(liquid_glass_position(0.2), 0.0));
+        assert!(close(liquid_glass_position(2.0), 1.0));
+        assert!(close(liquid_glass_position(0.0), 0.0));
+        assert!(close(liquid_glass_position(9.0), 1.0));
+    }
+
+    #[test]
+    fn liquid_level_frosts_and_tints_towards_tinted_and_never_fades_the_lens() {
+        for mode in [ThemeMode::Light, ThemeMode::Dark] {
+            let glass = Theme::for_mode(mode).with_liquid_glass();
+            let regular = glass.liquid_level(1.0);
+            assert_eq!(regular.frost_sigma_dip, 4.0);
+            assert_eq!(regular.refraction, 1.0);
+            assert_eq!(regular.light, 1.0);
+            let mut previous = glass.liquid_level(0.2);
+            assert!(
+                previous.frost_sigma_dip > 0.0,
+                "even the clear end keeps some frost"
+            );
+            for step in 1..=18 {
+                let level = glass.liquid_level(0.2 + 0.1 * step as f32);
+                assert!(level.frost_sigma_dip >= previous.frost_sigma_dip);
+                assert!(level.fill.a >= previous.fill.a);
+                assert!(level.refraction <= previous.refraction);
+                assert!(level.light <= previous.light);
+                previous = level;
+            }
+            assert!(previous.fill.a > 0.2);
+            let floating = glass.with_floating_backing();
+            assert!(floating.liquid_level(0.2).fill.a > 0.9);
+            assert_eq!(glass.opacity_veil(1.8).a, 0.0);
+        }
     }
 
     #[test]
@@ -627,12 +760,33 @@ mod tests {
         let h = with_alpha(ColorF::from_rgba8(1, 2, 3, 0x80), 0.5);
         assert!((h.a - 0x80 as f32 / 255.0 * 0.5).abs() < 1e-6);
     }
+
+    #[test]
+    fn per_fence_text_judges_by_the_darkest_quarter() {
+        use pecofence_core::LabelColor;
+        for mode in [ThemeMode::Light, ThemeMode::Dark] {
+            let glass = Theme::for_mode(mode).with_liquid_glass();
+            let per_fence = glass.with_label_color(LabelColor::PerFence);
+            assert_eq!(per_fence.text_primary, glass.text_primary);
+            let bright = crate::Image::solid(16, 16, [240; 3]);
+            let dim = crate::Image::solid(16, 16, [20; 3]);
+            assert!(per_fence.over_glass(&bright).text_primary.r < 0.2);
+            assert!(per_fence.over_glass(&dim).text_primary.r > 0.9);
+            // Mostly sky with a band of trees: the average says dark text, the trees say white.
+            let mut mixed = crate::Image::solid(16, 16, [240; 3]);
+            for px in mixed.bgra.chunks_mut(4).skip(16 * 11) {
+                px[..3].copy_from_slice(&[30; 3]);
+            }
+            assert!(glass.over_glass(&mixed).text_primary.r < 0.2);
+            assert!(per_fence.over_glass(&mixed).text_primary.r > 0.9);
+        }
+    }
 }
 #[test]
 fn glass_text_keeps_its_ink_near_threshold_then_switches_on_a_clear_boundary() {
     let base = Theme::light().with_liquid_glass();
     let mut previous = Some(true);
-    for gray in [144, 138, 148, 139, 146] {
+    for gray in [134, 128, 138, 129, 136] {
         let image = crate::Image::solid(31, 29, [gray; 3]);
         let foreground = base.over_glass_with_previous_ink(&image, 1.0, None, previous);
         assert!(
@@ -642,13 +796,13 @@ fn glass_text_keeps_its_ink_near_threshold_then_switches_on_a_clear_boundary() {
         previous = Some(foreground.text_primary.r < 0.5);
     }
     let dark = base.over_glass_with_previous_ink(
-        &crate::Image::solid(31, 29, [80; 3]),
+        &crate::Image::solid(31, 29, [60; 3]),
         1.0,
         None,
         previous,
     );
     assert!(dark.text_primary.r > 0.9);
-    for gray in [138, 148, 144] {
+    for gray in [128, 138, 134] {
         let foreground = base.over_glass_with_previous_ink(
             &crate::Image::solid(31, 29, [gray; 3]),
             1.0,

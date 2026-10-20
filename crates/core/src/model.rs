@@ -107,7 +107,8 @@ pub struct Settings {
     /// Material style is independent of the light/dark preference.
     #[serde(default)]
     pub theme_style: ThemeStyle,
-    /// Colour of the item names in every fence; fence titles have their own `titleColor`.
+    /// Colour of the titles, tabs and item names in every fence; a fence's own `titleColor`
+    /// still wins for its title.
     #[serde(default)]
     pub label_color: LabelColor,
     /// Where every fence's title (or tab strip) sits in its title row.
@@ -284,14 +285,17 @@ pub enum ThemeStyle {
     InvisibleCanvas,
 }
 
-/// Item name colour (「图标名称颜色」). Auto: Liquid Glass picks dark or light text from the
-/// wallpaper under each fence, Fluent follows the colour mode. The halo pairs with the text.
+/// Text colour (「文字颜色」). Auto: Liquid Glass picks dark or light text from the wallpaper,
+/// for the item names under each fence and for each tab and title under it, and Fluent follows
+/// the colour mode; the halo pairs with the text. Anything else swaps the halo for a soft shadow.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub enum LabelColor {
     #[default]
     Auto,
+    /// One colour for a fence's title, tabs and item names, chosen from its backdrop.
+    PerFence,
     White,
     Black,
 }

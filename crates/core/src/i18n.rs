@@ -36,6 +36,8 @@ pub enum Language {
     Russian,
     #[serde(rename = "ar")]
     Arabic,
+    #[serde(rename = "it")]
+    Italian,
 }
 
 impl Language {
@@ -63,6 +65,7 @@ impl Language {
             "pt" => Self::Portuguese,
             "ru" => Self::Russian,
             "ar" => Self::Arabic,
+            "it" => Self::Italian,
             _ => Self::English,
         }
     }
@@ -89,6 +92,7 @@ impl Language {
             Self::Portuguese => "pt-BR",
             Self::Russian => "ru",
             Self::Arabic => "ar",
+            Self::Italian => "it",
         }
     }
 }
@@ -106,6 +110,7 @@ static SPANISH: OnceLock<HashMap<String, String>> = OnceLock::new();
 static PORTUGUESE: OnceLock<HashMap<String, String>> = OnceLock::new();
 static RUSSIAN: OnceLock<HashMap<String, String>> = OnceLock::new();
 static ARABIC: OnceLock<HashMap<String, String>> = OnceLock::new();
+static ITALIAN: OnceLock<HashMap<String, String>> = OnceLock::new();
 
 pub const SUPPORTED: &[Language] = &[
     Language::SimplifiedChinese,
@@ -119,6 +124,7 @@ pub const SUPPORTED: &[Language] = &[
     Language::Portuguese,
     Language::Russian,
     Language::Arabic,
+    Language::Italian,
 ];
 
 pub fn set_language(language: Language) {
@@ -135,6 +141,7 @@ pub fn set_language(language: Language) {
             Language::Portuguese => 8,
             Language::Russian => 9,
             Language::Arabic => 10,
+            Language::Italian => 11,
         },
         Ordering::Relaxed,
     );
@@ -152,6 +159,7 @@ pub fn language() -> Language {
         8 => Language::Portuguese,
         9 => Language::Russian,
         10 => Language::Arabic,
+        11 => Language::Italian,
         _ => Language::SimplifiedChinese,
     }
 }
@@ -167,6 +175,7 @@ pub fn catalog(language: Language) -> &'static HashMap<String, String> {
         Language::Portuguese => (&PORTUGUESE, include_str!("../../../locales/pt-BR.json")),
         Language::Russian => (&RUSSIAN, include_str!("../../../locales/ru.json")),
         Language::Arabic => (&ARABIC, include_str!("../../../locales/ar.json")),
+        Language::Italian => (&ITALIAN, include_str!("../../../locales/it.json")),
         _ => (&ENGLISH, include_str!("../../../locales/en.json")),
     };
     slot.get_or_init(|| serde_json::from_str(source).expect("validated translation catalog"))

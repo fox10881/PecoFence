@@ -323,6 +323,7 @@
      rounder geometry and a top highlight echo the material. */
   :root.liquid-glass { --r-card: 8px; --r-control: 6px; --glass-highlight: #ffffff12; }
   :root.liquid-glass.light { --glass-highlight: #ffffffe6; }
+  :root:not(.liquid-glass) [data-bind=labelColor] option[value=perFence] { display: none; }
   @media (prefers-reduced-transparency: reduce) {
     .tile .mini-fence { backdrop-filter: none; background: var(--card); }
     .preview-glass { display: none; }
@@ -386,8 +387,8 @@
         </div></div>
       <div class="card"><div class="l"><span class="ic">&#xE7A1;</span><div><div class="t">颜色模式</div></div></div>
         <select data-bind="theme"><option value="followWindowsMode">跟随 Windows 模式</option><option value="followAppMode">跟随应用模式</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
-      <div class="card"><div class="l"><span class="ic">&#xE8D3;</span><div><div class="t">图标名称颜色</div><div class="s">自动：液态玻璃按背后壁纸的明暗选深色或浅色，Fluent 跟随颜色模式；栅栏标题的颜色在“栅栏”页设置</div></div></div>
-        <select data-bind="labelColor"><option value="auto">自动</option><option value="white">白色</option><option value="black">黑色</option></select></div>
+      <div class="card"><div class="l"><span class="ic">&#xE8D3;</span><div><div class="t">文字颜色</div><div class="s">自动：液态玻璃按背后壁纸的明暗选深色或浅色，Fluent 跟随颜色模式；栅栏标题的颜色在“栅栏”页设置</div></div></div>
+        <select data-bind="labelColor"><option value="auto">自动</option><option value="perFence">按栅栏自动</option><option value="white">白色</option><option value="black">黑色</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE8E4;</span><div><div class="t">标题对齐</div></div></div>
         <select data-bind="titleAlign"><option value="left">左对齐</option><option value="center">居中</option><option value="right">右对齐</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE90C;</span><div><div class="t">标签栏位置</div><div class="s">有多个标签页时，标签排在标题栏里，或在栅栏左侧排成一列</div></div></div>
@@ -404,7 +405,7 @@
       <div class="card"><div class="l"><span class="ic">&#xE793;</span><div><div class="t">图标融入背景（Chameleon）</div><div class="s">降低图标饱和度和不透明度，让桌面看起来更清爽</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="icons.chameleon"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE71B;</span><div><div class="t">显示快捷方式箭头</div><div class="s">和 Windows 桌面一样，在快捷方式图标的左下角显示小箭头</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="icons.shortcutArrows"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE774;</span><div><div class="t">显示语言</div><div class="s">立即切换界面语言；你的文件和自定义名称保持不变</div></div></div>
-        <select id="language" data-bind="language"><option value="system">跟随系统</option><option value="zh-CN" data-language-name>简体中文</option><option value="zh-TW" data-language-name>繁體中文</option><option value="en" data-language-name>English</option><option value="ja" data-language-name>日本語</option><option value="ko" data-language-name>한국어</option><option value="de" data-language-name>Deutsch</option><option value="fr" data-language-name>Français</option><option value="es" data-language-name>Español</option><option value="pt-BR" data-language-name>Português (Brasil)</option><option value="ru" data-language-name>Русский</option><option value="ar" data-language-name>العربية</option></select></div>
+        <select id="language" data-bind="language"><option value="system">跟随系统</option><option value="zh-CN" data-language-name>简体中文</option><option value="zh-TW" data-language-name>繁體中文</option><option value="en" data-language-name>English</option><option value="ja" data-language-name>日本語</option><option value="ko" data-language-name>한국어</option><option value="de" data-language-name>Deutsch</option><option value="fr" data-language-name>Français</option><option value="es" data-language-name>Español</option><option value="pt-BR" data-language-name>Português (Brasil)</option><option value="ru" data-language-name>Русский</option><option value="ar" data-language-name>العربية</option><option value="it" data-language-name>Italiano</option></select></div>
       <h3>桌面与启动</h3>
       <div class="card"><div class="l"><span class="ic">&#xE7E8;</span><div><div class="t">随 Windows 启动</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="autostart"></div></div>
       <div class="group">
