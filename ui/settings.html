@@ -1074,7 +1074,13 @@
     return targetSlots.get(k);
   }
   function targetBadge(target) {
-    const key = target === 'inbox' ? 'inbox' : target && target.fence;
+    // Keys: the inbox/desktop is always 'inbox' (also when it arrives as {inbox:…}),
+    // a fence target contributes its UUID, and a bare-string target is used as-is.
+    // Anything else becomes '?', which claims its own slot like any unknown id.
+    const key = target === 'inbox' || (target && typeof target === 'object' && 'inbox' in target) ? 'inbox'
+      : target && target.fence != null ? target.fence
+      : typeof target === 'string' ? target
+      : '?';
     const hue = (targetSlot(key) * 137.508) % 360;
     return `<span class="rule-target" style="--th:${hue.toFixed(2)}">${esc(targetLabel(target))}</span>`;
   }

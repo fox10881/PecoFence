@@ -220,6 +220,17 @@ impl SettingsHost {
         };
         tracing::debug!("settings: WebView2 controller ready");
         let webview = controller.webview()?;
+        // The page is served from memory via `navigate_to_string`, so no URL cache can
+        // serve a stale copy — but clear the profile's browsing data anyway so anything
+        // WebView2 did retain (storage, service workers, a warm renderer) cannot keep an
+        // older UI alive across versions.
+        if let Ok(profile) = webview.profile() {
+            let _ = profile.clear_browsing_data_all(|result| {
+                if let Err(e) = result {
+                    tracing::debug!(%e, "settings: WebView2 cache clear failed");
+                }
+            });
+        }
         let (cw, ch) = window.client_size();
         controller.set_bounds(0, 0, cw, ch)?;
         // Transparent page over DWM Mica; opaque theme colour when Mica is unavailable.
