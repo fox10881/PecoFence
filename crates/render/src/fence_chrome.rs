@@ -1306,10 +1306,9 @@ pub struct ContentDraw<'a> {
     /// never paints. When false the text pass — shadow included — is skipped
     /// entirely, so a label-free shelf costs no DirectWrite work per frame.
     pub paint_labels: bool,
-    /// 图标外框 (FenceView.persistent_icon_frames): a permanent card — translucent
-    /// fill with a white hairline — behind every cell instead of only on
-    /// hover/selection.
-    pub icon_frames: bool,
+    /// 图标外框 (FenceView.icon_frame_style): a permanent card behind every cell
+    /// instead of only on hover/selection — a translucent slot or a solid white tile.
+    pub icon_frame_style: pecofence_core::IconFrameStyle,
     /// Cell top pad above the icon and gap between icon and label (GridMetrics).
     pub icon_top: f32,
     pub label_gap: f32,
@@ -1352,10 +1351,12 @@ struct StateBrushes {
     scratch_b: Brush,
     /// The label halo over wallpaper (Liquid Glass, text_halo), recoloured per cell.
     halo: Brush,
-    /// 图标外框: the persistent per-icon card (fill + white stroke), recoloured per
-    /// cell only while its icon fades.
+    /// 图标外框: the persistent per-icon card (fill + stroke), recoloured per
+    /// cell only while its icon fades; `frame_shadow` lifts a solid white tile
+    /// off a light wallpaper.
     frame_fill: Brush,
     frame_stroke: Brush,
+    frame_shadow: Brush,
 }
 
 impl StateBrushes {
@@ -1371,6 +1372,7 @@ impl StateBrushes {
             halo: session.create_solid_brush(halo_color(theme.text_primary, 1.0))?,
             frame_fill: session.create_solid_brush(theme.text_primary)?,
             frame_stroke: session.create_solid_brush(theme.text_primary)?,
+            frame_shadow: session.create_solid_brush(theme.text_primary)?,
         })
     }
 
@@ -3530,19 +3532,43 @@ impl FenceChrome {
             cell.w - 4.0,
             cell.h - 4.0 + extra,
         );
-        // 图标外框: a permanent card behind every icon — a subtle translucent
-        // fill (white on dark themes, dark on light) inside a crisp white
-        // hairline, like a shelf slot. Painted under the state layers so hover
-        // and selection still read on top; it fades with the cell's alpha.
-        if content.icon_frames {
-            state
-                .frame_fill
-                .set_color(with_alpha(theme.text_primary, 0.07 * alpha));
-            state
-                .frame_stroke
-                .set_color(with_alpha(ColorF::new(1.0, 1.0, 1.0, 1.0), 0.75 * alpha));
-            session.fill_rounded_rect(&RoundedRect::uniform(rect, 6.0), &state.frame_fill);
-            session.draw_rounded_rect(&px.ring(rect, 6.0), &state.frame_stroke, px.hair());
+        // 图标外框: a permanent card behind every icon, painted under the state
+        // layers so hover and selection still read on top; it fades with the
+        // cell's alpha. Translucent = a subtle theme-tinted slot inside a crisp
+        // white hairline; 纯白 = a fully opaque white tile — its faint grey edge
+        // and soft under-shadow separate it from a light wallpaper.
+        match content.icon_frame_style {
+            pecofence_core::IconFrameStyle::Off => {}
+            pecofence_core::IconFrameStyle::Translucent => {
+                state
+                    .frame_fill
+                    .set_color(with_alpha(theme.text_primary, 0.07 * alpha));
+                state
+                    .frame_stroke
+                    .set_color(with_alpha(ColorF::new(1.0, 1.0, 1.0, 1.0), 0.75 * alpha));
+                session.fill_rounded_rect(&RoundedRect::uniform(rect, 6.0), &state.frame_fill);
+                session.draw_rounded_rect(&px.ring(rect, 6.0), &state.frame_stroke, px.hair());
+            }
+            pecofence_core::IconFrameStyle::SolidWhite => {
+                let shadow = Rect::from_xywh(
+                    rect.left,
+                    rect.top + 1.5,
+                    rect.right - rect.left,
+                    rect.bottom - rect.top,
+                );
+                state
+                    .frame_shadow
+                    .set_color(with_alpha(ColorF::new(0.0, 0.0, 0.0, 1.0), 0.16 * alpha));
+                state
+                    .frame_fill
+                    .set_color(ColorF::new(1.0, 1.0, 1.0, alpha));
+                state
+                    .frame_stroke
+                    .set_color(with_alpha(ColorF::new(0.0, 0.0, 0.0, 1.0), 0.10 * alpha));
+                session.fill_rounded_rect(&RoundedRect::uniform(shadow, 6.0), &state.frame_shadow);
+                session.fill_rounded_rect(&RoundedRect::uniform(rect, 6.0), &state.frame_fill);
+                session.draw_rounded_rect(&px.ring(rect, 6.0), &state.frame_stroke, px.hair());
+            }
         }
         if alpha >= 1.0 {
             draw_item_state(

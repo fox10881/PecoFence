@@ -582,6 +582,9 @@
     "标签字重": "Spessore delle etichette",
     "名称加粗后在复杂壁纸上更醒目": "I nomi in grassetto sono più leggibili su sfondi complessi",
     "加粗": "Grassetto",
-    "显示图标外框": "Mostra cornici delle icone",
-    "每个图标周围常显白色描边卡片，像货架格位一样衬托图标": "Disegna sempre una scheda con contorno bianco dietro ogni icona, come uno scomparto di uno scaffale"
+    "图标外框": "Cornici icone",
+    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯白”是不透明白色卡片": "Una cornice permanente attorno a ogni icona: \"Traslucida\" è uno scomparto velato con bordo bianco, \"Bianco pieno\" una scheda bianca opaca",
+    "关闭": "Disattivo",
+    "半透明": "Traslucido",
+    "纯白": "Bianco pieno"
 }

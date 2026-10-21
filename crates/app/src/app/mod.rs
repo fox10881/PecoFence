@@ -18,9 +18,9 @@ use crate::state::AppState;
 use pecofence_core::geometry::WorkArea;
 use pecofence_core::hotkey::Hotkey;
 use pecofence_core::{
-    FenceId, FenceKind, IconShape, ItemId, ItemKey, LabelFontWeight, LabelVisibility,
-    ShowDesktopSetting, SortMode, Spacing, Target, ThemeSetting, TitleSize, ViewLayout,
-    ZOrderSetting,
+    FenceId, FenceKind, IconFrameStyle, IconShape, ItemId, ItemKey, LabelFontWeight,
+    LabelVisibility, ShowDesktopSetting, SortMode, Spacing, Target, ThemeSetting, TitleSize,
+    ViewLayout, ZOrderSetting,
 };
 use pecofence_platform::clipboard;
 use pecofence_platform::frameclock::FrameClock;

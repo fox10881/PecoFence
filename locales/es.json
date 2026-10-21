@@ -582,6 +582,9 @@
     "标签字重": "Grosor de etiquetas",
     "名称加粗后在复杂壁纸上更醒目": "Los nombres en negrita se leen mejor sobre fondos complejos",
     "加粗": "Negrita",
-    "显示图标外框": "Mostrar marcos de iconos",
-    "每个图标周围常显白色描边卡片，像货架格位一样衬托图标": "Dibuja siempre una tarjeta con borde blanco detrás de cada icono, como un hueco de estantería"
+    "图标外框": "Marcos de iconos",
+    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯白”是不透明白色卡片": "Un marco permanente alrededor de cada icono: «Translúcido» es un hueco tenue con borde blanco, «Blanco puro» una tarjeta blanca opaca",
+    "关闭": "Desactivado",
+    "半透明": "Translúcido",
+    "纯白": "Blanco puro"
 }

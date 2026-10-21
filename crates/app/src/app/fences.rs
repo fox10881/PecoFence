@@ -263,7 +263,7 @@ impl App {
                 shown.view.label_font_family.clone(),
                 shown.view.label_font_weight.map(|w| w.dwrite()),
             );
-            w.set_icon_frames(shown.view.persistent_icon_frames == Some(true));
+            w.set_icon_frame_style(shown.view.icon_frame_style());
             w.set_is_inbox(shown.kind == FenceKind::Inbox);
             w.set_spacing(shown.view.spacing);
             w.set_grid_extras(

@@ -726,10 +726,14 @@ pub struct FenceView {
     /// 标签字重: an explicit label weight; None = Normal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_font_weight: Option<LabelFontWeight>,
-    /// 图标外框: a persistent card — translucent fill with a white hairline — drawn
-    /// behind every icon, so the shelf reads as physical slots instead of icons
-    /// floating on the backdrop. None/false = frames only on hover/selection.
+    /// 图标外框: a persistent card frame drawn behind every icon, so the shelf reads
+    /// as physical slots instead of icons floating on the backdrop. None/Off = frames
+    /// only on hover/selection.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_frame_style: Option<IconFrameStyle>,
+    /// Legacy 图标外框 bool (early dev builds): `true` still reads as Translucent and
+    /// is never written back — the file migrates to `iconFrameStyle` on next save.
+    #[serde(default, skip_serializing)]
     pub persistent_icon_frames: Option<bool>,
     /// Icon cell shape: None/Standard keeps the square box; Poster draws a 2:3 cover
     /// (H = W × 1.5) the thumbnail is centre-cropped into — zero-gap poster grids.
@@ -803,6 +807,20 @@ impl LabelFontWeight {
     }
 }
 
+/// 「图标外框」per-fence persistent card frame behind every icon.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+pub enum IconFrameStyle {
+    /// No persistent frame — the usual hover/selection visuals only.
+    #[default]
+    Off,
+    /// Translucent slot: faint theme-tinted fill inside a white hairline.
+    Translucent,
+    /// A fully opaque white card, like a physical tile behind the icon.
+    SolidWhite,
+}
+
 /// Shape of an icon cell's icon box (「图标形状」).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -849,6 +867,18 @@ impl FenceView {
         }
     }
 
+    /// Effective 图标外框 style: the new enum wins; a legacy `persistentIconFrames`
+    /// bool still reads as Translucent (and leaves the file on next save).
+    pub fn icon_frame_style(&self) -> IconFrameStyle {
+        self.icon_frame_style.unwrap_or_else(|| {
+            if self.persistent_icon_frames == Some(true) {
+                IconFrameStyle::Translucent
+            } else {
+                IconFrameStyle::Off
+            }
+        })
+    }
+
     /// Icon edge the grid actually uses: `custom_icon_size`, else the `icon_size` preset.
     pub fn effective_icon_size(&self) -> u32 {
         self.custom_icon_size.unwrap_or(self.icon_size)
@@ -887,6 +917,7 @@ impl Default for FenceView {
             label_visibility: None,
             label_font_family: None,
             label_font_weight: None,
+            icon_frame_style: None,
             persistent_icon_frames: None,
             icon_shape: None,
             custom_icon_size: None,
@@ -2647,26 +2678,53 @@ mod tests {
         assert_eq!(LabelFontWeight::Bold.dwrite(), 700);
     }
 
-    /// 图标外框: stays out of the file while off and round-trips as `persistentIconFrames`.
+    /// 图标外框: stays out of the file while Off, round-trips as `iconFrameStyle`, and a
+    /// legacy `persistentIconFrames` bool still reads as Translucent without being
+    /// written back (the next save replaces it with the enum).
     #[test]
-    fn persistent_icon_frames_defaults_off_and_roundtrips() {
+    fn icon_frame_style_defaults_off_and_roundtrips() {
         let v = FenceView::default();
-        assert!(v.persistent_icon_frames.is_none());
+        assert!(v.icon_frame_style.is_none());
+        assert_eq!(v.icon_frame_style(), IconFrameStyle::Off);
         assert!(
             serde_json::to_value(&v)
+                .unwrap()
+                .get("iconFrameStyle")
+                .is_none()
+        );
+
+        for (style, json_name) in [
+            (IconFrameStyle::Translucent, "translucent"),
+            (IconFrameStyle::SolidWhite, "solidWhite"),
+        ] {
+            let v = FenceView {
+                icon_frame_style: Some(style),
+                ..Default::default()
+            };
+            let j = serde_json::to_value(&v).unwrap();
+            assert_eq!(j["iconFrameStyle"], json_name);
+            let back: FenceView = serde_json::from_value(j).unwrap();
+            assert_eq!(back.icon_frame_style(), style);
+        }
+
+        // Legacy bool migration: reads as Translucent, never re-serializes.
+        let back: FenceView = serde_json::from_str(
+            r#"{"iconSize":48,"sort":"manual","labelLines":2,"autoHeight":false,"persistentIconFrames":true}"#,
+        )
+        .unwrap();
+        assert_eq!(back.persistent_icon_frames, Some(true));
+        assert_eq!(back.icon_frame_style(), IconFrameStyle::Translucent);
+        assert!(
+            serde_json::to_value(&back)
                 .unwrap()
                 .get("persistentIconFrames")
                 .is_none()
         );
-
-        let v = FenceView {
-            persistent_icon_frames: Some(true),
-            ..Default::default()
-        };
-        let j = serde_json::to_value(&v).unwrap();
-        assert_eq!(j["persistentIconFrames"], true);
-        let back: FenceView = serde_json::from_value(j).unwrap();
-        assert_eq!(back.persistent_icon_frames, Some(true));
+        let back: FenceView = serde_json::from_str(
+            r#"{"iconSize":48,"sort":"manual","labelLines":2,"autoHeight":false,"persistentIconFrames":false}"#,
+        )
+        .unwrap();
+        assert_eq!(back.icon_frame_style(), IconFrameStyle::Off);
     }
 
     #[test]

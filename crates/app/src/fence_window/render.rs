@@ -1070,7 +1070,7 @@ impl FenceViewState {
             line_h: grid.metrics.line_h,
             label_format: Some(&label_format),
             paint_labels,
-            icon_frames: self.icon_frames,
+            icon_frame_style: self.icon_frame_style,
             icon_top: grid.metrics.icon_top,
             label_gap: grid.metrics.label_gap,
             scrollbar,

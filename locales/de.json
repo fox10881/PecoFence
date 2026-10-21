@@ -582,6 +582,9 @@
     "标签字重": "Beschriftungsstärke",
     "名称加粗后在复杂壁纸上更醒目": "Fette Namen bleiben auf unruhigen Hintergründen besser lesbar",
     "加粗": "Fett",
-    "显示图标外框": "Symbolrahmen anzeigen",
-    "每个图标周围常显白色描边卡片，像货架格位一样衬托图标": "Zeichnet hinter jedem Symbol dauerhaft eine Karte mit weißer Kontur – wie ein Fach im Regal"
+    "图标外框": "Symbolrahmen",
+    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯白”是不透明白色卡片": "Zeichnet dauerhaft einen Kartenrahmen um jedes Symbol: „Durchscheinend“ ist ein leicht getöntes Fach mit weißer Kante, „Reinweiß“ eine deckend weiße Karte",
+    "关闭": "Aus",
+    "半透明": "Durchscheinend",
+    "纯白": "Reinweiß"
 }

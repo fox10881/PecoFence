@@ -1379,7 +1379,7 @@ impl App {
                 .and_then(Value::as_str)
                 .map(|s| s.to_string()),
             label_font_weight: text("labelFontWeight"),
-            icon_frames: flag("iconFrames"),
+            icon_frames: text("iconFrames"),
             icon_shape: match f.view.effective_icon_shape() {
                 pecofence_core::IconShape::Standard => "standard",
                 pecofence_core::IconShape::Poster => "poster",

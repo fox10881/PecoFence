@@ -582,6 +582,9 @@
     "标签字重": "Peso dos rótulos",
     "名称加粗后在复杂壁纸上更醒目": "Nomes em negrito ficam mais legíveis em papéis de parede complexos",
     "加粗": "Negrito",
-    "显示图标外框": "Mostrar molduras de ícones",
-    "每个图标周围常显白色描边卡片，像货架格位一样衬托图标": "Desenha sempre um cartão com contorno branco atrás de cada ícone, como um nicho de prateleira"
+    "图标外框": "Molduras de ícones",
+    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯白”是不透明白色卡片": "Uma moldura permanente ao redor de cada ícone: \"Translúcida\" é um nicho esmaecido com borda branca, \"Branco sólido\" é um cartão branco opaco",
+    "关闭": "Desativado",
+    "半透明": "Translúcido",
+    "纯白": "Branco sólido"
 }

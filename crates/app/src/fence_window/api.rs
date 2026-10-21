@@ -176,7 +176,7 @@ impl FenceWindow {
             label_visibility: LabelVisibility::Global,
             label_font_family: None,
             label_font_weight: None,
-            icon_frames: false,
+            icon_frame_style: IconFrameStyle::Off,
             items,
             tabs: Vec::new(),
             active: fence_id,
@@ -1121,14 +1121,14 @@ impl FenceWindow {
         });
     }
 
-    /// 图标外框 (FenceView.persistent_icon_frames): paint-only — a redraw swaps the
+    /// 图标外框 (FenceView.icon_frame_style): paint-only — a redraw swaps the
     /// card frames in/out, no refit or relayout.
-    pub fn set_icon_frames(&self, on: bool) {
+    pub fn set_icon_frame_style(&self, style: IconFrameStyle) {
         self.with_view(|v| {
-            if v.icon_frames == on {
+            if v.icon_frame_style == style {
                 return;
             }
-            v.icon_frames = on;
+            v.icon_frame_style = style;
             let _ = v.redraw();
         });
     }

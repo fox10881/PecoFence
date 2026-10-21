@@ -582,6 +582,9 @@
     "标签字重": "Label weight",
     "名称加粗后在复杂壁纸上更醒目": "Bold names stay readable on busy wallpapers",
     "加粗": "Bold",
-    "显示图标外框": "Show icon frames",
-    "每个图标周围常显白色描边卡片，像货架格位一样衬托图标": "Draws a white-outlined card behind every icon, setting each icon in its own shelf slot"
+    "图标外框": "Icon frames",
+    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯白”是不透明白色卡片": "A permanent card frame around every icon: \"Translucent\" is a faint tinted slot with a white edge, \"Solid white\" is a fully opaque white card",
+    "关闭": "Off",
+    "半透明": "Translucent",
+    "纯白": "Solid white"
 }
