@@ -38,7 +38,9 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 
 ## Ultimate Static Desktop & Poster Shelves Integration
 
-![Ultimate Static Desktop & Poster Shelves Integration](docs/assets/desktop-poster-shelves.png)
+![Ultimate Static Desktop & Poster Shelves Integration]
+<img width="3837" height="2160" alt="image" src="https://github.com/user-attachments/assets/1849b142-aa9e-4b5d-802e-4f3519d79c73" />
+
 <img width="3837" height="2034" alt="image" src="https://github.com/user-attachments/assets/311962e3-984b-4a7a-bc2c-48ffdaa9379b" />
 
 
