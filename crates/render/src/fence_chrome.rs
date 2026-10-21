@@ -38,6 +38,8 @@ pub const ICON_LABEL_SIDE_INSET: f32 = 8.0;
 /// Label ink on a 纯白 icon card: opaque black, with dimmed items still readable.
 const SOLID_FRAME_LABEL: ColorF = ColorF::from_rgba8(0, 0, 0, 0xFF);
 const SOLID_FRAME_LABEL_DIM: ColorF = ColorF::from_rgba8(0x59, 0x59, 0x59, 0xFF);
+const SOLID_FRAME_PAD: f32 = 12.0;
+const SOLID_FRAME_RADIUS: f32 = 8.0;
 
 pub struct FenceChrome {
     title_format: TextFormat,
@@ -1169,6 +1171,25 @@ fn label_ink(theme: &Theme, style: IconFrameStyle, dimmed: bool) -> ColorF {
     } else {
         theme.text_primary
     }
+}
+
+fn union_rect(a: Rect, b: Rect) -> Rect {
+    Rect::new(
+        a.left.min(b.left),
+        a.top.min(b.top),
+        a.right.max(b.right),
+        a.bottom.max(b.bottom),
+    )
+}
+
+fn solid_card_bounds(content_box: Rect, cell: Rect, bottom_slack: f32) -> Rect {
+    let width = (content_box.width() + 2.0 * SOLID_FRAME_PAD).min(cell.width().max(0.0));
+    let left = cell.left + (cell.width() - width).max(0.0) * 0.5;
+    let top = (content_box.top - SOLID_FRAME_PAD).max(cell.top);
+    let bottom = (content_box.bottom + SOLID_FRAME_PAD)
+        .min(cell.bottom + bottom_slack.max(0.0))
+        .max(top);
+    Rect::new(left, top, left + width, bottom)
 }
 
 fn draw_text_shadow(
@@ -3558,11 +3579,16 @@ impl FenceChrome {
             cell.w - 4.0,
             cell.h - 4.0 + extra,
         );
+        let labels_visible = content.label_lines != 0 && content.paint_labels;
+        let label_format = labels_visible.then(|| match content.label_format {
+            Some(f) => f.clone(),
+            None => self.label_font.borrow().format.clone(),
+        });
         // 图标外框: a permanent card behind every icon, painted under the state
         // layers so hover and selection still read on top; it fades with the
         // cell's alpha. Translucent = a subtle theme-tinted slot inside a crisp
-        // white hairline; 纯白 = a fully opaque white tile — its faint grey edge
-        // and soft under-shadow separate it from a light wallpaper.
+        // white hairline; 纯白 = a fully opaque white tile wrapped around the
+        // icon and its measured label, leaving added cell spacing transparent.
         match content.icon_frame_style {
             IconFrameStyle::Off => {}
             IconFrameStyle::Translucent => {
@@ -3576,12 +3602,9 @@ impl FenceChrome {
                 session.draw_rounded_rect(&px.ring(rect, 6.0), &state.frame_stroke, px.hair());
             }
             IconFrameStyle::SolidWhite => {
-                let shadow = Rect::from_xywh(
-                    rect.left,
-                    rect.top + 1.5,
-                    rect.right - rect.left,
-                    rect.bottom - rect.top,
-                );
+                let card =
+                    self.solid_card_rect(content, cell, unfold, label_format.as_ref(), extra);
+                let shadow = card.offset(0.0, 1.5);
                 state
                     .frame_shadow
                     .set_color(with_alpha(ColorF::new(0.0, 0.0, 0.0, 1.0), 0.16 * alpha));
@@ -3591,9 +3614,19 @@ impl FenceChrome {
                 state
                     .frame_stroke
                     .set_color(with_alpha(ColorF::new(0.0, 0.0, 0.0, 1.0), 0.10 * alpha));
-                session.fill_rounded_rect(&RoundedRect::uniform(shadow, 6.0), &state.frame_shadow);
-                session.fill_rounded_rect(&RoundedRect::uniform(rect, 6.0), &state.frame_fill);
-                session.draw_rounded_rect(&px.ring(rect, 6.0), &state.frame_stroke, px.hair());
+                session.fill_rounded_rect(
+                    &RoundedRect::uniform(shadow, SOLID_FRAME_RADIUS),
+                    &state.frame_shadow,
+                );
+                session.fill_rounded_rect(
+                    &RoundedRect::uniform(card, SOLID_FRAME_RADIUS),
+                    &state.frame_fill,
+                );
+                session.draw_rounded_rect(
+                    &px.ring(card, SOLID_FRAME_RADIUS),
+                    &state.frame_stroke,
+                    px.hair(),
+                );
             }
         }
         if alpha >= 1.0 {
@@ -3632,13 +3665,13 @@ impl FenceChrome {
         )?;
         // Labels hidden for this fence (「从不」/「悬停显示」 with the pointer outside):
         // the cell already hugs the icon, nothing below it — skip the text pass.
-        if content.label_lines == 0 || !content.paint_labels {
+        if !labels_visible {
             return Ok(());
         }
-        let label_format = match content.label_format {
+        let label_format = label_format.unwrap_or_else(|| match content.label_format {
             Some(f) => f.clone(),
             None => self.label_font.borrow().format.clone(),
-        };
+        });
         let label_rect = self.label_rect(content, cell, unfold);
         let text = unfold.map_or(cell.label, |(t, _)| t);
         let resting = if cell.dimmed { label_dim } else { label };
@@ -3674,6 +3707,49 @@ impl FenceChrome {
         );
 
         Ok(())
+    }
+
+    /// The white card wraps the icon box plus the label's measured ink bounds. Width is
+    /// centred in the cell; height follows the rendered content, so spacing stays outside.
+    fn solid_card_rect(
+        &self,
+        content: &ContentDraw<'_>,
+        cell: &ItemCell<'_>,
+        unfold: Option<(&str, u32)>,
+        label_format: Option<&TextFormat>,
+        extra: f32,
+    ) -> Rect {
+        let mut content_box = Rect::from_xywh(
+            cell.x + (cell.w - content.icon_size) / 2.0,
+            cell.y + content.icon_top,
+            content.icon_size,
+            content.icon_h,
+        );
+        if let Some(format) = label_format {
+            let label_area = self.label_rect(content, cell, unfold);
+            let text = unfold.map_or(cell.label, |(t, _)| t);
+            if let Ok(layout) =
+                TextLayout::new(text, format, label_area.width(), label_area.height())
+            {
+                let m = layout.metrics();
+                if m.width > 0.0 && m.height > 0.0 {
+                    content_box = union_rect(
+                        content_box,
+                        Rect::new(
+                            label_area.left + m.left,
+                            label_area.top + m.top,
+                            label_area.left + m.left + m.width,
+                            label_area.top + m.top + m.height,
+                        ),
+                    );
+                }
+            }
+        }
+        solid_card_bounds(
+            content_box,
+            Rect::from_xywh(cell.x, cell.y, cell.w, cell.h),
+            extra,
+        )
     }
 
     /// Where a cell's label sits: under the icon, `unfold` lines tall when it unfolds.
@@ -3741,6 +3817,30 @@ mod tests {
             label_ink(&theme, IconFrameStyle::SolidWhite, true),
             SOLID_FRAME_LABEL_DIM
         );
+    }
+
+    #[test]
+    fn solid_card_wraps_content_and_leaves_spacing_transparent() {
+        let spaced = solid_card_bounds(
+            Rect::from_xywh(128.0, 0.0, 48.0, 84.0),
+            Rect::from_xywh(0.0, 0.0, 304.0, 340.0),
+            0.0,
+        );
+        assert_eq!(spaced, Rect::from_xywh(116.0, 0.0, 72.0, 96.0));
+
+        let tight = solid_card_bounds(
+            Rect::from_xywh(16.0, 8.0, 64.0, 84.0),
+            Rect::from_xywh(0.0, 0.0, 80.0, 96.0),
+            0.0,
+        );
+        assert_eq!(tight, Rect::from_xywh(0.0, 0.0, 80.0, 96.0));
+
+        let unfolded = solid_card_bounds(
+            Rect::from_xywh(16.0, 8.0, 64.0, 104.0),
+            Rect::from_xywh(0.0, 0.0, 80.0, 96.0),
+            20.0,
+        );
+        assert_eq!(unfolded, Rect::from_xywh(0.0, 0.0, 80.0, 116.0));
     }
 
     #[test]

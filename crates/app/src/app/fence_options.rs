@@ -346,23 +346,23 @@ pub(super) fn parse_fence_prop(
             })
         }
         "customIconSize" => {
-            const ALLOWED: &[&str] = &["16..=256", "null"];
+            const ALLOWED: &[&str] = &["16..=512", "null"];
             match value {
                 serde_json::Value::Null => FenceProp::CustomIconSize(None),
                 _ => match value.as_u64() {
-                    Some(n @ 16..=256) => FenceProp::CustomIconSize(Some(n as u32)),
+                    Some(n @ 16..=512) => FenceProp::CustomIconSize(Some(n as u32)),
                     _ => return Err(bad(ALLOWED)),
                 },
             }
         }
         "spacingX" | "spacingY" => {
-            const ALLOWED: &[&str] = &["0..=64", "null"];
+            const ALLOWED: &[&str] = &["0..=256", "null"];
             let gap = match value {
                 serde_json::Value::Null => None,
                 _ => Some(
                     value
                         .as_f64()
-                        .filter(|n| (0.0..=64.0).contains(n))
+                        .filter(|n| (0.0..=256.0).contains(n))
                         .ok_or_else(|| bad(ALLOWED))? as f32,
                 ),
             };

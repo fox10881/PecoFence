@@ -471,6 +471,28 @@ mod ipc {
             ErrorCode::InvalidValue
         );
         assert_eq!(
+            parse_fence_prop("customIconSize", &json!(512)).unwrap(),
+            FenceProp::CustomIconSize(Some(512))
+        );
+        assert_eq!(
+            parse_fence_prop("customIconSize", &json!(520))
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidValue
+        );
+        assert_eq!(
+            parse_fence_prop("spacingX", &json!(256)).unwrap(),
+            FenceProp::GapX(Some(256.0))
+        );
+        assert_eq!(
+            parse_fence_prop("spacingY", &json!(256)).unwrap(),
+            FenceProp::GapY(Some(256.0))
+        );
+        assert_eq!(
+            parse_fence_prop("spacingY", &json!(260)).unwrap_err().code,
+            ErrorCode::InvalidValue
+        );
+        assert_eq!(
             parse_fence_prop("labelLines", &json!(4)).unwrap_err().code,
             ErrorCode::InvalidValue
         );

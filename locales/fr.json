@@ -552,7 +552,7 @@
     "海报形状把图标裁成 2:3 封面，铺满无空隙，适合游戏封面": "Poster recadre les icônes en jaquettes 2:3 jointives — idéal pour les jeux",
     "海报": "Poster",
     "自定义图标大小": "Taille d'icône personnalisée",
-    "覆盖“图标大小”预设，可在 16–256 间自由调整": "Remplace la taille d'icône prédéfinie ; réglable de 16 à 256",
+    "覆盖“图标大小”预设，可在 16–512 间自由调整": "Remplace la taille d'icône prédéfinie ; réglable de 16 à 512",
     "水平间距": "Espacement des colonnes",
     "图标列之间的间距；拖到 0 让图标完全贴合，关闭则跟随“图标间距”": "Espace entre les colonnes ; 0 les accole, désactivé suit Espacement",
     "垂直间距": "Espacement des lignes",

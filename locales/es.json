@@ -552,7 +552,7 @@
     "海报形状把图标裁成 2:3 封面，铺满无空隙，适合游戏封面": "Póster recorta los iconos en portadas 2:3 sin huecos — ideal para juegos",
     "海报": "Póster",
     "自定义图标大小": "Tamaño de icono personalizado",
-    "覆盖“图标大小”预设，可在 16–256 间自由调整": "Anula el tamaño de icono predefinido; ajustable entre 16 y 256",
+    "覆盖“图标大小”预设，可在 16–512 间自由调整": "Anula el tamaño de icono predefinido; ajustable entre 16 y 512",
     "水平间距": "Espacio entre columnas",
     "图标列之间的间距；拖到 0 让图标完全贴合，关闭则跟随“图标间距”": "Espacio entre columnas de iconos; 0 los une sin hueco, apagado sigue a Espacio",
     "垂直间距": "Espacio entre filas",

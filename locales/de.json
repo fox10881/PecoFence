@@ -552,7 +552,7 @@
     "海报形状把图标裁成 2:3 封面，铺满无空隙，适合游戏封面": "Poster schneidet Symbole als lückenlose 2:3-Cover zu — ideal für Spiel-Cover",
     "海报": "Poster",
     "自定义图标大小": "Benutzerdefinierte Symbolgröße",
-    "覆盖“图标大小”预设，可在 16–256 间自由调整": "Überschreibt die Symbolgrößen-Voreinstellung; frei wählbar von 16 bis 256",
+    "覆盖“图标大小”预设，可在 16–512 间自由调整": "Überschreibt die Symbolgrößen-Voreinstellung; frei wählbar von 16 bis 512",
     "水平间距": "Spaltenabstand",
     "图标列之间的间距；拖到 0 让图标完全贴合，关闭则跟随“图标间距”": "Abstand zwischen Symbolspalten; 0 = bündig, aus = folgt „Symbolabstand“",
     "垂直间距": "Zeilenabstand",

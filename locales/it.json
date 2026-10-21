@@ -552,7 +552,7 @@
     "海报形状把图标裁成 2:3 封面，铺满无空隙，适合游戏封面": "Poster ritaglia le icone in copertine 2:3 senza spazi vuoti — perfetto per le cover dei giochi",
     "海报": "Poster",
     "自定义图标大小": "Dimensione icone personalizzata",
-    "覆盖“图标大小”预设，可在 16–256 间自由调整": "Sostituisce il preset «Dimensione icone»; regolabile liberamente da 16 a 256",
+    "覆盖“图标大小”预设，可在 16–512 间自由调整": "Sostituisce il preset «Dimensione icone»; regolabile liberamente da 16 a 512",
     "水平间距": "Spaziatura colonne",
     "图标列之间的间距；拖到 0 让图标完全贴合，关闭则跟随“图标间距”": "Spazio tra le colonne di icone; a 0 si toccano, se disattivato segue «Spaziatura icone»",
     "垂直间距": "Spaziatura righe",
