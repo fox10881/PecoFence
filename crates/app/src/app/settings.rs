@@ -492,6 +492,30 @@ impl App {
                         &[moved.to_string()],
                     ));
                 }
+                Some("applyRulesForce") => {
+                    // Force-apply wipes every manual desktop pin and user assignment:
+                    // keep a way back, same as `rules apply` (auto snapshots rotate
+                    // their own kind).
+                    let pinned = !self.state.config.layouts[self.state.layout]
+                        .desktop_items
+                        .is_empty()
+                        || self.state.fences().iter().any(|f| {
+                            f.items
+                                .iter()
+                                .any(|r| r.assigned_by == pecofence_core::AssignedBy::User)
+                        });
+                    if pinned {
+                        self.auto_snapshot();
+                    }
+                    let entries = shell::enumerate_desktop();
+                    let moved = self.state.apply_rules_force_all(&entries);
+                    self.refresh_all();
+                    self.schedule_save();
+                    self.settings_toast(&pecofence_core::i18n::format(
+                        "已按规则整理 {0} 个项目",
+                        &[moved.to_string()],
+                    ));
+                }
                 Some("addTemplate") => {
                     if let Some(template) = v
                         .get("template")

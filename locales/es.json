@@ -569,5 +569,8 @@
     "动态壁纸玻璃捕获": "Captura de cristal del fondo animado",
     "液态玻璃实时透出 Wallpaper Engine、Lively 等动态壁纸的画面；关闭后改用静态截图，更省 GPU": "Liquid Glass muestra en tiempo real los fondos animados de Wallpaper Engine, Lively, etc.; desactivado, usa una captura estática y ahorra GPU",
     "移出栅栏，放到桌面": "Sacar de la valla al escritorio",
-    "其中的 {0} 个图标会放回桌面，文件本身不受影响。": "{0} de estos iconos vuelven al escritorio; los archivos en sí no se ven afectados."
+    "其中的 {0} 个图标会放回桌面，文件本身不受影响。": "{0} de estos iconos vuelven al escritorio; los archivos en sí no se ven afectados.",
+    "强制应用到所有项目": "Forzar la aplicación a todos los elementos",
+    "忽略手动摆放的位置，把桌面上的每个项目都按规则重新归位": "Ignora las ubicaciones manuales: cada elemento del escritorio se reclasifica estrictamente según las reglas",
+    "强制应用": "Forzar"
 }

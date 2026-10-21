@@ -1747,6 +1747,74 @@ impl AppState {
         self.apply_rules_filtered(entries, false)
     }
 
+    /// 「强制应用」: wipes the manual desktop-placement pins and re-evaluates every
+    /// item regardless of user assignments. A matched item goes to its rule's fence;
+    /// a rule targeting the desktop releases the item loose, and an item no rule
+    /// files leaves its fence for the loose desktop under 「回到“桌面”栅栏」 or stays
+    /// under 「留在当前栅栏」.
+    pub fn apply_rules_force_all(&mut self, entries: &[DesktopEntry]) -> usize {
+        self.config.layouts[self.layout].desktop_items.clear();
+        let mut plan: Vec<(ItemId, Option<FenceId>, AssignedBy)> = Vec::new();
+        for entry in entries {
+            if entry.origin == EntryOrigin::Namespace {
+                continue;
+            }
+            let key = ItemKey::from_path(&entry.path.to_string_lossy());
+            let Some(&id) = self.catalog.get(&key) else {
+                continue;
+            };
+            let current = self.config.fence_of_item(self.layout, id);
+            match self.config.rules.evaluate(&self.facts_for(entry)) {
+                Decision::Skip => {}
+                Decision::Route { target, rule } => {
+                    match target {
+                        Target::Fence(to) if self.routable_fence(to).is_some() => {
+                            if current != Some(to) {
+                                plan.push((id, Some(to), AssignedBy::Rule(rule)));
+                            }
+                        }
+                        // "Route to the desktop" releases the item loose under the
+                        // virtual-container model; a loose one is already there.
+                        _ => {
+                            if current.is_some() {
+                                plan.push((id, None, AssignedBy::Migration));
+                            }
+                        }
+                    }
+                }
+                // Unmatched: a loose item stays loose; a fenced one follows
+                // rules.unmatched — back to the desktop or kept where it is.
+                Decision::Default(_) => {
+                    if current.is_some() && self.config.rules.unmatched == Unmatched::DefaultTarget
+                    {
+                        plan.push((id, None, AssignedBy::Migration));
+                    }
+                }
+            }
+        }
+        let mut moved = 0;
+        for (id, to, by) in plan {
+            match to {
+                Some(fence) => {
+                    moved += self.config.assign(self.layout, id, fence, by).is_some() as usize;
+                }
+                // A rules-driven release is not a manual placement: the item leaves its
+                // fence for the loose desktop without a `desktop_items` pin, so a future
+                // rule change can still file it.
+                None => {
+                    for fence in &mut self.config.layouts[self.layout].fences {
+                        fence.items.retain(|r| r.item_id != id);
+                    }
+                    moved += 1;
+                }
+            }
+        }
+        if moved > 0 {
+            self.dirty = true;
+        }
+        moved
+    }
+
     /// The hourly sweep for clock-dependent rules: only an item whose winning rule has an
     /// idle-days condition moves, so a later-added type rule still waits for "立即应用".
     pub fn apply_idle_rules(&mut self, entries: &[DesktopEntry]) -> usize {
@@ -2999,7 +3067,11 @@ mod tests {
         ]);
         for name in ["leftover.tmp", "notes.bak"] {
             let id = state.item_id_for_path(&desk(name)).unwrap();
-            assert_eq!(state.config.fence_of_item(0, id), None, "{name} stays loose");
+            assert_eq!(
+                state.config.fence_of_item(0, id),
+                None,
+                "{name} stays loose"
+            );
         }
         // AutoCAD: the drawing is renamed to .bak and the new copy (catalogued by a sync while
         // it was written) is renamed over its name. The drawing keeps its record and fence; the
@@ -3106,7 +3178,11 @@ mod tests {
         }
         entries.push(desktop_entry("New.lnk"));
         state.sync_desktop(&entries);
-        assert_eq!(fence_of(&state, "New.lnk"), None, "the new item lands loose");
+        assert_eq!(
+            fence_of(&state, "New.lnk"),
+            None,
+            "the new item lands loose"
+        );
         assert!(state.plan_rules(&entries, false).is_empty());
     }
 
@@ -3220,6 +3296,76 @@ mod tests {
                 .contains_key(&id)
         );
         assert_eq!(state.config.fence_of_item(state.layout, id), Some(fence));
+    }
+
+    /// 「强制应用」: the manual pins are wiped and every item — loose by hand or fenced
+    /// by hand — is filed strictly by the rules, while an unmatched item leaves its
+    /// fence for the loose desktop under the default unmatched policy.
+    #[test]
+    fn force_apply_wipes_manual_placements_and_refiles_everything() {
+        use pecofence_core::rules::{Rule, TypeCategory};
+        let mut state = test_state();
+        let (a, b) = (state.fences()[0].id, state.fences()[1].id);
+        state.config.rules.list.clear();
+        state.config.rules.list.push(Rule::new(
+            "docs",
+            Target::Fence(b),
+            vec![Cond::Type(vec![TypeCategory::Documents])],
+        ));
+        // "report" is a matching .txt released to the desktop by hand; "note" is a
+        // matching .txt the user put in fence A; "keep" is an unmatched .dat file
+        // the user put in fence A.
+        let report = add_item(&mut state, a, "report");
+        let note = add_item(&mut state, a, "note");
+        let keep = add_item(&mut state, a, "keep");
+        let old_key = state.config.items[&keep].key.clone();
+        state.catalog.remove(&old_key);
+        let key = ItemKey::from_path("C:/Users/Me/Desktop/keep.dat");
+        state.config.items.get_mut(&keep).unwrap().key = key.clone();
+        state.catalog.insert(key, keep);
+        state.release_items(
+            &[report],
+            Some(pecofence_core::DesktopPosition {
+                monitor: "test".into(),
+                x: 0.5,
+                y: 0.5,
+            }),
+        );
+        let entries = [
+            desktop_entry("report.txt"),
+            desktop_entry("note.txt"),
+            desktop_entry("keep.dat"),
+        ];
+        // A normal apply respects the pin and both manual fence assignments.
+        assert_eq!(state.apply_rules_all(&entries), 0);
+        assert_eq!(
+            state.apply_rules_force_all(&entries),
+            3,
+            "both manual placements are refiled and the unmatched item is released"
+        );
+        assert_eq!(state.config.fence_of_item(state.layout, report), Some(b));
+        assert_eq!(state.config.fence_of_item(state.layout, note), Some(b));
+        assert_eq!(state.config.fence_of_item(state.layout, keep), None);
+        // The rules-driven release leaves no manual pin behind.
+        assert!(state.config.layouts[state.layout].desktop_items.is_empty());
+        // With 「留在当前栅栏」 the unmatched item would have stayed in fence A.
+        let mut state = test_state();
+        let (a, b) = (state.fences()[0].id, state.fences()[1].id);
+        state.config.rules.list.clear();
+        state.config.rules.list.push(Rule::new(
+            "docs",
+            Target::Fence(b),
+            vec![Cond::Type(vec![TypeCategory::Documents])],
+        ));
+        state.config.rules.unmatched = Unmatched::Stay;
+        let keep = add_item(&mut state, a, "keep");
+        let old_key = state.config.items[&keep].key.clone();
+        state.catalog.remove(&old_key);
+        let key = ItemKey::from_path("C:/Users/Me/Desktop/keep.dat");
+        state.config.items.get_mut(&keep).unwrap().key = key.clone();
+        state.catalog.insert(key, keep);
+        assert_eq!(state.apply_rules_force_all(&[desktop_entry("keep.dat")]), 0);
+        assert_eq!(state.config.fence_of_item(state.layout, keep), Some(a));
     }
 
     #[test]

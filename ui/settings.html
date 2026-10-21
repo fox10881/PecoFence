@@ -245,6 +245,13 @@
   .rule .actions { display: flex; flex: none; gap: 4px; align-items: center; }
   .rule .actions .toggle { margin: 0 6px; }
   .rule.disabled .t, .rule.disabled .conds { color: var(--text-disabled); }
+  /* Target fence tag: the hash-picked hue makes the destination scannable at a glance
+     without touching the list's priority order. */
+  .rule-target { display: inline-block; padding: 0 7px; border-radius: 6px; font-weight: 600; white-space: nowrap;
+    background: hsl(var(--th, 215) 75% 50% / .18); color: hsl(var(--th, 215) 80% 72%); }
+  :root.light .rule-target { color: hsl(var(--th, 215) 65% 33%); background: hsl(var(--th, 215) 75% 45% / .14); }
+  button.warn { color: var(--caution); }
+  button.warn:hover { background: var(--caution-bg); }
   details.card { display: block; padding: 0; interpolate-size: allow-keywords; }
   details.card > summary { display: flex; align-items: center; gap: 16px; min-height: 66px; padding: 12px 16px; list-style: none; border-radius: inherit; }
   details.card > summary::-webkit-details-marker { display: none; }
@@ -510,6 +517,7 @@
       <div class="card"><div class="l"><span class="ic">&#xE718;</span><div><div class="t">没有命中规则的项目</div><div class="s">应用规则时，已在某个栅栏里但不符合任何规则的项目放在哪里；不符合规则的新项目总是放进“桌面”栅栏</div></div></div>
         <select data-bind="rules.unmatched"><option value="defaultTarget">回到“桌面”栅栏</option><option value="stay">留在当前栅栏</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE8AB;</span><div><div class="t">立即对桌面上的全部项目应用规则</div><div class="s">手动摆放过的项目保持原位</div></div></div><button id="applyRules">立即应用</button></div>
+      <div class="card"><div class="l"><span class="ic">&#xE783;</span><div><div class="t">强制应用到所有项目</div><div class="s">忽略手动摆放的位置，把桌面上的每个项目都按规则重新归位</div></div></div><button id="applyRulesForce" class="warn">强制应用</button></div>
       <h3>快速添加</h3>
       <div class="card stack"><div class="l"><span class="ic">&#xE8F4;</span><div><div class="t">一键创建栅栏并添加规则</div><div class="s">“待清理”只归拢 30 天没用过的安装包和压缩包，不删除任何文件</div></div></div>
         <div class="chips" id="templates">
@@ -1049,6 +1057,13 @@
   // A portal cannot hold routed items (the app routes such rules to the inbox), so it is shown as one.
   function fenceTitle(id) { const f = (state.fences || []).find(f => f.id === id); return !f ? t("已删除的栅栏") : f.kind === 'portal' ? inboxTitle() : f.title; }
   function targetLabel(target) { return tf("“{0}”", target === 'inbox' ? inboxTitle() : (target && target.fence) ? fenceTitle(target.fence) : '?'); }
+  // A deterministic hue per target fence id: the same destination wears the same
+  // colour everywhere, so the rules list scans by colour instead of by name.
+  const hueOf = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + (c.codePointAt(0) || 0)) >>> 0; return h % 360; };
+  function targetBadge(target) {
+    const key = target === 'inbox' ? 'inbox' : (target && target.fence) || '';
+    return `<span class="rule-target" style="--th:${hueOf(key)}">${esc(targetLabel(target))}</span>`;
+  }
   const NAME_OPS = {contains:v=>tf("名称包含“{0}”",v),notContains:v=>tf("名称不包含“{0}”",v),startsWith:v=>tf("名称开头是“{0}”",v),endsWith:v=>tf("名称结尾是“{0}”",v),is:v=>tf("名称等于“{0}”",v)};
   const TARGET_OPS = {contains:v=>tf("快捷方式目标包含“{0}”",v),notContains:v=>tf("快捷方式目标不包含“{0}”",v),startsWith:v=>tf("快捷方式目标开头是“{0}”",v),endsWith:v=>tf("快捷方式目标结尾是“{0}”",v),is:v=>tf("快捷方式目标等于“{0}”",v)};
   const WEEK = () => [t("周一"),t("周二"),t("周三"),t("周四"),t("周五"),t("周六"),t("周日")]; // 0 = Monday
@@ -1110,7 +1125,7 @@
       const div = document.createElement('div');
       div.className = 'card rule' + (r.enabled ? '' : ' disabled');
       div.dataset.rowId = r.id;
-      div.innerHTML = `<div class="row"><div class="text"><div class="t">${esc(r.name)}</div><div class="conds">${r.allOf.map(condLabel).map(esc).join(t("，且 "))} ${esc(tf("→ 放入{0}", targetLabel(r.target)))}</div></div>
+      div.innerHTML = `<div class="row"><div class="text"><div class="t">${esc(r.name)}</div><div class="conds">${r.allOf.map(condLabel).map(esc).join(t("，且 "))} ${tf("→ 放入{0}", targetBadge(r.target))}</div></div>
         <div class="actions"><button class="iconbtn" title="${esc(t("上移"))}" data-act="up" ${i===0?'disabled':''}>&#xE70E;</button><button class="iconbtn" title="${esc(t("下移"))}" data-act="down" ${i===rules.length-1?'disabled':''}>&#xE70D;</button><div class="toggle ${r.enabled?'on':''}" role="switch" tabindex="0" aria-checked="${r.enabled}" data-act="toggle"></div><button class="iconbtn" title="${esc(t("删除"))}" data-act="del">&#xE74D;</button></div></div>`;
       div.querySelectorAll('[data-act]').forEach(b => {
         const labels = { up: t("上移"), down: t("下移"), toggle: t("启用规则"), del: t("删除规则") };
@@ -1218,6 +1233,7 @@
     document.getElementById('nrName').value = ''; document.getElementById('nrValue').value = '';
   };
   document.getElementById('applyRules').onclick = () => send({ type: 'action', name: 'applyRules' });
+  document.getElementById('applyRulesForce').onclick = () => send({ type: 'action', name: 'applyRulesForce' });
   document.querySelectorAll('#templates [data-template]').forEach(b => { b.onclick = () => send({ type: 'action', name: 'addTemplate', template: b.dataset.template }); });
   document.getElementById('snapSave').onclick = () => { const n = document.getElementById('snapName').value; send({ type: 'action', name: 'saveSnapshot', snapshotName: n, includeWallpaper: document.getElementById('snapWall').checked }); document.getElementById('snapName').value = ''; };
   document.getElementById('cfgExport').onclick = () => send({ type: 'action', name: 'exportConfig' });

@@ -1634,7 +1634,7 @@ impl App {
     /// `auto-cli-<yyyy-mm-dd HH:MM:SS>` snapshot of the current layouts, keeping only the newest
     /// few. Older auto snapshots make room first; when the list is still full of the user's own
     /// snapshots none is taken (a warning is queued) rather than evicting one of theirs.
-    fn auto_snapshot(&mut self) -> Option<Uuid> {
+    pub(super) fn auto_snapshot(&mut self) -> Option<Uuid> {
         if !auto_snapshot_slot(&mut self.state.config.snapshots, None) {
             self.ipc_warnings.push(SNAPSHOT_LIMIT_WARNING.to_string());
             return None;

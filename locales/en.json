@@ -569,5 +569,8 @@
     "动态壁纸玻璃捕获": "Live wallpaper glass capture",
     "液态玻璃实时透出 Wallpaper Engine、Lively 等动态壁纸的画面；关闭后改用静态截图，更省 GPU": "Liquid Glass shows Wallpaper Engine, Lively and other live wallpapers in real time; off falls back to a still capture and saves GPU power",
     "移出栅栏，放到桌面": "Move out of the fence to the desktop",
-    "其中的 {0} 个图标会放回桌面，文件本身不受影响。": "{0} of these icons go back to the desktop; the files themselves are not affected."
+    "其中的 {0} 个图标会放回桌面，文件本身不受影响。": "{0} of these icons go back to the desktop; the files themselves are not affected.",
+    "强制应用到所有项目": "Force-apply the rules to every item",
+    "忽略手动摆放的位置，把桌面上的每个项目都按规则重新归位": "Ignores manual placements: every desktop item is re-filed strictly by the rules",
+    "强制应用": "Force apply"
 }
