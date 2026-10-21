@@ -53,6 +53,10 @@ Das Repository enthält ein kuratiertes Paket flacher Frontansicht-Regal-Hinterg
 
 > **💡 Profi-Tipp:** Wir stellen einsatzbereite 2D-Hintergrundbilder bereit, die perfekt zu den geraden Bereichen passen. Für ein beeindruckendes Setup empfehlen wir, diese 2D-Bilder durch einen KI-Videogenerator zu animieren und mit [Lively Wallpaper](https://github.com/rocksdanister/lively) als Desktop-Hintergrund zu nutzen.
 
+### 🎛️ Neue Designs & feine Bereichs-Steuerung
+
+Die Einstellungen bieten jetzt zwei weitere Looks: **Bookshelf** – ein klassisches Holzregal, auf dem Spiele-Cover direkt auf den Brettern sitzen – und **Invisible Canvas**, ein vollständig transparentes Design, das Symbole auf deinem Hintergrund schweben lässt. Auf der Seite jedes Bereichs lassen sich jetzt die **Titelleiste** mit **Nie** komplett ausblenden, **Symbolbeschriftungen** abschalten und das Raster mit Schiebereglern für **Benutzerdefinierte Symbolgröße**, **Spaltenabstand** und **Zeilenabstand** feinjustieren – dazu die Schalter **Scrollleiste ausblenden**, **Scrollen sperren** und **Automatische Höhe** für eine saubere, statische Vitrine.
+
 <a id="lassen-sie-ihre-ki-aufräumen"></a>
 
 ## Dein Desktop. Von deiner KI eingerichtet
@@ -124,7 +128,8 @@ Hol dir, was du brauchst, und kehre mit **Esc** zurück.
 | :--- | :--- |
 | **KI + CLI** | `pecofence-cli` – **Mit eigenen Worten konfigurieren.** Ändere Design, Transparenz, Symbolgröße und globale Einstellungen oder passe alle Bereiche auf einmal an. |
 | **Weniger sortieren** | Regeln nach Dateityp, Endung, Name, Platzhalter, Verknüpfungsziel, Zeit und Größe. Neue Dateien finden ihren Bereich von selbst. |
-| **Glas, das zu deinem Desktop passt** | Die Designs Fluent und Liquid Glass, heller und dunkler Modus, Farbton, Deckkraft und Symbolfärbung je Bereich. |
+| **Glas, das zu deinem Desktop passt** | Die Designs Fluent, Liquid Glass, Bookshelf und Invisible Canvas, heller und dunkler Modus, Farbton, Deckkraft und Symbolfärbung je Bereich. |
+| **Jeder Bereich nach deinem Geschmack** | Titelleiste je Bereich (bis hin zu **Nie**), optionale Symbolbeschriftungen, Regler für Symbolgröße und Spalten-/Zeilenabstand sowie Schalter für Scrollleiste, Scroll-Sperre und automatische Höhe. |
 | **Vertraute Dateiverwaltung** | Explorer-Kontextmenüs, Drag & Drop, Kopieren/Einfügen, Mehrfachauswahl, Miniaturansichten sowie Symbol-, Listen- und Detailansicht. |
 | **Ordner in Reichweite** | Hol dir einen Live-Ordner auf den Desktop. Stöbere in Unterordnern und sieh Änderungen sofort. |
 | **Platz, wenn du ihn brauchst** | Klappe einen Bereich bis auf den Titel ein. Zum Ausklappen einfach mit der Maus darauf zeigen. Sperre ein Layout, das dir gefällt. Ein Doppelklick auf den Desktop blendet alle Bereiche aus. Ein zweiter holt sie zurück. |

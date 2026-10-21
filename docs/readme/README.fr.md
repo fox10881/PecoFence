@@ -53,6 +53,10 @@ Le dépôt embarque une sélection de fonds d'écran d'étagères en vue frontal
 
 > **💡 Astuce de pro :** Nous fournissons des fonds d'écran 2D prêts à l'emploi qui s'alignent parfaitement avec les groupes plats. Pour une configuration spectaculaire, nous vous recommandons vivement de faire passer ces images 2D dans un générateur vidéo IA pour les animer, puis de les appliquer à votre bureau avec [Lively Wallpaper](https://github.com/rocksdanister/lively).
 
+### 🎛️ Nouveaux thèmes et réglages fins par groupe
+
+Les réglages proposent deux autres styles : **Bookshelf** — une étagère en bois classique sur laquelle les jaquettes reposent à même les planches — et **Invisible Canvas**, un thème totalement transparent qui laisse flotter les icônes sur votre fond d'écran. Sur la page de chaque groupe, vous pouvez désormais masquer complètement la **barre de titre** avec **Jamais**, désactiver les **étiquettes d'icônes** et ajuster la grille au pixel près grâce aux curseurs **Taille d'icône personnalisée**, **Espacement des colonnes** et **Espacement des lignes**, ainsi qu'aux commutateurs **Masquer la barre de défilement**, **Verrouiller le défilement** et **Hauteur automatique** pour une vitrine nette et statique.
+
 <a id="demandez-à-votre-ia-de-ranger"></a>
 
 ## Votre Bureau, configuré par votre IA
@@ -124,7 +128,8 @@ en cours. Prenez ce qu’il vous faut, puis appuyez sur **Échap** pour y reveni
 | :--- | :--- |
 | **IA + CLI** | `pecofence-cli` — **Configurez avec vos propres mots.** Modifiez le thème, la transparence, la taille des icônes et les paramètres généraux, ou ajustez tous les groupes à la fois. |
 | **Moins de tri** | Des règles par type de fichier, extension, nom, motif, cible de raccourci, date et taille. Les nouveaux fichiers trouvent leur groupe tout seuls. |
-| **Un verre assorti à votre fond d’écran** | Thèmes Fluent et Liquid Glass, modes clair et sombre, couleur, opacité et teinte des icônes réglables groupe par groupe. |
+| **Un verre assorti à votre fond d’écran** | Thèmes Fluent, Liquid Glass, Bookshelf et Invisible Canvas, modes clair et sombre, couleur, opacité et teinte des icônes réglables groupe par groupe. |
+| **Chaque groupe à votre image** | Visibilité de la barre de titre par groupe (jusqu’à **Jamais**), étiquettes d’icônes facultatives, curseurs pour la taille des icônes et l’espacement des colonnes/lignes, et commutateurs pour la barre de défilement, le verrouillage du défilement et la hauteur automatique. |
 | **Des fichiers qui se manipulent comme d’habitude** | Menus contextuels de l’Explorateur, glisser-déposer, copier-coller, sélection multiple, miniatures et affichages Icônes, Liste ou Détails. |
 | **Gardez vos dossiers à portée de main** | Posez un dossier en direct sur votre Bureau. Parcourez ses sous-dossiers et voyez les changements au moment où ils se produisent. |
 | **De la place quand il en faut** | Repliez un groupe sur son titre. Survolez-le pour le développer. Verrouillez une disposition qui vous convient. Double-cliquez sur le Bureau pour masquer vos groupes. Double-cliquez à nouveau pour les retrouver. |

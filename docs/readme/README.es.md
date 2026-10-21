@@ -53,6 +53,10 @@ El repositorio incluye un paquete seleccionado de fondos de estanterías en vist
 
 > **💡 Consejo profesional:** Hemos incluido fondos 2D listos para usar que se alinean perfectamente con los grupos planos. Para una configuración espectacular, te recomendamos pasar estas imágenes 2D por un generador de vídeo con IA para animarlas y aplicarlas a tu escritorio con [Lively Wallpaper](https://github.com/rocksdanister/lively).
 
+### 🎛️ Nuevos temas y controles precisos por grupo
+
+Ajustes suma dos estilos más: **Bookshelf** —una clásica estantería de madera donde las carátulas descansan sobre las baldas— e **Invisible Canvas**, un tema totalmente transparente que deja los iconos flotando sobre tu fondo. En la página de cada grupo ahora puedes ocultar del todo la **barra de título** con **Nunca**, desactivar las **etiquetas de icono** y ajustar la cuadrícula con controles deslizantes de **tamaño de icono personalizado**, **espacio entre columnas** y **espacio entre filas**, además de los interruptores **Ocultar barra de desplazamiento**, **Bloquear desplazamiento** y **Altura automática** para lograr una vitrina limpia y estática.
+
 <a id="pídele-a-tu-ia-que-lo-organice"></a>
 
 ## Tu escritorio, configurado por tu IA
@@ -124,7 +128,8 @@ Toma lo que necesites y presiona **Esc** para volver.
 | :--- | :--- |
 | **IA + CLI** | `pecofence-cli` — **Configura con tus propias palabras.** Cambia temas, transparencia, tamaño de los iconos y ajustes globales, o modifica todos los grupos a la vez. |
 | **Menos tiempo ordenando** | Reglas por tipo de archivo, extensión, nombre, comodines, destino del acceso directo, hora y tamaño. Los archivos nuevos encuentran su grupo solos. |
-| **Cristal a la medida de tu escritorio** | Temas Fluent y Liquid Glass, modos claro y oscuro, colores por grupo, opacidad y tinte de iconos. |
+| **Cristal a la medida de tu escritorio** | Temas Fluent, Liquid Glass, Bookshelf e Invisible Canvas, modos claro y oscuro, colores por grupo, opacidad y tinte de iconos. |
+| **Cada grupo, a tu manera** | Visibilidad de la barra de título por grupo (hasta **Nunca**), etiquetas de icono opcionales, deslizadores para tamaño de icono y espaciado de columnas/filas, e interruptores de barra de desplazamiento, bloqueo de desplazamiento y altura automática. |
 | **Archivos como siempre** | Menús contextuales del Explorador de archivos, arrastrar y soltar, copiar y pegar, selección múltiple, miniaturas y vistas de iconos, lista y detalles. |
 | **Ten tus carpetas a mano** | Coloca una carpeta en vivo sobre el escritorio. Navega por sus subcarpetas y ve los cambios al momento. |
 | **Espacio cuando lo necesitas** | Contrae un grupo hasta su título. Pasa el cursor para expandirlo. Bloquea la distribución que te gusta. Haz doble clic en el escritorio para ocultar los grupos. Vuelve a hacer doble clic para recuperarlos. |

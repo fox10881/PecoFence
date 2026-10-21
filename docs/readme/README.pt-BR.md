@@ -53,6 +53,10 @@ O repositório traz um pacote selecionado de papéis de parede de prateleiras em
 
 > **💡 Dica de profissional:** Fornecemos papéis de parede 2D prontos que se alinham perfeitamente com os grupos planos. Para uma configuração incrível, recomendamos fortemente passar essas imagens 2D por um gerador de vídeo com IA para animá-las e aplicá-las à área de trabalho com o [Lively Wallpaper](https://github.com/rocksdanister/lively).
 
+### 🎛️ Novos temas e controles precisos por cerca
+
+As configurações ganham mais dois estilos: **Bookshelf** — uma clássica estante de madeira onde as capas de jogos ficam sobre as pranchas — e **Invisible Canvas**, um tema totalmente transparente que deixa os ícones flutuando sobre o papel de parede. Na página de cada cerca agora é possível ocultar de vez a **barra de título** com **Nunca**, desligar os **rótulos dos ícones** e ajustar a grade com controles deslizantes de **tamanho de ícone personalizado**, **espaçamento entre colunas** e **espaçamento entre linhas** — além das chaves **Ocultar barra de rolagem**, **Bloquear rolagem** e **Altura automática** para uma vitrine limpa e estática.
+
 <a id="peça-à-sua-ia-para-organizar"></a>
 
 ## Sua área de trabalho, configurada pela sua IA
@@ -124,7 +128,8 @@ Pegue o que precisa e pressione **Esc** para voltar.
 | :--- | :--- |
 | **IA + CLI** | `pecofence-cli` — **Configure com suas próprias palavras.** Altere temas, transparência, tamanho dos ícones e configurações globais, ou ajuste todos os grupos de uma vez. |
 | **Menos arrumação** | Regras por tipo de arquivo, extensão, nome, curinga, destino do atalho, horário e tamanho. Arquivos novos encontram seu grupo sozinhos. |
-| **Vidro que combina com sua área de trabalho** | Temas Fluent e Liquid Glass, modos claro e escuro, cor por grupo, opacidade e cor dos ícones. |
+| **Vidro que combina com sua área de trabalho** | Temas Fluent, Liquid Glass, Bookshelf e Invisible Canvas, modos claro e escuro, cor por grupo, opacidade e cor dos ícones. |
+| **Cada cerca do seu jeito** | Visibilidade da barra de título por cerca (até **Nunca**), rótulos de ícone opcionais, controles deslizantes para tamanho de ícone e espaçamento de colunas/linhas, além de chaves para barra de rolagem, bloqueio de rolagem e altura automática. |
 | **Arquivos do jeito que você conhece** | Menus de contexto do Explorador de Arquivos, arrastar e soltar, copiar e colar, seleção múltipla, miniaturas e exibição em ícones, lista ou detalhes. |
 | **Pastas sempre à mão** | Coloque na área de trabalho uma pasta de verdade, sempre atualizada. Navegue pelas subpastas e veja as mudanças na hora. |
 | **Espaço quando você precisa** | Recolha um grupo até o título. Passe o mouse para expandir. Bloqueie o layout quando estiver do seu jeito. Clique duas vezes na área de trabalho para ocultar os grupos. Clique duas vezes de novo para trazê-los de volta. |

@@ -62,6 +62,10 @@ The repository ships a curated pack of flat front-elevation shelf wallpapers in 
 
 > **💡 Pro Tip:** We have provided ready-to-use 2D wallpapers that align perfectly with the flat fences. For an amazing setup, we highly recommend taking these 2D images, running them through an AI video generator to animate them, and applying them to your desktop using [Lively Wallpaper](https://github.com/rocksdanister/lively).
 
+### 🎛️ New Themes & Deep Per-Fence Controls
+
+Settings now offers two more looks: **Bookshelf** — a classic wooden shelf that sets game covers right on the boards — and **Invisible Canvas**, a fully transparent theme that lets icons float on your wallpaper. On each fence's own page you can now hide the **Title Bar** completely with **Never**, switch **Icon Labels** off, and dial in the grid with sliders for **Custom Icon Size**, **Column Spacing** and **Row Spacing** — plus **Hide Scrollbar**, **Lock Scrolling** and **Automatic Height** toggles for a clean, static display case.
+
 <a id="ask-your-ai-to-organize-it"></a>
 
 ## Your desktop. Configured by your AI
@@ -133,7 +137,8 @@ Grab what you need, then press **Esc** to return.
 | :--- | :--- |
 | **AI + CLI** | `pecofence-cli` — **Configure it in your own words.** Change themes, transparency, icon sizes and global settings, or adjust every fence at once. |
 | **Less sorting** | Rules for file types, extensions, names, wildcards, shortcut targets, time and size. New files find their fence automatically. |
-| **Glass that fits your desktop** | Fluent and Liquid Glass themes, light/dark modes, per-fence colors, opacity and icon tinting. |
+| **Looks that fit your desktop** | Fluent, Liquid Glass, Bookshelf and Invisible Canvas themes, light/dark modes, per-fence colors, opacity and icon tinting. |
+| **Every fence, your way** | Per-fence title-bar visibility (down to **Never**), optional icon labels, sliders for icon size and column/row spacing, plus scrollbar, scroll-lock and automatic-height toggles. |
 | **Familiar file handling** | File Explorer context menus, drag and drop, copy/paste, multi-select, thumbnails and icon/list/details views. |
 | **Keep folders close** | Put a live folder on your desktop. Browse subfolders and see changes as they happen. |
 | **Space when you need it** | Roll a fence up to its title. Hover to expand. Lock a layout you like. Double-click the desktop to hide your fences. Double-click again to bring them back. |
