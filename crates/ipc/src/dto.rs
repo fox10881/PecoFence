@@ -178,6 +178,17 @@ pub struct FenceDto {
     /// Item names under the icons (per-fence 显示图标标签); false lays the grid out with no
     /// label rows, so icon covers sit flush on the bookshelf boards.
     pub show_labels: bool,
+    /// `global` | `always` | `onHover` | `never` — per-fence 图标标签: when labels paint.
+    /// `global` inherits `showLabels`; `onHover` keeps the label rows reserved and paints
+    /// them only while the pointer is over the fence.
+    #[serde(default)]
+    pub label_visibility: String,
+    /// 标签字体: label font family; `null` = the system icon-title font.
+    #[serde(default)]
+    pub label_font_family: Option<String>,
+    /// `normal` | `bold` — 标签字重.
+    #[serde(default)]
+    pub label_font_weight: String,
     /// `standard` | `poster` (2:3 centre-cropped covers) — per-fence 「图标形状」.
     pub icon_shape: String,
     /// Freeform icon edge in DIPs, overriding `iconSize` while set; `null` = the preset.

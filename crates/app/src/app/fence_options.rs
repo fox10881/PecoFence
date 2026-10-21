@@ -69,6 +69,9 @@ pub(super) const FENCE_PROPS: &[&str] = &[
     "groupByDate",
     "labelLines",
     "showLabels",
+    "labelVisibility",
+    "labelFontFamily",
+    "labelFontWeight",
     "iconShape",
     "customIconSize",
     "spacingX",
@@ -137,6 +140,12 @@ pub(super) enum FenceProp {
     /// 显示图标标签 (FenceView.show_labels): false parks the label rows without losing
     /// `label_lines`, so covers can sit on the bookshelf boards.
     ShowLabels(bool),
+    /// 图标标签 (FenceView.label_visibility): None = Global (follows `show_labels`).
+    LabelVisibility(Option<LabelVisibility>),
+    /// 标签字体 (FenceView.label_font_family): None = the system icon-title font.
+    LabelFontFamily(Option<String>),
+    /// 标签字重 (FenceView.label_font_weight): None = Normal.
+    LabelFontWeight(Option<LabelFontWeight>),
     /// 图标形状 (FenceView.icon_shape): Poster draws a 2:3 centre-cropped cover.
     IconShape(IconShape),
     /// 自定义图标大小 (FenceView.custom_icon_size): None follows `iconSize`.
@@ -282,6 +291,40 @@ pub(super) fn parse_fence_prop(
             }
         }
         "showLabels" => FenceProp::ShowLabels(as_bool()?),
+        "labelVisibility" => {
+            const ALLOWED: &[&str] = &["global", "always", "onHover", "never"];
+            FenceProp::LabelVisibility(match as_str(ALLOWED)? {
+                "global" => None,
+                "always" => Some(LabelVisibility::Always),
+                "onHover" => Some(LabelVisibility::OnHover),
+                "never" => Some(LabelVisibility::Never),
+                _ => return Err(bad(ALLOWED)),
+            })
+        }
+        "labelFontFamily" => {
+            const ALLOWED: &[&str] = &["<font family>", "null"];
+            let family = match value {
+                serde_json::Value::Null => None,
+                serde_json::Value::String(s) => {
+                    let s = s.trim();
+                    if s.len() > 64 {
+                        return Err(bad(ALLOWED));
+                    }
+                    // An empty box means "back to the system icon-title font".
+                    (!s.is_empty()).then(|| s.to_string())
+                }
+                _ => return Err(bad(ALLOWED)),
+            };
+            FenceProp::LabelFontFamily(family)
+        }
+        "labelFontWeight" => {
+            const ALLOWED: &[&str] = &["normal", "bold"];
+            FenceProp::LabelFontWeight(match as_str(ALLOWED)? {
+                "normal" => None,
+                "bold" => Some(LabelFontWeight::Bold),
+                _ => return Err(bad(ALLOWED)),
+            })
+        }
         "iconShape" => {
             const ALLOWED: &[&str] = &["standard", "poster"];
             FenceProp::IconShape(match as_str(ALLOWED)? {
@@ -609,6 +652,17 @@ impl App {
             "iconSize": f.view.icon_size,
             "spacing": spacing,
             "showLabels": f.view.show_labels.unwrap_or(true),
+            "labelVisibility": match f.view.label_visibility.unwrap_or_default() {
+                LabelVisibility::Global => "global",
+                LabelVisibility::Always => "always",
+                LabelVisibility::OnHover => "onHover",
+                LabelVisibility::Never => "never",
+            },
+            "labelFontFamily": f.view.label_font_family,
+            "labelFontWeight": match f.view.label_font_weight.unwrap_or_default() {
+                LabelFontWeight::Normal => "normal",
+                LabelFontWeight::Bold => "bold",
+            },
             "iconShape": match f.view.effective_icon_shape() {
                 IconShape::Standard => "standard",
                 IconShape::Poster => "poster",
@@ -722,6 +776,23 @@ impl App {
             && w.active_fence() == fence
         {
             w.set_label_lines(lines);
+        }
+    }
+
+    /// Pushes the shown fence's 图标标签 + label font (「标签字体」/「标签字重」) to its
+    /// window; the window decides whether the grid line height or labels changed.
+    fn push_label_style(&mut self, fence: FenceId) {
+        let Some(view) = self.state.fence(fence).map(|f| f.view.clone()) else {
+            return;
+        };
+        if let Some(w) = self.window_for(fence)
+            && w.active_fence() == fence
+        {
+            w.set_label_style(
+                view.label_visibility.unwrap_or_default(),
+                view.label_font_family.clone(),
+                view.label_font_weight.map(|w| w.dwrite()),
+            );
         }
     }
 
@@ -848,6 +919,46 @@ impl App {
                     self.state.mark_dirty();
                 }
                 self.push_label_lines(fence);
+                self.apply_cell_snap(fence);
+                self.apply_auto_height(fence);
+                self.schedule_save();
+            }
+            FenceProp::LabelVisibility(v) => {
+                // `None` while Global, so the field leaves the file until changed;
+                // Never/OnHover supersede `show_labels`, Global inherits it again.
+                let stored = v.filter(|v| *v != LabelVisibility::Global);
+                if let Some(f) = self.state.fence_mut(fence)
+                    && f.view.label_visibility != stored
+                {
+                    f.view.label_visibility = stored;
+                    self.state.mark_dirty();
+                }
+                self.push_label_lines(fence);
+                self.push_label_style(fence);
+                self.apply_cell_snap(fence);
+                self.apply_auto_height(fence);
+                self.schedule_save();
+            }
+            FenceProp::LabelFontFamily(family) => {
+                if let Some(f) = self.state.fence_mut(fence)
+                    && f.view.label_font_family != family
+                {
+                    f.view.label_font_family = family;
+                    self.state.mark_dirty();
+                }
+                self.push_label_style(fence);
+                self.apply_cell_snap(fence);
+                self.apply_auto_height(fence);
+                self.schedule_save();
+            }
+            FenceProp::LabelFontWeight(weight) => {
+                if let Some(f) = self.state.fence_mut(fence)
+                    && f.view.label_font_weight != weight
+                {
+                    f.view.label_font_weight = weight;
+                    self.state.mark_dirty();
+                }
+                self.push_label_style(fence);
                 self.apply_cell_snap(fence);
                 self.apply_auto_height(fence);
                 self.schedule_save();

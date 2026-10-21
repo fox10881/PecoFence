@@ -8,6 +8,7 @@ use crate::gpu_bindings as b;
 use crate::panel::Clip;
 use crate::theme::{Theme, ThemeMode, font_small, font_text, lerp, with_alpha};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::mem::ManuallyDrop;
 use std::rc::Rc;
 use windows_canvas::{
@@ -62,6 +63,10 @@ pub struct FenceChrome {
     group_format: TextFormat,
     /// Tab match badge number: 11 / 600, centred.
     badge_format: TextFormat,
+    /// Per-fence label fonts (「标签字体」/「标签字重」): keyed by resolved
+    /// (family, weight, size bits) so two fences may each carry their own label
+    /// font without disturbing the shared icon-title default.
+    label_overrides: RefCell<HashMap<(String, i32, u32), LabelFont>>,
 }
 
 /// A "按时间分组" section header band in surface DIPs (already scrolled; for rows already
@@ -1293,6 +1298,14 @@ pub struct ContentDraw<'a> {
     pub icon_h: f32,
     pub label_lines: u8,
     pub line_h: f32,
+    /// Per-fence label format (「标签字体」/「标签字重」); None = the shared
+    /// icon-title font.
+    pub label_format: Option<&'a TextFormat>,
+    /// Whether labels paint at all this frame: 「悬停显示」 hides them while the
+    /// pointer is outside the fence (the layout rows stay reserved), and 「从不」
+    /// never paints. When false the text pass — shadow included — is skipped
+    /// entirely, so a label-free shelf costs no DirectWrite work per frame.
+    pub paint_labels: bool,
     /// Cell top pad above the icon and gap between icon and label (GridMetrics).
     pub icon_top: f32,
     pub label_gap: f32,
@@ -1812,6 +1825,7 @@ impl FenceChrome {
             title_format_xlarge,
             group_format,
             badge_format,
+            label_overrides: RefCell::new(HashMap::new()),
         };
         // Labels follow the desktop's icon-title font from the start (12 px / 16 stays the
         // fallback when the system call fails).
@@ -1859,6 +1873,9 @@ impl FenceChrome {
             weight: weight.0,
             line_h,
         };
+        // Per-fence overrides resolve against this base — the new size/family changes
+        // their keys and outputs, so stale entries are dropped and rebuild lazily.
+        self.label_overrides.borrow_mut().clear();
         Ok(true)
     }
 
@@ -1870,6 +1887,58 @@ impl FenceChrome {
     /// One label line in DIPs for the current icon-title font (16 at the default 12 px).
     pub fn label_line_h(&self) -> f32 {
         self.label_font.borrow().line_h
+    }
+
+    /// A fence's own label font (「标签字体」/「标签字重」): `family` and `weight`
+    /// (a DirectWrite weight) individually fall back to the shared icon-title font,
+    /// and an unresolvable face falls back wholesale. Overrides are cached by their
+    /// resolved (family, weight, size) so repeats cost a map lookup. Returns the
+    /// format and its measured line height — both feed the cell grid.
+    pub fn label_format_for(&self, family: Option<&str>, weight: Option<i32>) -> (TextFormat, f32) {
+        if family.is_none() && weight.is_none() {
+            let cur = self.label_font.borrow();
+            return (cur.format.clone(), cur.line_h);
+        }
+        let (base_family, base_size, base_weight) = {
+            let cur = self.label_font.borrow();
+            (cur.family.clone(), cur.size, cur.weight)
+        };
+        let family = family.map(str::trim).filter(|f| !f.is_empty());
+        let family = family.unwrap_or(&base_family);
+        let weight = weight.unwrap_or(base_weight);
+        let key = (family.to_string(), weight, base_size.to_bits());
+        if let Some(f) = self.label_overrides.borrow().get(&key) {
+            return (f.format.clone(), f.line_h);
+        }
+        let face = if family.eq_ignore_ascii_case("Segoe UI") {
+            font_small()
+        } else {
+            family
+        };
+        let Ok(format) = Self::build_label_format(face, base_size, FontWeight(weight)) else {
+            let cur = self.label_font.borrow();
+            return (cur.format.clone(), cur.line_h);
+        };
+        let line_h = TextLayout::new("Ag", &format, 10_000.0, 10_000.0)
+            .map(|l| l.metrics().height.ceil())
+            .unwrap_or(DEFAULT_LABEL_LINE_H)
+            .max(1.0);
+        self.label_overrides.borrow_mut().insert(
+            key,
+            LabelFont {
+                format: format.clone(),
+                family: family.to_string(),
+                size: base_size,
+                weight,
+                line_h,
+            },
+        );
+        (format, line_h)
+    }
+
+    /// The line height of [`Self::label_format_for`] without touching the format.
+    pub fn label_line_h_for(&self, family: Option<&str>, weight: Option<i32>) -> f32 {
+        self.label_format_for(family, weight).1
     }
 
     pub fn title_format(&self, size: u8) -> &TextFormat {
@@ -3272,31 +3341,37 @@ impl FenceChrome {
                 .iter()
                 .find(|c| visible(c) && c.full_label.is_some());
             // A fixed 文字颜色 shadows every resting label in one pass; the unfolding one draws
-            // its own above the row it overlaps.
-            let shadowed = text_shadow(theme, theme.text_primary).is_some_and(|shadow| {
-                let format = &self.label_font.borrow().format;
-                draw_text_shadow(session, shadow, || {
-                    for cell in content.items.iter().filter(|c| visible(c)) {
-                        let alpha = cell.alpha.clamp(0.0, 1.0);
-                        if alpha <= 0.0 || deferred.is_some_and(|d| std::ptr::eq(d, cell)) {
-                            continue;
+            // its own above the row it overlaps. No labels painted → no shadow pass either.
+            let shadowed = content.paint_labels
+                && text_shadow(theme, theme.text_primary).is_some_and(|shadow| {
+                    let format = match content.label_format {
+                        Some(f) => f.clone(),
+                        None => self.label_font.borrow().format.clone(),
+                    };
+                    draw_text_shadow(session, shadow, || {
+                        for cell in content.items.iter().filter(|c| visible(c)) {
+                            let alpha = cell.alpha.clamp(0.0, 1.0);
+                            if alpha <= 0.0 || deferred.is_some_and(|d| std::ptr::eq(d, cell)) {
+                                continue;
+                            }
+                            let rect = self.label_rect(content, cell, None);
+                            // A brush of its own per fading label: the list may keep brushes by
+                            // reference, so the scratch brush cannot be recoloured mid-recording.
+                            let fading = (alpha < 1.0)
+                                .then(|| {
+                                    session.create_solid_brush(ColorF::new(0.0, 0.0, 0.0, alpha))
+                                })
+                                .and_then(|b| b.ok());
+                            session.draw_text(
+                                cell.label,
+                                &format,
+                                &rect,
+                                fading.as_ref().unwrap_or(&label),
+                            );
                         }
-                        let rect = self.label_rect(content, cell, None);
-                        // A brush of its own per fading label: the list may keep brushes by
-                        // reference, so the scratch brush cannot be recoloured mid-recording.
-                        let fading = (alpha < 1.0)
-                            .then(|| session.create_solid_brush(ColorF::new(0.0, 0.0, 0.0, alpha)))
-                            .and_then(|b| b.ok());
-                        session.draw_text(
-                            cell.label,
-                            format,
-                            &rect,
-                            fading.as_ref().unwrap_or(&label),
-                        );
-                    }
-                })
-                .is_ok()
-            });
+                    })
+                    .is_ok()
+                });
             for cell in content.items {
                 if !visible(cell) || deferred.is_some_and(|d| std::ptr::eq(d, cell)) {
                     continue;
@@ -3479,10 +3554,15 @@ impl FenceChrome {
             content.icon_h,
             4.0,
         )?;
-        // Labels hidden for this fence: the cell already hugs the icon, nothing below it.
-        if content.label_lines == 0 {
+        // Labels hidden for this fence (「从不」/「悬停显示」 with the pointer outside):
+        // the cell already hugs the icon, nothing below it — skip the text pass.
+        if content.label_lines == 0 || !content.paint_labels {
             return Ok(());
         }
+        let label_format = match content.label_format {
+            Some(f) => f.clone(),
+            None => self.label_font.borrow().format.clone(),
+        };
         let label_rect = self.label_rect(content, cell, unfold);
         let text = unfold.map_or(cell.label, |(t, _)| t);
         let resting = if cell.dimmed { label_dim } else { label };
@@ -3510,7 +3590,7 @@ impl FenceChrome {
         draw_caption(
             session,
             text,
-            &self.label_font.borrow().format,
+            &label_format,
             &label_rect,
             brush,
             halo,

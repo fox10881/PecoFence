@@ -453,6 +453,17 @@ impl FenceViewState {
         if self.title_on_hover() || self.is_clear() {
             let _ = self.redraw_chrome_only();
         }
+        // 图标标签 → 悬停显示: the labels show / hide with the pointer. On entry they
+        // were never fitted while hidden, so refit; either way the content repaints.
+        if self.label_visibility == LabelVisibility::OnHover {
+            if inside {
+                for item in &mut self.items {
+                    item.label = None;
+                }
+                self.unfold_cache = None;
+            }
+            let _ = self.redraw();
+        }
         if self.behavior.hide_inactive_scrollbar.get() {
             if inside {
                 self.sync_scrollbar_alpha();

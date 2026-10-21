@@ -1202,6 +1202,7 @@ impl FenceViewState {
                         }
                     })
                     .collect();
+                let label_format = self.label_format();
                 let content = ContentDraw {
                     items: &items,
                     group_headers: &[],
@@ -1210,6 +1211,8 @@ impl FenceViewState {
                     icon_h: grid.metrics.icon_h,
                     label_lines: self.label_lines,
                     line_h: grid.metrics.line_h,
+                    label_format: Some(&label_format),
+                    paint_labels: self.labels_painted(),
                     icon_top: grid.metrics.icon_top,
                     label_gap: grid.metrics.label_gap,
                     scrollbar: None,

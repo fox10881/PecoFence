@@ -15,6 +15,15 @@ pub struct FenceViewState {
     pub expanded_h_px: i32,
     pub icon_size: u32,
     pub label_lines: u8,
+    /// 图标标签 (FenceView.label_visibility): when labels paint in the icons grid.
+    /// Global keeps the legacy show-labels flag folded into `label_lines`; OnHover
+    /// gates painting on `mouse_inside` while the layout rows stay reserved.
+    pub(super) label_visibility: LabelVisibility,
+    /// 标签字体 (FenceView.label_font_family); None = the shared icon-title font.
+    pub(super) label_font_family: Option<String>,
+    /// 标签字重 (FenceView.label_font_weight) as a DirectWrite weight (400/700);
+    /// None = the icon-title weight.
+    pub(super) label_font_weight: Option<i32>,
     pub(super) content_dirty: bool,
     pub(super) content_ink: Option<ColorF>,
     pub(super) content_draws: u64,

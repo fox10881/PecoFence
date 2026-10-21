@@ -572,5 +572,14 @@
     "其中的 {0} 个图标会放回桌面，文件本身不受影响。": "{0} of these icons go back to the desktop; the files themselves are not affected.",
     "强制应用到所有项目": "Force-apply the rules to every item",
     "忽略手动摆放的位置，把桌面上的每个项目都按规则重新归位": "Ignores manual placements: every desktop item is re-filed strictly by the rules",
-    "强制应用": "Force apply"
+    "强制应用": "Force apply",
+    "图标标签显示方式": "Icon label visibility",
+    "“悬停”平时隐藏名称，指针移到栅栏上才显示；“从不”连布局行也不再保留，图标间距更紧凑": "\"On hover\" hides names until the pointer is over the fence; \"Never\" drops the label rows entirely, packing icons tighter",
+    "跟随“显示图标标签”开关": "Follow the \"Show icon labels\" toggle",
+    "标签字体": "Label font",
+    "单独指定图标下方名称的字体；默认跟随系统图标标题字体": "Choose a font just for the names under icons; the default follows the system icon-title font",
+    "默认（Segoe UI）": "Default (Segoe UI)",
+    "标签字重": "Label weight",
+    "名称加粗后在复杂壁纸上更醒目": "Bold names stay readable on busy wallpapers",
+    "加粗": "Bold"
 }

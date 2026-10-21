@@ -258,6 +258,11 @@ impl App {
             }
             w.set_layout(shown.view.layout);
             w.set_label_lines(shown.view.effective_label_lines());
+            w.set_label_style(
+                shown.view.label_visibility.unwrap_or_default(),
+                shown.view.label_font_family.clone(),
+                shown.view.label_font_weight.map(|w| w.dwrite()),
+            );
             w.set_is_inbox(shown.kind == FenceKind::Inbox);
             w.set_spacing(shown.view.spacing);
             w.set_grid_extras(

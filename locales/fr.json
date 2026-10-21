@@ -572,5 +572,14 @@
     "其中的 {0} 个图标会放回桌面，文件本身不受影响。": "{0} de ces icônes retournent sur le bureau ; les fichiers eux-mêmes ne sont pas affectés.",
     "强制应用到所有项目": "Forcer l'application à tous les éléments",
     "忽略手动摆放的位置，把桌面上的每个项目都按规则重新归位": "Ignore les placements manuels : chaque élément du bureau est reclassé strictement selon les règles",
-    "强制应用": "Forcer"
+    "强制应用": "Forcer",
+    "图标标签显示方式": "Visibilité des étiquettes d'icônes",
+    "“悬停”平时隐藏名称，指针移到栅栏上才显示；“从不”连布局行也不再保留，图标间距更紧凑": "« Au survol » masque les noms sauf quand le pointeur est sur le panneau ; « Jamais » supprime les lignes d'étiquette et resserre les icônes",
+    "跟随“显示图标标签”开关": "Suivre l'interrupteur « Afficher les étiquettes des icônes »",
+    "标签字体": "Police des étiquettes",
+    "单独指定图标下方名称的字体；默认跟随系统图标标题字体": "Définit une police spécifique pour les noms sous les icônes ; par défaut, elle suit la police système des titres d'icônes",
+    "默认（Segoe UI）": "Par défaut (Segoe UI)",
+    "标签字重": "Graisse des étiquettes",
+    "名称加粗后在复杂壁纸上更醒目": "Les noms en gras restent lisibles sur les fonds d'écran chargés",
+    "加粗": "Gras"
 }

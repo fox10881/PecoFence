@@ -1373,6 +1373,12 @@ impl App {
             group_by_date: f.view.group_by_date,
             label_lines: f.view.label_lines,
             show_labels: f.view.show_labels.unwrap_or(true),
+            label_visibility: text("labelVisibility"),
+            label_font_family: opts
+                .get("labelFontFamily")
+                .and_then(Value::as_str)
+                .map(|s| s.to_string()),
+            label_font_weight: text("labelFontWeight"),
             icon_shape: match f.view.effective_icon_shape() {
                 pecofence_core::IconShape::Standard => "standard",
                 pecofence_core::IconShape::Poster => "poster",

@@ -15,8 +15,8 @@ use crate::layout::{
 };
 use crate::shadow::{ShadowStyle, ShadowWindow};
 use pecofence_core::{
-    CivilDate, DateBucket, FenceId, IconKey, IconShape, ItemId, ItemKey, SortMode, Spacing,
-    ViewLayout, date_bucket,
+    CivilDate, DateBucket, FenceId, IconKey, IconShape, ItemId, ItemKey, LabelVisibility, SortMode,
+    Spacing, ViewLayout, date_bucket,
 };
 use pecofence_platform::dragdrop::{
     self as dragdrop, DragImage, DragPoint, DropEffect, DropHandler, DropImage,
@@ -39,7 +39,7 @@ use pecofence_render::fence_chrome::{
 use pecofence_render::motion::{self, Curve, Fades, Motion, Prop, Tween};
 use pecofence_render::{
     BitmapCache, ColorF, ContainerVisual, DesktopWindowTarget, DrawingSession, Image, Matrix3x2,
-    MonitorBackdrop, Panel, Rect, RenderStack, Theme,
+    MonitorBackdrop, Panel, Rect, RenderStack, TextFormat, Theme,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};

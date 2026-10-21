@@ -194,9 +194,37 @@ impl FenceViewState {
     pub(super) fn grid_metrics(&self) -> GridMetrics {
         GridMetrics::for_icon_size(self.icon_size, self.label_lines)
             .with_shape(self.icon_shape)
-            .with_line_h(self.chrome.label_line_h())
+            .with_line_h(self.label_line_h())
             .with_spacing(self.spacing)
             .with_gaps(self.spacing_x, self.spacing_y)
+    }
+
+    /// This fence's label font options (「标签字体」/「标签字重」) as the shared
+    /// chrome's override cache resolves them.
+    pub(super) fn label_font_opts(&self) -> (Option<&str>, Option<i32>) {
+        (self.label_font_family.as_deref(), self.label_font_weight)
+    }
+
+    /// Label line height under this fence's own font.
+    pub(super) fn label_line_h(&self) -> f32 {
+        let (f, w) = self.label_font_opts();
+        self.chrome.label_line_h_for(f, w)
+    }
+
+    /// Label text format under this fence's own font (a cheap COM clone).
+    pub(super) fn label_format(&self) -> TextFormat {
+        let (f, w) = self.label_font_opts();
+        self.chrome.label_format_for(f, w).0
+    }
+
+    /// Whether icon labels paint this frame (「图标标签」): OnHover follows the
+    /// pointer; Never keeps the rows empty (label_lines is already 0 for it).
+    pub(super) fn labels_painted(&self) -> bool {
+        match self.label_visibility {
+            LabelVisibility::Always | LabelVisibility::Global => true,
+            LabelVisibility::OnHover => self.mouse_inside,
+            LabelVisibility::Never => false,
+        }
     }
 
     /// "按时间分组" sections of the current items as delivered (sorted, possibly reversed):

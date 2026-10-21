@@ -712,8 +712,20 @@ pub struct FenceView {
     pub group_by_date: bool,
     /// Item names under the icons; None/true = shown (the default). Some(false) hides them
     /// and the cells drop their label rows, so covers sit flush on the bookshelf boards.
+    /// Legacy on/off — `label_visibility` refines it with hover/always choices.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub show_labels: Option<bool>,
+    /// 图标标签: when labels paint for this fence. None/Global follows `show_labels`
+    /// (and so stays the default); OnHover paints them only while the pointer is over
+    /// the fence; Never drops the label rows entirely, like `show_labels = false`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_visibility: Option<LabelVisibility>,
+    /// 标签字体: an explicit label font family; None = the system icon-title font.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_font_family: Option<String>,
+    /// 标签字重: an explicit label weight; None = Normal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_font_weight: Option<LabelFontWeight>,
     /// Icon cell shape: None/Standard keeps the square box; Poster draws a 2:3 cover
     /// (H = W × 1.5) the thumbnail is centre-cropped into — zero-gap poster grids.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -750,6 +762,42 @@ pub struct FenceView {
     pub depth_scale: Option<f32>,
 }
 
+/// 「图标标签」per-fence label visibility.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+pub enum LabelVisibility {
+    /// Inherit the general look (the default; the legacy `show_labels` off still hides).
+    #[default]
+    Global,
+    /// Labels are always painted.
+    Always,
+    /// Labels appear only while the pointer is over the fence.
+    OnHover,
+    /// Labels never paint and the cells drop their label rows entirely.
+    Never,
+}
+
+/// 「标签字重」per-fence label weight.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+pub enum LabelFontWeight {
+    #[default]
+    Normal,
+    Bold,
+}
+
+impl LabelFontWeight {
+    /// DirectWrite weight value (400 / 700).
+    pub fn dwrite(self) -> i32 {
+        match self {
+            Self::Normal => 400,
+            Self::Bold => 700,
+        }
+    }
+}
+
 /// Shape of an icon cell's icon box (「图标形状」).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -764,13 +812,35 @@ pub enum IconShape {
 }
 
 impl FenceView {
-    /// Label rows the grid actually lays out: `label_lines`, or 0 while `show_labels` has
-    /// turned labels off (the configured line count is kept for when they come back).
+    /// Label rows the grid actually lays out: `label_lines`, or 0 while labels are off
+    /// (the configured line count is kept for when they come back). 「悬停显示」 keeps
+    /// the rows reserved so the icons never reflow — only painting is gated.
     pub fn effective_label_lines(&self) -> u8 {
-        if self.show_labels == Some(false) {
-            0
-        } else {
+        if self.labels_laid_out() {
             self.label_lines
+        } else {
+            0
+        }
+    }
+
+    /// Whether the grid reserves label rows at all.
+    fn labels_laid_out(&self) -> bool {
+        match self.label_visibility.unwrap_or_default() {
+            LabelVisibility::Never => false,
+            LabelVisibility::Global => self.show_labels != Some(false),
+            LabelVisibility::Always | LabelVisibility::OnHover => true,
+        }
+    }
+
+    /// Whether labels paint right now (`hovered` = pointer inside the fence window).
+    /// `labels_laid_out` already gates the rows; this gates the paint pass itself —
+    /// Never (or a legacy `show_labels` off under Global) skips the text work entirely.
+    pub fn labels_painted(&self, hovered: bool) -> bool {
+        match self.label_visibility.unwrap_or_default() {
+            LabelVisibility::Always => true,
+            LabelVisibility::OnHover => hovered,
+            LabelVisibility::Never => false,
+            LabelVisibility::Global => self.show_labels != Some(false),
         }
     }
 
@@ -809,6 +879,9 @@ impl Default for FenceView {
             columns_visible: None,
             group_by_date: false,
             show_labels: None,
+            label_visibility: None,
+            label_font_family: None,
+            label_font_weight: None,
             icon_shape: None,
             custom_icon_size: None,
             spacing_x: None,
@@ -2503,6 +2576,69 @@ mod tests {
         .unwrap();
         assert_eq!(back.show_labels, None);
         assert_eq!(back.effective_label_lines(), 3);
+    }
+
+    /// 图标标签 / 标签字体 / 标签字重: absent from the file until set; Never drops the
+    /// label rows like `showLabels = false`, OnHover keeps them and gates only the paint,
+    /// and Global inherits `show_labels` again.
+    #[test]
+    fn label_visibility_overrides_show_labels() {
+        let v = FenceView::default();
+        let j = serde_json::to_value(&v).unwrap();
+        assert!(j.get("labelVisibility").is_none());
+        assert!(j.get("labelFontFamily").is_none());
+        assert!(j.get("labelFontWeight").is_none());
+        assert_eq!(v.effective_label_lines(), 2);
+        assert!(v.labels_painted(false));
+
+        // Never: no label rows at all, and nothing paints.
+        let v = FenceView {
+            label_visibility: Some(LabelVisibility::Never),
+            ..Default::default()
+        };
+        assert_eq!(v.effective_label_lines(), 0);
+        assert!(!v.labels_painted(true));
+
+        // OnHover: rows stay reserved (no reflow), only painting follows the pointer.
+        let v = FenceView {
+            label_lines: 3,
+            label_visibility: Some(LabelVisibility::OnHover),
+            ..Default::default()
+        };
+        assert_eq!(v.effective_label_lines(), 3);
+        assert!(!v.labels_painted(false));
+        assert!(v.labels_painted(true));
+
+        // Always paints even over a legacy show_labels = false; Global inherits it.
+        let v = FenceView {
+            show_labels: Some(false),
+            label_visibility: Some(LabelVisibility::Always),
+            ..Default::default()
+        };
+        assert_eq!(v.effective_label_lines(), 2);
+        assert!(v.labels_painted(false));
+        let v = FenceView {
+            show_labels: Some(false),
+            label_visibility: Some(LabelVisibility::Global),
+            ..Default::default()
+        };
+        assert_eq!(v.effective_label_lines(), 0);
+        assert!(!v.labels_painted(true));
+
+        // Font overrides round-trip in camelCase.
+        let v = FenceView {
+            label_font_family: Some("Consolas".to_string()),
+            label_font_weight: Some(LabelFontWeight::Bold),
+            ..Default::default()
+        };
+        let j = serde_json::to_value(&v).unwrap();
+        assert_eq!(j["labelFontFamily"], "Consolas");
+        assert_eq!(j["labelFontWeight"], "bold");
+        let back: FenceView = serde_json::from_value(j).unwrap();
+        assert_eq!(back.label_font_family.as_deref(), Some("Consolas"));
+        assert_eq!(back.label_font_weight, Some(LabelFontWeight::Bold));
+        assert_eq!(LabelFontWeight::Normal.dwrite(), 400);
+        assert_eq!(LabelFontWeight::Bold.dwrite(), 700);
     }
 
     #[test]

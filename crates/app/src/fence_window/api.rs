@@ -172,6 +172,10 @@ impl FenceWindow {
             expanded_h_px: expanded_h_px.max(1),
             icon_size,
             label_lines,
+            // Pushed by `apply_fence_view` right after creation (Global shown until then).
+            label_visibility: LabelVisibility::Global,
+            label_font_family: None,
+            label_font_weight: None,
             items,
             tabs: Vec::new(),
             active: fence_id,
@@ -1079,6 +1083,34 @@ impl FenceWindow {
                 return;
             }
             v.label_lines = lines;
+            for item in &mut v.items {
+                item.label = None;
+            }
+            v.unfold_cache = None;
+            v.snap_item_motion();
+            let _ = v.redraw();
+        });
+    }
+
+    /// 图标标签 + 标签字体/字重 for the shown fence (FenceView.label_*): a visibility
+    /// change relayouts (Never drops the label rows) and a font change refits the labels
+    /// and re-measures the grid line height.
+    pub fn set_label_style(
+        &self,
+        visibility: LabelVisibility,
+        family: Option<String>,
+        weight: Option<i32>,
+    ) {
+        self.with_view(|v| {
+            if v.label_visibility == visibility
+                && v.label_font_family == family
+                && v.label_font_weight == weight
+            {
+                return;
+            }
+            v.label_visibility = visibility;
+            v.label_font_family = family;
+            v.label_font_weight = weight;
             for item in &mut v.items {
                 item.label = None;
             }

@@ -761,6 +761,11 @@ impl FenceViewState {
         let details = self.layout == ViewLayout::Details;
         // Explorer's list and details rows show folders without the preview of their contents.
         let rows = self.layout != ViewLayout::Icons;
+        // Icons-grid labels fit with this fence's own font (「标签字体」/「标签字重」);
+        // while 图标标签 keeps them hidden the DirectWrite fitting pass is skipped
+        // entirely and `item.label` stays None.
+        let label_format = self.label_format();
+        let fit_labels = !rows && self.labels_painted();
         let now = Instant::now();
         let mut started = false;
         let mut pending = false;
@@ -793,11 +798,11 @@ impl FenceViewState {
                     }
                 }
             }
-            if item.label.is_none() {
+            if item.label.is_none() && (rows || fit_labels) {
                 item.label = Some(match self.layout {
                     ViewLayout::Icons => pecofence_render::text::fit_lines(
                         &item.name,
-                        &self.chrome.label_format(),
+                        &label_format,
                         (label_w - pecofence_render::fence_chrome::ICON_LABEL_SIDE_INSET * 2.0)
                             .max(1.0),
                         self.label_lines as u32,
@@ -887,7 +892,7 @@ impl FenceViewState {
         }
         let (text, lines) = pecofence_render::text::fit_lines_counted(
             &it.name,
-            &self.chrome.label_format(),
+            &self.label_format(),
             (cell_w - pecofence_render::fence_chrome::ICON_LABEL_SIDE_INSET * 2.0).max(1.0),
             MAX_UNFOLD_LINES,
         );
@@ -944,10 +949,13 @@ impl FenceViewState {
             _ => None,
         };
         let focused = self.focus_index();
+        let label_format = self.label_format();
+        let paint_labels = self.labels_painted();
         // The selected anchor item shows its full name (Windows desktop): only when the fitted
         // label had to be shortened, and never under an open rename edit.
         let unfold = self.anchor_index.filter(|&a| {
-            a < self.items.len()
+            paint_labels
+                && a < self.items.len()
                 && self.selected.contains(&a)
                 && !dragging
                 && self.renaming != Some(self.items[a].id)
@@ -1060,6 +1068,8 @@ impl FenceViewState {
             icon_h: grid.metrics.icon_h,
             label_lines: self.label_lines,
             line_h: grid.metrics.line_h,
+            label_format: Some(&label_format),
+            paint_labels,
             icon_top: grid.metrics.icon_top,
             label_gap: grid.metrics.label_gap,
             scrollbar,
