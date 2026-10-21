@@ -1057,12 +1057,19 @@
   // A portal cannot hold routed items (the app routes such rules to the inbox), so it is shown as one.
   function fenceTitle(id) { const f = (state.fences || []).find(f => f.id === id); return !f ? t("已删除的栅栏") : f.kind === 'portal' ? inboxTitle() : f.title; }
   function targetLabel(target) { return tf("“{0}”", target === 'inbox' ? inboxTitle() : (target && target.fence) ? fenceTitle(target.fence) : '?'); }
-  // A deterministic hue per target fence id: the same destination wears the same
-  // colour everywhere, so the rules list scans by colour instead of by name.
-  const hueOf = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + (c.codePointAt(0) || 0)) >>> 0; return h % 360; };
+  // A collision-free hue per target: each fence gets a sequential slot by its
+  // position in state.fences (the desktop/inbox first), and slots step by the
+  // golden angle so consecutive colours stay maximally distinct — no hashing, and
+  // a fence keeps its colour as rules are reordered. Targets pointing at a
+  // deleted fence get the trailing slot.
+  function targetHue(key) {
+    const order = ['inbox', ...(state.fences || []).map(f => f.id)];
+    const i = order.indexOf(key);
+    return ((i < 0 ? order.length : i) * 137.508) % 360;
+  }
   function targetBadge(target) {
     const key = target === 'inbox' ? 'inbox' : (target && target.fence) || '';
-    return `<span class="rule-target" style="--th:${hueOf(key)}">${esc(targetLabel(target))}</span>`;
+    return `<span class="rule-target" style="--th:${targetHue(key).toFixed(2)}">${esc(targetLabel(target))}</span>`;
   }
   const NAME_OPS = {contains:v=>tf("名称包含“{0}”",v),notContains:v=>tf("名称不包含“{0}”",v),startsWith:v=>tf("名称开头是“{0}”",v),endsWith:v=>tf("名称结尾是“{0}”",v),is:v=>tf("名称等于“{0}”",v)};
   const TARGET_OPS = {contains:v=>tf("快捷方式目标包含“{0}”",v),notContains:v=>tf("快捷方式目标不包含“{0}”",v),startsWith:v=>tf("快捷方式目标开头是“{0}”",v),endsWith:v=>tf("快捷方式目标结尾是“{0}”",v),is:v=>tf("快捷方式目标等于“{0}”",v)};
