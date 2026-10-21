@@ -189,6 +189,10 @@ pub struct FenceDto {
     /// `normal` | `bold` — 标签字重.
     #[serde(default)]
     pub label_font_weight: String,
+    /// 图标外框: a persistent card frame (translucent fill, white hairline) behind
+    /// every icon instead of only on hover/selection.
+    #[serde(default)]
+    pub icon_frames: bool,
     /// `standard` | `poster` (2:3 centre-cropped covers) — per-fence 「图标形状」.
     pub icon_shape: String,
     /// Freeform icon edge in DIPs, overriding `iconSize` while set; `null` = the preset.

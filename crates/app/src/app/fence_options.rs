@@ -72,6 +72,7 @@ pub(super) const FENCE_PROPS: &[&str] = &[
     "labelVisibility",
     "labelFontFamily",
     "labelFontWeight",
+    "iconFrames",
     "iconShape",
     "customIconSize",
     "spacingX",
@@ -146,6 +147,8 @@ pub(super) enum FenceProp {
     LabelFontFamily(Option<String>),
     /// 标签字重 (FenceView.label_font_weight): None = Normal.
     LabelFontWeight(Option<LabelFontWeight>),
+    /// 图标外框 (FenceView.persistent_icon_frames): a card frame behind every icon.
+    IconFrames(bool),
     /// 图标形状 (FenceView.icon_shape): Poster draws a 2:3 centre-cropped cover.
     IconShape(IconShape),
     /// 自定义图标大小 (FenceView.custom_icon_size): None follows `iconSize`.
@@ -325,6 +328,7 @@ pub(super) fn parse_fence_prop(
                 _ => return Err(bad(ALLOWED)),
             })
         }
+        "iconFrames" => FenceProp::IconFrames(as_bool()?),
         "iconShape" => {
             const ALLOWED: &[&str] = &["standard", "poster"];
             FenceProp::IconShape(match as_str(ALLOWED)? {
@@ -663,6 +667,7 @@ impl App {
                 LabelFontWeight::Normal => "normal",
                 LabelFontWeight::Bold => "bold",
             },
+            "iconFrames": f.view.persistent_icon_frames.unwrap_or(false),
             "iconShape": match f.view.effective_icon_shape() {
                 IconShape::Standard => "standard",
                 IconShape::Poster => "poster",
@@ -961,6 +966,23 @@ impl App {
                 self.push_label_style(fence);
                 self.apply_cell_snap(fence);
                 self.apply_auto_height(fence);
+                self.schedule_save();
+            }
+            FenceProp::IconFrames(on) => {
+                // `None` while off, so the field leaves the file until frames are on.
+                let stored = on.then_some(true);
+                if let Some(f) = self.state.fence_mut(fence)
+                    && f.view.persistent_icon_frames != stored
+                {
+                    f.view.persistent_icon_frames = stored;
+                    self.state.mark_dirty();
+                }
+                // Paint-only: the grid and item fits are untouched.
+                if let Some(w) = self.window_for(fence)
+                    && w.active_fence() == fence
+                {
+                    w.set_icon_frames(on);
+                }
                 self.schedule_save();
             }
             FenceProp::IconShape(shape) => {

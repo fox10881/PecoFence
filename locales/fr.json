@@ -581,5 +581,7 @@
     "默认（Segoe UI）": "Par défaut (Segoe UI)",
     "标签字重": "Graisse des étiquettes",
     "名称加粗后在复杂壁纸上更醒目": "Les noms en gras restent lisibles sur les fonds d'écran chargés",
-    "加粗": "Gras"
+    "加粗": "Gras",
+    "显示图标外框": "Afficher les cadres des icônes",
+    "每个图标周围常显白色描边卡片，像货架格位一样衬托图标": "Dessine en permanence une carte à contour blanc derrière chaque icône, comme un casier d'étagère"
 }

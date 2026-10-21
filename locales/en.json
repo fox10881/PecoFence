@@ -581,5 +581,7 @@
     "默认（Segoe UI）": "Default (Segoe UI)",
     "标签字重": "Label weight",
     "名称加粗后在复杂壁纸上更醒目": "Bold names stay readable on busy wallpapers",
-    "加粗": "Bold"
+    "加粗": "Bold",
+    "显示图标外框": "Show icon frames",
+    "每个图标周围常显白色描边卡片，像货架格位一样衬托图标": "Draws a white-outlined card behind every icon, setting each icon in its own shelf slot"
 }

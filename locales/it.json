@@ -581,5 +581,7 @@
     "默认（Segoe UI）": "Predefinito (Segoe UI)",
     "标签字重": "Spessore delle etichette",
     "名称加粗后在复杂壁纸上更醒目": "I nomi in grassetto sono più leggibili su sfondi complessi",
-    "加粗": "Grassetto"
+    "加粗": "Grassetto",
+    "显示图标外框": "Mostra cornici delle icone",
+    "每个图标周围常显白色描边卡片，像货架格位一样衬托图标": "Disegna sempre una scheda con contorno bianco dietro ogni icona, come uno scomparto di uno scaffale"
 }

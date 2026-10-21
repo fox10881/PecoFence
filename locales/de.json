@@ -581,5 +581,7 @@
     "默认（Segoe UI）": "Standard (Segoe UI)",
     "标签字重": "Beschriftungsstärke",
     "名称加粗后在复杂壁纸上更醒目": "Fette Namen bleiben auf unruhigen Hintergründen besser lesbar",
-    "加粗": "Fett"
+    "加粗": "Fett",
+    "显示图标外框": "Symbolrahmen anzeigen",
+    "每个图标周围常显白色描边卡片，像货架格位一样衬托图标": "Zeichnet hinter jedem Symbol dauerhaft eine Karte mit weißer Kontur – wie ein Fach im Regal"
 }

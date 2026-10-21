@@ -24,6 +24,8 @@ pub struct FenceViewState {
     /// 标签字重 (FenceView.label_font_weight) as a DirectWrite weight (400/700);
     /// None = the icon-title weight.
     pub(super) label_font_weight: Option<i32>,
+    /// 图标外框 (FenceView.persistent_icon_frames): a card frame behind every icon.
+    pub(super) icon_frames: bool,
     pub(super) content_dirty: bool,
     pub(super) content_ink: Option<ColorF>,
     pub(super) content_draws: u64,

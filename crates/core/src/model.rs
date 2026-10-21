@@ -726,6 +726,11 @@ pub struct FenceView {
     /// 标签字重: an explicit label weight; None = Normal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_font_weight: Option<LabelFontWeight>,
+    /// 图标外框: a persistent card — translucent fill with a white hairline — drawn
+    /// behind every icon, so the shelf reads as physical slots instead of icons
+    /// floating on the backdrop. None/false = frames only on hover/selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persistent_icon_frames: Option<bool>,
     /// Icon cell shape: None/Standard keeps the square box; Poster draws a 2:3 cover
     /// (H = W × 1.5) the thumbnail is centre-cropped into — zero-gap poster grids.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -882,6 +887,7 @@ impl Default for FenceView {
             label_visibility: None,
             label_font_family: None,
             label_font_weight: None,
+            persistent_icon_frames: None,
             icon_shape: None,
             custom_icon_size: None,
             spacing_x: None,
@@ -2639,6 +2645,28 @@ mod tests {
         assert_eq!(back.label_font_weight, Some(LabelFontWeight::Bold));
         assert_eq!(LabelFontWeight::Normal.dwrite(), 400);
         assert_eq!(LabelFontWeight::Bold.dwrite(), 700);
+    }
+
+    /// 图标外框: stays out of the file while off and round-trips as `persistentIconFrames`.
+    #[test]
+    fn persistent_icon_frames_defaults_off_and_roundtrips() {
+        let v = FenceView::default();
+        assert!(v.persistent_icon_frames.is_none());
+        assert!(
+            serde_json::to_value(&v)
+                .unwrap()
+                .get("persistentIconFrames")
+                .is_none()
+        );
+
+        let v = FenceView {
+            persistent_icon_frames: Some(true),
+            ..Default::default()
+        };
+        let j = serde_json::to_value(&v).unwrap();
+        assert_eq!(j["persistentIconFrames"], true);
+        let back: FenceView = serde_json::from_value(j).unwrap();
+        assert_eq!(back.persistent_icon_frames, Some(true));
     }
 
     #[test]
