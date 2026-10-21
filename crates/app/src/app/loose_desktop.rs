@@ -203,11 +203,16 @@ impl App {
             }
         }
         for (id, position) in saved {
-            let entry = self.state.config.layouts[self.state.layout]
+            // Membership in `desktop_items` is what pins a loose icon against the rules'
+            // Apply (`plan_rules` skips it as manually placed). Only `release_items` — a
+            // drop, a deleted fence's leftovers, "release to desktop" — may create that
+            // entry. Auto-placing a newcomer must not create one: the entry would exempt
+            // it from `plan_rules` forever and Apply now would never move a loose icon.
+            if let Some(entry) = self.state.config.layouts[self.state.layout]
                 .desktop_items
-                .entry(id)
-                .or_default();
-            if entry.as_ref() != Some(&position) {
+                .get_mut(&id)
+                && entry.as_ref() != Some(&position)
+            {
                 *entry = Some(position);
                 self.state.mark_dirty();
             }
