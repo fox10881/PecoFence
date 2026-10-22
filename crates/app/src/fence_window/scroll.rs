@@ -297,6 +297,13 @@ impl FenceViewState {
         self.scroll_y != old
     }
 
+    /// Whether any part of `cell` is on screen at the current offset. Rename uses this
+    /// softer test: a clicked item never triggers a reveal scroll, while an offscreen
+    /// programmatic rename still can.
+    pub(super) fn cell_overlaps_view(cell: &CellRect, scroll_y: f32, view_h: f32) -> bool {
+        cell.y + cell.h > scroll_y && cell.y < scroll_y + view_h
+    }
+
     /// Scrolls so item `index` is fully visible (relative to where the offset is heading):
     /// animated for keyboard navigation, immediate when the caller needs final geometry now.
     pub(super) fn scroll_into_view(&mut self, index: usize, animate: bool) {

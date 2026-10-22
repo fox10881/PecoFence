@@ -192,11 +192,16 @@ impl FenceViewState {
     }
 
     pub(super) fn grid_metrics(&self) -> GridMetrics {
-        GridMetrics::for_icon_size(self.icon_size, self.label_lines)
+        let metrics = GridMetrics::for_icon_size(self.icon_size, self.label_lines)
             .with_shape(self.icon_shape)
             .with_line_h(self.label_line_h())
             .with_spacing(self.spacing)
-            .with_gaps(self.spacing_x, self.spacing_y)
+            .with_gaps(self.spacing_x, self.spacing_y);
+        if self.icon_frame_style == IconFrameStyle::SolidWhite {
+            metrics.with_min_icon_top(SOLID_FRAME_TOP_PAD)
+        } else {
+            metrics
+        }
     }
 
     /// This fence's label font options (「标签字体」/「标签字重」) as the shared

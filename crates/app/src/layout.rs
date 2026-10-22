@@ -100,6 +100,17 @@ impl GridMetrics {
         self
     }
 
+    /// Raises the icon's top pad without losing the space below it. Solid-white cards use
+    /// this so the image always has a fixed margin from the card's top edge.
+    pub fn with_min_icon_top(mut self, min_top: f32) -> Self {
+        let top = min_top.max(0.0);
+        if self.icon_top < top {
+            self.cell_h += top - self.icon_top;
+            self.icon_top = top;
+        }
+        self
+    }
+
     /// Per-axis gap overrides in DIPs (`FenceView.spacing_x` / `spacing_y`): each set axis
     /// replaces the named `spacing` preset's effect on it. `gap_x` is the space added beside
     /// the icon box; `gap_y` is the space added below it — both collapse to flush at 0.0
@@ -1314,6 +1325,20 @@ mod tests {
             .with_line_h(20.0)
             .with_spacing(pecofence_core::Spacing::Compact);
         assert_eq!(compact.cell_h, big.cell_h - 8.0);
+    }
+
+    /// Solid-white cards need a fixed icon top pad even when row spacing is set flush.
+    #[test]
+    fn solid_card_metrics_keep_the_icon_top_pad() {
+        let normal = GridMetrics::for_icon_size(48, 2).with_min_icon_top(16.0);
+        assert_eq!(normal.icon_top, 16.0);
+        assert_eq!(normal.cell_h, 104.0);
+
+        let flush = GridMetrics::for_icon_size(48, 2)
+            .with_gaps(Some(0.0), Some(0.0))
+            .with_min_icon_top(16.0);
+        assert_eq!(flush.icon_top, 16.0);
+        assert_eq!(flush.cell_h, 100.0);
     }
 
     /// Any width fills: the space past the whole columns widens every column's pitch equally,

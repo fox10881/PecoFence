@@ -913,19 +913,23 @@ impl FenceWindow {
         });
     }
 
-    /// Scrolls item `item` fully into view at once (no glide) and redraws, so the caller can
-    /// place a popup on its final label rect (LVM_EDITLABEL ensures visibility before the
-    /// edit opens).
+    /// Places a popup on `item` without stealing the user's viewport: an in-flight glide
+    /// freezes at its current offset, and a partially visible item stays exactly where it
+    /// was clicked. Only a fully offscreen item gets the usual LVM_EDITLABEL reveal.
     pub fn ensure_item_visible_now(&self, item: ItemId) {
         self.with_view(|v| {
             let Some(i) = v.items.iter().position(|it| it.id == item) else {
                 return;
             };
             if let Some(t) = v.scroll_anim.take() {
-                v.scroll_y = t.target().clamp(0.0, v.scroll_max());
+                v.scroll_y = t.value_at(Instant::now()).clamp(0.0, v.scroll_max());
             }
             let before = v.scroll_y;
-            v.scroll_into_view(i, false);
+            let (layout, view_h) = v.scroll_extent();
+            let cell = layout.cell(i);
+            if !FenceViewState::cell_overlaps_view(&cell, v.scroll_y, view_h) {
+                v.scroll_into_view(i, false);
+            }
             if v.scroll_y != before && !v.rolled_up {
                 let _ = v.redraw_content();
             }
@@ -1121,14 +1125,15 @@ impl FenceWindow {
         });
     }
 
-    /// 图标外框 (FenceView.icon_frame_style): paint-only — a redraw swaps the
-    /// card frames in/out, no refit or relayout.
+    /// 图标外框 (FenceView.icon_frame_style): Solid White reserves the card's fixed
+    /// icon top pad in the grid, so toggling it can change the cell height.
     pub fn set_icon_frame_style(&self, style: IconFrameStyle) {
         self.with_view(|v| {
             if v.icon_frame_style == style {
                 return;
             }
             v.icon_frame_style = style;
+            v.snap_item_motion();
             let _ = v.redraw();
         });
     }

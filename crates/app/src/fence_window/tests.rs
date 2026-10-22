@@ -528,6 +528,21 @@ fn scroll_duration_is_capped_per_input() {
     assert!(t.is_done(t0));
 }
 
+/// Inline rename freezes the current viewport: a cell only reveals itself when it is
+/// completely outside the view, never merely because its label is clipped at an edge.
+#[test]
+fn rename_only_scrolls_a_fully_offscreen_item() {
+    let cell = CellRect {
+        x: 0.0,
+        y: 280.0,
+        w: 96.0,
+        h: 96.0,
+    };
+    assert!(FenceViewState::cell_overlaps_view(&cell, 0.0, 300.0));
+    assert!(FenceViewState::cell_overlaps_view(&cell, 375.0, 300.0));
+    assert!(!FenceViewState::cell_overlaps_view(&cell, 376.0, 300.0));
+}
+
 /// While a roll is in flight the chrome shows its end state (chevron direction, count,
 /// tab reserve) so those animate with the height instead of flipping when it lands; the
 /// progress tween is phase-locked with the height (167 ms collapse curve reaches 1 exactly

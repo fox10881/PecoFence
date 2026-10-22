@@ -991,12 +991,14 @@ impl App {
                     f.view.persistent_icon_frames = None;
                     self.state.mark_dirty();
                 }
-                // Paint-only: the grid and item fits are untouched.
+                // Solid White reserves a fixed icon top pad inside every cell.
                 if let Some(w) = self.window_for(fence)
                     && w.active_fence() == fence
                 {
                     w.set_icon_frame_style(style);
                 }
+                self.apply_cell_snap(fence);
+                self.apply_auto_height(fence);
                 self.schedule_save();
             }
             FenceProp::IconShape(shape) => {
