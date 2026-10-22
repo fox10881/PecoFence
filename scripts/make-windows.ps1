@@ -84,6 +84,9 @@ try {
   Copy-Item -LiteralPath "docs/GLASS_RENDERING.md" -Destination $common
   Copy-Item -LiteralPath "docs/DESKTOP_CONTAINERS.md" -Destination $common
   Copy-Item -LiteralPath "skills/pecofence-cli/SKILL.md" -Destination (Join-Path $common "SKILL.md")
+  $assetsStage = Join-Path $common "assets"
+  New-Item -ItemType Directory -Path $assetsStage -Force | Out-Null
+  Copy-Item -LiteralPath "assets/wallpapers" -Destination $assetsStage -Recurse
   & $Python scripts/write-license-notices.py (Join-Path $common "THIRD-PARTY-LICENSES.txt")
   if ($LASTEXITCODE -ne 0) { throw "License notice generation failed" }
 
@@ -91,7 +94,7 @@ try {
   foreach ($mode in $modes) {
     $stage = Join-Path $stagingRoot "$baseName-$mode"
     Reset-Stage $stage
-    Get-ChildItem -LiteralPath $common -File | Copy-Item -Destination $stage
+    Get-ChildItem -LiteralPath $common | Copy-Item -Destination $stage -Recurse
     $guide = if ($mode -eq "portable") { "docs/PORTABLE.md" } else { "docs/INSTALLER.md" }
     Copy-Item -LiteralPath $guide -Destination (Join-Path $stage "README.md")
     if ($mode -eq "portable") {

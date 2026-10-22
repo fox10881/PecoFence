@@ -79,6 +79,7 @@ Source: "{#PayloadDir}\THIRD-PARTY-LICENSES.txt"; DestDir: "{app}"; Flags: ignor
 Source: "{#PayloadDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PayloadDir}\UPGRADING.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PayloadDir}\SKILL.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PayloadDir}\assets\wallpapers\*"; DestDir: "{app}\assets\wallpapers"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Last: an update aborted halfway (a file in use) keeps the old app, which offers it again.
 Source: "{#PayloadDir}\pecofence.exe"; DestDir: "{app}"; Flags: ignoreversion
 

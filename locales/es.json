@@ -589,5 +589,9 @@
     "纯色": "Color sólido",
     "未选择时跟随全局文字颜色": "Si no se elige, sigue el color de texto global",
     "外框颜色": "Color del marco",
-    "选择“纯色”外框时使用；默认为纯白": "Se usa con el marco «Color sólido»; el valor predeterminado es blanco puro"
+    "选择“纯色”外框时使用；默认为纯白": "Se usa con el marco «Color sólido»; el valor predeterminado es blanco puro",
+    "打开壁纸文件夹": "Abrir la carpeta de fondos de pantalla",
+    "浏览 PecoFence 附带的 2D 书架壁纸": "Explora los fondos de estanterías 2D incluidos con PecoFence",
+    "未找到随附的壁纸文件夹": "No se encontró la carpeta de fondos incluida",
+    "无法打开壁纸文件夹": "No se pudo abrir la carpeta de fondos"
 }

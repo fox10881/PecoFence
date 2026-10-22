@@ -589,5 +589,9 @@
     "纯色": "Colore pieno",
     "未选择时跟随全局文字颜色": "Se non selezionato, segue il colore del testo globale",
     "外框颜色": "Colore della cornice",
-    "选择“纯色”外框时使用；默认为纯白": "Usata con la cornice \"Colore pieno\"; il valore predefinito è bianco puro"
+    "选择“纯色”外框时使用；默认为纯白": "Usata con la cornice \"Colore pieno\"; il valore predefinito è bianco puro",
+    "打开壁纸文件夹": "Apri cartella sfondi",
+    "浏览 PecoFence 附带的 2D 书架壁纸": "Sfoglia gli sfondi 2D per scaffali inclusi in PecoFence",
+    "未找到随附的壁纸文件夹": "Cartella degli sfondi inclusa non trovata",
+    "无法打开壁纸文件夹": "Impossibile aprire la cartella degli sfondi"
 }

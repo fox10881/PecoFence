@@ -106,6 +106,20 @@ fn snapshot_limit_text() -> String {
     )
 }
 
+/// The packaged wallpaper pack lives beside `pecofence.exe`, wherever this copy was installed.
+fn wallpapers_dir_for_exe(exe: &Path) -> PathBuf {
+    exe.parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join("assets")
+        .join("wallpapers")
+}
+
+/// `assets/wallpapers` beside this executable, or `None` for a build without the pack.
+fn bundled_wallpapers_dir() -> Option<PathBuf> {
+    let dir = wallpapers_dir_for_exe(&std::env::current_exe().ok()?);
+    dir.is_dir().then_some(dir)
+}
+
 impl App {
     /// Replaces the configuration wholesale (import / backup) and rebuilds everything.
     pub(super) fn adopt_config(&mut self, cfg: pecofence_core::Config, source: ConfigSource) {
@@ -539,6 +553,17 @@ impl App {
                     }
                     let _ = explorer.spawn();
                 }
+                Some("openWallpapersFolder") => {
+                    if let Some(dir) = bundled_wallpapers_dir() {
+                        let owner = self.settings.as_ref().map(|h| h.hwnd());
+                        if let Err(e) = shell::shell_execute(&dir, None, owner) {
+                            tracing::warn!(error = %e, path = %dir.display(), "opening wallpapers folder failed");
+                            self.settings_error(pecofence_core::i18n::text("无法打开壁纸文件夹"));
+                        }
+                    } else {
+                        self.settings_error(pecofence_core::i18n::text("未找到随附的壁纸文件夹"));
+                    }
+                }
                 Some("saveSnapshot") => {
                     // A full list refuses a new snapshot (as the CLI does) instead of
                     // dropping the oldest one.
@@ -936,5 +961,19 @@ impl App {
             window.redraw();
         }
         self.push_settings_state();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bundled_wallpapers_track_the_install_directory() {
+        let exe = Path::new(r"C:\Apps\PecoFence\pecofence.exe");
+        assert_eq!(
+            wallpapers_dir_for_exe(exe),
+            Path::new(r"C:\Apps\PecoFence\assets\wallpapers")
+        );
     }
 }

@@ -589,5 +589,9 @@
     "纯色": "Couleur unie",
     "未选择时跟随全局文字颜色": "Sans choix, suit la couleur de texte globale",
     "外框颜色": "Couleur du cadre",
-    "选择“纯色”外框时使用；默认为纯白": "Utilisée avec le cadre « Couleur unie » ; blanc pur par défaut"
+    "选择“纯色”外框时使用；默认为纯白": "Utilisée avec le cadre « Couleur unie » ; blanc pur par défaut",
+    "打开壁纸文件夹": "Ouvrir le dossier des fonds d’écran",
+    "浏览 PecoFence 附带的 2D 书架壁纸": "Parcourir les fonds d’écran d’étagères 2D fournis avec PecoFence",
+    "未找到随附的壁纸文件夹": "Le dossier des fonds d’écran fournis est introuvable",
+    "无法打开壁纸文件夹": "Impossible d’ouvrir le dossier des fonds d’écran"
 }

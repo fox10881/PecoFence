@@ -392,6 +392,8 @@
             <span class="shot" aria-hidden="true"><span class="mini-fence"><span class="preview-title">工作空间</span><span class="mini-items"><span class="file-icon folder ic">&#xE8B7;</span><span class="file-icon ic">&#xE8A5;</span><span class="file-icon sheet ic">&#xE9F9;</span></span></span></span>
             <span class="cap">Invisible Canvas · 隐形画布</span></label>
         </div></div>
+      <div class="card"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">打开壁纸文件夹</div><div class="s">浏览 PecoFence 附带的 2D 书架壁纸</div></div></div>
+        <button id="openWallpapers">打开</button></div>
       <div class="card"><div class="l"><span class="ic">&#xE7A1;</span><div><div class="t">颜色模式</div></div></div>
         <select data-bind="theme"><option value="followWindowsMode">跟随 Windows 模式</option><option value="followAppMode">跟随应用模式</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE8D3;</span><div><div class="t">文字颜色</div><div class="s">自动：液态玻璃按背后壁纸的明暗选深色或浅色，Fluent 跟随颜色模式；栅栏标题的颜色在“栅栏”页设置</div></div></div>
@@ -1351,6 +1353,7 @@
     restoreFocus(bl, backupFocus);
   }
   document.getElementById('openCfg').onclick = () => send({ type: 'action', name: 'openConfigFolder' });
+  document.getElementById('openWallpapers').onclick = () => send({ type: 'action', name: 'openWallpapersFolder' });
   document.getElementById('rateStore').onclick = () => send({ type: 'action', name: 'rateInStore' });
   document.getElementById('starRepo').onclick = () => send({ type: 'action', name: 'openRepository' });
   document.getElementById('openManual').onclick = () => send({ type: 'action', name: 'openManual' });
