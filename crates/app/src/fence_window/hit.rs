@@ -197,7 +197,7 @@ impl FenceViewState {
             .with_line_h(self.label_line_h())
             .with_spacing(self.spacing)
             .with_gaps(self.spacing_x, self.spacing_y);
-        if self.icon_frame_style == IconFrameStyle::SolidWhite {
+        if self.icon_frame_style == IconFrameStyle::SolidColor {
             metrics.with_min_icon_top(SOLID_FRAME_TOP_PAD)
         } else {
             metrics

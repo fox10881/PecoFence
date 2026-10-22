@@ -583,8 +583,11 @@
     "名称加粗后在复杂壁纸上更醒目": "Nomes em negrito ficam mais legíveis em papéis de parede complexos",
     "加粗": "Negrito",
     "图标外框": "Molduras de ícones",
-    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯白”是不透明白色卡片": "Uma moldura permanente ao redor de cada ícone: \"Translúcida\" é um nicho esmaecido com borda branca, \"Branco sólido\" é um cartão branco opaco",
+    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯色”是不透明彩色卡片": "Uma moldura permanente ao redor de cada ícone: \"Translúcida\" é um nicho esmaecido com borda branca, \"Cor sólida\" é um cartão opaco colorido",
     "关闭": "Desativado",
     "半透明": "Translúcido",
-    "纯白": "Branco sólido"
+    "纯色": "Cor sólida",
+    "未选择时跟随全局文字颜色": "Quando não definido, segue a cor de texto global",
+    "外框颜色": "Cor da moldura",
+    "选择“纯色”外框时使用；默认为纯白": "Usada quando \"Cor sólida\" está selecionada; o padrão é branco puro"
 }

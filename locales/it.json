@@ -583,8 +583,11 @@
     "名称加粗后在复杂壁纸上更醒目": "I nomi in grassetto sono più leggibili su sfondi complessi",
     "加粗": "Grassetto",
     "图标外框": "Cornici icone",
-    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯白”是不透明白色卡片": "Una cornice permanente attorno a ogni icona: \"Traslucida\" è uno scomparto velato con bordo bianco, \"Bianco pieno\" una scheda bianca opaca",
+    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯色”是不透明彩色卡片": "Una cornice permanente attorno a ogni icona: \"Traslucida\" è uno scomparto velato con bordo bianco, \"Colore pieno\" una scheda opaca colorata",
     "关闭": "Disattivo",
     "半透明": "Traslucido",
-    "纯白": "Bianco pieno"
+    "纯色": "Colore pieno",
+    "未选择时跟随全局文字颜色": "Se non selezionato, segue il colore del testo globale",
+    "外框颜色": "Colore della cornice",
+    "选择“纯色”外框时使用；默认为纯白": "Usata con la cornice \"Colore pieno\"; il valore predefinito è bianco puro"
 }

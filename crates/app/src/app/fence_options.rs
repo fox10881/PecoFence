@@ -48,6 +48,12 @@ fn parse_hex(s: &str) -> Option<[u8; 3]> {
     Some([(v >> 16) as u8, (v >> 8) as u8, v as u8])
 }
 
+/// `RRGGBB`/`#RRGGBB` stored by the new icon colour options, as render ink.
+pub(super) fn view_color(s: Option<&String>) -> Option<ColorF> {
+    let rgb = parse_hex(s?)?;
+    Some(ColorF::from_rgba8(rgb[0], rgb[1], rgb[2], 0xFF))
+}
+
 /// Every property `parse_fence_prop` accepts (the order the error message lists them in).
 pub(super) const FENCE_PROPS: &[&str] = &[
     "title",
@@ -72,7 +78,9 @@ pub(super) const FENCE_PROPS: &[&str] = &[
     "labelVisibility",
     "labelFontFamily",
     "labelFontWeight",
+    "iconTextColor",
     "iconFrames",
+    "iconFrameColor",
     "iconShape",
     "customIconSize",
     "spacingX",
@@ -147,8 +155,12 @@ pub(super) enum FenceProp {
     LabelFontFamily(Option<String>),
     /// 标签字重 (FenceView.label_font_weight): None = Normal.
     LabelFontWeight(Option<LabelFontWeight>),
+    /// 图标文字颜色 (FenceView.icon_text_color): `RRGGBB`; None = the global colour.
+    IconTextColor(Option<String>),
     /// 图标外框 (FenceView.icon_frame_style): a card frame behind every icon.
     IconFrames(IconFrameStyle),
+    /// 外框颜色 (FenceView.icon_frame_color): `RRGGBB`; None = white for SolidColor.
+    IconFrameColor(Option<String>),
     /// 图标形状 (FenceView.icon_shape): Poster draws a 2:3 centre-cropped cover.
     IconShape(IconShape),
     /// 自定义图标大小 (FenceView.custom_icon_size): None follows `iconSize`.
@@ -328,12 +340,29 @@ pub(super) fn parse_fence_prop(
                 _ => return Err(bad(ALLOWED)),
             })
         }
+        "iconTextColor" | "iconFrameColor" => {
+            const ALLOWED: &[&str] = &["#RRGGBB", "null"];
+            let color = match value {
+                serde_json::Value::Null => None,
+                serde_json::Value::String(s) if s.is_empty() => None,
+                serde_json::Value::String(s) => {
+                    Some(hex(parse_hex(s).ok_or_else(|| bad(ALLOWED))?))
+                }
+                _ => return Err(bad(ALLOWED)),
+            };
+            if prop == "iconTextColor" {
+                FenceProp::IconTextColor(color)
+            } else {
+                FenceProp::IconFrameColor(color)
+            }
+        }
         "iconFrames" => {
-            const ALLOWED: &[&str] = &["off", "translucent", "solidWhite"];
+            const ALLOWED: &[&str] = &["off", "translucent", "solidColor"];
             FenceProp::IconFrames(match as_str(ALLOWED)? {
                 "off" => IconFrameStyle::Off,
                 "translucent" => IconFrameStyle::Translucent,
-                "solidWhite" => IconFrameStyle::SolidWhite,
+                // `solidWhite` was the pre-colour spelling; keep it accepted.
+                "solidColor" | "solidWhite" => IconFrameStyle::SolidColor,
                 _ => return Err(bad(ALLOWED)),
             })
         }
@@ -675,11 +704,21 @@ impl App {
                 LabelFontWeight::Normal => "normal",
                 LabelFontWeight::Bold => "bold",
             },
+            "iconTextColor": f
+                .view
+                .icon_text_color
+                .as_deref()
+                .and_then(|s| parse_hex(s).map(hex)),
             "iconFrames": match f.view.icon_frame_style() {
                 IconFrameStyle::Off => "off",
                 IconFrameStyle::Translucent => "translucent",
-                IconFrameStyle::SolidWhite => "solidWhite",
+                IconFrameStyle::SolidColor => "solidColor",
             },
+            "iconFrameColor": f
+                .view
+                .icon_frame_color
+                .as_deref()
+                .and_then(|s| parse_hex(s).map(hex)),
             "iconShape": match f.view.effective_icon_shape() {
                 IconShape::Standard => "standard",
                 IconShape::Poster => "poster",
@@ -809,6 +848,22 @@ impl App {
                 view.label_visibility.unwrap_or_default(),
                 view.label_font_family.clone(),
                 view.label_font_weight.map(|w| w.dwrite()),
+            );
+        }
+    }
+
+    /// Pushes the shown fence's icon label/card colours to its window. Paint-only —
+    /// unlike font metrics, these never reflow the grid.
+    fn push_icon_colors(&mut self, fence: FenceId) {
+        let Some(view) = self.state.fence(fence).map(|f| f.view.clone()) else {
+            return;
+        };
+        if let Some(w) = self.window_for(fence)
+            && w.active_fence() == fence
+        {
+            w.set_icon_colors(
+                view_color(view.icon_text_color.as_ref()),
+                view_color(view.icon_frame_color.as_ref()),
             );
         }
     }
@@ -980,6 +1035,16 @@ impl App {
                 self.apply_auto_height(fence);
                 self.schedule_save();
             }
+            FenceProp::IconTextColor(color) => {
+                if let Some(f) = self.state.fence_mut(fence)
+                    && f.view.icon_text_color != color
+                {
+                    f.view.icon_text_color = color;
+                    self.state.mark_dirty();
+                }
+                self.push_icon_colors(fence);
+                self.schedule_save();
+            }
             FenceProp::IconFrames(style) => {
                 // `None` while Off, so the field leaves the file until frames are on.
                 let stored = (style != IconFrameStyle::Off).then_some(style);
@@ -991,7 +1056,7 @@ impl App {
                     f.view.persistent_icon_frames = None;
                     self.state.mark_dirty();
                 }
-                // Solid White reserves a fixed icon top pad inside every cell.
+                // SolidColor reserves a fixed icon top pad inside every cell.
                 if let Some(w) = self.window_for(fence)
                     && w.active_fence() == fence
                 {
@@ -999,6 +1064,16 @@ impl App {
                 }
                 self.apply_cell_snap(fence);
                 self.apply_auto_height(fence);
+                self.schedule_save();
+            }
+            FenceProp::IconFrameColor(color) => {
+                if let Some(f) = self.state.fence_mut(fence)
+                    && f.view.icon_frame_color != color
+                {
+                    f.view.icon_frame_color = color;
+                    self.state.mark_dirty();
+                }
+                self.push_icon_colors(fence);
                 self.schedule_save();
             }
             FenceProp::IconShape(shape) => {

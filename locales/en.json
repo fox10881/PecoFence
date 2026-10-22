@@ -583,8 +583,11 @@
     "名称加粗后在复杂壁纸上更醒目": "Bold names stay readable on busy wallpapers",
     "加粗": "Bold",
     "图标外框": "Icon frames",
-    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯白”是不透明白色卡片": "A permanent card frame around every icon: \"Translucent\" is a faint tinted slot with a white edge, \"Solid white\" is a fully opaque white card",
+    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯色”是不透明彩色卡片": "A permanent card frame around every icon: \"Translucent\" is a faint tinted slot with a white edge, \"Solid color\" is a fully opaque colored card",
     "关闭": "Off",
     "半透明": "Translucent",
-    "纯白": "Solid white"
+    "纯色": "Solid color",
+    "未选择时跟随全局文字颜色": "Defaults to the global text color",
+    "外框颜色": "Frame color",
+    "选择“纯色”外框时使用；默认为纯白": "Used when \"Solid color\" is selected; defaults to pure white"
 }

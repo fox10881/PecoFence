@@ -264,6 +264,10 @@ impl App {
                 shown.view.label_font_weight.map(|w| w.dwrite()),
             );
             w.set_icon_frame_style(shown.view.icon_frame_style());
+            w.set_icon_colors(
+                fence_options::view_color(shown.view.icon_text_color.as_ref()),
+                fence_options::view_color(shown.view.icon_frame_color.as_ref()),
+            );
             w.set_is_inbox(shown.kind == FenceKind::Inbox);
             w.set_spacing(shown.view.spacing);
             w.set_grid_extras(

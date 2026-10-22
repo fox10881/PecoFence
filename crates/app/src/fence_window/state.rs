@@ -26,6 +26,9 @@ pub struct FenceViewState {
     pub(super) label_font_weight: Option<i32>,
     /// 图标外框 (FenceView.icon_frame_style): a card frame behind every icon.
     pub(super) icon_frame_style: IconFrameStyle,
+    /// 图标文字颜色 / 外框颜色: explicit per-fence inks; None follows the theme/white.
+    pub(super) icon_text_color: Option<ColorF>,
+    pub(super) icon_frame_color: Option<ColorF>,
     pub(super) content_dirty: bool,
     pub(super) content_ink: Option<ColorF>,
     pub(super) content_draws: u64,

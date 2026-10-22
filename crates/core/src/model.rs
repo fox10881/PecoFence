@@ -726,11 +726,17 @@ pub struct FenceView {
     /// 标签字重: an explicit label weight; None = Normal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_font_weight: Option<LabelFontWeight>,
+    /// 图标文字颜色: an explicit `RRGGBB` label colour; None = the global text colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_text_color: Option<String>,
     /// 图标外框: a persistent card frame drawn behind every icon, so the shelf reads
     /// as physical slots instead of icons floating on the backdrop. None/Off = frames
     /// only on hover/selection.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon_frame_style: Option<IconFrameStyle>,
+    /// 外框颜色: the `RRGGBB` fill for a SolidColor card; None = white.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_frame_color: Option<String>,
     /// Legacy 图标外框 bool (early dev builds): `true` still reads as Translucent and
     /// is never written back — the file migrates to `iconFrameStyle` on next save.
     #[serde(default, skip_serializing)]
@@ -817,8 +823,9 @@ pub enum IconFrameStyle {
     Off,
     /// Translucent slot: faint theme-tinted fill inside a white hairline.
     Translucent,
-    /// A fully opaque white card, like a physical tile behind the icon.
-    SolidWhite,
+    /// A fully opaque coloured card, like a physical tile behind the icon.
+    #[serde(alias = "solidWhite")]
+    SolidColor,
 }
 
 /// Shape of an icon cell's icon box (「图标形状」).
@@ -917,7 +924,9 @@ impl Default for FenceView {
             label_visibility: None,
             label_font_family: None,
             label_font_weight: None,
+            icon_text_color: None,
             icon_frame_style: None,
+            icon_frame_color: None,
             persistent_icon_frames: None,
             icon_shape: None,
             custom_icon_size: None,
@@ -2695,7 +2704,7 @@ mod tests {
 
         for (style, json_name) in [
             (IconFrameStyle::Translucent, "translucent"),
-            (IconFrameStyle::SolidWhite, "solidWhite"),
+            (IconFrameStyle::SolidColor, "solidColor"),
         ] {
             let v = FenceView {
                 icon_frame_style: Some(style),
@@ -2706,6 +2715,17 @@ mod tests {
             let back: FenceView = serde_json::from_value(j).unwrap();
             assert_eq!(back.icon_frame_style(), style);
         }
+
+        // The pre-colour name keeps loading; the next save writes `solidColor`.
+        let back: FenceView = serde_json::from_str(
+            r#"{"iconSize":48,"sort":"manual","labelLines":2,"autoHeight":false,"iconFrameStyle":"solidWhite"}"#,
+        )
+        .unwrap();
+        assert_eq!(back.icon_frame_style(), IconFrameStyle::SolidColor);
+        assert_eq!(
+            serde_json::to_value(&back).unwrap()["iconFrameStyle"],
+            "solidColor"
+        );
 
         // Legacy bool migration: reads as Translucent, never re-serializes.
         let back: FenceView = serde_json::from_str(
@@ -2725,6 +2745,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(back.icon_frame_style(), IconFrameStyle::Off);
+
+        // Independent label/card colours stay out of the file until set and round-trip
+        // as hex strings (the app normalises them to RRGGBB).
+        let v = FenceView {
+            icon_text_color: Some("FFFFFF".to_string()),
+            icon_frame_color: Some("000000".to_string()),
+            ..Default::default()
+        };
+        let j = serde_json::to_value(&v).unwrap();
+        assert_eq!(j["iconTextColor"], "FFFFFF");
+        assert_eq!(j["iconFrameColor"], "000000");
+        let back: FenceView = serde_json::from_value(j).unwrap();
+        assert_eq!(back.icon_text_color.as_deref(), Some("FFFFFF"));
+        assert_eq!(back.icon_frame_color.as_deref(), Some("000000"));
     }
 
     #[test]

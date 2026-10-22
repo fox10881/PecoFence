@@ -1379,7 +1379,15 @@ impl App {
                 .and_then(Value::as_str)
                 .map(|s| s.to_string()),
             label_font_weight: text("labelFontWeight"),
+            icon_text_color: opts
+                .get("iconTextColor")
+                .and_then(Value::as_str)
+                .map(|t| with_hash(t.to_string())),
             icon_frames: text("iconFrames"),
+            icon_frame_color: opts
+                .get("iconFrameColor")
+                .and_then(Value::as_str)
+                .map(|t| with_hash(t.to_string())),
             icon_shape: match f.view.effective_icon_shape() {
                 pecofence_core::IconShape::Standard => "standard",
                 pecofence_core::IconShape::Poster => "poster",

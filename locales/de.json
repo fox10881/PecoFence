@@ -583,8 +583,11 @@
     "名称加粗后在复杂壁纸上更醒目": "Fette Namen bleiben auf unruhigen Hintergründen besser lesbar",
     "加粗": "Fett",
     "图标外框": "Symbolrahmen",
-    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯白”是不透明白色卡片": "Zeichnet dauerhaft einen Kartenrahmen um jedes Symbol: „Durchscheinend“ ist ein leicht getöntes Fach mit weißer Kante, „Reinweiß“ eine deckend weiße Karte",
+    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯色”是不透明彩色卡片": "Zeichnet dauerhaft einen Kartenrahmen um jedes Symbol: „Durchscheinend“ ist ein leicht getöntes Fach mit weißer Kante, „Einfarbig“ eine deckend farbige Karte",
     "关闭": "Aus",
     "半透明": "Durchscheinend",
-    "纯白": "Reinweiß"
+    "纯色": "Einfarbig",
+    "未选择时跟随全局文字颜色": "Ohne Auswahl folgt die Farbe der globalen Textfarbe",
+    "外框颜色": "Rahmenfarbe",
+    "选择“纯色”外框时使用；默认为纯白": "Wird verwendet, wenn „Einfarbig“ ausgewählt ist; standardmäßig reinweiß"
 }

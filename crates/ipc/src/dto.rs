@@ -189,10 +189,16 @@ pub struct FenceDto {
     /// `normal` | `bold` — 标签字重.
     #[serde(default)]
     pub label_font_weight: String,
-    /// `off` | `translucent` | `solidWhite` — 图标外框: a persistent card frame
+    /// 图标文字颜色: `#RRGGBB`, or `null` = the global text colour.
+    #[serde(default)]
+    pub icon_text_color: Option<String>,
+    /// `off` | `translucent` | `solidColor` — 图标外框: a persistent card frame
     /// behind every icon instead of only on hover/selection.
     #[serde(default)]
     pub icon_frames: String,
+    /// 外框颜色: `#RRGGBB` for a SolidColor card, or `null` = white.
+    #[serde(default)]
+    pub icon_frame_color: Option<String>,
     /// `standard` | `poster` (2:3 centre-cropped covers) — per-fence 「图标形状」.
     pub icon_shape: String,
     /// Freeform icon edge in DIPs, overriding `iconSize` while set; `null` = the preset.

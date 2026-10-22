@@ -583,8 +583,11 @@
     "名称加粗后在复杂壁纸上更醒目": "Les noms en gras restent lisibles sur les fonds d'écran chargés",
     "加粗": "Gras",
     "图标外框": "Cadres des icônes",
-    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯白”是不透明白色卡片": "Un cadre permanent autour de chaque icône : « Translucide » est un emplacement teinté à liseré blanc, « Blanc opaque » une carte blanche pleine",
+    "每个图标周围常显卡片外框：“半透明”是淡色底加白描边，“纯色”是不透明彩色卡片": "Un cadre permanent autour de chaque icône : « Translucide » est un emplacement teinté à liseré blanc, « Couleur unie » une carte opaque de couleur",
     "关闭": "Désactivé",
     "半透明": "Translucide",
-    "纯白": "Blanc opaque"
+    "纯色": "Couleur unie",
+    "未选择时跟随全局文字颜色": "Sans choix, suit la couleur de texte globale",
+    "外框颜色": "Couleur du cadre",
+    "选择“纯色”外框时使用；默认为纯白": "Utilisée avec le cadre « Couleur unie » ; blanc pur par défaut"
 }

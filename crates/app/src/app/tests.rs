@@ -423,6 +423,32 @@ mod ipc {
             FenceProp::TitleSize(Some(pecofence_core::TitleSize::ExtraLarge))
         );
         assert_eq!(
+            parse_fence_prop("iconTextColor", &json!("#ffffff")).unwrap(),
+            FenceProp::IconTextColor(Some("FFFFFF".to_string()))
+        );
+        assert_eq!(
+            parse_fence_prop("iconFrameColor", &json!("000000")).unwrap(),
+            FenceProp::IconFrameColor(Some("000000".to_string()))
+        );
+        assert_eq!(
+            parse_fence_prop("iconFrameColor", &serde_json::Value::Null).unwrap(),
+            FenceProp::IconFrameColor(None)
+        );
+        assert_eq!(
+            parse_fence_prop("iconTextColor", &json!("red"))
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidValue
+        );
+        assert_eq!(
+            parse_fence_prop("iconFrames", &json!("solidColor")).unwrap(),
+            FenceProp::IconFrames(pecofence_core::IconFrameStyle::SolidColor)
+        );
+        assert_eq!(
+            parse_fence_prop("iconFrames", &json!("solidWhite")).unwrap(),
+            FenceProp::IconFrames(pecofence_core::IconFrameStyle::SolidColor)
+        );
+        assert_eq!(
             parse_fence_prop("hideWhenEmpty", &json!(true)).unwrap(),
             FenceProp::HideWhenEmpty(true)
         );

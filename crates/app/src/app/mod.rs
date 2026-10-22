@@ -41,7 +41,7 @@ use pecofence_render::fence_chrome::FenceChrome;
 use pecofence_render::fence_chrome::FenceStyle;
 use pecofence_render::motion::Motion;
 use pecofence_render::{
-    BitmapCache, Image, MonitorBackdrop, RenderStack, Theme, ThemeMode, WallpaperPosition,
+    BitmapCache, ColorF, Image, MonitorBackdrop, RenderStack, Theme, ThemeMode, WallpaperPosition,
 };
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};

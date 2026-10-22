@@ -35,10 +35,7 @@ pub const DEFAULT_LABEL_LINE_H: f32 = 16.0;
 /// Horizontal breathing room inside each icon cell. A wider gutter keeps neighbouring
 /// multi-line CJK labels from visually running together in narrow panes.
 pub const ICON_LABEL_SIDE_INSET: f32 = 8.0;
-/// Label ink on a 纯白 icon card: opaque black, with dimmed items still readable.
-const SOLID_FRAME_LABEL: ColorF = ColorF::from_rgba8(0, 0, 0, 0xFF);
-const SOLID_FRAME_LABEL_DIM: ColorF = ColorF::from_rgba8(0x59, 0x59, 0x59, 0xFF);
-/// 纯白 cards keep the icon off their top edge; the grid guarantees this much room.
+/// Solid-colour cards keep the icon off their top edge; the grid guarantees this room.
 pub const SOLID_FRAME_TOP_PAD: f32 = 16.0;
 const SOLID_FRAME_PAD_X: f32 = 12.0;
 const SOLID_FRAME_BOTTOM_PAD: f32 = 4.0;
@@ -1158,21 +1155,23 @@ fn text_shadow(theme: &Theme, ink: ColorF) -> Option<TextShadow> {
     })
 }
 
-fn solid_card_labels(style: IconFrameStyle) -> bool {
-    style == IconFrameStyle::SolidWhite
+fn label_ink(theme: &Theme, custom: Option<ColorF>, dimmed: bool) -> ColorF {
+    match (custom, dimmed) {
+        (Some(ink), true) => with_alpha(ink, 0.75),
+        (Some(ink), false) => ink,
+        (None, true) => theme.text_secondary,
+        (None, false) => theme.text_primary,
+    }
 }
 
-fn label_ink(theme: &Theme, style: IconFrameStyle, dimmed: bool) -> ColorF {
-    if solid_card_labels(style) {
-        if dimmed {
-            SOLID_FRAME_LABEL_DIM
-        } else {
-            SOLID_FRAME_LABEL
-        }
-    } else if dimmed {
-        theme.text_secondary
+/// A hairline that separates a solid card from a matching wallpaper without turning the
+/// fill into a border-heavy tile.
+fn solid_card_stroke(fill: ColorF) -> ColorF {
+    let luminance = 0.2126 * fill.r + 0.7152 * fill.g + 0.0722 * fill.b;
+    if luminance > 0.55 {
+        ColorF::new(0.0, 0.0, 0.0, 0.10)
     } else {
-        theme.text_primary
+        ColorF::new(1.0, 1.0, 1.0, 0.24)
     }
 }
 
@@ -1341,9 +1340,14 @@ pub struct ContentDraw<'a> {
     /// never paints. When false the text pass — shadow included — is skipped
     /// entirely, so a label-free shelf costs no DirectWrite work per frame.
     pub paint_labels: bool,
+    /// 图标文字颜色 (FenceView.icon_text_color): explicit label ink; None follows
+    /// the theme's resolved global text colour.
+    pub icon_text_color: Option<ColorF>,
     /// 图标外框 (FenceView.icon_frame_style): a permanent card behind every cell
-    /// instead of only on hover/selection — a translucent slot or a solid white tile.
+    /// instead of only on hover/selection — a translucent slot or a solid colour tile.
     pub icon_frame_style: IconFrameStyle,
+    /// 外框颜色 (FenceView.icon_frame_color): the SolidColor fill; None = white.
+    pub icon_frame_color: Option<ColorF>,
     /// Cell top pad above the icon and gap between icon and label (GridMetrics).
     pub icon_top: f32,
     pub label_gap: f32,
@@ -1387,7 +1391,7 @@ struct StateBrushes {
     /// The label halo over wallpaper (Liquid Glass, text_halo), recoloured per cell.
     halo: Brush,
     /// 图标外框: the persistent per-icon card (fill + stroke), recoloured per
-    /// cell only while its icon fades; `frame_shadow` lifts a solid white tile
+    /// cell only while its icon fades; `frame_shadow` lifts a solid-colour tile
     /// off a light wallpaper.
     frame_fill: Brush,
     frame_stroke: Brush,
@@ -3330,10 +3334,10 @@ impl FenceChrome {
 
         let selected = session.create_solid_brush(theme.selection_fill)?;
         let selected_stroke = session.create_solid_brush(theme.selection_stroke)?;
-        let label =
-            session.create_solid_brush(label_ink(theme, content.icon_frame_style, false))?;
-        let label_dim =
-            session.create_solid_brush(label_ink(theme, content.icon_frame_style, true))?;
+        let base_ink = label_ink(theme, content.icon_text_color, false);
+        let label_dim_ink = label_ink(theme, content.icon_text_color, true);
+        let label = session.create_solid_brush(base_ink)?;
+        let label_dim = session.create_solid_brush(label_dim_ink)?;
 
         let mut paint_items = || -> Result<()> {
             // Bookshelf boards sit under the rows they carry; they scroll with the items.
@@ -3390,11 +3394,9 @@ impl FenceChrome {
                 .iter()
                 .find(|c| visible(c) && c.full_label.is_some());
             // A fixed 文字颜色 shadows every resting label in one pass; the unfolding one draws
-            // its own above the row it overlaps. No labels painted — or 纯白 cards, whose
-            // near-black ink needs no shadow — skips the pass.
+            // its own above the row it overlaps. No labels painted skips the pass.
             let shadowed = content.paint_labels
-                && !solid_card_labels(content.icon_frame_style)
-                && text_shadow(theme, theme.text_primary).is_some_and(|shadow| {
+                && text_shadow(theme, base_ink).is_some_and(|shadow| {
                     let format = match content.label_format {
                         Some(f) => f.clone(),
                         None => self.label_font.borrow().format.clone(),
@@ -3558,6 +3560,7 @@ impl FenceChrome {
         if alpha <= 0.0 {
             return Ok(());
         }
+        let base_ink = label_ink(theme, content.icon_text_color, false);
         let base_lines = content.label_lines as f32;
         let lines = if base_lines <= 0.0 {
             0.0
@@ -3575,8 +3578,8 @@ impl FenceChrome {
         // 图标外框: a permanent card behind every icon, painted under the state
         // layers so hover and selection still read on top; it fades with the
         // cell's alpha. Translucent = a subtle theme-tinted slot inside a crisp
-        // white hairline; 纯白 = a uniform opaque tile sized by the icon and the
-        // fence's reserved label rows, leaving added cell spacing transparent.
+        // white hairline; 纯色 = a uniform opaque tile in the chosen colour, sized
+        // by the icon and reserved label rows, leaving added cell spacing transparent.
         match content.icon_frame_style {
             IconFrameStyle::Off => {}
             IconFrameStyle::Translucent => {
@@ -3589,19 +3592,20 @@ impl FenceChrome {
                 session.fill_rounded_rect(&RoundedRect::uniform(rect, 6.0), &state.frame_fill);
                 session.draw_rounded_rect(&px.ring(rect, 6.0), &state.frame_stroke, px.hair());
             }
-            IconFrameStyle::SolidWhite => {
+            IconFrameStyle::SolidColor => {
                 let card =
                     solid_card_rect(content, Rect::from_xywh(cell.x, cell.y, cell.w, cell.h));
                 let shadow = card.offset(0.0, 1.5);
+                let fill = content
+                    .icon_frame_color
+                    .unwrap_or(ColorF::new(1.0, 1.0, 1.0, 1.0));
                 state
                     .frame_shadow
                     .set_color(with_alpha(ColorF::new(0.0, 0.0, 0.0, 1.0), 0.16 * alpha));
-                state
-                    .frame_fill
-                    .set_color(ColorF::new(1.0, 1.0, 1.0, alpha));
+                state.frame_fill.set_color(with_alpha(fill, alpha));
                 state
                     .frame_stroke
-                    .set_color(with_alpha(ColorF::new(0.0, 0.0, 0.0, 1.0), 0.10 * alpha));
+                    .set_color(with_alpha(solid_card_stroke(fill), alpha));
                 session.fill_rounded_rect(
                     &RoundedRect::uniform(shadow, SOLID_FRAME_RADIUS),
                     &state.frame_shadow,
@@ -3666,7 +3670,7 @@ impl FenceChrome {
         // A fading cell recolours the scratch brush instead of allocating one per frame.
         let brush = if alpha < 1.0 {
             state.a(with_alpha(
-                label_ink(theme, content.icon_frame_style, cell.dimmed),
+                label_ink(theme, content.icon_text_color, cell.dimmed),
                 alpha,
             ))
         } else {
@@ -3674,13 +3678,11 @@ impl FenceChrome {
         };
         // A local halo protects labels on an explicitly transparent non-glass plate (a fully
         // transparent plate). It does not frost or darken the glass between icons.
-        let halo = (!solid_card_labels(content.icon_frame_style)
-            && !shadowed
-            && (theme.liquid_glass || theme.text_halo))
-            .then(|| state.halo(halo_color(theme.text_primary, alpha)));
+        let halo = (!shadowed && (theme.liquid_glass || theme.text_halo))
+            .then(|| state.halo(halo_color(base_ink, alpha)));
         // Resting labels were shadowed in one pass before the cells.
         let shadow = if shadowed && unfold.is_some() {
-            text_shadow(theme, theme.text_primary)
+            text_shadow(theme, base_ink)
         } else {
             None
         };
@@ -3715,7 +3717,7 @@ impl FenceChrome {
     }
 }
 
-/// Uniform card size for 纯白: icon box plus its fixed pads and the fence's reserved label
+/// Uniform card size for 纯色: icon box plus its fixed pads and the fence's reserved label
 /// block. Text contents never change the rect, so every card in the grid is identical.
 fn solid_card_rect(content: &ContentDraw<'_>, cell: Rect) -> Rect {
     let label_h = if content.label_lines == 0 {
@@ -3757,21 +3759,25 @@ mod tests {
     }
 
     #[test]
-    fn solid_white_frames_use_dark_shadow_free_labels() {
+    fn icon_label_and_frame_colours_follow_explicit_choices() {
         let theme = Theme::dark();
-        for style in [IconFrameStyle::Off, IconFrameStyle::Translucent] {
-            assert!(!solid_card_labels(style));
-            assert_eq!(label_ink(&theme, style, false), theme.text_primary);
-            assert_eq!(label_ink(&theme, style, true), theme.text_secondary);
-        }
-        assert!(solid_card_labels(IconFrameStyle::SolidWhite));
+        assert_eq!(label_ink(&theme, None, false), theme.text_primary);
+        assert_eq!(label_ink(&theme, None, true), theme.text_secondary);
+
+        let custom = ColorF::from_rgba8(0xFF, 0, 0, 0xFF);
+        assert_eq!(label_ink(&theme, Some(custom), false), custom);
         assert_eq!(
-            label_ink(&theme, IconFrameStyle::SolidWhite, false),
-            SOLID_FRAME_LABEL
+            label_ink(&theme, Some(custom), true),
+            ColorF::new(1.0, 0.0, 0.0, 0.75)
+        );
+
+        assert_eq!(
+            solid_card_stroke(ColorF::from_rgba8(0xFF, 0xFF, 0xFF, 0xFF)),
+            ColorF::new(0.0, 0.0, 0.0, 0.10)
         );
         assert_eq!(
-            label_ink(&theme, IconFrameStyle::SolidWhite, true),
-            SOLID_FRAME_LABEL_DIM
+            solid_card_stroke(ColorF::from_rgba8(0, 0, 0, 0xFF)),
+            ColorF::new(1.0, 1.0, 1.0, 0.24)
         );
     }
 

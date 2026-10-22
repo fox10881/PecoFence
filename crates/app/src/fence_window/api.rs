@@ -177,6 +177,8 @@ impl FenceWindow {
             label_font_family: None,
             label_font_weight: None,
             icon_frame_style: IconFrameStyle::Off,
+            icon_text_color: None,
+            icon_frame_color: None,
             items,
             tabs: Vec::new(),
             active: fence_id,
@@ -1125,7 +1127,7 @@ impl FenceWindow {
         });
     }
 
-    /// 图标外框 (FenceView.icon_frame_style): Solid White reserves the card's fixed
+    /// 图标外框 (FenceView.icon_frame_style): Solid Color reserves the card's fixed
     /// icon top pad in the grid, so toggling it can change the cell height.
     pub fn set_icon_frame_style(&self, style: IconFrameStyle) {
         self.with_view(|v| {
@@ -1134,6 +1136,18 @@ impl FenceWindow {
             }
             v.icon_frame_style = style;
             v.snap_item_motion();
+            let _ = v.redraw();
+        });
+    }
+
+    /// 图标文字颜色 / 外框颜色: paint-only per-fence inks (no grid or label refit).
+    pub fn set_icon_colors(&self, text: Option<ColorF>, frame: Option<ColorF>) {
+        self.with_view(|v| {
+            if v.icon_text_color == text && v.icon_frame_color == frame {
+                return;
+            }
+            v.icon_text_color = text;
+            v.icon_frame_color = frame;
             let _ = v.redraw();
         });
     }
