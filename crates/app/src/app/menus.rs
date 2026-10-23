@@ -76,6 +76,24 @@ const _: () = assert!(
     CMD_TAB_ATTACH_BASE > CMD_COL_RESET_WIDTHS && CMD_TAB_ATTACH_BASE + 1000 <= CMD_SHELL_FIRST
 );
 
+/// The path 「打开文件所在位置」 selects in Explorer: shortcut targets when they resolve to a
+/// real file or folder, otherwise the desktop item itself.
+fn open_location_path(path: &Path) -> PathBuf {
+    let resolved = match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("lnk") => shell::resolved_shortcut_target(path),
+        Some("url") => shell::url_shortcut_location(path),
+        _ => None,
+    };
+    resolved
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| path.to_path_buf())
+}
+
 /// Segoe Fluent Icons glyphs beside the main tray and fence menu items (`PopupMenu::icon`).
 /// Check items keep their check mark (an item bitmap would take its place), so the lock is a
 /// pair of commands like 收起 / 展开. Outline glyphs only: filled badges outweigh the rest.
@@ -280,10 +298,11 @@ impl App {
                     && let Some(p) = item.path()
                 {
                     use std::os::windows::process::CommandExt;
+                    let target = open_location_path(Path::new(p));
                     // `/select,"<path>"`: quoted as a whole (what `arg` does for a name with
                     // a space), the argument makes Explorer open Documents instead.
                     let _ = std::process::Command::new("explorer.exe")
-                        .raw_arg(format!("/select,\"{p}\""))
+                        .raw_arg(format!("/select,\"{}\"", target.display()))
                         .spawn();
                 }
             }
@@ -989,5 +1008,27 @@ impl App {
         if menu.show_context(owner, pt.x, pt.y) == CMD_NEW_FENCE_HERE {
             self.create_fence_with_rename(rect);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::open_location_path;
+
+    #[test]
+    fn open_location_falls_back_to_the_shortcut_when_it_has_no_file_target() {
+        let dir = std::env::temp_dir().join(format!("pecofence-location-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let plain = dir.join("note.txt");
+        let remote = dir.join("site.url");
+        let broken = dir.join("broken.lnk");
+        std::fs::write(&plain, "x").unwrap();
+        std::fs::write(&remote, "[InternetShortcut]\r\nURL=steam://rungameid/1\r\n").unwrap();
+        std::fs::write(&broken, "not a shell link").unwrap();
+
+        assert_eq!(open_location_path(&plain), plain);
+        assert_eq!(open_location_path(&remote), remote);
+        assert_eq!(open_location_path(&broken), broken);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

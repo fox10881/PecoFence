@@ -1070,6 +1070,43 @@ pub fn shortcut_target(path: &Path) -> Option<String> {
     shortcut_info(path).map(|(target, _)| target)
 }
 
+/// The filesystem target a `.lnk` points at after shell resolution, without UI or a disk
+/// search. Namespace links and broken targets that have no filesystem path return `None`.
+pub fn resolved_shortcut_target(path: &Path) -> Option<PathBuf> {
+    // IShellLink::Resolve flags (shobjidl.h): no UI, do not rewrite the link, do not search
+    // the disk for a moved target and do not track the object.
+    const SLR_NO_UI: u32 = 0x1;
+    const SLR_NOUPDATE: u32 = 0x8;
+    const SLR_NOSEARCH: u32 = 0x10;
+    const SLR_NOTRACK: u32 = 0x20;
+    let w = path_wide(path);
+    // SAFETY: standard IShellLink usage; all strings and buffers outlive their calls.
+    unsafe {
+        let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).ok()?;
+        let persist: IPersistFile = link.cast().ok()?;
+        persist
+            .Load(PCWSTR(w.as_ptr()), STGM_READ as u32)
+            .ok()
+            .ok()?;
+        let _ = link.Resolve(
+            HWND::default(),
+            SLR_NO_UI | SLR_NOUPDATE | SLR_NOSEARCH | SLR_NOTRACK,
+        );
+        let mut buf = [0u16; 1024];
+        link.GetPath(
+            PWSTR(buf.as_mut_ptr()),
+            buf.len() as i32,
+            core::ptr::null_mut(),
+            0,
+        )
+        .ok()
+        .ok()?;
+        let target = crate::wide::from_wide(&buf);
+        let path = (!target.is_empty()).then(|| PathBuf::from(target))?;
+        path.is_absolute().then_some(path)
+    }
+}
+
 /// A `.lnk`'s target path and its command-line arguments (`None` when it has none).
 pub fn shortcut_info(path: &Path) -> Option<(String, Option<String>)> {
     let w = path_wide(path);
@@ -1174,9 +1211,72 @@ pub fn url_shortcut_target(path: &Path) -> Option<String> {
         .find_map(|l| l.strip_prefix("URL=").map(|u| u.trim().to_string()))
 }
 
+fn strip_prefix_case<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
+    s.get(..prefix.len())
+        .filter(|head| head.eq_ignore_ascii_case(prefix))
+        .map(|_| &s[prefix.len()..])
+}
+
+fn percent_decoded(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = bytes.get(i + 1..i + 3)?;
+            let hex = std::str::from_utf8(hex).ok()?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// A `file:` URL or absolute path in an Internet shortcut's `URL=` field, as a local path.
+fn url_file_path(url: &str) -> Option<PathBuf> {
+    let url = url.trim();
+    let Some(rest) = strip_prefix_case(url, "file://") else {
+        let path = PathBuf::from(url);
+        return path.is_absolute().then_some(path);
+    };
+    let (host, tail) = match rest.split_once('/') {
+        Some((host, tail)) => (host, tail),
+        // `file:///C:/…` leaves `/C:/…` after `file://`.
+        None => ("", rest),
+    };
+    if host.is_empty() || host.eq_ignore_ascii_case("localhost") {
+        let local = percent_decoded(tail.strip_prefix('/').unwrap_or(tail))?;
+        let path = PathBuf::from(local.replace('/', "\\"));
+        return path.is_absolute().then_some(path);
+    }
+    let share = percent_decoded(tail)?.replace('/', "\\");
+    Some(PathBuf::from(format!(r"\\{host}\{share}")))
+}
+
+/// Where a `.url` shortcut leads when its URL is a filesystem path (`file:///…` or a raw
+/// absolute path). A remote URL has no file location; an existing `WorkingDirectory=` is
+/// then the closest useful location.
+pub fn url_shortcut_location(path: &Path) -> Option<PathBuf> {
+    let text = url_file_text(path)?;
+    let mut url = None;
+    let mut working_dir = None;
+    for line in text.lines().map(str::trim) {
+        if let Some(v) = line.strip_prefix("URL=") {
+            url = url_file_path(v);
+        } else if let Some(v) = line.strip_prefix("WorkingDirectory=") {
+            working_dir = Some(PathBuf::from(v.trim()));
+        }
+    }
+    url.filter(|p| p.exists())
+        .or_else(|| working_dir.filter(|p| p.is_dir()))
+}
+
 #[cfg(test)]
 mod url_tests {
-    use super::url_shortcut_target;
+    use super::{url_shortcut_location, url_shortcut_target};
 
     /// PowerShell 5.1 writes UTF-16 with a BOM; an ANSI file may hold bytes that are not UTF-8.
     #[test]
@@ -1204,6 +1304,58 @@ mod url_tests {
         let target = url_shortcut_target(&ansi).unwrap();
         let tail = target.strip_prefix("https://example.com/").unwrap();
         assert!(!tail.is_empty() && !tail.contains('\u{FFFD}'), "{target:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn url_location_reads_file_urls_and_working_directory() {
+        let dir = std::env::temp_dir().join(format!("pecofence-url-dir-{}", std::process::id()));
+        let game_dir = dir.join("Game Dir");
+        std::fs::create_dir_all(&game_dir).unwrap();
+        let target = game_dir.join("Game.exe");
+        std::fs::write(&target, "x").unwrap();
+
+        let file_url = dir.join("game.url");
+        let url = format!(
+            "file:///{}",
+            target
+                .to_string_lossy()
+                .replace('\\', "/")
+                .replace(' ', "%20")
+        );
+        std::fs::write(&file_url, format!("[InternetShortcut]\r\nURL={url}\r\n")).unwrap();
+        assert_eq!(url_shortcut_location(&file_url), Some(target.clone()));
+
+        // Steam-style protocol URLs have no file target; an explicit working directory is
+        // still a meaningful location to open.
+        let remote = dir.join("steam-game.url");
+        std::fs::write(
+            &remote,
+            format!(
+                "[InternetShortcut]\r\nURL=steam://rungameid/123\r\nWorkingDirectory={}\r\n",
+                game_dir.display()
+            ),
+        )
+        .unwrap();
+        assert_eq!(url_shortcut_location(&remote), Some(game_dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod shortcut_tests {
+    use super::{create_shortcut, resolved_shortcut_target};
+    use crate::com::OleGuard;
+
+    #[test]
+    fn resolved_shortcut_target_reads_the_real_link_target() {
+        let _com = OleGuard::init().unwrap();
+        let dir = std::env::temp_dir().join(format!("pecofence-lnk-target-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("Game.exe");
+        std::fs::write(&target, "x").unwrap();
+        let link = create_shortcut(&target, &dir).unwrap();
+        assert_eq!(resolved_shortcut_target(&link), Some(target));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
