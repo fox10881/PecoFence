@@ -593,5 +593,10 @@
     "打开壁纸文件夹": "Abrir pasta de papéis de parede",
     "浏览 PecoFence 附带的 2D 书架壁纸": "Explorar os papéis de parede de prateleiras 2D incluídos com o PecoFence",
     "未找到随附的壁纸文件夹": "A pasta de papéis de parede incluída não foi encontrada",
-    "无法打开壁纸文件夹": "Não foi possível abrir a pasta de papéis de parede"
+    "无法打开壁纸文件夹": "Não foi possível abrir a pasta de papéis de parede",
+    "从其他栅栏复制设置": "Copiar configurações de outro grupo",
+    "复制外观和布局设置；名称、内容和排序规则保持不变": "Copia as configurações de aparência e layout; o nome, o conteúdo e as regras de classificação permanecem inalterados",
+    "复制设置的来源栅栏": "Grupo do qual copiar as configurações",
+    "确认": "Confirmar",
+    "已复制“{0}”的设置": "Configurações de “{0}” copiadas"
 }

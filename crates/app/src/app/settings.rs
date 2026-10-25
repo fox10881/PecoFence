@@ -539,6 +539,16 @@ impl App {
                         self.add_template(template);
                     }
                 }
+                Some("copyFenceSettings") => {
+                    let fence = |key: &str| {
+                        v.get(key)
+                            .and_then(|i| i.as_str())
+                            .and_then(|i| uuid::Uuid::parse_str(i).ok())
+                    };
+                    if let (Some(target), Some(source)) = (fence("id"), fence("source")) {
+                        self.copy_fence_settings(target, source);
+                    }
+                }
                 Some("openConfigFolder") => {
                     // Explorer opens Documents for a path it cannot see: hand it the real one.
                     use std::os::windows::process::CommandExt;

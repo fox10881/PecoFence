@@ -779,6 +779,86 @@ impl App {
         self.push_settings_state();
     }
 
+    /// 「从其他栅栏复制设置」: the source fence's look — its `view` and the appearance
+    /// overrides — lands on the target. Identity and content (id, title, kind, source,
+    /// geometry, items, lock/quick-hide flags) stay the target's own, and so do the
+    /// sorting rules (`sort`, `reverse`, `group_by_date`). Window-level fields (opacity,
+    /// tint, the title row, auto height) resolve through each side's tab host exactly
+    /// like `fence_options_json` shows them; a tab's own fields revive when it splits out.
+    pub(super) fn copy_fence_settings(&mut self, target: FenceId, source: FenceId) {
+        if target == source {
+            return;
+        }
+        let src_host = self.state.host_of(source);
+        let dst_host = self.state.host_of(target);
+        let (Some(src), Some(src_host_f)) = (
+            self.state.fence(source).cloned(),
+            self.state.fence(src_host).cloned(),
+        ) else {
+            return;
+        };
+        if self.state.fence(target).is_none() {
+            return;
+        }
+        let sa = src.appearance.clone().unwrap_or_default();
+        let ha = src_host_f.appearance.clone().unwrap_or_default();
+        let app = pecofence_core::AppearanceOverride {
+            tint_rgb: ha.tint_rgb,
+            opacity: ha.opacity,
+            backdrop: ha.backdrop,
+            title_rgb: sa.title_rgb,
+            title_size: sa.title_size,
+            title_on_hover: ha.title_on_hover,
+            title_hidden: ha.title_hidden,
+            tint_title_only: ha.tint_title_only,
+            tab_rgb: sa.tab_rgb,
+        };
+        if let Some(f) = self.state.fence_mut(target) {
+            let keep = (f.view.sort, f.view.reverse, f.view.group_by_date);
+            f.view = src.view.clone();
+            (f.view.sort, f.view.reverse, f.view.group_by_date) = keep;
+            // Like `edit_appearance`: an all-default override leaves the file again.
+            f.appearance =
+                (app != pecofence_core::AppearanceOverride::default()).then(|| app.clone());
+            f.hide_title_icon = src.hide_title_icon;
+        }
+        if let Some(h) = self.state.fence_mut(dst_host) {
+            let mut a = h.appearance.clone().unwrap_or_default();
+            (
+                a.tint_rgb,
+                a.opacity,
+                a.backdrop,
+                a.title_on_hover,
+                a.title_hidden,
+                a.tint_title_only,
+            ) = (
+                app.tint_rgb,
+                app.opacity,
+                app.backdrop,
+                app.title_on_hover,
+                app.title_hidden,
+                app.tint_title_only,
+            );
+            h.appearance = (a != pecofence_core::AppearanceOverride::default()).then_some(a);
+            h.view.auto_height = src_host_f.view.auto_height;
+        }
+        self.state.mark_dirty();
+        // One sweep instead of every setter in turn: push view + appearance to the
+        // window, re-fit the cells, refresh the tab strip, and drop icon requests the
+        // new size makes stale.
+        self.apply_fence_view(target);
+        self.apply_shelf(target);
+        self.refresh_fence(target);
+        self.drop_unneeded_icon_requests();
+        self.apply_cell_snap(target);
+        self.schedule_save();
+        self.push_settings_state();
+        self.settings_toast(&pecofence_core::i18n::format(
+            "已复制“{0}”的设置",
+            std::slice::from_ref(&src.title),
+        ));
+    }
+
     /// Pushes the shown fence's 3D-shelf view into its window and re-fits the bounding
     /// box: turning the mode on adds the stored skew's spread, turning it off drops
     /// whatever spread the window has (the slab — the unsheared rect — does not move).

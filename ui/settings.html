@@ -464,6 +464,8 @@
       <div id="fenceBody">
       <div class="card"><div class="l"><span class="ic">&#xE8AC;</span><div><div class="t">栅栏名称</div></div></div>
         <input type="text" id="fenceTitle" data-fence="title" maxlength="120"></div>
+      <div class="card" id="fenceCopyRow"><div class="l"><span class="ic">&#xE8C8;</span><div><div class="t">从其他栅栏复制设置</div><div class="s">复制外观和布局设置；名称、内容和排序规则保持不变</div></div></div>
+        <div class="actions"><select id="fenceCopySrc" aria-label="复制设置的来源栅栏"></select><button id="fenceCopyBtn">确认</button></div></div>
       <h3>外观</h3>
       <div class="card"><div class="l"><span class="ic">&#xE744;</span><div><div class="t">不透明度</div><div class="s">默认：透出桌面。更厚实：多一层底色。全透明：鼠标悬停时才显示玻璃。</div></div></div>
         <select id="fenceOpacity" data-fence="opacity"><option value="transparent">全透明</option><option value="clear">更透明</option><option value="default">默认</option><option value="solid">更厚实</option></select></div>
@@ -998,6 +1000,13 @@
     document.getElementById('fencePortalGroup').style.display = f.portal ? '' : 'none';
     document.getElementById('fenceHideEmpty').style.display = f.kind === 'inbox' ? '' : 'none';
     document.getElementById('fencePortalHeading').textContent = t("栅栏页\x04文件夹");
+    // 「从其他栅栏复制设置」: every other fence is a source; Confirm applies its look.
+    const copySrc = document.getElementById('fenceCopySrc'), copyBtn = document.getElementById('fenceCopyBtn');
+    const others = fences.filter(o => o.id !== f.id);
+    const copyOpts = others.map(o => `<option value="${esc(o.id)}">${esc(fenceOption(o))}</option>`).join('');
+    if (copySrc.innerHTML !== copyOpts) copySrc.innerHTML = copyOpts;
+    copySrc.disabled = copyBtn.disabled = !others.length;
+    copyBtn.onclick = () => { if (copySrc.value) send({ type: 'action', name: 'copyFenceSettings', id: f.id, source: copySrc.value }); };
     const tintSel = document.querySelector('[data-fence=tint]');
     const palette = `<option value="">${esc(t("无"))}</option>` + (state.tintPalette || []).map(c => `<option value="${esc(c.hex)}">${esc(t(c.name))}</option>`).join('');
     if (tintSel.innerHTML !== palette) tintSel.innerHTML = palette;

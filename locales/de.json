@@ -593,5 +593,10 @@
     "打开壁纸文件夹": "Hintergrundbild-Ordner öffnen",
     "浏览 PecoFence 附带的 2D 书架壁纸": "Durchsuchen Sie die mit PecoFence mitgelieferten 2D-Regal-Hintergrundbilder",
     "未找到随附的壁纸文件夹": "Der mitgelieferte Ordner für Hintergrundbilder wurde nicht gefunden",
-    "无法打开壁纸文件夹": "Der Ordner für Hintergrundbilder konnte nicht geöffnet werden"
+    "无法打开壁纸文件夹": "Der Ordner für Hintergrundbilder konnte nicht geöffnet werden",
+    "从其他栅栏复制设置": "Einstellungen aus einem anderen Bereich kopieren",
+    "复制外观和布局设置；名称、内容和排序规则保持不变": "Kopiert Darstellung und Layout; Name, Inhalt und Sortierregeln bleiben unverändert",
+    "复制设置的来源栅栏": "Bereich, aus dem Einstellungen kopiert werden",
+    "确认": "Bestätigen",
+    "已复制“{0}”的设置": "Einstellungen von „{0}“ kopiert"
 }

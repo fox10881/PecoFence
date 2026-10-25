@@ -593,5 +593,10 @@
     "打开壁纸文件夹": "Open Wallpapers Folder",
     "浏览 PecoFence 附带的 2D 书架壁纸": "Browse the ready-made 2D shelf wallpapers included with PecoFence",
     "未找到随附的壁纸文件夹": "The bundled wallpapers folder was not found",
-    "无法打开壁纸文件夹": "Could not open the wallpapers folder"
+    "无法打开壁纸文件夹": "Could not open the wallpapers folder",
+    "从其他栅栏复制设置": "Copy settings from another fence",
+    "复制外观和布局设置；名称、内容和排序规则保持不变": "Copies appearance and layout settings; the name, contents and sorting rules stay unchanged",
+    "复制设置的来源栅栏": "Fence to copy settings from",
+    "确认": "Confirm",
+    "已复制“{0}”的设置": "Copied settings from “{0}”"
 }

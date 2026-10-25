@@ -593,5 +593,10 @@
     "打开壁纸文件夹": "Abrir la carpeta de fondos de pantalla",
     "浏览 PecoFence 附带的 2D 书架壁纸": "Explora los fondos de estanterías 2D incluidos con PecoFence",
     "未找到随附的壁纸文件夹": "No se encontró la carpeta de fondos incluida",
-    "无法打开壁纸文件夹": "No se pudo abrir la carpeta de fondos"
+    "无法打开壁纸文件夹": "No se pudo abrir la carpeta de fondos",
+    "从其他栅栏复制设置": "Copiar la configuración de otro grupo",
+    "复制外观和布局设置；名称、内容和排序规则保持不变": "Copia la apariencia y el diseño; el nombre, el contenido y las reglas de ordenación no cambian",
+    "复制设置的来源栅栏": "Grupo del que copiar la configuración",
+    "确认": "Confirmar",
+    "已复制“{0}”的设置": "Configuración de «{0}» copiada"
 }
