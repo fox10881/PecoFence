@@ -10,24 +10,38 @@ use crate::desktop;
 use crate::wide::to_wide;
 use crate::wmf_bindings::{
     D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL, D3D_FEATURE_LEVEL_9_1, D3D_FEATURE_LEVEL_9_3,
-    D3D_FEATURE_LEVEL_10_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_11_0,
-    D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice,
-    GUID_ContainerFormatJpeg, GUID_WICPixelFormat24bppBGR, GetParent, HALFTONE, ID3D11Device,
-    ID3D11DeviceContext, IMF2DBuffer, IMFAttributes, IMFDXGIDeviceManager, IMFMediaBuffer,
-    IMFSample, IMFSourceReader, IMFTransform, IWICBitmapEncoder, IWICBitmapFrameEncode,
-    MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE,
-    MF_SOURCE_READER_ALL_STREAMS, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-    MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED, MF_SOURCE_READERF_ENDOFSTREAM,
-    MF_SOURCE_READERF_ERROR, MF_VERSION, MFCreateAttributes, MFCreateDXGIDeviceManager,
-    MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Video, MFSTARTUP_NOSOCKET,
-    MFShutdown, MFStartup, PROPVARIANT, SRCCOPY, SetParent, SetStretchBltMode, StretchDIBits,
-    VARTYPE, WICBitmapEncoderNoCache,
+    D3D_FEATURE_LEVEL_10_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_11_0, D3D11_CPU_ACCESS_READ,
+    D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE, D3D11_SDK_VERSION,
+    D3D11_TEX2D_VPIV, D3D11_TEX2D_VPOV, D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
+    D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE, D3D11_VIDEO_PROCESSOR_CONTENT_DESC,
+    D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_INPUT, D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_OUTPUT,
+    D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0,
+    D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC, D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0,
+    D3D11_VIDEO_PROCESSOR_STREAM, D3D11_VIDEO_USAGE_OPTIMAL_SPEED, D3D11_VPIV_DIMENSION_TEXTURE2D,
+    D3D11_VPOV_DIMENSION_TEXTURE2D, D3D11CreateDevice, DCompositionCreateDevice2,
+    DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_NV12, DXGI_RATIONAL,
+    DXGI_SAMPLE_DESC, DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1,
+    DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE, GUID_ContainerFormatJpeg,
+    GUID_WICPixelFormat24bppBGR, GetParent, HALFTONE, ID3D11Device, ID3D11DeviceContext,
+    ID3D11Texture2D, ID3D11VideoContext, ID3D11VideoDevice, ID3D11VideoProcessor,
+    ID3D11VideoProcessorEnumerator, ID3D11VideoProcessorInputView, ID3D11VideoProcessorOutputView,
+    IDCompositionDesktopDevice, IDCompositionTarget, IDCompositionVisual2, IDXGIAdapter,
+    IDXGIDevice, IDXGIFactory2, IDXGIOutput, IDXGISwapChain1, IMF2DBuffer, IMFAttributes,
+    IMFDXGIBuffer, IMFDXGIDeviceManager, IMFMediaBuffer, IMFSample, IMFSourceReader, IMFTransform,
+    IWICBitmapEncoder, IWICBitmapFrameEncode, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE,
+    MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READER_ALL_STREAMS,
+    MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED,
+    MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR, MF_VERSION, MFCreateAttributes,
+    MFCreateDXGIDeviceManager, MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Video,
+    MFSTARTUP_NOSOCKET, MFShutdown, MFStartup, PROPVARIANT, SRCCOPY, SetParent, SetStretchBltMode,
+    StretchDIBits, VARTYPE, WICBitmapEncoderNoCache,
 };
+use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::time::{Duration, Instant};
-use windows_core::{Error, GUID, Interface, PCWSTR, Result};
+use windows_core::{Error, GUID, IUnknown, Interface, PCWSTR, Result};
 
 const WM_SPAWN_WORKER: u32 = 0x052C;
 const SMTO_NORMAL: u32 = 0x0000;
@@ -143,12 +157,14 @@ enum OutputKind {
     Rgb32,
 }
 
-/// Creates an `IMFDXGIDeviceManager` backed by a D3D11 device on the system's default adapter —
-/// on low-end hardware that is the integrated GPU (Iris Xe & friends); no discrete card
-/// required. The decoder MFT can then run on the GPU's media engine via DXVA instead of burning
-/// CPU cores. Returns `None` when no hardware D3D11 device exists so callers can fall back to
-/// software decode.
-fn create_d3d_manager() -> Option<IMFDXGIDeviceManager> {
+/// Creates a D3D11 device on the system's default adapter — on low-end hardware that is the
+/// integrated GPU (Iris Xe & friends); no discrete card required — plus its immediate context
+/// and an `IMFDXGIDeviceManager` bound to it. The device powers three things at once: the
+/// DXVA decoder inside the source reader, the D3D11 video processor used for on-GPU
+/// NV12→BGRA conversion/scaling, and the DirectComposition swap chain that presents frames
+/// without ever leaving VRAM. Returns `None` when no hardware D3D11 device exists so callers
+/// can fall back to software decode.
+fn create_d3d_device() -> Option<(ID3D11Device, ID3D11DeviceContext, IMFDXGIDeviceManager)> {
     const LEVELS: [D3D_FEATURE_LEVEL; 5] = [
         D3D_FEATURE_LEVEL_11_0,
         D3D_FEATURE_LEVEL_10_1,
@@ -186,18 +202,29 @@ fn create_d3d_manager() -> Option<IMFDXGIDeviceManager> {
         if manager.ResetDevice(&device, token).is_err() {
             return None;
         }
-        Some(manager)
+        Some((device, context?, manager))
     }
 }
 
+/// A successfully opened source reader plus the negotiated stream's metrics. `fps_num`/`fps_den`
+/// carry the raw `MF_MT_FRAME_RATE` rational so the presenter can build a video-processor
+/// descriptor and compute the exact frame interval.
+struct ReaderOpened {
+    reader: IMFSourceReader,
+    width: u32,
+    height: u32,
+    stride: i32,
+    frame_interval: Duration,
+    fps_num: u32,
+    fps_den: u32,
+    kind: OutputKind,
+}
+
 /// Validates that `path` is a readable MP4 file with an H.264 video stream and opens an
-/// `IMFSourceReader`. Hardware decode via DXVA is preferred (the video processor downloads
-/// finished frames to system memory, so the `Lock2D` read path is identical to software); when
-/// no D3D11 device exists or the hardware path is refused it falls back to the lean software
-/// paths — NV12 first, then RGB32 with the video processor.
-fn open_h264_reader(
-    path: &Path,
-) -> std::result::Result<(IMFSourceReader, u32, u32, i32, Duration, OutputKind), String> {
+/// `IMFSourceReader` in the software-decode configuration (NV12 direct decode first, RGB32 via
+/// the video processor as a fallback). This path never installs a D3D manager — it exists for
+/// machines without a usable hardware D3D11 device or where the GPU pipeline failed to init.
+fn open_sw_reader(path: &Path) -> std::result::Result<ReaderOpened, String> {
     tracing::debug!(path = %path.display(), "wmf: validating and opening MP4 file");
     if !path
         .extension()
@@ -214,21 +241,6 @@ fn open_h264_reader(
         .to_string_lossy()
         .trim_start_matches(r"\\?\")
         .to_string();
-    if let Some(manager) = create_d3d_manager() {
-        // RGB32 first so the video processor converts NV12→BGRA on the GPU; NV12 keeps the
-        // CPU conversion as the cheaper alternative if RGB32 output is refused.
-        for kind in [OutputKind::Rgb32, OutputKind::Nv12] {
-            match try_open_reader(&clean_path, kind, Some(&manager)) {
-                Ok(ok) => return Ok(ok),
-                Err(e) => {
-                    tracing::debug!(error = %e, output = ?kind, "wmf: hardware reader config refused")
-                }
-            }
-        }
-        tracing::warn!("wmf: DXVA hardware decode refused; falling back to software decode");
-    } else {
-        tracing::debug!("wmf: no D3D11 device; software decode");
-    }
     match try_open_reader(&clean_path, OutputKind::Nv12, None) {
         Ok(ok) => Ok(ok),
         Err(lean_err) => {
@@ -245,7 +257,7 @@ fn try_open_reader(
     clean_path: &str,
     kind: OutputKind,
     d3d_manager: Option<&IMFDXGIDeviceManager>,
-) -> std::result::Result<(IMFSourceReader, u32, u32, i32, Duration, OutputKind), String> {
+) -> std::result::Result<ReaderOpened, String> {
     let wide = to_wide(clean_path);
     // SAFETY: COM and Media Foundation calls on valid local buffers/interfaces.
     unsafe {
@@ -387,23 +399,44 @@ fn try_open_reader(
             tracing::debug!("wmf: decoder MF_LOW_LATENCY enabled");
         }
 
-        let (w, h, stride, interval) = query_stream_metrics(&reader)?;
+        let metrics = query_stream_metrics(&reader)?;
         tracing::info!(
-            width = w,
-            height = h,
-            stride,
-            frame_interval_ms = interval.as_millis(),
+            width = metrics.w,
+            height = metrics.h,
+            stride = metrics.stride,
+            frame_interval_ms = metrics.interval.as_millis(),
+            fps_num = metrics.fps_num,
+            fps_den = metrics.fps_den,
             output = ?kind,
             dxva = d3d_manager.is_some(),
             "wmf: source reader ready"
         );
-        Ok((reader, w, h, stride, interval, kind))
+        Ok(ReaderOpened {
+            reader,
+            width: metrics.w,
+            height: metrics.h,
+            stride: metrics.stride,
+            frame_interval: metrics.interval,
+            fps_num: metrics.fps_num,
+            fps_den: metrics.fps_den,
+            kind,
+        })
     }
+}
+
+/// Stream metrics queried from the reader's current media type.
+struct StreamMetrics {
+    w: u32,
+    h: u32,
+    stride: i32,
+    interval: Duration,
+    fps_num: u32,
+    fps_den: u32,
 }
 
 unsafe fn query_stream_metrics(
     reader: &IMFSourceReader,
-) -> std::result::Result<(u32, u32, i32, Duration), String> {
+) -> std::result::Result<StreamMetrics, String> {
     // SAFETY: queries current media type attributes on a live source reader.
     unsafe {
         let current = reader
@@ -421,17 +454,28 @@ unsafe fn query_stream_metrics(
             .GetUINT32(&MF_MT_DEFAULT_STRIDE)
             .map(|s| s as i32)
             .unwrap_or((w * 4) as i32);
-        let interval = current
+        // Native frame-rate rational straight from MF_MT_FRAME_RATE: 60 fps reports
+        // num/den = 60000/1001 (16.68 ms), a hardcoded 33 ms would halve its speed.
+        let (fps_num, fps_den) = current
             .GetUINT64(&MF_MT_FRAME_RATE)
             .ok()
-            .and_then(|rate| {
-                let num = rate >> 32;
-                let den = rate & 0xFFFF_FFFF;
-                (num > 0 && den > 0).then(|| Duration::from_nanos((den * 1_000_000_000) / num))
-            })
-            .unwrap_or(Duration::from_millis(33))
-            .clamp(Duration::from_millis(8), Duration::from_millis(100));
-        Ok((w, h, stride, interval))
+            .map(|rate| ((rate >> 32) as u32, (rate & 0xFFFF_FFFF) as u32))
+            .filter(|(num, den)| *num > 0 && *den > 0)
+            .unwrap_or((30, 1));
+        let interval = Duration::from_nanos(
+            (fps_den as u64 * 1_000_000_000)
+                .checked_div(fps_num as u64)
+                .unwrap_or(33_333_333),
+        )
+        .clamp(Duration::from_millis(8), Duration::from_millis(100));
+        Ok(StreamMetrics {
+            w,
+            h,
+            stride,
+            interval,
+            fps_num,
+            fps_den,
+        })
     }
 }
 
@@ -485,12 +529,17 @@ unsafe fn read_next_frame(
                 return false;
             }
             if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED) != 0
-                && let Ok((w, h, s, _)) = query_stream_metrics(reader)
+                && let Ok(m) = query_stream_metrics(reader)
             {
-                tracing::debug!(w, h, s, "wmf: media type changed mid-stream");
-                *width = w;
-                *height = h;
-                *stride = s;
+                tracing::debug!(
+                    w = m.w,
+                    h = m.h,
+                    s = m.stride,
+                    "wmf: media type changed mid-stream"
+                );
+                *width = m.w;
+                *height = m.h;
+                *stride = m.stride;
             }
             if (flags & MF_SOURCE_READERF_ENDOFSTREAM) != 0 {
                 tracing::debug!("wmf: reached end of stream; rewinding to 0");
@@ -650,10 +699,13 @@ unsafe fn copy_strided_rows(
 pub fn decode_video_first_frame(path: &Path) -> std::result::Result<VideoFrame, String> {
     let _com = ComThreadGuard::init().map_err(|e| format!("COM init: {e}"))?;
     let _mf = MfSessionGuard::init().map_err(|e| format!("MFStartup: {e}"))?;
-    let (reader, mut w, mut h, mut stride, _, kind) = open_h264_reader(path)?;
+    let opened = open_sw_reader(path)?;
+    let (mut w, mut h, mut stride, kind) =
+        (opened.width, opened.height, opened.stride, opened.kind);
+    let reader = &opened.reader;
     let mut bgra = Vec::new();
     // SAFETY: reader is a valid opened IMFSourceReader on this thread.
-    let ok = unsafe { read_next_frame(&reader, kind, &mut w, &mut h, &mut stride, &mut bgra) };
+    let ok = unsafe { read_next_frame(reader, kind, &mut w, &mut h, &mut stride, &mut bgra) };
     if !ok || bgra.is_empty() {
         return Err(pecofence_core::i18n::text("无法解码此 MP4 视频文件").to_string());
     }
@@ -1108,6 +1160,700 @@ unsafe fn present_hwnd(hwnd: HWND) {
     }
 }
 
+// ── Zero-copy GPU path ─────────────────────────────────────────────────────────
+//
+// The DXVA decoder hands us `IMFSample`s whose buffers are `IMFDXGIBuffer`s — D3D11
+// textures living in GPU memory on our own device. Instead of locking them on the CPU
+// (`IMF2DBuffer::Lock2D`) and blitting pixels through GDI (`StretchDIBits`), the frame
+// goes texture → `ID3D11VideoProcessor` (on-GPU NV12→BGRA + cover-crop scale) →
+// `IDXGISwapChain1` → `IDComposition` visual on the desktop HWND. The CPU never touches
+// a pixel; the only maps done are a thumbnail copy once per 30 frames for `.peco`
+// previews.
+
+/// `DXGI_USAGE_RENDER_TARGET_OUTPUT` — not emitted as a named constant by bindgen.
+const DXGI_USAGE_RENDER_TARGET_OUTPUT: DXGI_USAGE = DXGI_USAGE(0x20);
+
+/// Reads the next decoded `IMFSample` from `reader`, handling end-of-stream rewinds
+/// internally. Media-type changes are reported via `dims_changed` so the caller can
+/// re-query metrics. Retries up to 6 reads to skip ticks/ticks-only samples.
+unsafe fn read_next_sample(
+    reader: &IMFSourceReader,
+    dims_changed: &mut bool,
+) -> std::result::Result<IMFSample, String> {
+    // SAFETY: calls IMFSourceReader::ReadSample on a live reader; out-params point to
+    // valid stack slots.
+    unsafe {
+        for _ in 0..6 {
+            let mut flags: u32 = 0;
+            let mut timestamp: i64 = 0;
+            let mut sample: Option<IMFSample> = None;
+            let hr = reader.ReadSample(
+                MF_SOURCE_READER_FIRST_VIDEO_STREAM as u32,
+                0,
+                None,
+                Some(&mut flags),
+                Some(&mut timestamp),
+                Some(&mut sample),
+            );
+            if hr.is_err() {
+                return Err(format!("ReadSample: {}", hr.0));
+            }
+            if (flags & MF_SOURCE_READERF_ERROR) != 0 {
+                return Err(format!("ReadSample error flag ({flags:#x})"));
+            }
+            if (flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED) != 0 {
+                *dims_changed = true;
+            }
+            if (flags & MF_SOURCE_READERF_ENDOFSTREAM) != 0 {
+                if !rewind_reader(reader) {
+                    return Err("SetCurrentPosition(0) rewind failed".to_string());
+                }
+                continue;
+            }
+            match sample {
+                Some(s) => return Ok(s),
+                None => continue,
+            }
+        }
+        Err("ReadSample: exhausted retries without a sample".to_string())
+    }
+}
+
+/// Extracts the D3D11 texture + subresource index backing a decoded sample. The returned
+/// buffer must stay alive until the GPU has consumed the texture — MF hands the surface
+/// back to the decoder pool the moment it is released.
+unsafe fn sample_texture(
+    sample: &IMFSample,
+) -> std::result::Result<(IMFMediaBuffer, ID3D11Texture2D, u32), String> {
+    // SAFETY: COM calls on live interfaces; GetResource/AddRef keep the texture alive.
+    unsafe {
+        let buffer = sample
+            .GetBufferByIndex(0)
+            .map_err(|e| format!("GetBufferByIndex: {e}"))?;
+        let dxgi = buffer
+            .cast::<IMFDXGIBuffer>()
+            .map_err(|_| "sample buffer is not a DXGI surface (DXVA inactive)".to_string())?;
+        let tex: ID3D11Texture2D = dxgi
+            .GetResource()
+            .map_err(|e| format!("IMFDXGIBuffer::GetResource: {e}"))?;
+        let slice = dxgi.GetSubresourceIndex().unwrap_or(0);
+        Ok((buffer, tex, slice))
+    }
+}
+
+/// Owns the GPU-side presentation state for the zero-copy path: the D3D11 video
+/// processor (NV12→BGRA + cover-crop on the GPU), a 2-buffer flip swap chain, and the
+/// DirectComposition visual that surfaces it on the desktop window.
+struct GpuPipeline {
+    context: ID3D11DeviceContext,
+    video_dev: ID3D11VideoDevice,
+    video_ctx: ID3D11VideoContext,
+    enumerator: ID3D11VideoProcessorEnumerator,
+    vp: ID3D11VideoProcessor,
+    swapchain: IDXGISwapChain1,
+    out_view: ID3D11VideoProcessorOutputView,
+    // Keeps the DComp device alive for the target's lifetime; swap-chain presents do
+    // not need it (Commit happens once at init).
+    _dcomp: IDCompositionDesktopDevice,
+    _target: IDCompositionTarget,
+    _visual: IDCompositionVisual2,
+    staging: ID3D11Texture2D,
+    src_rect: crate::wmf_bindings::RECT,
+    dst_rect: crate::wmf_bindings::RECT,
+    vid_w: usize,
+    vid_h: usize,
+}
+
+impl GpuPipeline {
+    /// Builds the whole presentation chain on `hwnd` (`win_w`x`win_h` at monitor size)
+    /// for a `vid_w`x`vid_h` NV12 stream at `fps_num`/`fps_den`.
+    /// SAFETY: COM/D3D11/DXGI/DComp creation calls on live interfaces.
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn new(
+        hwnd: HWND,
+        device: &ID3D11Device,
+        context: &ID3D11DeviceContext,
+        vid_w: u32,
+        vid_h: u32,
+        win_w: u32,
+        win_h: u32,
+        fps_num: u32,
+        fps_den: u32,
+    ) -> std::result::Result<Self, String> {
+        unsafe {
+            let video_dev: ID3D11VideoDevice = device
+                .cast()
+                .map_err(|e| format!("ID3D11VideoDevice: {e}"))?;
+            let video_ctx: ID3D11VideoContext = context
+                .cast()
+                .map_err(|e| format!("ID3D11VideoContext: {e}"))?;
+            let unk: IUnknown = device.cast().map_err(|e| e.to_string())?;
+
+            // 2-buffer flip swap chain for composition — the minimum DXGI allows for a
+            // flip model, so iGPU shared memory stays tight.
+            let sc_desc = DXGI_SWAP_CHAIN_DESC1 {
+                Width: win_w,
+                Height: win_h,
+                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                Stereo: windows_core::BOOL(0),
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
+                BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
+                BufferCount: 2,
+                Scaling: DXGI_SCALING_STRETCH,
+                SwapEffect: DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
+                AlphaMode: DXGI_ALPHA_MODE_IGNORE,
+                Flags: 0,
+            };
+            let dxgi_dev: IDXGIDevice = device.cast().map_err(|e| e.to_string())?;
+            let adapter: IDXGIAdapter = dxgi_dev.GetAdapter().map_err(|e| e.to_string())?;
+            let factory: IDXGIFactory2 = adapter.GetParent().map_err(|e| e.to_string())?;
+            let swapchain = factory
+                .CreateSwapChainForComposition(&unk, &sc_desc, Option::<&IDXGIOutput>::None)
+                .map_err(|e| format!("CreateSwapChainForComposition: {e}"))?;
+
+            // DirectComposition visual on the (layered) desktop HWND: the only way to
+            // present a swap chain into a WS_EX_LAYERED WorkerW child window.
+            let dcomp: IDCompositionDesktopDevice =
+                DCompositionCreateDevice2(&unk).map_err(|e| e.to_string())?;
+            let target = dcomp
+                .CreateTargetForHwnd(crate::wmf_bindings::HWND(hwnd.0), false)
+                .map_err(|e| format!("CreateTargetForHwnd: {e}"))?;
+            let visual = dcomp
+                .CreateVisual()
+                .map_err(|e| format!("DComp CreateVisual: {e}"))?;
+            visual
+                .SetContent(&swapchain)
+                .ok()
+                .map_err(|e| format!("DComp SetContent: {e}"))?;
+            target
+                .SetRoot(&visual)
+                .ok()
+                .map_err(|e| format!("DComp SetRoot: {e}"))?;
+            dcomp.Commit().ok().map_err(|e| e.to_string())?;
+
+            // Video processor: NV12 input → BGRA output, OPTIMAL_SPEED for iGPUs.
+            let fps = DXGI_RATIONAL {
+                Numerator: fps_num.max(1),
+                Denominator: fps_den.max(1),
+            };
+            let content = D3D11_VIDEO_PROCESSOR_CONTENT_DESC {
+                InputFrameFormat: D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
+                InputFrameRate: fps,
+                InputWidth: vid_w,
+                InputHeight: vid_h,
+                OutputFrameRate: fps,
+                OutputWidth: win_w,
+                OutputHeight: win_h,
+                Usage: D3D11_VIDEO_USAGE_OPTIMAL_SPEED,
+            };
+            let enumerator = video_dev
+                .CreateVideoProcessorEnumerator(&content)
+                .map_err(|e| format!("CreateVideoProcessorEnumerator: {e}"))?;
+            let in_caps = enumerator
+                .CheckVideoProcessorFormat(DXGI_FORMAT_NV12)
+                .map_err(|e| e.to_string())?;
+            let out_caps = enumerator
+                .CheckVideoProcessorFormat(DXGI_FORMAT_B8G8R8A8_UNORM)
+                .map_err(|e| e.to_string())?;
+            if (in_caps & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_INPUT as u32) == 0 {
+                return Err("video processor refuses NV12 input".to_string());
+            }
+            if (out_caps & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_OUTPUT as u32) == 0 {
+                return Err("video processor refuses BGRA output".to_string());
+            }
+            let vp = video_dev
+                .CreateVideoProcessor(&enumerator, 0)
+                .map_err(|e| format!("CreateVideoProcessor: {e}"))?;
+            video_ctx.VideoProcessorSetStreamFrameFormat(
+                &vp,
+                0,
+                D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
+            );
+
+            // Output view straight onto the swap chain's back buffer.
+            let back_buffer: ID3D11Texture2D = swapchain.GetBuffer(0).map_err(|e| e.to_string())?;
+            let ov_desc = D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC {
+                ViewDimension: D3D11_VPOV_DIMENSION_TEXTURE2D,
+                Anonymous: D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0 {
+                    Texture2D: D3D11_TEX2D_VPOV { MipSlice: 0 },
+                },
+            };
+            let mut out_view: Option<ID3D11VideoProcessorOutputView> = None;
+            video_dev
+                .CreateVideoProcessorOutputView(
+                    &back_buffer,
+                    &enumerator,
+                    &ov_desc,
+                    Some(&mut out_view),
+                )
+                .ok()
+                .map_err(|e| format!("CreateVideoProcessorOutputView: {e}"))?;
+            let out_view = out_view.ok_or("output view was null")?;
+
+            // Cover-crop: pick the source rect in video coordinates that fills the
+            // window without distortion — identical math to the GDI path.
+            let (sx, sy, sw, sh) =
+                cover_crop(vid_w as i32, vid_h as i32, win_w as i32, win_h as i32);
+            let src_rect = crate::wmf_bindings::RECT {
+                left: sx,
+                top: sy,
+                right: sx + sw,
+                bottom: sy + sh,
+            };
+            let dst_rect = crate::wmf_bindings::RECT {
+                left: 0,
+                top: 0,
+                right: win_w as i32,
+                bottom: win_h as i32,
+            };
+            video_ctx.VideoProcessorSetStreamSourceRect(&vp, 0, true, Some(&src_rect));
+            video_ctx.VideoProcessorSetStreamDestRect(&vp, 0, true, Some(&dst_rect));
+            video_ctx.VideoProcessorSetOutputTargetRect(&vp, true, Some(&dst_rect));
+
+            // CPU-readable staging texture used ONLY for `.peco` thumbnail captures
+            // (once per 30 frames) — never part of the per-frame render path.
+            let staging_desc = D3D11_TEXTURE2D_DESC {
+                Width: vid_w,
+                Height: vid_h,
+                MipLevels: 1,
+                ArraySize: 1,
+                Format: DXGI_FORMAT_NV12,
+                SampleDesc: DXGI_SAMPLE_DESC {
+                    Count: 1,
+                    Quality: 0,
+                },
+                Usage: D3D11_USAGE_STAGING,
+                BindFlags: 0,
+                CPUAccessFlags: D3D11_CPU_ACCESS_READ as u32,
+                MiscFlags: 0,
+            };
+            let mut staging: Option<ID3D11Texture2D> = None;
+            device
+                .CreateTexture2D(&staging_desc, None, Some(&mut staging))
+                .ok()
+                .map_err(|e| format!("staging texture: {e}"))?;
+            let staging = staging.ok_or("staging texture was null")?;
+
+            tracing::info!(
+                vid_w,
+                vid_h,
+                win_w,
+                win_h,
+                fps_num,
+                fps_den,
+                "wmf: zero-copy GPU pipeline ready (DComp + VP + 2-buffer swap chain)"
+            );
+            Ok(Self {
+                context: context.clone(),
+                video_dev,
+                video_ctx,
+                enumerator,
+                vp,
+                swapchain,
+                out_view,
+                _dcomp: dcomp,
+                _target: target,
+                _visual: visual,
+                staging,
+                src_rect,
+                dst_rect,
+                vid_w: vid_w as usize,
+                vid_h: vid_h as usize,
+            })
+        }
+    }
+
+    /// Recomputes the cover-crop rects after a mid-stream media-type change.
+    unsafe fn set_video_dims(&mut self, w: u32, h: u32) {
+        let dw = self.dst_rect.right - self.dst_rect.left;
+        let dh = self.dst_rect.bottom - self.dst_rect.top;
+        let (sx, sy, sw, sh) = cover_crop(w as i32, h as i32, dw, dh);
+        self.src_rect = crate::wmf_bindings::RECT {
+            left: sx,
+            top: sy,
+            right: sx + sw,
+            bottom: sy + sh,
+        };
+        self.vid_w = w as usize;
+        self.vid_h = h as usize;
+        // SAFETY: re-applies sticky VP stream state on a live processor.
+        unsafe {
+            self.video_ctx.VideoProcessorSetStreamSourceRect(
+                &self.vp,
+                0,
+                true,
+                Some(&self.src_rect),
+            );
+            self.video_ctx
+                .VideoProcessorSetStreamDestRect(&self.vp, 0, true, Some(&self.dst_rect));
+        }
+    }
+
+    /// Presents one decoded sample entirely on the GPU: input view → VP blit →
+    /// swap-chain `Present` → DComp commit. The caller keeps the media buffer alive
+    /// until the next frame is presented (one-frame FIFO) so MF cannot recycle the
+    /// surface while the GPU is still reading it.
+    /// SAFETY: COM/D3D11 calls on live interfaces.
+    unsafe fn present(
+        &self,
+        buffer: &IMFMediaBuffer,
+        tex: &ID3D11Texture2D,
+        slice: u32,
+    ) -> std::result::Result<(), String> {
+        let _keep_alive = buffer;
+        unsafe {
+            let iv_desc = D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC {
+                FourCC: 0,
+                ViewDimension: D3D11_VPIV_DIMENSION_TEXTURE2D,
+                Anonymous: D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC_0 {
+                    Texture2D: D3D11_TEX2D_VPIV {
+                        MipSlice: 0,
+                        ArraySlice: slice,
+                    },
+                },
+            };
+            let mut iv: Option<ID3D11VideoProcessorInputView> = None;
+            self.video_dev
+                .CreateVideoProcessorInputView(tex, &self.enumerator, &iv_desc, Some(&mut iv))
+                .ok()
+                .map_err(|e| format!("CreateVideoProcessorInputView: {e}"))?;
+            let mut stream = D3D11_VIDEO_PROCESSOR_STREAM {
+                Enable: windows_core::BOOL(1),
+                pInputSurface: ManuallyDrop::new(iv),
+                ..Default::default()
+            };
+            let hr = self.video_ctx.VideoProcessorBlt(
+                &self.vp,
+                &self.out_view,
+                0,
+                core::slice::from_ref(&stream),
+            );
+            // Reclaim the input view inside the ManuallyDrop so the COM ref is released.
+            let _iv_back = ManuallyDrop::into_inner(core::mem::replace(
+                &mut stream.pInputSurface,
+                ManuallyDrop::new(None),
+            ));
+            hr.ok().map_err(|e| format!("VideoProcessorBlt: {e}"))?;
+            // Present(0, 0): queue the frame for the next composition pass — no vsync
+            // block; the PTS pacer provides timing. No Commit needed: swap-chain
+            // presents flow to the compositor independently of the DComp tree.
+            self.swapchain
+                .Present(0, 0)
+                .ok()
+                .map_err(|e| format!("Present: {e}"))?;
+            Ok(())
+        }
+    }
+
+    /// Copies the decoded NV12 texture into the staging texture and returns a scaled
+    /// BGRA thumbnail — the only CPU readback in the GPU path, throttled to every
+    /// 30 frames for `.peco` previews.
+    /// SAFETY: D3D11 copy/map on live resources.
+    unsafe fn capture_thumb(&self, tex: &ID3D11Texture2D, slice: u32) -> Option<Vec<u8>> {
+        unsafe {
+            self.context
+                .CopySubresourceRegion(&self.staging, 0, 0, 0, 0, tex, slice, None);
+            let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+            self.context
+                .Map(&self.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+                .ok()
+                .ok()?;
+            let mut nv12_out = vec![0u8; self.vid_w * self.vid_h * 4];
+            nv12_to_bgra(
+                mapped.pData.cast::<u8>(),
+                mapped.RowPitch as usize,
+                self.vid_w,
+                self.vid_h,
+                &mut nv12_out,
+            );
+            self.context.Unmap(&self.staging, 0);
+            let mut thumb = Vec::new();
+            scale_cover_bgra(
+                &nv12_out, self.vid_w, self.vid_h, &mut thumb, THUMB_W, THUMB_H,
+            );
+            Some(thumb)
+        }
+    }
+}
+
+/// Registers the video window class and creates the (initially 1x1, layered) popup that
+/// `attach_to_desktop_worker` will parent into the WorkerW layer. `userdata` becomes the
+/// window's `GWLP_USERDATA` — 0 for the GPU path (DComp draws it, no paint handler data).
+/// SAFETY: Win32 window creation; `class_name` must be NUL-terminated UTF-16.
+unsafe fn create_video_window(
+    class_name: &[u16],
+    userdata: isize,
+) -> std::result::Result<HWND, String> {
+    unsafe {
+        let instance = GetModuleHandleW(PCWSTR::null());
+        let wc = WNDCLASSEXW {
+            cbSize: size_of::<WNDCLASSEXW>() as u32,
+            style: (CS_HREDRAW | CS_VREDRAW) as u32,
+            lpfnWndProc: Some(video_wnd_proc),
+            hInstance: instance,
+            lpszClassName: PCWSTR(class_name.as_ptr()),
+            ..Default::default()
+        };
+        let _ = RegisterClassExW(&wc);
+        let hwnd = CreateWindowExW(
+            (WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) as u32,
+            PCWSTR(class_name.as_ptr()),
+            windows_core::w!("PecoFence Video Wallpaper"),
+            WS_POPUP,
+            0,
+            0,
+            1,
+            1,
+            None,
+            None,
+            Some(instance),
+            None,
+        );
+        if hwnd.0.is_null() {
+            return Err(format!(
+                "CreateWindowExW failed (GetLastError={})",
+                GetLastError()
+            ));
+        }
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, userdata);
+        Ok(hwnd)
+    }
+}
+
+/// Detaches and destroys the video window, then asks the desktop layer to repaint.
+/// SAFETY: `hwnd` must have been created on this thread and `host` is its WorkerW parent.
+unsafe fn detach_video_window(hwnd: HWND, host: HWND) {
+    unsafe {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        let _ = ShowWindow(hwnd, SW_HIDE);
+        let _ = SetParent(crate::wmf_bindings::HWND(hwnd.0), None);
+        let _ = DestroyWindow(hwnd);
+        let _ = InvalidateRect(Some(host), None, true);
+        let progman = desktop::shell_window();
+        if !progman.0.is_null() {
+            let _ = InvalidateRect(Some(progman), None, true);
+        }
+    }
+}
+
+/// Zero-copy playback loop: decode → GPU VP blit → swap-chain present, paced by each
+/// sample's `hnsSampleTime` against a `Instant` clock anchored on the first PTS.
+/// Returns `Err` on any GPU-stage failure so the caller can fall back to software.
+/// SAFETY: everything here is COM/D3D11 calls on interfaces created on this thread.
+#[allow(clippy::too_many_arguments)]
+unsafe fn run_gpu_wallpaper(
+    path: &Path,
+    stop: &AtomicBool,
+    wake: &(Mutex<()>, Condvar),
+    latest_frame: &Mutex<Option<VideoFrame>>,
+    startup_tx: &mpsc::SyncSender<std::result::Result<VideoFrame, String>>,
+) -> std::result::Result<(), String> {
+    let Some((device, context, manager)) = create_d3d_device() else {
+        return Err("no hardware D3D11 device available".to_string());
+    };
+    let clean_path = path
+        .to_string_lossy()
+        .trim_start_matches(r"\\?\")
+        .to_string();
+    let opened = try_open_reader(&clean_path, OutputKind::Nv12, Some(&manager))
+        .map_err(|e| format!("hardware reader: {e}"))?;
+    let reader = opened.reader;
+    let interval = opened.frame_interval;
+    let vid_w = opened.width;
+    let vid_h = opened.height;
+
+    // Decode the first sample and prove it is a GPU surface before building the window.
+    let mut dims_changed = false;
+    let first = unsafe { read_next_sample(&reader, &mut dims_changed) }?;
+    let (first_buf, first_tex, first_slice) =
+        unsafe { sample_texture(&first) }.map_err(|e| format!("first sample: {e}"))?;
+
+    let class_name = to_wide("PecoFence.WmfWallpaper");
+    let hwnd = unsafe { create_video_window(&class_name, 0) }?;
+    let (host, win_w, win_h) = match unsafe { attach_to_desktop_worker(hwnd) } {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = unsafe { DestroyWindow(hwnd) };
+            return Err(e);
+        }
+    };
+
+    // Everything after attach runs under `result` so the window is always torn down.
+    let result = unsafe {
+        run_gpu_attached(
+            hwnd,
+            &device,
+            &context,
+            &reader,
+            &first,
+            &first_buf,
+            &first_tex,
+            first_slice,
+            vid_w,
+            vid_h,
+            win_w as u32,
+            win_h as u32,
+            interval,
+            opened.fps_num,
+            opened.fps_den,
+            stop,
+            wake,
+            latest_frame,
+            startup_tx,
+        )
+    };
+    unsafe { detach_video_window(hwnd, host) };
+    result
+}
+
+/// The post-attach body of [`run_gpu_wallpaper`]: builds the pipeline, presents frame 0,
+/// then runs the PTS-paced loop until `stop` or an unrecoverable GPU error.
+/// SAFETY: all calls act on interfaces/windows created on this thread.
+#[allow(clippy::too_many_arguments)]
+unsafe fn run_gpu_attached(
+    hwnd: HWND,
+    device: &ID3D11Device,
+    context: &ID3D11DeviceContext,
+    reader: &IMFSourceReader,
+    first: &IMFSample,
+    first_buf: &IMFMediaBuffer,
+    first_tex: &ID3D11Texture2D,
+    first_slice: u32,
+    vid_w: u32,
+    vid_h: u32,
+    win_w: u32,
+    win_h: u32,
+    interval: Duration,
+    fps_num: u32,
+    fps_den: u32,
+    stop: &AtomicBool,
+    wake: &(Mutex<()>, Condvar),
+    latest_frame: &Mutex<Option<VideoFrame>>,
+    startup_tx: &mpsc::SyncSender<std::result::Result<VideoFrame, String>>,
+) -> std::result::Result<(), String> {
+    unsafe {
+        let mut gp = GpuPipeline::new(
+            hwnd, device, context, vid_w, vid_h, win_w, win_h, fps_num, fps_den,
+        )?;
+
+        // Frame #0 straight to the screen through the GPU path.
+        gp.present(first_buf, first_tex, first_slice)?;
+        let thumb = gp.capture_thumb(first_tex, first_slice).unwrap_or_default();
+        let _ = startup_tx.send(Ok(VideoFrame {
+            width: THUMB_W as u32,
+            height: THUMB_H as u32,
+            bgra: thumb,
+        }));
+        pump_thread_messages();
+
+        // PTS-anchored pacing: `pts0`/`clock0` pair the stream's start timestamp with
+        // the wall clock; each sample is due at clock0 + (pts - pts0). Late frames are
+        // dropped rather than presented, and the decoder's queue is drained on resume
+        // from pause the same way.
+        let mut pts0 = first.GetSampleTime().unwrap_or(0);
+        let mut clock0 = Instant::now();
+        let mut paused = false;
+        let mut last_visibility_check = Instant::now();
+        let mut frame_counter: u64 = 1;
+        let mut dropped: u64 = 0;
+        // One-frame surface FIFO: the media buffer from the *previous* present is kept
+        // alive so MF can't hand its surface back to the decoder while the GPU may
+        // still be reading it.
+        let mut pending_buf: Option<IMFMediaBuffer> = Some(first_buf.clone());
+        let mut dims_changed = false;
+
+        while !stop.load(Ordering::Relaxed) {
+            pump_thread_messages();
+
+            if last_visibility_check.elapsed() >= Duration::from_millis(300) {
+                last_visibility_check = Instant::now();
+                let now_paused = should_pause_playback();
+                if now_paused != paused {
+                    paused = now_paused;
+                    tracing::info!(paused, frame_counter, "wmf: playback pause state changed");
+                    // The swap chain retains the last presented frame — no flush, no trim:
+                    // the desktop keeps a static wallpaper while paused.
+                }
+            }
+            if paused {
+                if let Ok(guard) = wake.0.lock() {
+                    let _ = wake.1.wait_timeout(guard, Duration::from_millis(80));
+                }
+                continue;
+            }
+
+            let sample = match read_next_sample(reader, &mut dims_changed) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!(error = %e, frame_counter, "wmf: GPU playback read failed");
+                    return Err(e);
+                }
+            };
+            if dims_changed {
+                dims_changed = false;
+                if let Ok(m) = query_stream_metrics(reader) {
+                    gp.set_video_dims(m.w, m.h);
+                    tracing::info!(w = m.w, h = m.h, "wmf: media type changed mid-stream (GPU)");
+                }
+            }
+
+            let pts = sample.GetSampleTime().unwrap_or(0);
+            if pts < pts0 {
+                // Rewind / stream restart: re-anchor the clock.
+                pts0 = pts;
+                clock0 = Instant::now();
+            }
+            let due = clock0 + Duration::from_nanos((pts - pts0).max(0) as u64 * 100);
+            let now = Instant::now();
+            if now > due + interval * 2 {
+                dropped += 1;
+                continue; // iGPU can't keep up — drop the frame entirely.
+            }
+            if now < due
+                && let Ok(guard) = wake.0.lock()
+            {
+                let _ = wake.1.wait_timeout(guard, due - now);
+            }
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
+
+            let (buf, tex, slice) = match sample_texture(&sample) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(error = %e, "wmf: non-DXGI sample on GPU path; skipping frame");
+                    continue;
+                }
+            };
+            gp.present(&buf, &tex, slice)?;
+            // Release the surface from one frame ago now that a newer frame is on screen.
+            drop(pending_buf.replace(buf));
+            frame_counter = frame_counter.wrapping_add(1);
+
+            if frame_counter.is_multiple_of(30)
+                && let Some(thumb) = gp.capture_thumb(&tex, slice)
+                && let Ok(mut slot) = latest_frame.lock()
+            {
+                *slot = Some(VideoFrame {
+                    width: THUMB_W as u32,
+                    height: THUMB_H as u32,
+                    bgra: thumb,
+                });
+            }
+        }
+
+        tracing::info!(
+            frame_counter,
+            dropped,
+            "wmf: shutting down zero-copy GPU video wallpaper"
+        );
+        Ok(())
+    }
+}
+
 fn run_player_thread(
     path: PathBuf,
     stop: Arc<AtomicBool>,
@@ -1129,14 +1875,33 @@ fn run_player_thread(
             return;
         }
     };
-    let (reader, mut vid_w, mut vid_h, mut stride, frame_interval, out_kind) =
-        match open_h264_reader(&path) {
-            Ok(v) => v,
-            Err(e) => {
-                let _ = startup_tx.send(Err(e));
-                return;
-            }
-        };
+
+    // Zero-copy GPU path first: DXVA decode → D3D11 video processor → DirectComposition
+    // swap chain. Any failure (no D3D11 device, DXVA refused, DComp unavailable) falls
+    // through to the software path below.
+    match unsafe { run_gpu_wallpaper(&path, &stop, &wake, &latest_frame, &startup_tx) } {
+        Ok(()) => return,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "wmf: zero-copy GPU path unavailable; falling back to software decode"
+            );
+        }
+    }
+
+    let opened = match open_sw_reader(&path) {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = startup_tx.send(Err(e));
+            return;
+        }
+    };
+    let reader = opened.reader;
+    let mut vid_w = opened.width;
+    let mut vid_h = opened.height;
+    let mut stride = opened.stride;
+    let frame_interval = opened.frame_interval;
+    let out_kind = opened.kind;
 
     let mut raw_frame = Vec::new();
     // Decode the very first frame before creating/attaching the window so we know decoding works
@@ -1160,19 +1925,8 @@ fn run_player_thread(
     }
 
     let class_name = to_wide("PecoFence.WmfWallpaper");
-    // SAFETY: Win32 window registration, creation, WMF frame presentation, and cleanup.
+    // SAFETY: Win32 window creation, WMF frame presentation, and cleanup.
     unsafe {
-        let instance = GetModuleHandleW(PCWSTR::null());
-        let wc = WNDCLASSEXW {
-            cbSize: size_of::<WNDCLASSEXW>() as u32,
-            style: (CS_HREDRAW | CS_VREDRAW) as u32,
-            lpfnWndProc: Some(video_wnd_proc),
-            hInstance: instance,
-            lpszClassName: PCWSTR(class_name.as_ptr()),
-            ..Default::default()
-        };
-        let _ = RegisterClassExW(&wc);
-
         let surface = Box::new(Mutex::new(SharedSurface {
             out_w: 0,
             out_h: 0,
@@ -1182,27 +1936,14 @@ fn run_player_thread(
         }));
         let surface_ptr = &*surface as *const Mutex<SharedSurface>;
 
-        let hwnd = CreateWindowExW(
-            (WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) as u32,
-            PCWSTR(class_name.as_ptr()),
-            windows_core::w!("PecoFence Video Wallpaper"),
-            WS_POPUP,
-            0,
-            0,
-            1,
-            1,
-            None,
-            None,
-            Some(instance),
-            None,
-        );
-        if hwnd.0.is_null() {
-            let err = format!("CreateWindowExW failed (GetLastError={})", GetLastError());
-            tracing::error!(%err, "wmf: window creation failed");
-            let _ = startup_tx.send(Err(err));
-            return;
-        }
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, surface_ptr as isize);
+        let hwnd = match create_video_window(&class_name, surface_ptr as isize) {
+            Ok(h) => h,
+            Err(e) => {
+                tracing::error!(error = %e, "wmf: window creation failed");
+                let _ = startup_tx.send(Err(e));
+                return;
+            }
+        };
 
         let (host, win_w, win_h) = match attach_to_desktop_worker(hwnd) {
             Ok(v) => v,
@@ -1332,15 +2073,7 @@ fn run_player_thread(
         }
 
         tracing::info!(frame_counter, "wmf: shutting down video wallpaper window");
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-        let _ = ShowWindow(hwnd, SW_HIDE);
-        let _ = SetParent(crate::wmf_bindings::HWND(hwnd.0), None);
-        let _ = DestroyWindow(hwnd);
-        let _ = InvalidateRect(Some(host), None, true);
-        let progman = desktop::shell_window();
-        if !progman.0.is_null() {
-            let _ = InvalidateRect(Some(progman), None, true);
-        }
+        detach_video_window(hwnd, host);
     }
 }
 
@@ -1496,26 +2229,79 @@ mod tests {
         let _mf = MfSessionGuard::init().unwrap();
         eprintln!("commit after MFStartup: {:.1} MB", mb());
         {
-            let (reader, mut w, mut h, mut s, _, kind) = open_h264_reader(path).unwrap();
-            let opened = mb();
-            eprintln!("commit after open_h264_reader ({kind:?}): {opened:.1} MB");
+            let opened = open_sw_reader(path).unwrap();
+            let opened_mb = mb();
+            eprintln!(
+                "commit after open_sw_reader ({:?}): {opened_mb:.1} MB",
+                opened.kind
+            );
+            let reader = &opened.reader;
+            let (mut w, mut h, mut s) = (opened.width, opened.height, opened.stride);
             let mut bgra = Vec::new();
-            unsafe { read_next_frame(&reader, kind, &mut w, &mut h, &mut s, &mut bgra) };
+            unsafe { read_next_frame(reader, opened.kind, &mut w, &mut h, &mut s, &mut bgra) };
             eprintln!("commit after frame 1: {:.1} MB", mb());
             for _ in 0..30 {
-                unsafe { read_next_frame(&reader, kind, &mut w, &mut h, &mut s, &mut bgra) };
+                unsafe { read_next_frame(reader, opened.kind, &mut w, &mut h, &mut s, &mut bgra) };
             }
             let after_31 = mb();
             eprintln!("commit after frame 31: {after_31:.1} MB");
-            drop(reader);
+            drop(opened);
             // The decoder's internal queue must stay bounded: MF_LOW_LATENCY keeps it to
             // tens of MB; the unbounded queue used to pass +190 MB after 31 frames.
             assert!(
-                after_31 - opened < 120.0,
-                "decoder queue grew unboundedly: {after_31:.1} - {opened:.1} MB"
+                after_31 - opened_mb < 120.0,
+                "decoder queue grew unboundedly: {after_31:.1} - {opened_mb:.1} MB"
             );
         }
         eprintln!("commit after reader drop: {:.1} MB", mb());
+    }
+
+    /// End-to-end zero-copy check: DXVA sample → D3D11 video processor → swap chain →
+    /// DComp visual on a hidden window. Skips silently on machines without hardware
+    /// D3D11 or the sample video.
+    #[test]
+    fn gpu_zero_copy_pipeline_presents_decoded_frames() {
+        let path = Path::new(r"C:\Users\yahya\Downloads\WALL\Video Project.mp4");
+        if !path.is_file() {
+            return;
+        }
+        let _com = ComThreadGuard::init().unwrap();
+        let _mf = MfSessionGuard::init().unwrap();
+        let Some((device, context, manager)) = create_d3d_device() else {
+            return;
+        };
+        let clean = path.to_string_lossy().to_string();
+        let opened =
+            try_open_reader(&clean, OutputKind::Nv12, Some(&manager)).expect("hardware reader");
+        let reader = opened.reader;
+        let mut dims_changed = false;
+        // SAFETY: all objects live on this thread; the hidden window is destroyed at the end.
+        unsafe {
+            let class_name = to_wide("PecoFence.WmfWallpaper.GpuTest");
+            let hwnd = create_video_window(&class_name, 0).expect("video window");
+            let gp = GpuPipeline::new(
+                hwnd,
+                &device,
+                &context,
+                opened.width,
+                opened.height,
+                640,
+                360,
+                opened.fps_num,
+                opened.fps_den,
+            )
+            .expect("GPU pipeline");
+            for i in 0..3 {
+                let sample = read_next_sample(&reader, &mut dims_changed).expect("sample");
+                let (buf, tex, slice) = sample_texture(&sample).expect("dxgi surface");
+                gp.present(&buf, &tex, slice).expect("present");
+                if i == 0 {
+                    assert!(gp.capture_thumb(&tex, slice).is_some());
+                }
+            }
+            drop(gp);
+            let _ = DestroyWindow(hwnd);
+        }
     }
 
     #[test]
