@@ -11,6 +11,7 @@ windows-numerics = { workspace = true }
 # IAsyncOperation for the Microsoft Store rating dialog (store.rs).
 windows-future = "0.100"
 windows-time = "0.100"
+uuid = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

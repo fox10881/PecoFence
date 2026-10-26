@@ -12,6 +12,7 @@ fn main() {
             "tools/bindgen/gpu-glass.txt".to_string(),
             "tools/bindgen/store.txt".to_string(),
             "tools/bindgen/capture.txt".to_string(),
+            "tools/bindgen/wmf.txt".to_string(),
         ],
         v => v,
     };

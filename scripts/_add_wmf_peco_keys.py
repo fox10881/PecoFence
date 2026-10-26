@@ -1,0 +1,178 @@
+"""Adds the WMF video wallpaper and .peco theme export/import strings to every locale file."""
+import json
+import os
+
+ROOT = os.path.join(os.path.dirname(__file__), "..", "locales")
+
+T = {
+    "将视频设为桌面壁纸": {
+        "en": "Apply Video as Desktop Wallpaper",
+        "ar": "تطبيق فيديو كخلفية لسطح المكتب",
+        "de": "Video als Desktop-Hintergrund anwenden",
+        "es": "Aplicar vídeo como fondo de escritorio",
+        "fr": "Appliquer une vidéo comme fond d'écran",
+        "it": "Applica video come sfondo del desktop",
+        "ja": "動画をデスクトップの壁紙に設定",
+        "ko": "동영상을 바탕 화면 배경으로 적용",
+        "pt-BR": "Aplicar vídeo como papel de parede da área de trabalho",
+        "ru": "Установить видео как обои рабочего стола",
+        "zh-TW": "將影片設為桌面桌布",
+    },
+    "仅支持 H.264 编码的 MP4 格式以节省系统资源。可使用以下网站转换视频：": {
+        "en": "The only supported format is MP4 with H.264 encoding to preserve system resources. Use the following websites to convert your video:",
+        "ar": "الصيغة الوحيدة المدعومة MP4 بتردد H.264 للحفاض على موارد الجهاز استخدم المواقع التالية لتحويل الفيديو الى هذيه الصيغه",
+        "de": "Zur Schonung der Systemressourcen wird nur MP4 mit H.264-Codierung unterstützt. Nutzen Sie folgende Websites zum Konvertieren:",
+        "es": "El único formato compatible es MP4 con codificación H.264 para ahorrar recursos del sistema. Usa estos sitios web para convertir tu vídeo:",
+        "fr": "Le seul format pris en charge est le MP4 encodé en H.264 afin de préserver les ressources système. Utilisez ces sites pour convertir votre vidéo :",
+        "it": "L'unico formato supportato è MP4 con codifica H.264 per preservare le risorse di sistema. Usa i seguenti siti per convertire il video:",
+        "ja": "システムリソースを節約するため、H.264 エンコードの MP4 形式のみ対応しています。動画の変換には次のサイトをご利用ください：",
+        "ko": "시스템 리소스를 절약하기 위해 H.264 인코딩 MP4 형식만 지원됩니다. 다음 웹사이트에서 동영상을 변환하세요:",
+        "pt-BR": "O único formato suportado é MP4 com codificação H.264 para preservar os recursos do sistema. Use os sites a seguir para converter seu vídeo:",
+        "ru": "Для экономии ресурсов системы поддерживается только формат MP4 с кодировкой H.264. Используйте следующие сайты для конвертации видео:",
+        "zh-TW": "僅支援 H.264 編碼的 MP4 格式以節省系統資源。可使用以下網站轉換影片：",
+    },
+    "导出此主题": {
+        "en": "Export this Theme",
+        "ar": "تصدير هذا الثيم",
+        "de": "Dieses Design exportieren",
+        "es": "Exportar este tema",
+        "fr": "Exporter ce thème",
+        "it": "Esporta questo tema",
+        "ja": "このテーマをエクスポート",
+        "ko": "이 테마 내보내기",
+        "pt-BR": "Exportar este tema",
+        "ru": "Экспортировать эту тему",
+        "zh-TW": "匯出此主題",
+    },
+    "导出为 .peco 主题": {
+        "en": "Export as .peco Theme",
+        "ar": "تصدير كـ ثيم .peco",
+        "de": "Als .peco-Design exportieren",
+        "es": "Exportar como tema .peco",
+        "fr": "Exporter comme thème .peco",
+        "it": "Esporta come tema .peco",
+        "ja": ".peco テーマとしてエクスポート",
+        "ko": ".peco 테마로 내보내기",
+        "pt-BR": "Exportar como tema .peco",
+        "ru": "Экспортировать как тему .peco",
+        "zh-TW": "匯出為 .peco 主題",
+    },
+    "导入主题": {
+        "en": "Import Theme",
+        "ar": "إدراج ثيم",
+        "de": "Design importieren",
+        "es": "Importar tema",
+        "fr": "Importer un thème",
+        "it": "Importa tema",
+        "ja": "テーマをインポート",
+        "ko": "테마 가져오기",
+        "pt-BR": "Importar tema",
+        "ru": "Импортировать тему",
+        "zh-TW": "匯入主題",
+    },
+    "MP4 视频 (*.mp4)": {
+        "en": "MP4 video (*.mp4)",
+        "ar": "فيديو MP4 (*.mp4)",
+        "de": "MP4-Video (*.mp4)",
+        "es": "Vídeo MP4 (*.mp4)",
+        "fr": "Vidéo MP4 (*.mp4)",
+        "it": "Video MP4 (*.mp4)",
+        "ja": "MP4 動画 (*.mp4)",
+        "ko": "MP4 동영상 (*.mp4)",
+        "pt-BR": "Vídeo MP4 (*.mp4)",
+        "ru": "Видео MP4 (*.mp4)",
+        "zh-TW": "MP4 影片 (*.mp4)",
+    },
+    "PecoFence 主题 (*.peco)": {
+        "en": "PecoFence Theme (*.peco)",
+        "ar": "ثيم PecoFence (*.peco)",
+        "de": "PecoFence-Design (*.peco)",
+        "es": "Tema de PecoFence (*.peco)",
+        "fr": "Thème PecoFence (*.peco)",
+        "it": "Tema PecoFence (*.peco)",
+        "ja": "PecoFence テーマ (*.peco)",
+        "ko": "PecoFence 테마 (*.peco)",
+        "pt-BR": "Tema do PecoFence (*.peco)",
+        "ru": "Тема PecoFence (*.peco)",
+        "zh-TW": "PecoFence 主題 (*.peco)",
+    },
+    "已导入主题": {
+        "en": "Theme imported",
+        "ar": "تم إدراج الثيم",
+        "de": "Design importiert",
+        "es": "Tema importado",
+        "fr": "Thème importé",
+        "it": "Tema importato",
+        "ja": "テーマをインポートしました",
+        "ko": "테마를 가져왔습니다",
+        "pt-BR": "Tema importado",
+        "ru": "Тема импортирована",
+        "zh-TW": "已匯入主題",
+    },
+    "已将视频设为桌面壁纸": {
+        "en": "Video applied as desktop wallpaper",
+        "ar": "تم تطبيق الفيديو كخلفية لسطح المكتب",
+        "de": "Video als Desktop-Hintergrund angewendet",
+        "es": "Vídeo aplicado como fondo de escritorio",
+        "fr": "Vidéo appliquée comme fond d'écran",
+        "it": "Video applicato come sfondo del desktop",
+        "ja": "動画をデスクトップの壁紙に設定しました",
+        "ko": "동영상을 바탕 화면 배경으로 적용했습니다",
+        "pt-BR": "Vídeo aplicado como papel de parede da área de trabalho",
+        "ru": "Видео установлено как обои рабочего стола",
+        "zh-TW": "已將影片設為桌面桌布",
+    },
+    "仅支持 H.264 编码的 MP4 视频文件": {
+        "en": "Only MP4 video files with H.264 encoding are supported",
+        "ar": "تُدعم فقط ملفات الفيديو بصيغة MP4 وترميز H.264",
+        "de": "Es werden nur MP4-Videodateien mit H.264-Codierung unterstützt",
+        "es": "Solo se admiten archivos de vídeo MP4 con codificación H.264",
+        "fr": "Seuls les fichiers vidéo MP4 encodés en H.264 sont pris en charge",
+        "it": "Sono supportati solo file video MP4 con codifica H.264",
+        "ja": "H.264 エンコードの MP4 動画ファイルのみ対応しています",
+        "ko": "H.264 인코딩 MP4 동영상 파일만 지원됩니다",
+        "pt-BR": "Apenas arquivos de vídeo MP4 com codificação H.264 são suportados",
+        "ru": "Поддерживаются только видеофайлы MP4 с кодировкой H.264",
+        "zh-TW": "僅支援 H.264 編碼的 MP4 影片檔案",
+    },
+    "找不到所选的视频文件": {
+        "en": "The selected video file was not found",
+        "ar": "لم يتم العثور على ملف الفيديو المحدد",
+        "de": "Die ausgewählte Videodatei wurde nicht gefunden",
+        "es": "No se encontró el archivo de vídeo seleccionado",
+        "fr": "Le fichier vidéo sélectionné est introuvable",
+        "it": "Il file video selezionato non è stato trovato",
+        "ja": "選択された動画ファイルが見つかりません",
+        "ko": "선택한 동영상 파일을 찾을 수 없습니다",
+        "pt-BR": "O arquivo de vídeo selecionado não foi encontrado",
+        "ru": "Выбранный видеофайл не найден",
+        "zh-TW": "找不到所選的影片檔案",
+    },
+    "无法解码此 MP4 视频文件": {
+        "en": "Could not decode this MP4 video file",
+        "ar": "تعذر فك ترميز ملف الفيديو MP4 هذا",
+        "de": "Diese MP4-Videodatei konnte nicht decodiert werden",
+        "es": "No se pudo decodificar este archivo de vídeo MP4",
+        "fr": "Impossible de décoder ce fichier vidéo MP4",
+        "it": "Impossibile decodificare questo file video MP4",
+        "ja": "この MP4 動画ファイルをデコードできませんでした",
+        "ko": "이 MP4 동영상 파일을 디코딩할 수 없습니다",
+        "pt-BR": "Não foi possível decodificar este arquivo de vídeo MP4",
+        "ru": "Не удалось декодировать этот видеофайл MP4",
+        "zh-TW": "無法解碼此 MP4 影片檔案",
+    },
+}
+
+for name in sorted(os.listdir(ROOT)):
+    if not name.endswith(".json"):
+        continue
+    locale = name[:-5]
+    path = os.path.join(ROOT, name)
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    for k, tr in T.items():
+        data[k] = tr.get(locale, tr["en"])
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=4)
+        fh.write("\n")
+    print(f"{name} ok")

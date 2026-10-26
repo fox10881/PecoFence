@@ -289,10 +289,14 @@ impl AppState {
         Some(backup)
     }
 
-    /// Saves the current layouts as THE restore backup. The fixed id means the next restore
-    /// overwrites the same entry in place instead of appending another `…前` snapshot; its
-    /// name is stored only for CLI consumers — the UI shows the localized label.
+    /// Saves the current layouts as THE automatic `…前` backup. The fixed id means every
+    /// restore, import or theme apply overwrites the same entry in place instead of
+    /// appending another snapshot card; `name` is the i18n key the UI localizes on read.
     pub fn save_restore_backup(&mut self, name: &str) -> uuid::Uuid {
+        // Older files appended one entry per apply under whatever localized name the UI had:
+        // fold them into the fixed slot first so a same-second legacy name cannot win the
+        // dedupe's newest-wins pick over the backup being written now.
+        pecofence_core::config_store::dedupe_restore_backups(&mut self.config);
         let snap = pecofence_core::Snapshot {
             id: pecofence_core::AUTO_BACKUP_SNAPSHOT_ID,
             name: name.trim().to_string(),
@@ -1692,6 +1696,90 @@ impl AppState {
         n
     }
 
+    /// Applies `.peco` `containedFiles` manifests after an import: filenames matching a file
+    /// on the user or public desktop become members of their fence (manifest order = manual
+    /// order); names nothing has are dropped without a word. `theme` also degrades folder
+    /// portals whose directory does not exist here into plain virtual containers, so a
+    /// theme from another machine can never flash "folder not found". Returns true when
+    /// memberships or fence kinds changed.
+    pub fn bind_theme_members(&mut self, desktop_dirs: &[PathBuf], theme: bool) -> bool {
+        let mut changed = false;
+        for layout in &mut self.config.layouts {
+            for fence in &mut layout.fences {
+                if theme
+                    && fence.kind == FenceKind::FolderPortal
+                    && matches!(&fence.source, ItemSourceSpec::Folder { path, .. }
+                        if !Path::new(path).is_dir())
+                {
+                    fence.kind = FenceKind::Virtual;
+                    fence.source = ItemSourceSpec::Desktop;
+                    changed = true;
+                }
+            }
+        }
+        let mut claimed: HashSet<ItemId> = HashSet::new();
+        let mut binds: Vec<(usize, FenceId, Vec<(u32, ItemId)>)> = Vec::new();
+        for (li, layout) in self.config.layouts.iter().enumerate() {
+            for f in &layout.fences {
+                if f.contained_files.is_empty() || matches!(f.source, ItemSourceSpec::Folder { .. })
+                {
+                    continue;
+                }
+                let mut rows = Vec::new();
+                let alive = |id: ItemId| {
+                    self.config
+                        .items
+                        .get(&id)
+                        .is_some_and(|it| it.orphaned_since.is_none())
+                };
+                for (i, name) in f.contained_files.iter().enumerate() {
+                    let id = if name.starts_with("::{") {
+                        self.catalog.get(&ItemKey::from_path(name)).copied()
+                    } else {
+                        if name.contains('\\') || name.contains('/') {
+                            continue;
+                        }
+                        desktop_dirs.iter().find_map(|d| {
+                            let key = ItemKey::from_path(&d.join(name).to_string_lossy());
+                            self.catalog.get(&key).copied()
+                        })
+                    };
+                    if let Some(id) = id
+                        && alive(id)
+                        && claimed.insert(id)
+                    {
+                        rows.push((i as u32, id));
+                    }
+                }
+                binds.push((li, f.id, rows));
+            }
+        }
+        for (li, fence_id, rows) in binds {
+            for (i, id) in rows {
+                if self
+                    .config
+                    .assign(li, id, fence_id, AssignedBy::User)
+                    .is_some()
+                {
+                    changed = true;
+                }
+                if let Some(l) = self.config.layouts.get_mut(li)
+                    && let Some(f) = l.fences.iter_mut().find(|f| f.id == fence_id)
+                    && let Some(r) = f.items.iter_mut().rev().find(|r| r.item_id == id)
+                {
+                    r.manual_index = Some(i);
+                }
+            }
+        }
+        for f in self.config.layouts.iter_mut().flat_map(|l| &mut l.fences) {
+            f.contained_files.clear();
+        }
+        if changed {
+            self.dirty = true;
+        }
+        changed
+    }
+
     /// Manual arrangement: places `items` (keeping their relative order) before display index
     /// `index` of `fence`. Only for 手动-sorted virtual fences (portals are sort-only; a sorted
     /// fence snaps back, like Explorer with auto-arrange on). Returns true when the order changed.
@@ -2571,6 +2659,44 @@ mod tests {
         assert!(state.rename_snapshot(target, "mine"));
     }
 
+    /// Pre-import backups (theme apply, config import) share the same fixed slot too, and
+    /// duplicates an older version appended under other localized names fold away on the
+    /// first save — the gallery can only ever show one auto backup card.
+    #[test]
+    fn import_backups_overwrite_the_slot_and_fold_legacy_names() {
+        let mut state = test_state();
+        let legacy = |name: &str, ts: i64| pecofence_core::Snapshot {
+            id: uuid::Uuid::new_v4(),
+            name: name.into(),
+            ts,
+            layouts: Vec::new(),
+            wallpaper_path: None,
+            is_auto_backup: None,
+        };
+        state.config.snapshots = vec![
+            legacy("导入配置前", 1),
+            // The same label an Arabic UI saved on another machine.
+            legacy("قبل الاستيراد", 2),
+            legacy("user layout", 3),
+        ];
+        state.save_restore_backup("导入配置前");
+        state.save_restore_backup("恢复备份前");
+        let autos: Vec<_> = state
+            .config
+            .snapshots
+            .iter()
+            .filter(|s| s.is_auto_backup == Some(true))
+            .collect();
+        assert_eq!(autos.len(), 1);
+        assert_eq!(autos[0].id, pecofence_core::AUTO_BACKUP_SNAPSHOT_ID);
+        assert_eq!(autos[0].name, "恢复备份前", "label follows the last action");
+        assert_eq!(
+            state.config.snapshots.len(),
+            2,
+            "legacy duplicates folded, the user's own snapshot stays"
+        );
+    }
+
     /// An import saved at another resolution: relayout_from_state runs ensure_layout again,
     /// and the fences with no spot here must still be moved apart after that.
     #[test]
@@ -3417,5 +3543,112 @@ mod tests {
         assert_eq!(dir_prefix("d:\\users"), "d:\\users\\");
         assert!("d:\\users".starts_with(&dir_prefix("d:\\")));
         assert!(!"d:\\usersx".starts_with(&dir_prefix("d:\\users")));
+    }
+
+    /// A `.peco` theme's `containedFiles` re-binds by filename against this desktop: matches
+    /// join the fence in manifest order (any case), names nothing has are dropped silently,
+    /// and the fence never needs a physical directory.
+    #[test]
+    fn theme_manifests_bind_against_the_local_desktop() {
+        let desk = PathBuf::from("C:/Users/Me/Desktop");
+        let mut state = test_state();
+        state.sync_desktop(&[
+            desktop_entry("chrome.lnk"),
+            desktop_entry("Steam.url"),
+            desktop_entry("loose.txt"),
+        ]);
+        let chrome = state.item_id_for_path(&desk.join("chrome.lnk")).unwrap();
+        let steam = state.item_id_for_path(&desk.join("Steam.url")).unwrap();
+        let loose = state.item_id_for_path(&desk.join("loose.txt")).unwrap();
+        // Steam already sits in another fence: the theme claims it over.
+        let holder = state.fences().iter().map(|f| f.id).next().unwrap();
+        state.move_items(&[steam], holder);
+
+        let mut f = Fence::new(
+            "Tools",
+            FenceKind::Virtual,
+            state.fences()[0].geometry.clone(),
+        );
+        f.contained_files = vec![
+            "CHROME.LNK".into(),
+            "missing.exe".into(),
+            "Steam.url".into(),
+            r"evil\..\x".into(),
+        ];
+        let fid = f.id;
+        state.config.layouts[state.layout].fences.push(f);
+        let loose_home = state.config.fence_of_item(0, loose);
+
+        assert!(state.bind_theme_members(&[desk], true));
+
+        let f = state.fence(fid).unwrap();
+        assert!(f.contained_files.is_empty(), "manifest consumed");
+        let idx = |id| {
+            f.items
+                .iter()
+                .find(|r| r.item_id == id)
+                .unwrap()
+                .manual_index
+        };
+        assert_eq!(idx(chrome), Some(0), "case-insensitive name match");
+        assert_eq!(idx(steam), Some(2), "manifest order survives the gap");
+        assert_eq!(state.config.fence_of_item(0, chrome), Some(fid));
+        assert_eq!(state.config.fence_of_item(0, steam), Some(fid));
+        assert_eq!(
+            state.config.fence_of_item(0, loose),
+            loose_home,
+            "not listed, stays where the sync put it"
+        );
+    }
+
+    /// A theme's folder portal whose directory does not exist here degrades to a virtual
+    /// fence — never "folder not found", and no folder is spawned on the desktop. A portal
+    /// that does exist keeps its live listing. Plain config imports keep portals as-is.
+    #[test]
+    fn theme_portals_degrade_to_virtual_only_for_themes() {
+        let gone = r"C:\pecofence-no-such-dir-9e8d7c6b".to_string();
+        let kept = std::env::temp_dir().to_string_lossy().into_owned();
+        let mut state = test_state();
+        let geo = state.fences()[0].geometry.clone();
+        let folder_source = |path: String| ItemSourceSpec::Folder {
+            path,
+            recursive: false,
+            filter: None,
+        };
+        let mut dead = Fence::new("Dead", FenceKind::FolderPortal, geo.clone());
+        dead.source = folder_source(gone.clone());
+        dead.contained_files = vec!["missing.exe".into()];
+        let mut live = Fence::new("Live", FenceKind::FolderPortal, geo);
+        live.source = folder_source(kept);
+        live.contained_files = vec!["missing.exe".into()];
+        let (dead_id, live_id) = (dead.id, live.id);
+        state.config.layouts[state.layout]
+            .fences
+            .extend([dead, live]);
+
+        assert!(state.bind_theme_members(&[PathBuf::from("C:/Users/Me/Desktop")], true));
+
+        let dead = state.fence(dead_id).unwrap();
+        assert_eq!(dead.kind, FenceKind::Virtual);
+        assert!(matches!(dead.source, ItemSourceSpec::Desktop));
+        assert!(dead.contained_files.is_empty());
+        assert!(!Path::new(&gone).exists(), "no folder is ever created");
+        let live = state.fence(live_id).unwrap();
+        assert_eq!(live.kind, FenceKind::FolderPortal);
+        assert!(matches!(live.source, ItemSourceSpec::Folder { .. }));
+        assert!(live.contained_files.is_empty(), "manifest consumed");
+
+        // The same fence arriving via a plain config import stays a portal.
+        let mut state = test_state();
+        let mut dead = Fence::new(
+            "Dead",
+            FenceKind::FolderPortal,
+            state.fences()[0].geometry.clone(),
+        );
+        dead.source = folder_source(gone);
+        let id = dead.id;
+        state.config.layouts[state.layout].fences.push(dead);
+        assert!(!state.bind_theme_members(&[], false));
+        assert_eq!(state.fence(id).unwrap().kind, FenceKind::FolderPortal);
     }
 }

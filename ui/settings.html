@@ -147,10 +147,6 @@
     border: 1px solid var(--control-stroke); border-bottom-color: var(--control-stroke-bottom); font-size: 14px; line-height: 20px; user-select: text; }
   input[type=text]:focus, input[type=time]:focus, input[type=number]:focus, input[type=email]:focus, textarea:focus { outline: none; border-bottom: 2px solid var(--accent); background-color: var(--card); }
   input::placeholder { color: var(--text3); }
-  .snapname { display: block; width: 100%; min-width: 0; height: 22px; padding: 0 4px; margin: -1px -5px;
-    background: transparent; border-color: transparent; }
-  .snapname:hover { border-bottom-color: var(--control-stroke-bottom); }
-  .snapname:focus { background: var(--control); border-color: var(--control-stroke); border-bottom: 2px solid var(--accent); }
   .snapwall { display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
   .snapwall input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
   button { padding: 0 12px; min-width: 96px; }
@@ -162,6 +158,42 @@
   .iconbtn:hover { background: var(--subtle); }
   .iconbtn:disabled { background: transparent; border-color: transparent; }
   .iconbtn[data-act=del]:hover { color: var(--error); background: var(--error-bg); }
+  .ext-link { color: var(--accent); text-decoration: underline; }
+  .ext-link:hover { color: var(--accent-hover); }
+
+  /* The save strip above the theme gallery: name field, background toggle, actions. */
+  .gallery-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 16px;
+    border-radius: var(--r-card); background: var(--card); border: 1px solid var(--card-stroke); margin-bottom: 4px;
+    box-shadow: inset 0 1px 0 var(--glass-highlight); }
+  .gallery-bar input[type=text] { flex: 1 1 200px; min-width: 160px; max-width: 320px; }
+  .gallery-bar .bar-gap { flex: 1 1 auto; }
+
+  /* Theme gallery: .peco themes and layout snapshots as one card grid — a 16:9
+     preview.jpg (or a gradient placeholder) over the name, like Personalization. */
+  .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; padding: 12px 2px 8px; }
+  .theme-card { position: relative; display: flex; flex-direction: column; padding: 0; border-radius: var(--r-card); overflow: hidden;
+    background: var(--card); border: 1px solid var(--card-stroke); cursor: pointer; transition: border-color .12s, transform .12s; }
+  .theme-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .theme-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .theme-thumb { position: relative; aspect-ratio: 16 / 9; width: 100%; background: var(--control); display: grid; place-items: center; }
+  .theme-thumb.placeholder { background: linear-gradient(135deg, #34425c 0%, #24304a 45%, #1b2434 100%); }
+  .theme-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .theme-thumb > .ic { font-size: 32px; color: var(--text2); }
+  .theme-thumb.placeholder > .ic { color: #ffffffa8; }
+  /* Card actions sit on the thumbnail and appear on hover or keyboard focus. */
+  .theme-actions { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px;
+    background: rgba(16, 20, 28, .58); opacity: 0; transition: opacity .14s; }
+  .theme-card:hover .theme-actions, .theme-card:focus-within .theme-actions { opacity: 1; }
+  .theme-actions button { min-width: 0; height: 28px; padding: 0 10px; font-size: 12px;
+    background: rgba(255, 255, 255, .14); color: #fff; border-color: rgba(255, 255, 255, .32); }
+  .theme-actions button:hover { background: rgba(255, 255, 255, .26); }
+  .theme-actions button.accent { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+  .theme-actions button.accent:hover { background: var(--accent-hover); }
+  .theme-actions button[data-act=del]:hover { background: var(--error); border-color: transparent; }
+  .theme-foot { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px 10px; }
+  .theme-foot .t { font-size: 13px; line-height: 18px; font-weight: 600; overflow-wrap: anywhere; }
+  .theme-foot .s { color: var(--text2); font-size: 11px; line-height: 15px; overflow-wrap: anywhere; }
+  .theme-empty { grid-column: 1 / -1; padding: 4px 14px 12px; color: var(--text2); font-size: 12px; }
 
   /* Peek shortcut: key caps in a box that records the next combination (styled as a focused
      text box meanwhile); the quick choices are toggle buttons. */
@@ -392,8 +424,8 @@
             <span class="shot" aria-hidden="true"><span class="mini-fence"><span class="preview-title">工作空间</span><span class="mini-items"><span class="file-icon folder ic">&#xE8B7;</span><span class="file-icon ic">&#xE8A5;</span><span class="file-icon sheet ic">&#xE9F9;</span></span></span></span>
             <span class="cap">Invisible Canvas · 隐形画布</span></label>
         </div></div>
-      <div class="card"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">打开壁纸文件夹</div><div class="s">浏览 PecoFence 附带的 2D 书架壁纸</div></div></div>
-        <button id="openWallpapers">打开</button></div>
+      <div class="card"><div class="l"><span class="ic">&#xE714;</span><div><div class="t">将视频设为桌面壁纸</div><div class="s"><span>仅支持 H.264 编码的 MP4 格式以节省系统资源。可使用以下网站转换视频：</span> <a class="ext-link" href="https://cloudconvert.com/mp4-converter" target="_blank" rel="noopener noreferrer">CloudConvert</a> · <a class="ext-link" href="https://www.freeconvert.com/mp4-converter" target="_blank" rel="noopener noreferrer">FreeConvert</a></div></div></div>
+        <button type="button" id="pickVideoWallpaper">打开</button></div>
       <div class="card"><div class="l"><span class="ic">&#xE7A1;</span><div><div class="t">颜色模式</div></div></div>
         <select data-bind="theme"><option value="followWindowsMode">跟随 Windows 模式</option><option value="followAppMode">跟随应用模式</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE8D3;</span><div><div class="t">文字颜色</div><div class="s">自动：液态玻璃按背后壁纸的明暗选深色或浅色，Fluent 跟随颜色模式；栅栏标题的颜色在“栅栏”页设置</div></div></div>
@@ -569,12 +601,15 @@
 
     <section class="page" id="page-layout">
       <header class="page-header"><h2>布局与备份</h2></header>
-      <h3>布局快照</h3>
-      <div class="group">
-        <div class="card"><div class="l"><span class="ic">&#xE722;</span><div><div class="t">把当前布局存为快照</div><div class="s">记录所有栅栏的位置、大小和内容，随时恢复</div></div></div>
-          <div class="actions"><input type="text" id="snapName" aria-label="快照名称（可选）" placeholder="快照名称（可选）"><label class="snapwall"><input type="checkbox" id="snapWall">包含当前壁纸</label><button class="accent" id="snapSave">保存快照</button></div></div>
-        <div class="rows" id="snapList"></div>
+      <h3>主题画廊</h3>
+      <div class="gallery-bar">
+        <input type="text" id="themeName" aria-label="主题名称（可选）" placeholder="主题名称（可选）">
+        <label class="snapwall"><input type="checkbox" id="themeBg">包含当前背景</label>
+        <span class="bar-gap"></span>
+        <button class="accent" id="themeSave">保存当前配置</button>
+        <button type="button" id="themeImport">导入 .peco 主题</button>
       </div>
+      <div class="theme-grid" id="galleryGrid"></div>
       <h3 id="swapHeading">多显示器</h3>
       <div class="card" id="swapCard"><div class="l"><span class="ic">&#xE7F8;</span><div><div class="t">交换两个显示器上的栅栏</div><div class="s">把一个显示器上的全部栅栏搬到另一个，反之亦然</div></div></div>
         <div class="actions"><select id="swapA" aria-label="第一个显示器"></select><select id="swapB" aria-label="第二个显示器"></select><button id="swapDo">交换</button></div></div>
@@ -1164,7 +1199,7 @@
     }
     control ||= row?.querySelector('[data-act]:not(:disabled)');
     if (!control && list.id === 'ruleList') openRuleForm();
-    const fallback = list.id === 'ruleList' ? 'nrName' : 'snapName';
+    const fallback = list.id === 'ruleList' ? 'nrName' : 'themeName';
     (control || document.getElementById(fallback))?.focus({ preventScroll: true });
   }
   const openRuleForm = () => { document.getElementById('nrPanel').open = true; };
@@ -1292,53 +1327,63 @@
   document.getElementById('applyRules').onclick = () => send({ type: 'action', name: 'applyRules' });
   document.getElementById('applyRulesForce').onclick = () => send({ type: 'action', name: 'applyRulesForce' });
   document.querySelectorAll('#templates [data-template]').forEach(b => { b.onclick = () => send({ type: 'action', name: 'addTemplate', template: b.dataset.template }); });
-  document.getElementById('snapSave').onclick = () => { const n = document.getElementById('snapName').value; send({ type: 'action', name: 'saveSnapshot', snapshotName: n, includeWallpaper: document.getElementById('snapWall').checked }); document.getElementById('snapName').value = ''; };
+  document.getElementById('themeSave').onclick = () => { const n = document.getElementById('themeName').value; send({ type: 'action', name: 'saveSetup', themeName: n, includeBackground: document.getElementById('themeBg').checked }); document.getElementById('themeName').value = ''; };
   document.getElementById('cfgExport').onclick = () => send({ type: 'action', name: 'exportConfig' });
   document.getElementById('cfgImport').onclick = () => send({ type: 'action', name: 'importConfig' });
   document.getElementById('swapDo').onclick = () => { const a = document.getElementById('swapA').value, b = document.getElementById('swapB').value; if (a && b && a !== b) send({ type: 'action', name: 'swapMonitors', a, b }); else toast(t("请选择两个不同的显示器"), true); };
   function renderLayout() {
-    const sl = document.getElementById('snapList');
-    const focus = focusBookmark(sl);
-    const snaps = state.snapshots || [];
-    sl.innerHTML = snaps.length ? '' : `<div class="card"><div class="s">${esc(t("尚无快照"))}</div></div>`;
-    snaps.slice().reverse().forEach(sn => {
-      const div = document.createElement('div');
-      div.className = 'card';
-      div.dataset.rowId = sn.id;
-      // The automatic restore backup has a fixed id and no user-owned name: it renders as the
-      // localized label (whatever its stored name says) and is never editable.
-      const auto = !!sn.isAutoBackup;
-      div.innerHTML = `<div class="l"><div><div class="t">${auto ? esc(t("恢复快照前")) : `<input type="text" class="snapname" data-act="name" aria-label="${esc(t("快照名称（可选）"))}">`}</div><div class="s">${esc(sn.date)} · ${esc(tf("{0} 个栅栏", sn.fenceCount))}</div>${sn.wallpaperPath ? `<div class="s">${esc(t("已随壁纸保存"))}</div>` : ''}</div></div>
-        <div class="actions"><button data-act="restore">${esc(t("恢复"))}</button><button class="iconbtn" title="${esc(t("删除"))}" data-act="del">&#xE74D;</button></div>`;
-      div.querySelector('[data-act=restore]').onclick = () => send({ type: 'action', name: 'restoreSnapshot', id: sn.id });
-      div.querySelector('[data-act=del]').onclick = () => send({ type: 'action', name: 'deleteSnapshot', id: sn.id });
-      if (!auto) {
-        // The name is the edit affordance: it never goes through innerHTML (user text stays
-        // out of markup), and a commit fires once per focus session — Enter commits then
-        // blurs, blur commits, Escape restores without committing.
-        const nameIn = div.querySelector('.snapname');
-        nameIn.value = sn.name;
-        let committed = false;
-        const commitName = () => {
-          if (committed) return;
-          committed = true;
-          const name = nameIn.value.trim();
-          if (name && name !== sn.name) send({ type: 'action', name: 'renameSnapshot', id: sn.id, snapshotName: name });
-          else nameIn.value = sn.name;
-        };
-        nameIn.addEventListener('focus', () => { committed = false; });
-        nameIn.addEventListener('blur', commitName);
-        nameIn.addEventListener('keydown', e => {
-          if (e.key === 'Enter') { commitName(); nameIn.blur(); }
-          else if (e.key === 'Escape') { committed = true; nameIn.value = sn.name; nameIn.blur(); }
-        });
-      }
-      const displayName = auto ? t("恢复快照前") : sn.name;
-      div.querySelector('[data-act=restore]').setAttribute('aria-label', t("恢复快照：") + displayName);
-      div.querySelector('[data-act=del]').setAttribute('aria-label', t("删除快照：") + displayName);
-      sl.appendChild(div);
+    // One gallery for every saved state: .peco themes carry their preview.jpg as the card
+    // thumbnail; layout snapshots (which predate previews) get a gradient placeholder.
+    // Cards sort newest-first by save time (a theme's moment is its file mtime).
+    const gg = document.getElementById('galleryGrid');
+    const focus = focusBookmark(gg);
+    const items = [
+      ...(state.themes || []).map(x => ({ kind: 'theme', ...x })),
+      ...(state.snapshots || []).map(x => ({ kind: 'snapshot', ...x })),
+    ].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    gg.innerHTML = items.length ? '' : `<div class="theme-empty">${esc(t("尚无已保存的主题或快照"))}</div>`;
+    items.forEach(it => {
+      const isTheme = it.kind === 'theme';
+      // Automatic backups arrive with their label already localized by the backend; every
+      // other card's name is user text and is shown as stored.
+      const name = it.name;
+      const meta = isTheme
+        ? it.date
+        : `${it.date} · ${tf("{0} 个栅栏", it.fenceCount)}${it.wallpaperPath ? ' · ' + t("已随壁纸保存") : ''}`;
+      const card = document.createElement('div');
+      card.className = 'theme-card';
+      card.dataset.rowId = it.kind + ':' + (isTheme ? it.path : it.id);
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      const applyLabel = (isTheme ? t("应用主题：") : t("恢复快照：")) + name;
+      card.setAttribute('aria-label', applyLabel);
+      card.innerHTML = `<div class="theme-thumb${it.preview ? '' : ' placeholder'}">${it.preview ? `<img src="${it.preview}" alt="">` : '<span class="ic" aria-hidden="true">&#xE8B9;</span>'}
+          <div class="theme-actions"><button class="accent" data-act="apply">${esc(t("应用"))}</button><button data-act="export">${esc(t("导出 .peco"))}</button><button data-act="del">${esc(t("删除"))}</button></div></div>
+        <div class="theme-foot"><span class="t">${esc(name)}</span>${meta ? `<span class="s">${esc(meta)}</span>` : ''}</div>`;
+      const apply = () => send(isTheme
+        ? { type: 'action', name: 'applyTheme', path: it.path }
+        : { type: 'action', name: 'restoreSnapshot', id: it.id });
+      card.querySelector('[data-act=apply]').setAttribute('aria-label', applyLabel);
+      card.querySelector('[data-act=apply]').onclick = e => { e.stopPropagation(); apply(); };
+      card.querySelector('[data-act=export]').setAttribute('aria-label', (isTheme ? t("导出主题：") : t("导出快照：")) + name);
+      card.querySelector('[data-act=export]').onclick = e => {
+        e.stopPropagation();
+        send(isTheme
+          ? { type: 'action', name: 'exportItem', kind: 'theme', path: it.path }
+          : { type: 'action', name: 'exportItem', kind: 'snapshot', id: it.id });
+      };
+      card.querySelector('[data-act=del]').setAttribute('aria-label', (isTheme ? t("删除主题：") : t("删除快照：")) + name);
+      card.querySelector('[data-act=del]').onclick = e => {
+        e.stopPropagation();
+        send(isTheme
+          ? { type: 'action', name: 'deleteTheme', path: it.path }
+          : { type: 'action', name: 'deleteSnapshot', id: it.id });
+      };
+      card.onclick = apply;
+      card.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); apply(); } };
+      gg.appendChild(card);
     });
-    restoreFocus(sl, focus);
+    restoreFocus(gg, focus);
     const mons = state.monitors || [];
     document.getElementById('swapHeading').style.display = mons.length >= 2 ? '' : 'none';
     document.getElementById('swapCard').style.display = mons.length >= 2 ? '' : 'none';
@@ -1362,7 +1407,13 @@
     restoreFocus(bl, backupFocus);
   }
   document.getElementById('openCfg').onclick = () => send({ type: 'action', name: 'openConfigFolder' });
-  document.getElementById('openWallpapers').onclick = () => send({ type: 'action', name: 'openWallpapersFolder' });
+  document.getElementById('pickVideoWallpaper').onclick = () => send({ type: 'action', name: 'pickVideoWallpaper' });
+  document.getElementById('themeImport').onclick = () => send({ type: 'action', name: 'importTheme' });
+  document.querySelectorAll('.ext-link').forEach(link => {
+    link.addEventListener('click', e => {
+      if (wv) { e.preventDefault(); send({ type: 'action', name: 'openUrl', url: link.href }); }
+    });
+  });
   document.getElementById('rateStore').onclick = () => send({ type: 'action', name: 'rateInStore' });
   document.getElementById('starRepo').onclick = () => send({ type: 'action', name: 'openRepository' });
   document.getElementById('openManual').onclick = () => send({ type: 'action', name: 'openManual' });

@@ -55,6 +55,7 @@ fn log_page_error(v: &serde_json::Value) {
 pub(super) enum ConfigSource {
     Import,
     Backup,
+    Theme,
 }
 
 impl ConfigSource {
@@ -62,13 +63,22 @@ impl ConfigSource {
         match self {
             Self::Import => pecofence_core::i18n::text("已导入配置"),
             Self::Backup => pecofence_core::i18n::text("已恢复备份"),
+            Self::Theme => pecofence_core::i18n::text("已导入主题"),
         }
     }
 
     fn before(self) -> &'static str {
         match self {
-            Self::Import => pecofence_core::i18n::text("导入配置前"),
+            Self::Import | Self::Theme => pecofence_core::i18n::text("导入配置前"),
             Self::Backup => pecofence_core::i18n::text("恢复备份前"),
+        }
+    }
+
+    /// The i18n key stored as the auto backup's `name`; display layers localize it on read.
+    fn before_key(self) -> &'static str {
+        match self {
+            Self::Import | Self::Theme => "导入配置前",
+            Self::Backup => "恢复备份前",
         }
     }
 }
@@ -90,13 +100,27 @@ pub(super) fn auto_snapshot_room(
     if snapshots.len() >= pecofence_core::MAX_SNAPSHOTS
         && let Some(i) = snapshots.iter().position(|s| {
             Some(s.id) != protect
-                && (s.name.starts_with(super::ipc::AUTO_SNAPSHOT_PREFIX)
+                && (s.is_auto_backup == Some(true)
+                    || s.name.starts_with(super::ipc::AUTO_SNAPSHOT_PREFIX)
                     || auto.contains(&s.name.as_str()))
         })
     {
         snapshots.remove(i);
     }
     snapshots.len() < pecofence_core::MAX_SNAPSHOTS
+}
+
+/// What the gallery calls an automatic "…前" backup. Entries saved by this build store the
+/// i18n key, which localizes on read; anything older (a CLI `auto-cli-…` name, a label
+/// frozen in the language it was saved in) gets the generic restore label, same as before.
+pub(super) fn auto_backup_label(name: &str) -> String {
+    let key = match name {
+        "恢复快照前" => "恢复快照前",
+        "导入配置前" => "导入配置前",
+        "恢复备份前" => "恢复备份前",
+        _ => "恢复快照前",
+    };
+    pecofence_core::i18n::text(key).to_string()
 }
 
 fn snapshot_limit_text() -> String {
@@ -106,18 +130,41 @@ fn snapshot_limit_text() -> String {
     )
 }
 
-/// The packaged wallpaper pack lives beside `pecofence.exe`, wherever this copy was installed.
-fn wallpapers_dir_for_exe(exe: &Path) -> PathBuf {
-    exe.parent()
-        .unwrap_or_else(|| Path::new(""))
-        .join("assets")
-        .join("wallpapers")
-}
-
-/// `assets/wallpapers` beside this executable, or `None` for a build without the pack.
-fn bundled_wallpapers_dir() -> Option<PathBuf> {
-    let dir = wallpapers_dir_for_exe(&std::env::current_exe().ok()?);
-    dir.is_dir().then_some(dir)
+/// Remaps an imported `.peco` theme's layout monitor IDs to `work_areas` when the theme was
+/// saved on a different monitor setup, preserving every fence's normalized coordinates and size.
+fn remap_theme_monitors(
+    cfg: &mut pecofence_core::Config,
+    work_areas: &[pecofence_core::geometry::WorkArea],
+) {
+    if work_areas.is_empty() || cfg.layout_for(work_areas).is_some() {
+        return;
+    }
+    let idx = cfg.last_shown().unwrap_or(0);
+    let Some(layout) = cfg.layouts.get_mut(idx) else {
+        return;
+    };
+    let mut old_ids: Vec<String> = layout
+        .fingerprint
+        .iter()
+        .map(|m| m.device_path.clone())
+        .collect();
+    for f in &layout.fences {
+        if !f.geometry.monitor.is_empty() && !old_ids.contains(&f.geometry.monitor) {
+            old_ids.push(f.geometry.monitor.clone());
+        }
+    }
+    for f in &mut layout.fences {
+        let mapped_idx = old_ids
+            .iter()
+            .position(|id| id == &f.geometry.monitor)
+            .unwrap_or(0);
+        let target_area = work_areas.get(mapped_idx).unwrap_or(&work_areas[0]);
+        f.geometry.monitor = target_area.device_path.clone();
+    }
+    layout.fingerprint = work_areas
+        .iter()
+        .map(pecofence_core::MonitorIdentity::of)
+        .collect();
 }
 
 impl App {
@@ -136,6 +183,15 @@ impl App {
             new_settings.autostart = old_settings.autostart;
         }
         self.sync_desktop_if_available("config adopted");
+        // `.peco` manifests bind fence contents to this desktop's actual files (names that
+        // match nothing are dropped); a theme's folder portal whose directory is missing
+        // here degrades to a virtual fence rather than flashing "folder not found".
+        let desktop_dirs: Vec<PathBuf> = [shell::user_desktop(), shell::public_desktop()]
+            .into_iter()
+            .flatten()
+            .collect();
+        self.state
+            .bind_theme_members(&desktop_dirs, matches!(source, ConfigSource::Theme));
         self.relayout_from_state();
         // The file's portals need enumerating; runtime state of the replaced ones is pruned.
         self.refresh_portals();
@@ -147,6 +203,7 @@ impl App {
         // apply_settings only refreshes on a visual / icon diff; a wholesale swap (per-fence
         // tint, layouts) needs these regardless.
         self.sync_peek_hotkey();
+        self.sync_video_wallpaper();
         self.apply_icon_variant();
         self.refresh_visuals(true);
         self.state.save_if_dirty();
@@ -204,13 +261,21 @@ impl App {
     pub(super) fn restore_from_file(&mut self, path: &std::path::Path, source: ConfigSource) {
         match self.state.parse_import_file(path) {
             Ok(cfg) => {
-                // Keep a snapshot of what we are replacing so the step can be undone; a list
-                // full of the user's own snapshots has no room for it, so nothing is replaced.
-                if !auto_snapshot_room(&mut self.state.config.snapshots, None) {
+                // Keep a snapshot of what we are replacing so the step can be undone — the
+                // fixed-id auto backup slot overwrites itself, so only a first-time slot
+                // needs room. A list full of the user's own snapshots has none, so nothing
+                // is replaced.
+                let has_slot = self
+                    .state
+                    .config
+                    .snapshots
+                    .iter()
+                    .any(|s| s.id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID);
+                if !has_slot && !auto_snapshot_room(&mut self.state.config.snapshots, None) {
                     self.settings_error(&snapshot_limit_text());
                     return;
                 }
-                self.state.save_snapshot(source.before(), None);
+                self.state.save_restore_backup(source.before_key());
                 self.adopt_config(cfg, source);
             }
             Err(e) => self.settings_error(&pecofence_core::i18n::format(
@@ -302,7 +367,11 @@ impl App {
             .map(|s| {
                 serde_json::json!({
                     "id": s.id,
-                    "name": s.name,
+                    "name": if s.is_auto_backup == Some(true) {
+                        auto_backup_label(&s.name)
+                    } else {
+                        s.name.clone()
+                    },
                     "ts": s.ts,
                     "date": pecofence_platform::fileinfo::format_local_datetime(s.ts),
                     "fenceCount": super::ipc::snapshot_dto(s, &self.state.work_areas).fence_count,
@@ -322,6 +391,7 @@ impl App {
                 })
             })
             .collect();
+        let themes = self.themes_json();
         let monitors: Vec<serde_json::Value> = self
             .monitor_labels()
             .into_iter()
@@ -341,6 +411,7 @@ impl App {
             "fences": fences,
             "snapshots": snapshots,
             "backups": backups,
+            "themes": themes,
             "monitors": monitors,
             "tintPalette": fence_options::tint_palette_json(),
             "version": env!("CARGO_PKG_VERSION"),
@@ -563,15 +634,66 @@ impl App {
                     }
                     let _ = explorer.spawn();
                 }
-                Some("openWallpapersFolder") => {
-                    if let Some(dir) = bundled_wallpapers_dir() {
-                        let owner = self.settings.as_ref().map(|h| h.hwnd());
-                        if let Err(e) = shell::shell_execute(&dir, None, owner) {
-                            tracing::warn!(error = %e, path = %dir.display(), "opening wallpapers folder failed");
-                            self.settings_error(pecofence_core::i18n::text("无法打开壁纸文件夹"));
+                Some("pickVideoWallpaper") => self.pick_video_wallpaper(),
+                Some("applyVideoWallpaper") => {
+                    if let Some(p) = v.get("path").and_then(|p| p.as_str()) {
+                        self.apply_video_wallpaper(Path::new(p));
+                    }
+                }
+                Some("exportTheme") => self.export_theme(),
+                Some("exportThemeTo") => {
+                    if let Some(p) = v.get("path").and_then(|p| p.as_str()) {
+                        self.export_theme_to(Path::new(p));
+                    }
+                }
+                Some("importTheme") => self.import_theme(),
+                Some("importThemeFrom") => {
+                    if let Some(p) = v.get("path").and_then(|p| p.as_str()) {
+                        self.import_theme_from(Path::new(p));
+                    }
+                }
+                Some("applyTheme") => {
+                    if let Some(p) = v.get("path").and_then(|p| p.as_str()) {
+                        self.apply_theme_from_library(Path::new(p));
+                    }
+                }
+                Some("saveSetup") => {
+                    let name = v.get("themeName").and_then(|n| n.as_str()).unwrap_or("");
+                    let include_bg = v
+                        .get("includeBackground")
+                        .and_then(|f| f.as_bool())
+                        .unwrap_or(false);
+                    self.save_theme_to_library(name, include_bg);
+                }
+                Some("exportItem") => match v.get("kind").and_then(|k| k.as_str()) {
+                    Some("theme") => {
+                        if let Some(p) = v.get("path").and_then(|p| p.as_str()) {
+                            self.export_library_theme(Path::new(p));
                         }
-                    } else {
-                        self.settings_error(pecofence_core::i18n::text("未找到随附的壁纸文件夹"));
+                    }
+                    Some("snapshot") => {
+                        if let Some(id) = v
+                            .get("id")
+                            .and_then(|i| i.as_str())
+                            .and_then(|i| uuid::Uuid::parse_str(i).ok())
+                        {
+                            self.export_snapshot_theme(id);
+                        }
+                    }
+                    _ => {}
+                },
+                Some("deleteTheme") => {
+                    if let Some(p) = v.get("path").and_then(|p| p.as_str()) {
+                        self.delete_library_theme(Path::new(p));
+                    }
+                }
+                Some("openUrl") => {
+                    if let Some(url) = v.get("url").and_then(|u| u.as_str())
+                        && (url.starts_with("https://cloudconvert.com")
+                            || url.starts_with("https://www.freeconvert.com")
+                            || url.starts_with("https://freeconvert.com"))
+                    {
+                        let _ = shell::shell_execute(Path::new(url), None, None);
                     }
                 }
                 Some("saveSnapshot") => {
@@ -618,10 +740,7 @@ impl App {
                             return;
                         }
                         let wallpaper = self.state.snapshot_wallpaper(id);
-                        self.state.restore_snapshot_with_backup(
-                            id,
-                            pecofence_core::i18n::text("恢复快照前"),
-                        );
+                        self.state.restore_snapshot_with_backup(id, "恢复快照前");
                         self.end_peek_now();
                         self.relayout_from_state();
                         // Portals restored with the snapshot need enumerating; stale
@@ -949,7 +1068,644 @@ impl App {
         if inbox_hiding_changed {
             self.sync_inbox_window();
         }
+        self.sync_video_wallpaper();
         self.push_settings_state();
+    }
+
+    /// Starts or stops the WMF desktop video wallpaper player to match `settings.video_wallpaper_path`.
+    pub(super) fn sync_video_wallpaper(&mut self) {
+        let wanted = self
+            .state
+            .config
+            .settings
+            .video_wallpaper_path
+            .clone()
+            .filter(|s| !s.is_empty());
+        let Some(path_str) = wanted else {
+            self.wmf_player = None;
+            return;
+        };
+        let path = PathBuf::from(&path_str);
+        if self.wmf_player.as_ref().is_some_and(|p| p.path() == path) {
+            return;
+        }
+        self.wmf_player = None;
+        if !path.is_file() {
+            return;
+        }
+        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path) {
+            Ok(player) => {
+                self.wmf_player = Some(player);
+                self.capture_live_wallpapers(Duration::ZERO);
+            }
+            Err(error) => {
+                tracing::error!(path = %path.display(), %error, "WMF video wallpaper failed to start");
+                self.settings_error(&pecofence_core::i18n::format(
+                    "无法使用此文件：{0}",
+                    std::slice::from_ref(&error),
+                ));
+            }
+        }
+    }
+
+    pub(super) fn pick_video_wallpaper(&mut self) {
+        let owner = self.settings.as_ref().map(|h| h.hwnd());
+        match pecofence_platform::filedialog::open_mp4(
+            owner,
+            pecofence_core::i18n::text("将视频设为桌面壁纸"),
+        ) {
+            Ok(Some(path)) => self.apply_video_wallpaper(&path),
+            Ok(None) => {}
+            Err(e) => self.settings_error(&pecofence_core::i18n::format(
+                "无法打开文件对话框：{0}",
+                &[e.to_string()],
+            )),
+        }
+    }
+
+    pub(super) fn apply_video_wallpaper(&mut self, path: &Path) {
+        tracing::info!(path = %path.display(), "applying video wallpaper from settings");
+        self.wmf_player = None;
+        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(path) {
+            Ok(player) => {
+                self.wmf_player = Some(player);
+                self.state.config.settings.video_wallpaper_path =
+                    Some(path.to_string_lossy().into_owned());
+                self.settings_mutated();
+                self.capture_live_wallpapers(Duration::ZERO);
+                self.settings_toast(pecofence_core::i18n::text("已将视频设为桌面壁纸"));
+            }
+            Err(err) => {
+                tracing::error!(path = %path.display(), %err, "apply_video_wallpaper failed");
+                self.settings_error(&pecofence_core::i18n::format(
+                    "无法使用此文件：{0}",
+                    std::slice::from_ref(&err),
+                ));
+            }
+        }
+    }
+
+    pub(super) fn export_theme(&mut self) {
+        let owner = self.settings.as_ref().map(|h| h.hwnd());
+        let name = format!(
+            "pecofence-theme-{}.peco",
+            pecofence_core::config_store::today_yyyy_mm_dd()
+        );
+        match pecofence_platform::filedialog::save_peco(
+            owner,
+            pecofence_core::i18n::text("导出为 .peco 主题"),
+            &name,
+        ) {
+            Ok(Some(path)) => self.export_theme_to(&path),
+            Ok(None) => {}
+            Err(e) => self.settings_error(&pecofence_core::i18n::format(
+                "无法打开保存对话框：{0}",
+                &[e.to_string()],
+            )),
+        }
+    }
+
+    /// The active desktop background media: the WMF video when one is set, else the desktop
+    /// wallpaper image — only paths that still exist.
+    fn current_background_source(&self) -> Option<PathBuf> {
+        self.state
+            .config
+            .settings
+            .video_wallpaper_path
+            .as_deref()
+            .map(PathBuf::from)
+            .filter(|p| p.is_file())
+            .or_else(|| {
+                pecofence_platform::sysparams::desktop_wallpaper()
+                    .map(PathBuf::from)
+                    .filter(|p| p.is_file())
+                    .or_else(|| {
+                        pecofence_platform::wallpaper::query()
+                            .ok()
+                            .and_then(|q| q.monitors.into_iter().find_map(|m| m.path))
+                            .filter(|p| p.is_file())
+                    })
+            })
+    }
+
+    /// Serializes `cfg` and builds a `.peco` payload: an optional `background.<ext>` entry
+    /// copied from `bg_source` plus a 640x360 `preview.jpg` of the layout rendered over a
+    /// frame of that background (`preview_frame` wins when the caller has live pixels).
+    fn peco_payload(
+        &self,
+        cfg: &pecofence_core::Config,
+        bg_source: Option<&Path>,
+        preview_frame: Option<(u32, u32, Vec<u8>)>,
+    ) -> std::result::Result<(String, Option<(String, Vec<u8>)>, Vec<u8>), String> {
+        let mut cfg = cfg.clone();
+        cfg.make_theme_portable();
+        // Portal contents are runtime data, not config.items: their names become the
+        // manifest so a machine without that folder restores a virtual fence holding
+        // whatever desktop files match instead of showing "folder not found".
+        for layout in &mut cfg.layouts {
+            for fence in &mut layout.fences {
+                if fence.kind == pecofence_core::FenceKind::FolderPortal {
+                    fence.contained_files = self
+                        .state
+                        .unsorted_items_of(fence)
+                        .filter_map(|it| it.manifest_name())
+                        .collect();
+                }
+            }
+        }
+        let config_json = pecofence_core::ConfigStore::to_json(&cfg).map_err(|e| e.to_string())?;
+        let mut bg_entry: Option<(String, Vec<u8>)> = None;
+        let mut frame = preview_frame;
+        if let Some(src) = bg_source.filter(|p| p.is_file()) {
+            let ext = src
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_ascii_lowercase())
+                .filter(|e| {
+                    matches!(
+                        e.as_str(),
+                        "mp4" | "jpg" | "jpeg" | "png" | "bmp" | "webp" | "gif" | "tif" | "tiff"
+                    )
+                })
+                .unwrap_or_else(|| "jpg".into());
+            if let Ok(bytes) = std::fs::read(src) {
+                bg_entry = Some((format!("background.{ext}"), bytes));
+            }
+            if frame.is_none() {
+                frame = if ext == "mp4" {
+                    pecofence_platform::wmf_wallpaper::decode_video_first_frame(src)
+                        .ok()
+                        .map(|f| (f.width, f.height, f.bgra))
+                } else {
+                    pecofence_platform::wallpaper::decode_scaled(src, 640, 360)
+                        .ok()
+                        .map(|d| (d.width, d.height, d.bgra))
+                };
+            }
+        }
+        let bg_ref = frame.as_ref().map(|(w, h, px)| (*w, *h, px.as_slice()));
+        let preview_bgra =
+            pecofence_core::peco_theme::render_layout_preview_bgra(&cfg, bg_ref, 640, 360);
+        let preview_jpg = pecofence_platform::wmf_wallpaper::encode_jpeg(640, 360, &preview_bgra)
+            .map_err(|e| e.to_string())?;
+        Ok((config_json, bg_entry, preview_jpg))
+    }
+
+    /// Writes `config_json`/`bg_entry`/`preview_jpg` to `dest` and reports through the page.
+    fn write_theme_archive(
+        &mut self,
+        dest: &Path,
+        config_json: &str,
+        bg_entry: Option<(String, Vec<u8>)>,
+        preview_jpg: &[u8],
+    ) -> bool {
+        let bg_slice = bg_entry.as_ref().map(|(n, b)| (n.as_str(), b.as_slice()));
+        match pecofence_core::peco_theme::write_peco_file(dest, config_json, bg_slice, preview_jpg)
+        {
+            Ok(()) => {
+                self.settings_toast(&pecofence_core::i18n::format(
+                    "已导出到 {0}",
+                    &[format!("{}", dest.display())],
+                ));
+                true
+            }
+            Err(e) => {
+                self.settings_error(&pecofence_core::i18n::format(
+                    "导出失败：{0}",
+                    &[e.to_string()],
+                ));
+                false
+            }
+        }
+    }
+
+    pub(super) fn export_theme_to(&mut self, dest: &Path) {
+        self.state.save_if_dirty();
+        let bg = self.current_background_source();
+        let live = self
+            .wmf_player
+            .as_ref()
+            .and_then(|p| p.latest_frame())
+            .map(|f| (f.width, f.height, f.bgra));
+        match self.peco_payload(&self.state.config, bg.as_deref(), live) {
+            Ok((config_json, bg_entry, preview_jpg)) => {
+                self.write_theme_archive(dest, &config_json, bg_entry, &preview_jpg);
+            }
+            Err(e) => self.settings_error(&pecofence_core::i18n::format("导出失败：{0}", &[e])),
+        }
+    }
+
+    /// File stem usable for a `.peco` filename: path-hostile characters become `-`, leading
+    /// dots/spaces are trimmed, and an empty result falls back to "Theme <date> <time>".
+    fn sanitize_theme_stem(name: &str) -> String {
+        let mut out = String::with_capacity(name.len());
+        for c in name.trim().chars().take(80) {
+            if c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') {
+                out.push('-');
+            } else {
+                out.push(c);
+            }
+        }
+        let clean = out.trim_matches([' ', '.', '-']).to_string();
+        if clean.is_empty() {
+            let stamp =
+                pecofence_platform::fileinfo::format_local_datetime(pecofence_core::now_unix())
+                    .replace(['/', '\\', ':'], "-");
+            format!("{} {}", pecofence_core::i18n::text("主题"), stamp)
+        } else {
+            clean
+        }
+    }
+
+    /// A free `stem.peco` / `stem (n).peco` path inside the theme library.
+    fn unique_theme_path(&self, stem: &str) -> PathBuf {
+        let dir = self.themes_dir();
+        let _ = std::fs::create_dir_all(&dir);
+        let mut dest = dir.join(format!("{stem}.peco"));
+        if dest.exists() {
+            for i in 2..1000 {
+                let candidate = dir.join(format!("{stem} ({i}).peco"));
+                if !candidate.exists() {
+                    dest = candidate;
+                    break;
+                }
+            }
+        }
+        dest
+    }
+
+    /// Gallery "Save Current Setup": the live configuration becomes a `.peco` in the theme
+    /// library — a card with a generated thumbnail. `include_bg` embeds the active video or
+    /// wallpaper; without it the archived config clears `video_wallpaper_path` so applying
+    /// the theme never resurrects a background the user excluded.
+    fn save_theme_to_library(&mut self, name: &str, include_bg: bool) {
+        let mut cfg = self.state.config.clone();
+        let bg = if include_bg {
+            self.current_background_source()
+        } else {
+            cfg.settings.video_wallpaper_path = None;
+            None
+        };
+        let live = bg
+            .as_deref()
+            .and_then(|p| p.extension())
+            .is_some_and(|e| e.eq_ignore_ascii_case("mp4"))
+            .then(|| {
+                self.wmf_player
+                    .as_ref()
+                    .and_then(|p| p.latest_frame())
+                    .map(|f| (f.width, f.height, f.bgra))
+            })
+            .flatten();
+        let dest = self.unique_theme_path(&Self::sanitize_theme_stem(name));
+        match self.peco_payload(&cfg, bg.as_deref(), live) {
+            Ok((config_json, bg_entry, preview_jpg)) => {
+                let bg_slice = bg_entry.as_ref().map(|(n, b)| (n.as_str(), b.as_slice()));
+                match pecofence_core::peco_theme::write_peco_file(
+                    &dest,
+                    &config_json,
+                    bg_slice,
+                    &preview_jpg,
+                ) {
+                    Ok(()) => {
+                        self.push_settings_state();
+                        self.settings_toast(pecofence_core::i18n::text("已保存主题"));
+                    }
+                    Err(e) => self.settings_error(&pecofence_core::i18n::format(
+                        "保存主题失败：{0}",
+                        &[e.to_string()],
+                    )),
+                }
+            }
+            Err(e) => self.settings_error(&pecofence_core::i18n::format("保存主题失败：{0}", &[e])),
+        }
+    }
+
+    /// `path` is a `.peco` file directly inside the theme library — the only paths a gallery
+    /// card may ever hand to delete/copy operations.
+    fn theme_in_library(&self, path: &Path) -> bool {
+        let dir = self.themes_dir();
+        let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        path.parent()
+            .is_some_and(|parent| canon(parent) == canon(&dir))
+            && path
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("peco"))
+    }
+
+    /// Card "Export .peco" on a library theme: the archive already is the `.peco` — offer a copy.
+    fn export_library_theme(&mut self, path: &Path) {
+        if !self.theme_in_library(path) {
+            return;
+        }
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "theme".to_string());
+        let owner = self.settings.as_ref().map(|h| h.hwnd());
+        match pecofence_platform::filedialog::save_peco(
+            owner,
+            pecofence_core::i18n::text("导出为 .peco 主题"),
+            &format!("{stem}.peco"),
+        ) {
+            Ok(Some(dest)) => match std::fs::copy(path, &dest) {
+                Ok(_) => self.settings_toast(&pecofence_core::i18n::format(
+                    "已导出到 {0}",
+                    &[format!("{}", dest.display())],
+                )),
+                Err(e) => self.settings_error(&pecofence_core::i18n::format(
+                    "导出失败：{0}",
+                    &[e.to_string()],
+                )),
+            },
+            Ok(None) => {}
+            Err(e) => self.settings_error(&pecofence_core::i18n::format(
+                "无法打开保存对话框：{0}",
+                &[e.to_string()],
+            )),
+        }
+    }
+
+    /// Card "Export .peco" on a layout snapshot: packs the snapshot's stored layouts (with the
+    /// current visual settings) and its captured wallpaper into a fresh `.peco` archive.
+    fn export_snapshot_theme(&mut self, id: uuid::Uuid) {
+        let Some(snap) = self
+            .state
+            .config
+            .snapshots
+            .iter()
+            .find(|s| s.id == id)
+            .cloned()
+        else {
+            return;
+        };
+        let name = if snap.is_auto_backup == Some(true) {
+            auto_backup_label(&snap.name)
+        } else {
+            snap.name.clone()
+        };
+        let suggested = format!("{}.peco", Self::sanitize_theme_stem(&name));
+        let owner = self.settings.as_ref().map(|h| h.hwnd());
+        let dest = match pecofence_platform::filedialog::save_peco(
+            owner,
+            pecofence_core::i18n::text("导出为 .peco 主题"),
+            &suggested,
+        ) {
+            Ok(Some(d)) => d,
+            Ok(None) => return,
+            Err(e) => {
+                self.settings_error(&pecofence_core::i18n::format(
+                    "无法打开保存对话框：{0}",
+                    &[e.to_string()],
+                ));
+                return;
+            }
+        };
+        let mut cfg = self.state.config.clone();
+        cfg.layouts = snap.layouts.clone();
+        let bg = snap
+            .wallpaper_path
+            .as_deref()
+            .map(PathBuf::from)
+            .filter(|p| p.is_file());
+        match self.peco_payload(&cfg, bg.as_deref(), None) {
+            Ok((config_json, bg_entry, preview_jpg)) => {
+                self.write_theme_archive(&dest, &config_json, bg_entry, &preview_jpg);
+            }
+            Err(e) => self.settings_error(&pecofence_core::i18n::format("导出失败：{0}", &[e])),
+        }
+    }
+
+    pub(super) fn import_theme(&mut self) {
+        let owner = self.settings.as_ref().map(|h| h.hwnd());
+        match pecofence_platform::filedialog::open_peco(
+            owner,
+            pecofence_core::i18n::text("导入主题"),
+        ) {
+            Ok(Some(path)) => self.import_theme_from(&path),
+            Ok(None) => {}
+            Err(e) => self.settings_error(&pecofence_core::i18n::format(
+                "无法打开文件对话框：{0}",
+                &[e.to_string()],
+            )),
+        }
+    }
+
+    /// The `.peco` theme library folder next to `config.json` (portable and packaged stores
+    /// get their own, like `imported_wallpapers/`).
+    pub(super) fn themes_dir(&self) -> PathBuf {
+        self.state
+            .config_path()
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join("themes")
+    }
+
+    /// The theme gallery's cards: every `*.peco` in the library with its embedded
+    /// `preview.jpg` as a data URI (empty string when the archive has none).
+    fn themes_json(&self) -> Vec<serde_json::Value> {
+        let mut files: Vec<PathBuf> = std::fs::read_dir(self.themes_dir())
+            .map(|rd| {
+                rd.filter_map(|e| e.ok().map(|e| e.path()))
+                    .filter(|p| {
+                        p.extension()
+                            .is_some_and(|e| e.eq_ignore_ascii_case("peco"))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        files.sort_by_key(|p| p.file_name().map(|n| n.to_ascii_lowercase()));
+        files
+            .into_iter()
+            .map(|p| {
+                let name = p
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let preview = pecofence_core::peco_theme::read_peco_preview(&p)
+                    .map(|jpg| {
+                        format!(
+                            "data:image/jpeg;base64,{}",
+                            pecofence_core::base64::encode(&jpg)
+                        )
+                    })
+                    .unwrap_or_default();
+                // The gallery sorts cards newest-first; a .peco's moment is its mtime.
+                let (ts, date) = std::fs::metadata(&p)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| {
+                        let ts = d.as_secs().min(i64::MAX as u64) as i64;
+                        (ts, pecofence_platform::fileinfo::format_local_datetime(ts))
+                    })
+                    .unwrap_or_default();
+                serde_json::json!({
+                    "name": name,
+                    "path": p.to_string_lossy(),
+                    "preview": preview,
+                    "ts": ts,
+                    "date": date,
+                })
+            })
+            .collect()
+    }
+
+    /// Copies an imported `.peco` into the theme library so it appears as a card. A file
+    /// already inside the library, or one whose bytes match an existing entry, is kept as is;
+    /// name collisions get a " (n)" suffix.
+    fn store_theme_copy(&self, src: &Path) {
+        let dir = self.themes_dir();
+        let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        if src
+            .parent()
+            .is_some_and(|parent| canon(parent) == canon(&dir))
+        {
+            return;
+        }
+        if std::fs::create_dir_all(&dir).is_err() {
+            return;
+        }
+        let stem = src
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "theme".to_string());
+        let same_bytes = |a: &Path, b: &Path| {
+            std::fs::read(a)
+                .ok()
+                .zip(std::fs::read(b).ok())
+                .is_some_and(|(x, y)| x == y)
+        };
+        let mut dest = dir.join(format!("{stem}.peco"));
+        if dest.exists() {
+            if same_bytes(src, &dest) {
+                return;
+            }
+            for i in 2..100 {
+                let candidate = dir.join(format!("{stem} ({i}).peco"));
+                if !candidate.exists() {
+                    dest = candidate;
+                    break;
+                }
+                if same_bytes(src, &candidate) {
+                    return;
+                }
+            }
+        }
+        if let Err(e) = std::fs::copy(src, &dest) {
+            tracing::warn!(error = %e, dest = %dest.display(), "theme library copy failed");
+        }
+    }
+
+    /// Applies a `.peco` already living in the theme library (a gallery card click).
+    pub(super) fn apply_theme_from_library(&mut self, path: &Path) {
+        self.apply_theme_path(path, false);
+    }
+
+    /// Deletes a `.peco` from the theme library. Only files directly inside the library
+    /// folder are removable — a page-supplied path can never reach outside it.
+    pub(super) fn delete_library_theme(&mut self, path: &Path) {
+        if self.theme_in_library(path) {
+            let _ = std::fs::remove_file(path);
+        }
+        self.push_settings_state();
+    }
+
+    pub(super) fn import_theme_from(&mut self, path: &Path) {
+        self.apply_theme_path(path, true);
+    }
+
+    /// Shared import/apply flow: `save_to_library` distinguishes a file the user picked
+    /// (`importTheme`, kept as a gallery card) from a card that was clicked (`applyTheme`).
+    fn apply_theme_path(&mut self, path: &Path, save_to_library: bool) {
+        let extracted = match pecofence_core::peco_theme::extract_peco_to_temp(path) {
+            Ok(ex) => ex,
+            Err(e) => {
+                self.settings_error(&pecofence_core::i18n::format(
+                    "无法使用此文件：{0}",
+                    std::slice::from_ref(&e),
+                ));
+                return;
+            }
+        };
+
+        let mut cfg = match self.state.parse_import_file(&extracted.config_path) {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&extracted.temp_dir);
+                self.settings_error(&pecofence_core::i18n::format(
+                    "无法使用此文件：{0}",
+                    std::slice::from_ref(&e),
+                ));
+                return;
+            }
+        };
+
+        if !auto_snapshot_room(&mut self.state.config.snapshots, None) {
+            let _ = std::fs::remove_dir_all(&extracted.temp_dir);
+            self.settings_error(&snapshot_limit_text());
+            return;
+        }
+
+        // Persist the extracted background media next to config.json so it survives temp cleanup.
+        let mut persisted_bg: Option<PathBuf> = None;
+        if let Some(bg_temp) = &extracted.background_path {
+            let ext = bg_temp
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("jpg");
+            let dest_dir = self
+                .state
+                .config_path()
+                .parent()
+                .unwrap_or(Path::new("."))
+                .join("imported_wallpapers");
+            let _ = std::fs::create_dir_all(&dest_dir);
+            let dest_bg = dest_dir.join(format!("theme-background.{ext}"));
+            if std::fs::copy(bg_temp, &dest_bg).is_ok() {
+                persisted_bg = Some(dest_bg);
+            }
+        }
+        let _ = std::fs::remove_dir_all(&extracted.temp_dir);
+
+        let is_video = persisted_bg
+            .as_ref()
+            .and_then(|p| p.extension())
+            .is_some_and(|e| e.eq_ignore_ascii_case("mp4"));
+
+        if is_video {
+            cfg.settings.video_wallpaper_path = persisted_bg
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned());
+        } else if persisted_bg.is_some() {
+            cfg.settings.video_wallpaper_path = None;
+        }
+
+        remap_theme_monitors(&mut cfg, &self.state.work_areas);
+        // A picked file joins the library before the state push so its card appears with the
+        // same update that applies it.
+        if save_to_library {
+            self.store_theme_copy(path);
+        }
+        // The fixed-id auto backup slot: every apply overwrites the same "…前" entry
+        // instead of appending another card to the gallery.
+        self.state
+            .save_restore_backup(ConfigSource::Theme.before_key());
+        self.adopt_config(cfg, ConfigSource::Theme);
+
+        if let Some(bg) = persisted_bg {
+            if is_video {
+                self.sync_video_wallpaper();
+            } else {
+                self.wmf_player = None;
+                let bg_str = bg.to_string_lossy();
+                if !pecofence_platform::sysparams::set_desktop_wallpaper(&bg_str) {
+                    tracing::warn!(path = %bg.display(), "importTheme: image wallpaper not applied");
+                }
+            }
+        }
     }
 
     pub(super) fn refresh_language(&mut self) {
@@ -979,11 +1735,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bundled_wallpapers_track_the_install_directory() {
-        let exe = Path::new(r"C:\Apps\PecoFence\pecofence.exe");
-        assert_eq!(
-            wallpapers_dir_for_exe(exe),
-            Path::new(r"C:\Apps\PecoFence\assets\wallpapers")
+    fn remapping_theme_monitors_preserves_fence_geometry_on_new_display() {
+        let mut cfg = pecofence_core::Config::default();
+        let mut f = pecofence_core::Fence::new(
+            "Shelf",
+            pecofence_core::FenceKind::Virtual,
+            pecofence_core::NormGeometry {
+                monitor: "OLD_MON#1".into(),
+                x: 120.0,
+                y: 80.0,
+                w: 400.0,
+                h: 300.0,
+                work_w: 1920.0,
+                work_h: 1080.0,
+                anchor: pecofence_core::Anchor::LeftTop,
+                skew_left: Some(-12.0),
+                skew_right: Some(12.0),
+            },
         );
+        f.view.shelf_3d = Some(true);
+        cfg.layouts.push(pecofence_core::Layout {
+            fingerprint: vec![pecofence_core::MonitorIdentity {
+                device_path: "OLD_MON#1".into(),
+                gdi_name: r"\\.\DISPLAY1".into(),
+                work_dip: [1920.0, 1080.0],
+                dpi: 96,
+                screen_px: [1920, 1080],
+            }],
+            fences: vec![f],
+            desktop_items: Default::default(),
+            shown: 1,
+        });
+        let work = vec![pecofence_core::geometry::WorkArea {
+            device_path: "NEW_MON#2".into(),
+            gdi_name: r"\\.\DISPLAY1".into(),
+            left: 0,
+            top: 0,
+            right: 1920,
+            bottom: 1080,
+            dpi: 96,
+            mon_left: 0,
+            mon_top: 0,
+            mon_right: 1920,
+            mon_bottom: 1080,
+        }];
+        remap_theme_monitors(&mut cfg, &work);
+        assert_eq!(cfg.layouts[0].fences[0].geometry.monitor, "NEW_MON#2");
+        assert_eq!(cfg.layouts[0].fences[0].geometry.x, 120.0);
+        assert_eq!(cfg.layouts[0].fences[0].geometry.y, 80.0);
+        assert_eq!(cfg.layouts[0].fences[0].geometry.w, 400.0);
+        assert_eq!(cfg.layouts[0].fences[0].geometry.h, 300.0);
     }
 }

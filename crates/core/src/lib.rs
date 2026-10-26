@@ -1,7 +1,7 @@
 //! Platform-independent core: data model, layout normalization, rule engine, persistence.
 //! This crate must never depend on Windows APIs so it can be unit-tested anywhere.
 
-pub(crate) mod base64;
+pub mod base64;
 pub mod brand;
 pub mod config_store;
 pub mod date_group;
@@ -9,6 +9,7 @@ pub mod geometry;
 pub mod hotkey;
 pub mod i18n;
 pub mod model;
+pub mod peco_theme;
 pub mod rules;
 pub mod updates;
 

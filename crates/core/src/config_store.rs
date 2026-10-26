@@ -236,7 +236,7 @@ impl ConfigStore {
 
     /// The file text: pretty JSON with the `$schema` field pointing at the published schema
     /// (serde_json sorts keys, and `$` sorts first, so it is the first line after the brace).
-    fn to_json(cfg: &Config) -> io::Result<String> {
+    pub fn to_json(cfg: &Config) -> io::Result<String> {
         if cfg.schema.as_deref() == Some(crate::model::CONFIG_SCHEMA_URL) {
             // A loaded config already carries it: no copy of the whole config per save.
             return serde_json::to_string_pretty(cfg).map_err(io::Error::other);
@@ -715,16 +715,19 @@ pub fn migrate(mut cfg: Config) -> Config {
     cfg
 }
 
-/// The restore backup used to append a `恢复快照前` entry (in whatever language the UI was in)
-/// on every restore; it is now the single [`AUTO_BACKUP_SNAPSHOT_ID`] entry. Fold the saved
-/// duplicates into the newest one and drop the rest.
-fn dedupe_restore_backups(cfg: &mut Config) {
+/// The automatic "…前" backups used to append an entry (in whatever language the UI was in)
+/// on every restore or import; they are now the single [`AUTO_BACKUP_SNAPSHOT_ID`] entry.
+/// Fold the saved duplicates — any locale's label for the three auto names, or the raw
+/// i18n keys newer files store — into the newest one and drop the rest.
+pub fn dedupe_restore_backups(cfg: &mut Config) {
     use crate::model::AUTO_BACKUP_SNAPSHOT_ID;
-    let names: std::collections::HashSet<&str> = std::iter::once("恢复快照前")
-        .chain(crate::i18n::SUPPORTED.iter().filter_map(|&l| {
-            crate::i18n::catalog(l)
-                .get("恢复快照前")
-                .map(String::as_str)
+    const KEYS: [&str; 3] = ["恢复快照前", "导入配置前", "恢复备份前"];
+    let names: std::collections::HashSet<&str> = KEYS
+        .iter()
+        .copied()
+        .chain(crate::i18n::SUPPORTED.iter().flat_map(|&l| {
+            KEYS.iter()
+                .filter_map(move |k| crate::i18n::catalog(l).get(*k).map(String::as_str))
         }))
         .collect();
     let is_backup = |s: &crate::model::Snapshot| {
@@ -1091,13 +1094,15 @@ mod tests {
             wallpaper_path: None,
             is_auto_backup: None,
         };
-        let mut c = Config::default();
-        c.snapshots = vec![
-            mk("恢复快照前", 1),
-            // The same label saved while the UI language was English.
-            mk("Before snapshot restore", 5),
-            mk("mine", 3),
-        ];
+        let c = Config {
+            snapshots: vec![
+                mk("恢复快照前", 1),
+                // The same label saved while the UI language was English.
+                mk("Before snapshot restore", 5),
+                mk("mine", 3),
+            ],
+            ..Default::default()
+        };
         let c = migrate(c);
         let auto: Vec<_> = c
             .snapshots

@@ -96,3 +96,86 @@ pub fn pick_folder(owner: Option<HWND>, title: &str) -> Result<Option<PathBuf>> 
         result_path(&base).map(Some)
     }
 }
+
+/// "Open" for an MP4 video file (`*.mp4` only). `None` when the user cancelled.
+pub fn open_mp4(owner: Option<HWND>, title: &str) -> Result<Option<PathBuf>> {
+    let title_w = to_wide(title);
+    let filter_name = to_wide(pecofence_core::i18n::text("MP4 视频 (*.mp4)"));
+    let filter_spec = to_wide("*.mp4");
+    // SAFETY: COM object created here; all strings outlive the calls.
+    unsafe {
+        let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL as u32)?;
+        let base: IFileDialog = dialog.cast()?;
+        base.SetOptions(FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST)
+            .ok()?;
+        let spec = COMDLG_FILTERSPEC {
+            pszName: PCWSTR(filter_name.as_ptr()),
+            pszSpec: PCWSTR(filter_spec.as_ptr()),
+        };
+        base.SetFileTypes(1, &spec).ok()?;
+        base.SetTitle(PCWSTR(title_w.as_ptr())).ok()?;
+        let hr = base.Show(owner);
+        if hr.is_err() {
+            return Ok(None);
+        }
+        result_path(&base).map(Some)
+    }
+}
+
+/// "Save as" for a `.peco` theme archive. `None` when the user cancelled.
+pub fn save_peco(
+    owner: Option<HWND>,
+    title: &str,
+    suggested_name: &str,
+) -> Result<Option<PathBuf>> {
+    let title_w = to_wide(title);
+    let name_w = to_wide(suggested_name);
+    let filter_name = to_wide(pecofence_core::i18n::text("PecoFence 主题 (*.peco)"));
+    let filter_spec = to_wide("*.peco");
+    let ext = to_wide("peco");
+    // SAFETY: COM object created here; all strings outlive the calls.
+    unsafe {
+        let dialog: IFileSaveDialog = CoCreateInstance(&FileSaveDialog, None, CLSCTX_ALL as u32)?;
+        let base: IFileDialog = dialog.cast()?;
+        base.SetOptions(FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_OVERWRITEPROMPT)
+            .ok()?;
+        let spec = COMDLG_FILTERSPEC {
+            pszName: PCWSTR(filter_name.as_ptr()),
+            pszSpec: PCWSTR(filter_spec.as_ptr()),
+        };
+        base.SetFileTypes(1, &spec).ok()?;
+        base.SetDefaultExtension(PCWSTR(ext.as_ptr())).ok()?;
+        base.SetTitle(PCWSTR(title_w.as_ptr())).ok()?;
+        base.SetFileName(PCWSTR(name_w.as_ptr())).ok()?;
+        let hr = base.Show(owner);
+        if hr.is_err() {
+            return Ok(None);
+        }
+        result_path(&base).map(Some)
+    }
+}
+
+/// "Open" for a `.peco` theme archive. `None` when the user cancelled.
+pub fn open_peco(owner: Option<HWND>, title: &str) -> Result<Option<PathBuf>> {
+    let title_w = to_wide(title);
+    let filter_name = to_wide(pecofence_core::i18n::text("PecoFence 主题 (*.peco)"));
+    let filter_spec = to_wide("*.peco");
+    // SAFETY: COM object created here; all strings outlive the calls.
+    unsafe {
+        let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL as u32)?;
+        let base: IFileDialog = dialog.cast()?;
+        base.SetOptions(FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST)
+            .ok()?;
+        let spec = COMDLG_FILTERSPEC {
+            pszName: PCWSTR(filter_name.as_ptr()),
+            pszSpec: PCWSTR(filter_spec.as_ptr()),
+        };
+        base.SetFileTypes(1, &spec).ok()?;
+        base.SetTitle(PCWSTR(title_w.as_ptr())).ok()?;
+        let hr = base.Show(owner);
+        if hr.is_err() {
+            return Ok(None);
+        }
+        result_path(&base).map(Some)
+    }
+}

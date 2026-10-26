@@ -45,6 +45,19 @@ mod store_bindings;
 #[allow(clippy::useless_conversion)]
 mod capture_bindings;
 mod gpu_wallpaper;
+#[allow(
+    non_snake_case,
+    non_upper_case_globals,
+    non_camel_case_types,
+    clippy::upper_case_acronyms,
+    clippy::missing_transmute_annotations,
+    clippy::useless_transmute,
+    clippy::useless_conversion,
+    clippy::too_many_arguments,
+    dead_code,
+    unused_imports
+)]
+mod wmf_bindings;
 
 pub mod autostart;
 pub mod clipboard;
@@ -88,6 +101,7 @@ pub mod watcher;
 pub mod wide;
 pub mod window;
 pub mod winevent;
+pub mod wmf_wallpaper;
 
 pub use bindings::{HWND, POINT, RECT};
 pub use windows_core::{Error, Result};

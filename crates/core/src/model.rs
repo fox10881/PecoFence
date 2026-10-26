@@ -157,6 +157,9 @@ pub struct Settings {
     /// material shows the moving wallpaper. Off = a still capture is frosted instead.
     #[serde(default = "default_true")]
     pub live_wallpaper_capture: bool,
+    /// Active H.264 `.mp4` video wallpaper path played by PecoFence's WMF desktop player.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_wallpaper_path: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -256,6 +259,7 @@ impl Default for Settings {
             peek: PeekSettings::default(),
             icons: IconSettings::default(),
             desktop_path: None,
+            video_wallpaper_path: None,
         }
     }
 }
@@ -1064,6 +1068,11 @@ pub struct Fence {
     pub hide_when_empty: bool,
     #[serde(default)]
     pub items: Vec<ItemRef>,
+    /// `.peco` theme manifest: the filenames that belong in this fence, written in place of
+    /// absolute `items` paths at export and re-bound against the local desktop on apply.
+    /// Always empty in a running configuration.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contained_files: Vec<String>,
 }
 
 impl Fence {
@@ -1087,6 +1096,7 @@ impl Fence {
             hide_title_icon: false,
             hide_when_empty: false,
             items: Vec::new(),
+            contained_files: Vec::new(),
         }
     }
 
@@ -1222,6 +1232,19 @@ impl Item {
     /// spelling, else the case-folded key.
     pub fn path(&self) -> Option<&str> {
         self.path.as_deref().or_else(|| self.key.as_path())
+    }
+
+    /// The name a `.peco` manifest uses for this item: the filename as spelled on disk, or
+    /// the `::{CLSID}` parsing name for a namespace item (machine-independent). `None` for
+    /// records without a portable name (pure PIDL).
+    pub fn manifest_name(&self) -> Option<String> {
+        if self.key.is_namespace() {
+            return self.key.as_path().map(str::to_string);
+        }
+        self.path()
+            .and_then(|p| std::path::Path::new(p).file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .filter(|n| !n.is_empty())
     }
 }
 
@@ -1829,6 +1852,51 @@ impl Config {
             }
         }
         Some(a)
+    }
+
+    /// Rewrites `self` for a portable `.peco` theme: each non-portal fence records its
+    /// contents as `containedFiles` filenames in display order and releases its `ItemRef`s,
+    /// then the items table is pruned to what fences and `desktop_items` still reference —
+    /// no absolute member path leaves the machine. Folder portals keep their source path
+    /// (a theme applied back on this machine wants the live folder); the app layer fills
+    /// their manifest with the listing's names so a machine without that folder gets a
+    /// graceful virtual fence.
+    pub fn make_theme_portable(&mut self) {
+        for layout in &mut self.layouts {
+            for fence in &mut layout.fences {
+                if fence.kind == FenceKind::FolderPortal {
+                    continue;
+                }
+                let mut named: Vec<(u32, String, String)> = fence
+                    .items
+                    .iter()
+                    .filter_map(|r| self.items.get(&r.item_id).map(|it| (r, it)))
+                    .filter_map(|(r, it)| {
+                        it.manifest_name().map(|n| {
+                            (
+                                r.manual_index.unwrap_or(u32::MAX),
+                                it.display_name.to_lowercase(),
+                                n,
+                            )
+                        })
+                    })
+                    .collect();
+                named.sort();
+                fence.contained_files = named.into_iter().map(|(_, _, n)| n).collect();
+                fence.items.clear();
+            }
+        }
+        let referenced: HashSet<ItemId> = self
+            .layouts
+            .iter()
+            .flat_map(|l| {
+                l.fences
+                    .iter()
+                    .flat_map(|f| f.items.iter().map(|r| r.item_id))
+                    .chain(l.desktop_items.keys().copied())
+            })
+            .collect();
+        self.items.retain(|id, _| referenced.contains(id));
     }
 }
 
@@ -2822,5 +2890,147 @@ mod namespace_key_tests {
         );
         assert!(!ItemKey::from_path(r"C:\Users\me\Desktop\a.txt").is_namespace());
         assert!(!ItemKey::Pidl("AAAA".into()).is_namespace());
+    }
+}
+
+#[cfg(test)]
+mod theme_portable_tests {
+    use super::*;
+
+    fn geo() -> NormGeometry {
+        NormGeometry {
+            monitor: "m".into(),
+            x: 0.0,
+            y: 0.0,
+            w: 300.0,
+            h: 200.0,
+            work_w: 1920.0,
+            work_h: 1040.0,
+            anchor: Anchor::LeftTop,
+            skew_left: None,
+            skew_right: None,
+        }
+    }
+
+    fn item(name: &str, dir: &str) -> Item {
+        Item {
+            id: Uuid::new_v4(),
+            key: ItemKey::from_path(&format!("{dir}/{name}")),
+            origin: Origin::UserDesktop,
+            display_name: name.to_string(),
+            file_id: None,
+            mtime: 1,
+            is_folder: false,
+            attrs: 0,
+            icon_key: IconKey::ByExt(".txt".into()),
+            orphaned_since: None,
+            size: 0,
+            open_count: 0,
+            last_opened: None,
+            path: Some(format!("{dir}/{name}")),
+        }
+    }
+
+    fn layout_with(fences: Vec<Fence>) -> Layout {
+        Layout {
+            fingerprint: vec![],
+            fences,
+            desktop_items: Default::default(),
+            shown: 0,
+        }
+    }
+
+    #[test]
+    fn manifest_names_are_filenames_and_parsing_names() {
+        let it = item("Chrome.LNK", "C:/Users/A/Desktop");
+        assert_eq!(it.manifest_name().as_deref(), Some("Chrome.LNK"));
+        let mut ns = item("bin", "x");
+        ns.key = ItemKey::from_path("::{645FF040-5081-101B-9F08-00AA002F954E}");
+        ns.path = None;
+        assert_eq!(
+            ns.manifest_name().as_deref(),
+            Some("::{645ff040-5081-101b-9f08-00aa002f954e}")
+        );
+        let mut pidl = item("a.txt", "x");
+        pidl.key = ItemKey::Pidl("AAAA".into());
+        pidl.path = None;
+        assert_eq!(pidl.manifest_name(), None);
+    }
+
+    #[test]
+    fn theme_portable_swaps_paths_for_filenames() {
+        let mut c = Config::default();
+        let mut tools = Fence::new("Tools", FenceKind::Virtual, geo());
+        let mut games = Fence::new("Games", FenceKind::Virtual, geo());
+        let chrome = item("chrome.lnk", "C:/Users/A/Desktop");
+        let steam = item("Steam.url", "C:/Users/A/Desktop");
+        let folder = item("folder_name", "C:/Users/A/Desktop");
+        // Manual order keeps steam before chrome regardless of insertion order.
+        tools.items = vec![
+            ItemRef {
+                item_id: chrome.id,
+                manual_index: Some(1),
+                assigned_by: AssignedBy::User,
+            },
+            ItemRef {
+                item_id: steam.id,
+                manual_index: Some(0),
+                assigned_by: AssignedBy::User,
+            },
+        ];
+        games.items = vec![ItemRef {
+            item_id: folder.id,
+            manual_index: None,
+            assigned_by: AssignedBy::User,
+        }];
+        for it in [chrome, steam, folder] {
+            c.items.insert(it.id, it);
+        }
+        c.layouts.push(layout_with(vec![tools, games]));
+
+        c.make_theme_portable();
+
+        let tools = &c.layouts[0].fences[0];
+        assert!(tools.items.is_empty());
+        assert_eq!(tools.contained_files, ["Steam.url", "chrome.lnk"]);
+        assert_eq!(c.layouts[0].fences[1].contained_files, ["folder_name"]);
+        let json = serde_json::to_string(&c).unwrap();
+        assert!(
+            !json.to_lowercase().contains("\\users\\"),
+            "no absolute path leaks: {json}"
+        );
+        assert!(c.items.is_empty(), "unreferenced member items pruned");
+        // Round-trips: manifests parse back for the import side.
+        let back: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.layouts[0].fences[0].contained_files.len(), 2);
+    }
+
+    #[test]
+    fn theme_portable_keeps_portals_and_desktop_pins() {
+        let mut c = Config::default();
+        let mut portal = Fence::new("Docs", FenceKind::FolderPortal, geo());
+        portal.source = ItemSourceSpec::Folder {
+            path: r"C:\Users\A\Documents".into(),
+            recursive: false,
+            filter: None,
+        };
+        let pinned = item("todo.txt", "C:/Users/A/Desktop");
+        c.layouts.push(layout_with(vec![portal]));
+        c.layouts[0].desktop_items.insert(
+            pinned.id,
+            Some(DesktopPosition {
+                monitor: "m".into(),
+                x: 0.5,
+                y: 0.5,
+            }),
+        );
+        c.items.insert(pinned.id, pinned.clone());
+
+        c.make_theme_portable();
+
+        let portal = &c.layouts[0].fences[0];
+        assert_eq!(portal.kind, FenceKind::FolderPortal);
+        assert!(portal.contained_files.is_empty(), "app layer fills it");
+        assert!(c.items.contains_key(&pinned.id), "pinned item stays");
     }
 }

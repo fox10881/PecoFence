@@ -336,6 +336,8 @@ pub struct App {
     live_capture: Option<live_wallpaper_still::LiveCapture>,
     /// The worker of a given-up capture that has not returned yet (one at most).
     live_abandoned: Option<std::thread::JoinHandle<()>>,
+    /// Active Windows Media Foundation (WMF) desktop video wallpaper player (`WorkerW`).
+    wmf_player: Option<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer>,
     /// The hotkey currently registered (None = registration failed or Peek disabled).
     peek_hotkey: Option<Hotkey>,
     /// The combination the last `sync_peek_hotkey` tried to register (the user's choice), so a
@@ -1252,7 +1254,9 @@ impl App {
             live: Vec::new(),
             live_capture: None,
             live_abandoned: None,
+            wmf_player: None,
         };
+        app.sync_video_wallpaper();
         // Watch both wallpaper settings and virtual-desktop state; either signal starts a
         // bounded burst of fast reads, because the image may arrive after the notification.
         {
@@ -1985,8 +1989,14 @@ impl App {
             Command::WindowGone(hwnd) => {
                 if self.settings.as_ref().is_some_and(|h| h.hwnd() == hwnd) {
                     self.settings = None;
+                    // The WebView2 environment only exists for the window: release it with
+                    // the controller so the browser process manager can shut down too, then
+                    // hand the pages the page touched back to Windows (reopening costs a
+                    // cold ~200 ms environment start instead of keeping them resident).
+                    self.web_env = None;
                     self.set_settings_ring(None);
                     self.resume_peek_hotkey();
+                    pecofence_platform::memstats::trim_working_set();
                 }
             }
             Command::FadeOutDone(hwnd) => {
@@ -2038,6 +2048,7 @@ impl App {
 
     pub fn shutdown(&mut self) {
         self.end_peek_now();
+        self.wmf_player = None;
         self.state.save_if_dirty();
         self.fences.clear();
         self.desktop_windows.clear();
