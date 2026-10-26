@@ -1174,11 +1174,15 @@ unsafe fn present_hwnd(hwnd: HWND) {
 const DXGI_USAGE_RENDER_TARGET_OUTPUT: DXGI_USAGE = DXGI_USAGE(0x20);
 
 /// Reads the next decoded `IMFSample` from `reader`, handling end-of-stream rewinds
-/// internally. Media-type changes are reported via `dims_changed` so the caller can
-/// re-query metrics. Retries up to 6 reads to skip ticks/ticks-only samples.
+/// internally (`MF_SOURCE_READERF_ENDOFSTREAM` → `SetCurrentPosition(0)` → retry).
+/// `dims_changed` reports mid-stream media-type changes; `rewound` is set whenever the
+/// returned sample came after a rewind — the caller MUST re-anchor its pacing clock, as
+/// the PTS stream restarted and comparing against the old anchor would drop every frame.
+/// Retries up to 6 reads to skip ticks/ticks-only samples.
 unsafe fn read_next_sample(
     reader: &IMFSourceReader,
     dims_changed: &mut bool,
+    rewound: &mut bool,
 ) -> std::result::Result<IMFSample, String> {
     // SAFETY: calls IMFSourceReader::ReadSample on a live reader; out-params point to
     // valid stack slots.
@@ -1208,6 +1212,7 @@ unsafe fn read_next_sample(
                 if !rewind_reader(reader) {
                     return Err("SetCurrentPosition(0) rewind failed".to_string());
                 }
+                *rewound = true;
                 continue;
             }
             match sample {
@@ -1667,7 +1672,8 @@ unsafe fn run_gpu_wallpaper(
 
     // Decode the first sample and prove it is a GPU surface before building the window.
     let mut dims_changed = false;
-    let first = unsafe { read_next_sample(&reader, &mut dims_changed) }?;
+    let mut rewound = false;
+    let first = unsafe { read_next_sample(&reader, &mut dims_changed, &mut rewound) }?;
     let (first_buf, first_tex, first_slice) =
         unsafe { sample_texture(&first) }.map_err(|e| format!("first sample: {e}"))?;
 
@@ -1785,7 +1791,8 @@ unsafe fn run_gpu_attached(
                 continue;
             }
 
-            let sample = match read_next_sample(reader, &mut dims_changed) {
+            let mut rewound = false;
+            let sample = match read_next_sample(reader, &mut dims_changed, &mut rewound) {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!(error = %e, frame_counter, "wmf: GPU playback read failed");
@@ -1801,8 +1808,10 @@ unsafe fn run_gpu_attached(
             }
 
             let pts = sample.GetSampleTime().unwrap_or(0);
-            if pts < pts0 {
-                // Rewind / stream restart: re-anchor the clock.
+            if rewound || pts < pts0 {
+                // Loop restart (or a mid-stream PTS jump): fully re-anchor the pacing
+                // clock — without this the restarted stream's small PTS values look
+                // `video_length` late and every frame is dropped as overdue.
                 pts0 = pts;
                 clock0 = Instant::now();
             }
@@ -2239,18 +2248,20 @@ mod tests {
             let (mut w, mut h, mut s) = (opened.width, opened.height, opened.stride);
             let mut bgra = Vec::new();
             unsafe { read_next_frame(reader, opened.kind, &mut w, &mut h, &mut s, &mut bgra) };
-            eprintln!("commit after frame 1: {:.1} MB", mb());
+            let after_1 = mb();
+            eprintln!("commit after frame 1: {after_1:.1} MB");
             for _ in 0..30 {
                 unsafe { read_next_frame(reader, opened.kind, &mut w, &mut h, &mut s, &mut bgra) };
             }
             let after_31 = mb();
             eprintln!("commit after frame 31: {after_31:.1} MB");
             drop(opened);
-            // The decoder's internal queue must stay bounded: MF_LOW_LATENCY keeps it to
-            // tens of MB; the unbounded queue used to pass +190 MB after 31 frames.
+            // The decoder's internal queue must stay bounded: MF_LOW_LATENCY keeps it flat
+            // after pipeline warmup. Measure frame 1 → 31 so a warm MF allocator pool left
+            // by an earlier test in this process can't skew the baseline.
             assert!(
-                after_31 - opened_mb < 120.0,
-                "decoder queue grew unboundedly: {after_31:.1} - {opened_mb:.1} MB"
+                after_31 - after_1 < 60.0,
+                "decoder queue grew unboundedly: {after_31:.1} - {after_1:.1} MB"
             );
         }
         eprintln!("commit after reader drop: {:.1} MB", mb());
@@ -2292,7 +2303,9 @@ mod tests {
             )
             .expect("GPU pipeline");
             for i in 0..3 {
-                let sample = read_next_sample(&reader, &mut dims_changed).expect("sample");
+                let mut rewound = false;
+                let sample =
+                    read_next_sample(&reader, &mut dims_changed, &mut rewound).expect("sample");
                 let (buf, tex, slice) = sample_texture(&sample).expect("dxgi surface");
                 gp.present(&buf, &tex, slice).expect("present");
                 if i == 0 {
@@ -2302,6 +2315,46 @@ mod tests {
             drop(gp);
             let _ = DestroyWindow(hwnd);
         }
+    }
+
+    /// Reads past end-of-stream: the reader must rewind and restart the PTS stream, with
+    /// `rewound` set so the pacing clock re-anchors (a stale anchor would mark every
+    /// restarted frame `video_length` late and drop them all — the frozen-wallpaper bug).
+    #[test]
+    fn read_next_sample_rewinds_at_eos_and_flags_restart() {
+        let path = Path::new(r"C:\Users\yahya\Downloads\WALL\Video Project.mp4");
+        if !path.is_file() {
+            return;
+        }
+        let _com = ComThreadGuard::init().unwrap();
+        let _mf = MfSessionGuard::init().unwrap();
+        let opened = open_sw_reader(path).expect("software reader");
+        let reader = &opened.reader;
+        let mut dims_changed = false;
+        let mut first_pts: Option<i64> = None;
+        let mut last_pts = 0i64;
+        // Cap the reads so a pathological file can't hang the suite: EOS must arrive
+        // inside 20k decoded frames for any reasonable wallpaper clip.
+        for _ in 0..20_000 {
+            let mut rewound = false;
+            let Ok(sample) = (unsafe { read_next_sample(reader, &mut dims_changed, &mut rewound) })
+            else {
+                panic!("read_next_sample failed before EOS");
+            };
+            let pts = unsafe { sample.GetSampleTime() }.unwrap_or(0);
+            if rewound {
+                assert!(
+                    pts < last_pts,
+                    "post-rewind PTS {pts} should restart below the final PTS {last_pts}"
+                );
+                return;
+            }
+            if first_pts.is_none() {
+                first_pts = Some(pts);
+            }
+            last_pts = pts;
+        }
+        panic!("video never reached EOS within 20_000 frames");
     }
 
     #[test]
