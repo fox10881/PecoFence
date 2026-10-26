@@ -27,8 +27,17 @@ PAYLOAD = {
     "pecofence.exe", "pecofence-cli.exe", "pecofence-watchdog.exe",
     "WebView2Loader.dll", "LICENSE",
     "LICENSE-WebView2Loader.txt", "THIRD-PARTY-LICENSES.txt", "README.md",
-    "UPGRADING.md", "SKILL.md",
+    "UPGRADING.md", "SKILL.md", "DESKTOP_CONTAINERS.md", "GLASS_RENDERING.md",
+    "WALLPAPER_ENGINE.md", "assets",
 }
+WALLPAPERS = {
+    f"assets/wallpapers/{p.name}"
+    for p in (ROOT / "assets" / "wallpapers").iterdir()
+}
+ZIP_PAYLOAD = (PAYLOAD - {"assets"}) | WALLPAPERS
+# The installer skips the three design docs but keeps the wallpaper pack.
+INSTALLED = (PAYLOAD - {"assets", "DESKTOP_CONTAINERS.md", "GLASS_RENDERING.md",
+                        "WALLPAPER_ENGINE.md"}) | WALLPAPERS
 HIDDEN = subprocess.STARTUPINFO()
 HIDDEN.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 HIDDEN.wShowWindow = 0
@@ -98,7 +107,7 @@ def main():
         assert Path(str(asset) + ".sha256").read_text(encoding="utf-8") == expected
     assert set(p.name for p in payload.iterdir()) == PAYLOAD
     with zipfile.ZipFile(dist / f"{base}-portable.zip") as archive:
-        assert set(archive.namelist()) == PAYLOAD, "Unexpected files or directories in ZIP"
+        assert set(archive.namelist()) == ZIP_PAYLOAD, "Unexpected files or directories in ZIP"
         for name in ("pecofence.exe", "pecofence-cli.exe", "pecofence-watchdog.exe", "WebView2Loader.dll"):
             portable_bytes = archive.read(name)
             assert portable_bytes == (payload / name).read_bytes(), f"Different binaries: {name}"
@@ -187,7 +196,7 @@ def main():
         assert reg_value(uninstall_key, "URLUpdateInfo") == f"https://github.com/{args.repository}/releases"
         assert all(reg_value(RUN, name) is None for name in run_names), "Setup enabled autostart"
         assert desktop_link.is_file() and (menu_group / f"{product_name}.lnk").is_file()
-        for name in PAYLOAD:
+        for name in INSTALLED:
             assert (installed / name).read_bytes() == (payload / name).read_bytes()
         passed.append("per-user install, exact payload, shortcuts, fork links and no setup autostart")
 
