@@ -87,6 +87,12 @@ pub fn is_iconic(hwnd: HWND) -> bool {
     unsafe { IsIconic(hwnd).as_bool() }
 }
 
+pub fn is_zoomed(hwnd: HWND) -> bool {
+    const WS_MAXIMIZE: i32 = 0x0100_0000;
+    // SAFETY: plain FFI call — `IsZoomed` is just this style-bit test.
+    unsafe { GetWindowLongW(hwnd, GWL_STYLE) & WS_MAXIMIZE != 0 }
+}
+
 pub fn is_window(hwnd: HWND) -> bool {
     // SAFETY: plain FFI call.
     unsafe { IsWindow(Some(hwnd)).as_bool() }

@@ -9,12 +9,16 @@ use crate::bindings::*;
 use crate::desktop;
 use crate::wide::to_wide;
 use crate::wmf_bindings::{
-    GUID_ContainerFormatJpeg, GUID_WICPixelFormat24bppBGR, GetParent, HALFTONE, IMF2DBuffer,
-    IMFAttributes, IMFMediaBuffer, IMFSample, IMFSourceReader, IMFTransform, IWICBitmapEncoder,
-    IWICBitmapFrameEncode, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE,
-    MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READER_ALL_STREAMS,
-    MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED,
-    MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR, MF_VERSION, MFCreateAttributes,
+    D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL, D3D_FEATURE_LEVEL_9_1, D3D_FEATURE_LEVEL_9_3,
+    D3D_FEATURE_LEVEL_10_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_11_0,
+    D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice,
+    GUID_ContainerFormatJpeg, GUID_WICPixelFormat24bppBGR, GetParent, HALFTONE, ID3D11Device,
+    ID3D11DeviceContext, IMF2DBuffer, IMFAttributes, IMFDXGIDeviceManager, IMFMediaBuffer,
+    IMFSample, IMFSourceReader, IMFTransform, IWICBitmapEncoder, IWICBitmapFrameEncode,
+    MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE,
+    MF_SOURCE_READER_ALL_STREAMS, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+    MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED, MF_SOURCE_READERF_ENDOFSTREAM,
+    MF_SOURCE_READERF_ERROR, MF_VERSION, MFCreateAttributes, MFCreateDXGIDeviceManager,
     MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Video, MFSTARTUP_NOSOCKET,
     MFShutdown, MFStartup, PROPVARIANT, SRCCOPY, SetParent, SetStretchBltMode, StretchDIBits,
     VARTYPE, WICBitmapEncoderNoCache,
@@ -48,6 +52,7 @@ const MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS: GUID =
 const MF_READWRITE_DISABLE_CONVERTERS: GUID =
     GUID::from_u128(0x98d5b065_1374_4847_8d5d_31520fee7156);
 const MF_LOW_LATENCY: GUID = GUID::from_u128(0x9c27891a_ed7a_40e1_88e8_b22727a024ee);
+const MF_SOURCE_READER_D3D_MANAGER: GUID = GUID::from_u128(0xec822da2_e1e9_4b29_a0d8_563c719f5269);
 
 // FourCC-based WMF Video Format GUIDs: XXXXXXXX-0000-0010-8000-00AA00389B71
 const MF_VIDEO_FORMAT_RGB32: GUID = GUID::from_u128(0x00000016_0000_0010_8000_00aa00389b71);
@@ -127,20 +132,69 @@ fn is_h264_subtype(subtype: &GUID) -> bool {
         || *subtype == MF_VIDEO_FORMAT_AVC1_LOWER
 }
 
-/// The pixel format the source reader was configured to emit: NV12 needs no Media Foundation
-/// Video Processor at all (the decoder's native output), so the whole VP surface pool — the
-/// largest MF-side allocation — is never created. RGB32 keeps the old path as a fallback for
-/// streams whose decoder cannot emit NV12 natively (10-bit sources, unusual profiles).
+/// The pixel format the source reader was configured to emit. With a D3D11 device manager both
+/// formats go through the video processor: RGB32 lets the GPU do the NV12→BGRA conversion, NV12
+/// falls back to the cheaper download + CPU conversion. Without a device manager (no GPU, VMs)
+/// NV12 is the lean software path — the decoder's native output with no VP surface pool — and
+/// RGB32 the software fallback for streams whose decoder cannot emit NV12 natively.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum OutputKind {
     Nv12,
     Rgb32,
 }
 
+/// Creates an `IMFDXGIDeviceManager` backed by a D3D11 device on the system's default adapter —
+/// on low-end hardware that is the integrated GPU (Iris Xe & friends); no discrete card
+/// required. The decoder MFT can then run on the GPU's media engine via DXVA instead of burning
+/// CPU cores. Returns `None` when no hardware D3D11 device exists so callers can fall back to
+/// software decode.
+fn create_d3d_manager() -> Option<IMFDXGIDeviceManager> {
+    const LEVELS: [D3D_FEATURE_LEVEL; 5] = [
+        D3D_FEATURE_LEVEL_11_0,
+        D3D_FEATURE_LEVEL_10_1,
+        D3D_FEATURE_LEVEL_10_0,
+        D3D_FEATURE_LEVEL_9_3,
+        D3D_FEATURE_LEVEL_9_1,
+    ];
+    // SAFETY: standard D3D11/MF creation calls; every out-param points at a valid slot and the
+    // returned device manager holds the device alive internally.
+    unsafe {
+        let mut device: Option<ID3D11Device> = None;
+        let mut context: Option<ID3D11DeviceContext> = None;
+        if D3D11CreateDevice(
+            None,
+            D3D_DRIVER_TYPE_HARDWARE,
+            crate::wmf_bindings::HINSTANCE(core::ptr::null_mut()),
+            D3D11_CREATE_DEVICE_VIDEO_SUPPORT as u32,
+            Some(&LEVELS),
+            D3D11_SDK_VERSION as u32,
+            Some(&mut device),
+            None,
+            Some(&mut context),
+        )
+        .is_err()
+        {
+            return None;
+        }
+        let device = device?;
+        let mut token = 0u32;
+        let mut manager: Option<IMFDXGIDeviceManager> = None;
+        if MFCreateDXGIDeviceManager(&mut token, &mut manager).is_err() {
+            return None;
+        }
+        let manager = manager?;
+        if manager.ResetDevice(&device, token).is_err() {
+            return None;
+        }
+        Some(manager)
+    }
+}
+
 /// Validates that `path` is a readable MP4 file with an H.264 video stream and opens an
-/// `IMFSourceReader`. The lean path is tried first (NV12, no video processing); when the
-/// decoder refuses NV12 the reader is recreated with the video processor enabled and asked
-/// for 32-bit RGB frames instead.
+/// `IMFSourceReader`. Hardware decode via DXVA is preferred (the video processor downloads
+/// finished frames to system memory, so the `Lock2D` read path is identical to software); when
+/// no D3D11 device exists or the hardware path is refused it falls back to the lean software
+/// paths — NV12 first, then RGB32 with the video processor.
 fn open_h264_reader(
     path: &Path,
 ) -> std::result::Result<(IMFSourceReader, u32, u32, i32, Duration, OutputKind), String> {
@@ -160,14 +214,29 @@ fn open_h264_reader(
         .to_string_lossy()
         .trim_start_matches(r"\\?\")
         .to_string();
-    match try_open_reader(&clean_path, OutputKind::Nv12) {
+    if let Some(manager) = create_d3d_manager() {
+        // RGB32 first so the video processor converts NV12→BGRA on the GPU; NV12 keeps the
+        // CPU conversion as the cheaper alternative if RGB32 output is refused.
+        for kind in [OutputKind::Rgb32, OutputKind::Nv12] {
+            match try_open_reader(&clean_path, kind, Some(&manager)) {
+                Ok(ok) => return Ok(ok),
+                Err(e) => {
+                    tracing::debug!(error = %e, output = ?kind, "wmf: hardware reader config refused")
+                }
+            }
+        }
+        tracing::warn!("wmf: DXVA hardware decode refused; falling back to software decode");
+    } else {
+        tracing::debug!("wmf: no D3D11 device; software decode");
+    }
+    match try_open_reader(&clean_path, OutputKind::Nv12, None) {
         Ok(ok) => Ok(ok),
         Err(lean_err) => {
             tracing::debug!(
                 error = %lean_err,
                 "wmf: NV12 direct decode refused; retrying with the video processor (RGB32)"
             );
-            try_open_reader(&clean_path, OutputKind::Rgb32)
+            try_open_reader(&clean_path, OutputKind::Rgb32, None)
         }
     }
 }
@@ -175,17 +244,27 @@ fn open_h264_reader(
 fn try_open_reader(
     clean_path: &str,
     kind: OutputKind,
+    d3d_manager: Option<&IMFDXGIDeviceManager>,
 ) -> std::result::Result<(IMFSourceReader, u32, u32, i32, Duration, OutputKind), String> {
     let wide = to_wide(clean_path);
     // SAFETY: COM and Media Foundation calls on valid local buffers/interfaces.
     unsafe {
         let mut attrs: Option<IMFAttributes> = None;
-        MFCreateAttributes(&mut attrs, 3).ok().map_err(|e| {
+        MFCreateAttributes(&mut attrs, 4).ok().map_err(|e| {
             tracing::error!(error = %e, "wmf: MFCreateAttributes failed");
             format!("MFCreateAttributes: {e}")
         })?;
         let attrs = attrs.ok_or_else(|| "MFCreateAttributes returned null".to_string())?;
-        if kind == OutputKind::Rgb32 {
+        if let Some(manager) = d3d_manager {
+            // Hardware decode: the decoder MFT and video processor run on the GPU through the
+            // shared D3D11 device; the VP downloads finished frames to system memory so the
+            // Lock2D read path needs no DXGI buffer handling. With a D3D manager the basic
+            // MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING flag is rejected (E_INVALIDARG);
+            // ADVANCED_VIDEO_PROCESSING is its superset and is the flag the reader accepts.
+            let _ = attrs.SetUnknown(&MF_SOURCE_READER_D3D_MANAGER, manager);
+            let _ = attrs.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1);
+            let _ = attrs.SetUINT32(&MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, 1);
+        } else if kind == OutputKind::Rgb32 {
             // Format conversion needs the video processor; NV12 is the decoder's own output.
             let _ = attrs.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1);
             let _ = attrs.SetUINT32(&MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1);
@@ -315,6 +394,7 @@ fn try_open_reader(
             stride,
             frame_interval_ms = interval.as_millis(),
             output = ?kind,
+            dxva = d3d_manager.is_some(),
             "wmf: source reader ready"
         );
         Ok((reader, w, h, stride, interval, kind))
@@ -655,10 +735,11 @@ pub fn should_pause_playback() -> bool {
         return true;
     }
 
-    // 2. Single-monitor setup where the foreground window is maximized and covers the entire
-    // desktop work area.
+    // 2. Single-monitor setup where the foreground window is *maximized* and covers the
+    // desktop work area. The WS_MAXIMIZE check is what stops large-but-normal windows
+    // from pausing the wallpaper.
     let mons = crate::monitors::enumerate();
-    if mons.len() <= 1 {
+    if mons.len() <= 1 && desktop::is_zoomed(fg_root) {
         let w = info.work_area;
         let covers_work = fg_rect.left <= w.left + 8
             && fg_rect.top <= w.top + 8
@@ -1175,12 +1256,10 @@ fn run_player_thread(
                 if now_paused != paused {
                     paused = now_paused;
                     tracing::info!(paused, frame_counter, "wmf: playback pause state changed");
-                    if paused {
-                        // Drop every pending decoded frame and hand this process's idle pages
-                        // back to Windows while the video cannot be seen anyway.
-                        let _ = reader.Flush(MF_SOURCE_READER_FIRST_VIDEO_STREAM as u32);
-                        crate::memstats::trim_working_set();
-                    }
+                    // No Flush() and no working-set trim here: dropping the decoded queue
+                    // destroyed the last-presented frame on Intel GPUs (black desktop while
+                    // paused). The surface keeps the final blitted frame as a static
+                    // background until playback resumes.
                 }
             }
 
