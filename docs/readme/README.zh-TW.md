@@ -1,3 +1,5 @@
+# Wallpaper Engine 自用版
+
 https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 
 <p align="center">
@@ -31,7 +33,10 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 
 ## 終極靜態桌面與海報書架整合
 
-![終極靜態桌面與海報書架整合](../assets/desktop-poster-shelves.png)
+![終極靜態桌面與海報書架整合]
+<img width="3837" height="2160" alt="image" src="https://github.com/user-attachments/assets/1849b142-aa9e-4b5d-802e-4f3519d79c73" />
+
+<img width="3837" height="2034" alt="image" src="https://github.com/user-attachments/assets/311962e3-984b-4a7a-bc2c-48ffdaa9379b" />
 
 ### 🧩 最後一塊拼圖：BoxArt Studio
 PecoFence 提供整齊的網格排版和零間距的 2:3 海報容器，但 Windows 原生產生的仍是標準方形圖示。

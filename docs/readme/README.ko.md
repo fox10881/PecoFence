@@ -1,3 +1,5 @@
+# Wallpaper Engine 自用版
+
 https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 
 <p align="center">
@@ -31,7 +33,10 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 
 ## 궁극의 정적 데스크톱 & 포스터 선반 통합
 
-![궁극의 정적 데스크톱 & 포스터 선반 통합](../assets/desktop-poster-shelves.png)
+![궁극의 정적 데스크톱 & 포스터 선반 통합]
+<img width="3837" height="2160" alt="image" src="https://github.com/user-attachments/assets/1849b142-aa9e-4b5d-802e-4f3519d79c73" />
+
+<img width="3837" height="2034" alt="image" src="https://github.com/user-attachments/assets/311962e3-984b-4a7a-bc2c-48ffdaa9379b" />
 
 ### 🧩 빠져 있던 마지막 조각: BoxArt Studio
 PecoFence는 정돈된 그리드 레이아웃과 간격 없는 2:3 포스터 컨테이너를 제공하지만, Windows는 여전히 표준 정사각형 아이콘을 생성합니다.

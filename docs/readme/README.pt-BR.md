@@ -1,3 +1,5 @@
+# Wallpaper Engine 自用版
+
 https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 
 <p align="center">
@@ -31,7 +33,10 @@ https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
 
 ## A combinação definitiva de desktop estático e prateleiras de pôsteres
 
-![A combinação definitiva de desktop estático e prateleiras de pôsteres](../assets/desktop-poster-shelves.png)
+![A combinação definitiva de desktop estático e prateleiras de pôsteres]
+<img width="3837" height="2160" alt="image" src="https://github.com/user-attachments/assets/1849b142-aa9e-4b5d-802e-4f3519d79c73" />
+
+<img width="3837" height="2034" alt="image" src="https://github.com/user-attachments/assets/311962e3-984b-4a7a-bc2c-48ffdaa9379b" />
 
 ### 🧩 A peça que faltava: BoxArt Studio
 O PecoFence fornece o layout em grade rígido e os contêineres de pôster 2:3 sem espaços, mas o Windows continua gerando ícones quadrados padrão.
