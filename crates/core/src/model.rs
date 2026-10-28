@@ -160,6 +160,9 @@ pub struct Settings {
     /// Active H.264 `.mp4` video wallpaper path played by PecoFence's WMF desktop player.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_wallpaper_path: Option<String>,
+    /// How the Windows taskbar's background looks.
+    #[serde(default)]
+    pub taskbar_mode: TaskbarMode,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -260,6 +263,7 @@ impl Default for Settings {
             icons: IconSettings::default(),
             desktop_path: None,
             video_wallpaper_path: None,
+            taskbar_mode: TaskbarMode::Normal,
         }
     }
 }
@@ -301,6 +305,26 @@ pub enum ThemeStyle {
 /// Text colour (「文字颜色」). Auto: Liquid Glass picks dark or light text from the wallpaper,
 /// for the item names under each fence and for each tab and title under it, and Fluent follows
 /// the colour mode; the halo pairs with the text. Anything else swaps the halo for a soft shadow.
+/// Taskbar background mode: untouched Windows default, a fully transparent
+/// taskbar, or a frosted-glass blur. Applied through `pecofence_tap.dll`
+/// inside Explorer (XAML Diagnostics + a `SetWindowCompositionAttribute`
+/// detour — see `pecofence_platform::tap`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+pub enum TaskbarMode {
+    /// Factory appearance: no injection, original XAML brushes, `ACCENT_DISABLED`.
+    #[default]
+    Normal,
+    /// 100% invisible taskbar background (`ACCENT_ENABLE_TRANSPARENTGRADIENT`).
+    Clear,
+    /// Frosted-glass taskbar (`ACCENT_ENABLE_BLURBEHIND`).
+    Blur,
+    /// Forced solid taskbar plate (`ACCENT_ENABLE_GRADIENT` + opaque XAML
+    /// brush — TranslucentTB's "Opaque": `color.A` forced to `0xFF`).
+    Opaque,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
@@ -1008,6 +1032,10 @@ pub struct IconSettings {
     pub tint_strength: f32,
     /// Chameleon: icons desaturate and fade so they blend with the backdrop.
     pub chameleon: bool,
+    /// Chameleon strength, 0..=100: 0 leaves icons fully visible, 100 blends them
+    /// completely into the background (fully transparent).
+    #[serde(default = "default_chameleon_intensity")]
+    pub chameleon_intensity: u8,
     /// Windows' shortcut arrow at the bottom-left of the items Explorer draws it on.
     #[serde(default = "default_true")]
     pub shortcut_arrows: bool,
@@ -1019,6 +1047,7 @@ impl Default for IconSettings {
             tint_rgb: None,
             tint_strength: 0.6,
             chameleon: false,
+            chameleon_intensity: default_chameleon_intensity(),
             shortcut_arrows: true,
         }
     }
@@ -1898,6 +1927,10 @@ impl Config {
             .collect();
         self.items.retain(|id, _| referenced.contains(id));
     }
+}
+
+fn default_chameleon_intensity() -> u8 {
+    55
 }
 
 fn default_true() -> bool {

@@ -661,6 +661,7 @@ mod tests {
         ("style", "?style"),            // backdrop style enum
         ("verb", "verb"),               // shell verb (canonical name)
         ("verb", "%verb"),
+        ("verb", "verb.unwrap_or(\"<default>\")"), // verb or the literal "<default>"
         ("wanted", "%h"),   // Hotkey
         ("what", "what"),   // `&'static str` operation names
         ("what", "e.step"), // ConfigStore::save step name

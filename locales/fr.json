@@ -160,6 +160,7 @@
     "中": "Moyenne",
     "强": "Forte",
     "图标融入背景（Chameleon）": "Fondre les icônes dans l’arrière-plan (Chameleon)",
+    "融入强度": "Intensité de la fusion",
     "显示快捷方式箭头": "Afficher les flèches des raccourcis",
     "行为": "Comportement",
     "收起的栅栏悬停时自动展开": "Développer les groupes repliés au survol",
@@ -274,6 +275,7 @@
     "删除快照：": "Supprimer l’instantané : ",
     "恢复备份：": "Restaurer la sauvegarde : ",
     "打开配置文件夹": "Ouvrir le dossier de configuration",
+    "打开主题文件夹": "Ouvrir le dossier des thèmes",
     "桌面与启动": "Bureau et démarrage",
     "随 Windows 启动": "Démarrer avec Windows",
     "隐藏 Windows 桌面图标": "Masquer les icônes du Bureau Windows",
@@ -628,5 +630,12 @@
     "保存主题失败：{0}": "Échec de l'enregistrement du thème : {0}",
     "导出主题：": "Exporter le thème : ",
     "导出快照：": "Exporter l'instantané : ",
-    "主题": "Thème"
+    "主题": "Thème",
+    "任务栏样式": "Style de la barre des tâches",
+    "完全透明或磨砂玻璃的任务栏背景；切换后立即生效": "Arrière-plan de la barre des tâches totalement transparent ou en verre dépoli ; appliqué instantanément",
+    "正常": "Normal",
+    "透明": "Transparent",
+    "磨砂": "Flou",
+    "不透明": "Opaque",
+    "任务栏状态未能更改，请稍后重试。": "Impossible de changer l'état de la barre des tâches ; réessayez plus tard."
 }

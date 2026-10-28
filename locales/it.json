@@ -158,6 +158,7 @@
     "中": "Media",
     "强": "Alta",
     "图标融入背景（Chameleon）": "Fondi le icone con lo sfondo (Chameleon)",
+    "融入强度": "Intensità della fusione",
     "显示快捷方式箭头": "Mostra le frecce sui collegamenti",
     "行为": "Comportamento",
     "收起的栅栏悬停时自动展开": "Espandi automaticamente i riquadri compressi al passaggio del mouse",
@@ -270,6 +271,7 @@
     "删除快照：": "Elimina istantanea: ",
     "恢复备份：": "Ripristina backup: ",
     "打开配置文件夹": "Apri la cartella di configurazione",
+    "打开主题文件夹": "Apri cartella temi",
     "桌面与启动": "Desktop e avvio",
     "随 Windows 启动": "Avvia con Windows",
     "隐藏 Windows 桌面图标": "Nascondi le icone del desktop di Windows",
@@ -628,5 +630,12 @@
     "保存主题失败：{0}": "Impossibile salvare il tema: {0}",
     "导出主题：": "Esporta tema: ",
     "导出快照：": "Esporta snapshot: ",
-    "主题": "Tema"
+    "主题": "Tema",
+    "任务栏样式": "Stile della barra delle applicazioni",
+    "完全透明或磨砂玻璃的任务栏背景；切换后立即生效": "Sfondo della barra delle applicazioni completamente trasparente o effetto vetro smerigliato; applicazione immediata",
+    "正常": "Normale",
+    "透明": "Trasparente",
+    "磨砂": "Sfocato",
+    "不透明": "Opaco",
+    "任务栏状态未能更改，请稍后重试。": "Impossibile modificare lo stato della barra delle applicazioni; riprova più tardi."
 }

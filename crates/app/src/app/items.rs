@@ -602,15 +602,20 @@ impl App {
             self.portal_enter(from, &p);
             return;
         }
-        let Some(path) = self
-            .state
-            .item(item)
-            .and_then(|it| it.path().map(PathBuf::from))
-        else {
+        let Some(it) = self.state.item(item) else {
+            tracing::warn!(?item, "launch: item is gone from state");
             return;
         };
-        match shell::shell_execute(&path, None, None) {
+        let Some(path) = it.path().map(PathBuf::from) else {
+            tracing::warn!(?item, key = ?it.key, "launch: item has no path");
+            return;
+        };
+        // The fence window owns UAC/consent UI the shell may raise for the launch.
+        let owner = self.window_for(from).map(|w| w.hwnd());
+        tracing::info!(?item, path = %path.display(), "launch requested");
+        match shell::shell_execute(&path, None, owner) {
             Ok(()) => {
+                tracing::info!(path = %path.display(), "launch completed");
                 self.state.note_opened(item);
                 // A fence sorted by open count reorders; persist lazily with the next save.
                 let sorted: Vec<FenceId> = self

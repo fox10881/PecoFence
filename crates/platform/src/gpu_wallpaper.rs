@@ -39,6 +39,10 @@ impl GpuSurface {
         pin_capture_runtime()?;
         // SAFETY: caller validated this WPE window or clean desktop host. No monitor capture.
         let item: b::GraphicsCaptureItem = unsafe { interop.CreateForWindow(b::HWND(hwnd.0))? };
+        Self::from_item(item)
+    }
+
+    fn from_item(item: b::GraphicsCaptureItem) -> Result<Self> {
         let size = item.Size()?;
         let (mut device, mut context) = (None, None);
         unsafe {

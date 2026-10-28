@@ -25,6 +25,9 @@ pub struct IconVariant {
     /// 0..=100 percent.
     pub tint_strength: u8,
     pub chameleon: bool,
+    /// Chameleon strength 0..=100: drives both the desaturation and the fade — 0 leaves
+    /// icons fully visible, 100 makes them fully transparent.
+    pub chameleon_intensity: u8,
     pub shortcut_arrows: bool,
 }
 
@@ -40,6 +43,11 @@ impl IconVariant {
                 0
             },
             chameleon: self.chameleon,
+            chameleon_intensity: if self.chameleon {
+                self.chameleon_intensity
+            } else {
+                0
+            },
             shortcut_arrows: self.shortcut_arrows,
         }
     }
@@ -53,9 +61,13 @@ impl IconVariant {
                 t[1],
                 t[2],
                 self.tint_strength,
-                if c { "c" } else { "" }
+                if c {
+                    format!("c{}", self.chameleon_intensity)
+                } else {
+                    String::new()
+                }
             ),
-            (None, true) => "#c".to_string(),
+            (None, true) => format!("#c{}", self.chameleon_intensity),
         };
         if self.shortcut_arrows {
             s.push_str("#a");
@@ -68,7 +80,8 @@ impl IconVariant {
             img.colorize(t, self.tint_strength as f32 / 100.0);
         }
         if self.chameleon {
-            img.fade(0.55, 0.72);
+            let k = self.chameleon_intensity as f32 / 100.0;
+            img.fade(k, 1.0 - k);
         }
     }
 }
@@ -958,16 +971,18 @@ mod tests {
             tint: Some([1, 2, 3]),
             tint_strength: 60,
             chameleon: true,
+            chameleon_intensity: 55,
             shortcut_arrows: false,
         };
-        assert_eq!(tinted.suffix(), "#t01020360c");
+        assert_eq!(tinted.suffix(), "#t01020360c55");
         assert_eq!(
             IconVariant {
                 chameleon: true,
+                chameleon_intensity: 55,
                 ..off
             }
             .suffix(),
-            "#c"
+            "#c55"
         );
         // Turning the shortcut arrows on or off gives every icon another key.
         let arrows = IconVariant {

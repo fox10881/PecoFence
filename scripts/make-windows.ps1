@@ -51,7 +51,7 @@ try {
     $env:PATH = (Join-Path $env:USERPROFILE ".cargo/bin") + ";" + $env:PATH
   }
   if (-not $SkipBuild) {
-    & cargo build --locked --release -p pecofence -p pecofence-watchdog --target-dir $TargetDir
+    & cargo build --locked --release -p pecofence -p pecofence-watchdog -p pecofence-tap --target-dir $TargetDir
     if ($LASTEXITCODE -ne 0) { throw "App/watchdog build failed" }
     # Keep the CLI's schemars feature out of the GUI executable.
     & cargo build --locked --release -p pecofence-cli --target-dir $TargetDir
@@ -59,7 +59,7 @@ try {
   }
 
   $release = [IO.Path]::GetFullPath((Join-Path $TargetDir "release"))
-  foreach ($exe in @("pecofence.exe", "pecofence-watchdog.exe", "pecofence-cli.exe")) {
+  foreach ($exe in @("pecofence.exe", "pecofence-watchdog.exe", "pecofence-cli.exe", "pecofence_tap.dll")) {
     if (-not (Test-Path -LiteralPath (Join-Path $release $exe) -PathType Leaf)) {
       throw "Missing $exe in $release"
     }
@@ -73,7 +73,7 @@ try {
   $baseName = "pecofence-v$Version-x64"
   $common = Join-Path $stagingRoot "$baseName-common"
   Reset-Stage $common
-  foreach ($exe in @("pecofence.exe", "pecofence-watchdog.exe", "pecofence-cli.exe")) {
+  foreach ($exe in @("pecofence.exe", "pecofence-watchdog.exe", "pecofence-cli.exe", "pecofence_tap.dll")) {
     Copy-Item -LiteralPath (Join-Path $release $exe) -Destination $common
   }
   Copy-Item -LiteralPath "third_party/webview2/WebView2Loader.x64.dll" -Destination (Join-Path $common "WebView2Loader.dll")

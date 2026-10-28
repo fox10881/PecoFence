@@ -160,6 +160,7 @@
     "中": "Medium",
     "强": "High",
     "图标融入背景（Chameleon）": "Blend icons with background (Chameleon)",
+    "融入强度": "Blend intensity",
     "显示快捷方式箭头": "Show shortcut arrows",
     "行为": "Behavior",
     "收起的栅栏悬停时自动展开": "Expand rolled-up fences on hover",
@@ -274,6 +275,7 @@
     "删除快照：": "Delete snapshot: ",
     "恢复备份：": "Restore backup: ",
     "打开配置文件夹": "Open configuration folder",
+    "打开主题文件夹": "Open themes folder",
     "桌面与启动": "Desktop and startup",
     "随 Windows 启动": "Start with Windows",
     "隐藏 Windows 桌面图标": "Hide Windows desktop icons",
@@ -628,5 +630,12 @@
     "保存主题失败：{0}": "Failed to save theme: {0}",
     "导出主题：": "Export theme: ",
     "导出快照：": "Export snapshot: ",
-    "主题": "Theme"
+    "主题": "Theme",
+    "任务栏样式": "Taskbar style",
+    "完全透明或磨砂玻璃的任务栏背景；切换后立即生效": "Fully transparent or frosted-glass taskbar background; applies instantly",
+    "正常": "Normal",
+    "透明": "Clear",
+    "磨砂": "Blur",
+    "不透明": "Opaque",
+    "任务栏状态未能更改，请稍后重试。": "Couldn't change the taskbar state; try again later."
 }

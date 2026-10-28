@@ -911,7 +911,7 @@ impl App {
                 // A snapshot saved with `include_wallpaper` restores the desktop wallpaper too;
                 // a missing file or a failing shell reports but never blocks the layout restore.
                 if let Some(path) = wallpaper {
-                    if !pecofence_platform::sysparams::set_desktop_wallpaper(&path) {
+                    if !self.apply_static_wallpaper(&path) {
                         tracing::warn!(path, "snapshots.restore: wallpaper not applied");
                     }
                 }

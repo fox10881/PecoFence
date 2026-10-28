@@ -1,0 +1,387 @@
+<!DOCTYPE html><html><head><meta charset=utf-8><style>
+  /* Self-contained: the WebView document is embedded in the executable and works offline.
+     Tokens follow the Windows 11 Fluent palette; keep --sheet in sync with page_background
+     in crates/app/src/settings_host.rs. */
+  :root { color-scheme: dark; --font-cjk: "Microsoft YaHei UI", "Microsoft YaHei";
+    --text: #ffffff; --text2: #cfcfcf; --text3: #9d9d9d; --text-disabled: #727272;
+    --sheet: #202020; --card: #2b2b2b; --card-stroke: #0000001a; --line: #ffffff14;
+    --control: #ffffff0f; --control-hover: #ffffff15; --control-pressed: #ffffff08; --control-disabled: #ffffff0a;
+    --control-stroke: #ffffff12; --control-stroke-bottom: #ffffff0a; --control-strong: #9a9a9a;
+    --control-alt: #0000001a; --control-alt-hover: #ffffff0b;
+    --subtle: #ffffff0f; --subtle-pressed: #ffffff0a; --scroll-thumb: #ffffff5c;
+    --accent: #60cdff; --accent-hover: #60cdffe6; --on-accent: #000000;
+    --ok: #6ccb5f; --ok-bg: #393d1b; --error: #ff99a4; --error-bg: #442726; --caution: #fce100; --caution-bg: #433519;
+    --shadow: 0 8px 16px #00000042; --brand: #8098f2;
+    --r-card: 4px; --r-control: 4px; --glass-highlight: transparent;
+    --wall: radial-gradient(120% 110% at 12% 0%, #6f93d8 0%, transparent 58%), radial-gradient(90% 110% at 100% 100%, #4a7ac7 0%, transparent 55%), linear-gradient(160deg, #34467a, #1f2744);
+    --mini-panel: #2020209e; --mini-stroke: #ffffff1f; --glass-panel: #ffffff03; --glass-label-shadow: 0 1px 3px #0009;
+    --chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='m2.5 4.25 3.5 3.5 3.5-3.5' fill='none' stroke='%23cfcfcf' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  }
+  :root.light { color-scheme: light;
+    --text: #1b1b1b; --text2: #5d5d5d; --text3: #8a8a8a; --text-disabled: #a0a0a0;
+    --sheet: #f3f3f3; --card: #fbfbfb; --card-stroke: #0000000f; --line: #0000000f;
+    --control: #ffffffb3; --control-hover: #f9f9f980; --control-pressed: #f9f9f94d; --control-disabled: #f9f9f94d;
+    --control-stroke: #0000000f; --control-stroke-bottom: #00000029; --control-strong: #8a8a8a;
+    --control-alt: #00000006; --control-alt-hover: #0000000f;
+    --subtle: #00000009; --subtle-pressed: #00000006; --scroll-thumb: #0000005c;
+    --accent: #005fb8; --accent-hover: #005fb8e6; --on-accent: #ffffff;
+    --ok: #0f7b0f; --ok-bg: #dff6dd; --error: #c42b1c; --error-bg: #fde7e9; --caution: #9d5d00; --caution-bg: #fff4ce;
+    --shadow: 0 8px 16px #00000024; --brand: #4768de;
+    --wall: radial-gradient(120% 110% at 12% 0%, #a9c3f3 0%, transparent 58%), radial-gradient(90% 110% at 100% 100%, #9db8ee 0%, transparent 55%), linear-gradient(160deg, #c3d3f5, #e9eefb);
+    --mini-panel: #f3f3f3b8; --mini-stroke: #ffffff8c; --glass-panel: #ffffff02; --glass-label-shadow: 0 1px 2px #ffffffa0;
+    --chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='m2.5 4.25 3.5 3.5 3.5-3.5' fill='none' stroke='%235d5d5d' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  }
+  /* Shared Han characters must come from the font of the page language, not the first CJK
+     font that happens to contain them. */
+  :root:lang(zh-TW) { --font-cjk: "Microsoft JhengHei UI", "Microsoft JhengHei"; }
+  :root:lang(ja) { --font-cjk: "Yu Gothic UI", "Meiryo UI"; word-break: auto-phrase; }
+  :root:lang(ko) { --font-cjk: "Malgun Gothic"; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; color: var(--text); background: transparent;
+    font: 14px/20px "Segoe UI Variable Text", "Segoe UI", var(--font-cjk), sans-serif; user-select: none; }
+  html.no-mica body { background: var(--sheet); }
+  button, select, input, textarea { font: inherit; color: inherit; }
+  button, select, .toggle, .tile, summary { cursor: pointer; }
+  button:disabled, select:disabled { cursor: default; }
+  button, a, select, input, .tile, summary { transition: background-color .15s, border-color .15s, color .15s; }
+  /* The host state lands after the first style pass; switches must not slide into it. */
+  :root:not(.ready) *, :root:not(.ready) *::before, :root:not(.ready) *::after { transition: none !important; }
+  .ic { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-weight: 400; font-style: normal; }
+  :focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+  .app { display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; }
+
+  nav { padding: 12px 8px 16px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+  .brand { display: flex; align-items: center; gap: 12px; padding: 8px 12px 20px; }
+  .brand-mark { width: 24px; height: 24px; flex: none; color: var(--brand); }
+  .brand-name { font-size: 15px; line-height: 20px; font-weight: 600; }
+  nav a { display: flex; align-items: center; gap: 16px; min-height: 36px; padding: 8px 12px; border-radius: var(--r-control); color: var(--text); text-decoration: none; position: relative; }
+  nav a .ic { font-size: 16px; width: 16px; flex: none; text-align: center; }
+  nav a:hover, nav a.sel { background: var(--subtle); }
+  nav a:active { background: var(--subtle-pressed); color: var(--text2); }
+  nav a.sel::before { content: ""; position: absolute; left: 0; top: 50%; width: 3px; height: 16px; margin-top: -8px; border-radius: 2px; background: var(--accent); }
+  .nav-footer { margin-top: auto; padding: 16px 12px 0; color: var(--text3); font-size: 12px; line-height: 16px; }
+  .nav-footer p { margin: 0; }
+
+  main { min-width: 0; padding: 24px 40px 40px 32px; overflow-y: auto; scrollbar-gutter: stable; }
+  main > section { max-width: 1000px; margin: 0 auto; }
+  main::-webkit-scrollbar { width: 12px; }
+  main::-webkit-scrollbar-thumb { min-height: 40px; background-color: var(--scroll-thumb); border: 4px solid transparent; background-clip: padding-box; border-radius: 6px; }
+  main:hover::-webkit-scrollbar-thumb { border-width: 3px; }
+  main::-webkit-scrollbar-thumb:hover { background-color: var(--control-strong); }
+  .page { display: none; } .page.on { display: block; animation: page-in .2s cubic-bezier(.1, .9, .2, 1); anchor-name: --page; }
+  @keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .page-header { margin: 4px 2px 16px; }
+  h2 { font: 600 28px/36px "Segoe UI Variable Display", "Segoe UI", var(--font-cjk), sans-serif; margin: 0; }
+  h3 { font-size: 14px; line-height: 20px; font-weight: 600; margin: 24px 2px 8px; }
+  .page-header + h3 { margin-top: 8px; }
+
+  /* Settings cards (Windows 11 SettingsCard anatomy). */
+  .card { min-height: 68px; padding: 12px 16px; border-radius: var(--r-card); background: var(--card); border: 1px solid var(--card-stroke); margin-bottom: 4px;
+    box-shadow: inset 0 1px 0 var(--glass-highlight);
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; }
+  .card .l { display: flex; align-items: center; gap: 20px; flex: 1 1 240px; min-width: 0; }
+  .card .l > div { min-width: 0; }
+  .card .l > .ic { font-size: 20px; width: 20px; line-height: 20px; flex: none; text-align: center; color: var(--text); }
+  .card .t { font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
+  .card .s { color: var(--text2); font-size: 12px; line-height: 16px; overflow-wrap: anywhere; }
+  .card .actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 100%; }
+  /* Controls that wrap under a long description stay on the right, as in Windows Settings. */
+  .card:not(.stack) > :not(.l):not(.s) { margin-left: auto; }
+  .card.disabled .t, .card.disabled .s { color: var(--text-disabled); }
+  /* A master setting and the rows that only matter while it is on share one surface. */
+  .group { display: flex; flex-direction: column; gap: 1px; margin-bottom: 4px; }
+  .group > .card, .rows > .card { margin: 0; border-radius: 0; }
+  .group > :first-child { border-top-left-radius: var(--r-card); border-top-right-radius: var(--r-card); }
+  .group > .card:last-child, .rows > .card:last-child { border-bottom-left-radius: var(--r-card); border-bottom-right-radius: var(--r-card); }
+  .rows { display: flex; flex-direction: column; gap: 1px; }
+  .card.child, .rows > .card { min-height: 52px; padding-left: 57px; }
+  .stack { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 12px; }
+  .stack > .l { flex: none; }
+
+  .switch { display: flex; align-items: center; gap: 12px; flex: none; }
+  .switch-label { order: -1; display: grid; justify-items: end; color: var(--text); }
+  .switch-label > span { grid-area: 1 / 1; }
+  .toggle.on ~ .switch-label .off-t, .toggle:not(.on) ~ .switch-label .on-t { visibility: hidden; }
+  .toggle { width: 40px; height: 20px; border-radius: 10px; border: 1px solid var(--control-strong); position: relative; background: var(--control-alt); flex: none; transition: background-color .15s, border-color .15s; }
+  .toggle::after { content: ""; position: absolute; left: 3px; top: 3px; width: 12px; height: 12px; border-radius: 7px; background: var(--text2);
+    transition: transform .15s cubic-bezier(.2, 0, 0, 1), left .15s, top .15s, width .15s, height .15s; }
+  .toggle:hover { background: var(--control-alt-hover); }
+  .toggle.on { background: var(--accent); border-color: var(--accent); }
+  .toggle.on::after { transform: translateX(20px); background: var(--on-accent); }
+  /* As in WinUI, the knob grows on hover and stretches towards the centre while pressed. */
+  .toggle:not([aria-disabled=true]):hover::after { left: 2px; top: 2px; width: 14px; height: 14px; }
+  .toggle:not([aria-disabled=true]):active::after { width: 17px; }
+  .toggle.on:not([aria-disabled=true]):active::after { transform: translateX(17px); }
+  .toggle.on:hover { background: var(--accent-hover); }
+  .disabled .toggle, .disabled .toggle:hover { cursor: default; background: transparent; border-color: var(--text-disabled); }
+  .disabled .toggle::after { background: var(--text-disabled); }
+  .disabled .switch-label { color: var(--text-disabled); }
+
+  input[type=time], input[type=text], input[type=number], input[type=email], select, button { height: 32px; border-radius: var(--r-control); background: var(--control);
+    border: 1px solid var(--control-stroke); border-bottom-color: var(--control-stroke-bottom); font-size: 14px; max-width: 100%; }
+  select { appearance: none; padding: 0 32px 0 11px; min-width: 160px; background-image: var(--chevron); background-repeat: no-repeat; background-position: right 10px center; }
+  select:hover, button:hover { background-color: var(--control-hover); }
+  select option { background: var(--card); color: var(--text); }
+  input[type=text], input[type=time], input[type=number], input[type=email] { padding: 0 11px; min-width: 160px; user-select: text; }
+  textarea { display: block; min-height: 96px; height: 96px; padding: 6px 11px; resize: vertical; border-radius: var(--r-control); background: var(--control);
+    border: 1px solid var(--control-stroke); border-bottom-color: var(--control-stroke-bottom); font-size: 14px; line-height: 20px; user-select: text; }
+  input[type=text]:focus, input[type=time]:focus, input[type=number]:focus, input[type=email]:focus, textarea:focus { outline: none; border-bottom: 2px solid var(--accent); background-color: var(--card); }
+  input::placeholder { color: var(--text3); }
+  .snapwall { display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
+  .snapwall input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+  button { padding: 0 12px; min-width: 96px; }
+  button:active, select:active { background-color: var(--control-pressed); color: var(--text2); }
+  button:disabled, select:disabled { color: var(--text-disabled); background-color: var(--control-disabled); border-color: var(--control-stroke); }
+  button.accent { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+  button.accent:hover { background: var(--accent-hover); }
+  .iconbtn { width: 32px; min-width: 0; padding: 0; background: transparent; border-color: transparent; font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-size: 16px; }
+  .iconbtn:hover { background: var(--subtle); }
+  .iconbtn:disabled { background: transparent; border-color: transparent; }
+  .iconbtn[data-act=del]:hover { color: var(--error); background: var(--error-bg); }
+  .ext-link { color: var(--accent); text-decoration: underline; }
+  .ext-link:hover { color: var(--accent-hover); }
+
+  /* The save strip above the theme gallery: name field, background toggle, actions. */
+  .gallery-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px 16px;
+    border-radius: var(--r-card); background: var(--card); border: 1px solid var(--card-stroke); margin-bottom: 4px;
+    box-shadow: inset 0 1px 0 var(--glass-highlight); }
+  .gallery-bar input[type=text] { flex: 1 1 200px; min-width: 160px; max-width: 320px; }
+  .gallery-bar .bar-gap { flex: 1 1 auto; }
+
+  /* Theme gallery: .peco themes and layout snapshots as one card grid — a 16:9
+     preview.jpg (or a gradient placeholder) over the name, like Personalization. */
+  .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; padding: 12px 2px 8px; }
+  .theme-card { position: relative; display: flex; flex-direction: column; padding: 0; border-radius: var(--r-card); overflow: hidden;
+    background: var(--card); border: 1px solid var(--card-stroke); cursor: pointer; transition: border-color .12s, transform .12s; }
+  .theme-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .theme-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .theme-thumb { position: relative; aspect-ratio: 16 / 9; width: 100%; background: var(--control); display: grid; place-items: center; }
+  .theme-thumb.placeholder { background: linear-gradient(135deg, #34425c 0%, #24304a 45%, #1b2434 100%); }
+  .theme-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .theme-thumb > .ic { font-size: 32px; color: var(--text2); }
+  .theme-thumb.placeholder > .ic { color: #ffffffa8; }
+  /* Card actions sit on the thumbnail and appear on hover or keyboard focus. */
+  .theme-actions { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px;
+    background: rgba(16, 20, 28, .58); opacity: 0; transition: opacity .14s; }
+  .theme-card:hover .theme-actions, .theme-card:focus-within .theme-actions { opacity: 1; }
+  .theme-actions button { min-width: 0; height: 28px; padding: 0 10px; font-size: 12px;
+    background: rgba(255, 255, 255, .14); color: #fff; border-color: rgba(255, 255, 255, .32); }
+  .theme-actions button:hover { background: rgba(255, 255, 255, .26); }
+  .theme-actions button.accent { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+  .theme-actions button.accent:hover { background: var(--accent-hover); }
+  .theme-actions button[data-act=del]:hover { background: var(--error); border-color: transparent; }
+  .theme-foot { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px 10px; }
+  .theme-foot .t { font-size: 13px; line-height: 18px; font-weight: 600; overflow-wrap: anywhere; }
+  .theme-foot .s { color: var(--text2); font-size: 11px; line-height: 15px; overflow-wrap: anywhere; }
+  .theme-empty { grid-column: 1 / -1; padding: 4px 14px 12px; color: var(--text2); font-size: 12px; }
+
+  /* Peek shortcut: key caps in a box that records the next combination (styled as a focused
+     text box meanwhile); the quick choices are toggle buttons. */
+  .hotkey-edit { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 16px; max-width: 100%; }
+  .hotkey-box { display: inline-flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 200px; padding: 0 10px 0 4px; }
+  .hotkey-box .keys { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+  .hotkey-box kbd { font: 600 12px/22px "Segoe UI Variable Text", "Segoe UI", var(--font-cjk), sans-serif; min-width: 26px; padding: 0 7px; border-radius: 3px; text-align: center; color: var(--on-accent); background: var(--accent); }
+  .hotkey-box .prompt { padding: 0 7px; color: var(--text3); }
+  .hotkey-box .ic { font-size: 14px; color: var(--text2); }
+  .hotkey-box.recording, .hotkey-box.recording:hover { background-color: var(--card); border-bottom: 2px solid var(--accent); }
+  .hotkey-box.recording .ic { visibility: hidden; }
+  .hotkey-box.recording:focus-visible { outline: none; }
+  .hotkey-box:disabled kbd { color: var(--text-disabled); background: var(--control-disabled); outline: 1px solid var(--control-stroke); }
+  .hotkey-win { display: flex; align-items: center; gap: 8px; }
+  .hotkey-win input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+  .disabled .hotkey-win { color: var(--text-disabled); }
+  .card .s.error { color: var(--error); } .card .s.caution { color: var(--caution); }
+  button[aria-pressed=true] { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+  button[aria-pressed=true]:hover { background: var(--accent-hover); }
+  button[aria-pressed=true]:disabled { background: var(--control-disabled); color: var(--text-disabled); border-color: var(--control-stroke); }
+
+  /* Theme style tiles double as the live preview of the icon settings below them. */
+  .style-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; padding-left: 40px; }
+  .tile { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 8px 8px 10px; border-radius: 6px;
+    border: 1px solid var(--control-stroke); background: var(--control); }
+  .tile:hover { background: var(--control-hover); }
+  .tile:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .tile:has(input:focus-visible) { outline: 2px solid var(--text); outline-offset: 1px; }
+  .tile input { position: absolute; opacity: 0; pointer-events: none; }
+  .tile .cap { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
+  .tile .cap::before { content: ""; width: 16px; height: 16px; flex: none; border-radius: 50%; border: 1px solid var(--control-strong); background: var(--control-alt); transition: border-width .12s; }
+  .tile:has(input:checked) .cap::before { border: 5px solid var(--accent); background: var(--on-accent); }
+  .shot { position: relative; height: 112px; border-radius: 4px; overflow: hidden; display: grid; place-items: center;
+    background: repeating-linear-gradient(0deg, transparent 0 23px, #ffffff0d 23px 24px), repeating-linear-gradient(90deg, transparent 0 23px, #ffffff0d 23px 24px), var(--wall); }
+  .mini-fence { position: relative; width: 74%; max-width: 230px; overflow: hidden; display: flex; flex-direction: column; }
+  .tile-fluent .mini-fence { border-radius: 8px; background: var(--mini-panel); backdrop-filter: blur(14px) saturate(120%); border: 1px solid var(--mini-stroke); box-shadow: 0 8px 16px #0000003d; }
+  .tile-glass .mini-fence { border-radius: 16px; box-shadow: 0 12px 22px -8px #15162250, 0 3px 6px -2px #15162224; }
+  .tile-glass .mini-fence::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2;
+    padding: 1px; background: linear-gradient(145deg, #fffffff5, #ffffff25 36%, #53566338 58%, #ffffffcc 88%);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude; }
+  .tile-glass .mini-fence::after { content: ""; position: absolute; inset: 1px; border-radius: inherit; pointer-events: none; z-index: 2;
+    background: radial-gradient(ellipse at var(--glass-light-x, 25%) 0, #ffffff10, transparent 55%);
+    box-shadow: inset 1px 2px 3px #ffffff50, inset -1px -2px 4px #383a471c, inset 0 -1px 1px #ffffff70; }
+  .preview-glass { position: absolute; inset: -20px; background: var(--glass-panel); backdrop-filter: blur(.65px) saturate(110%); pointer-events: none; }
+  .preview-title { position: relative; z-index: 1; padding: 7px 12px 0; font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: var(--preview-title-align, left); }
+  .tile-glass .preview-title { text-shadow: var(--glass-label-shadow); }
+  .tile-bookshelf .mini-fence { border-radius: 8px; border: 1px solid #3e2723; box-shadow: 0 8px 16px #0000003d;
+    background: repeating-linear-gradient(to bottom, transparent 0 15px, #2b1a12e0 15px 17px), linear-gradient(to bottom, #5C4033, #3E2723); }
+  .tile-bookshelf .preview-title { color: #f3e7d7; text-shadow: 0 1px 2px #00000080; }
+  .tile-invisible .mini-fence { border-radius: 8px; border: 1px dashed var(--control-strong); box-shadow: none; background: transparent; }
+  .tile-invisible .preview-title { text-shadow: 0 1px 3px #00000080; }
+  .mini-items { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 8px 12px 10px; min-height: 52px; }
+  .file-icon { width: var(--preview-icon-size, 26px); height: var(--preview-icon-size, 26px); position: relative; display: grid; place-items: center; border-radius: 5px; font-size: 13px; flex: none;
+    color: #eef7ff; background: #749cca; box-shadow: inset 0 1px 0 #ffffff5c, 0 3px 6px #00000012; transition: width .2s, height .2s, opacity .2s; }
+  .file-icon.folder { background: #d1ac65; } .file-icon.sheet { background: #689d88; }
+  .file-icon::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--preview-tint, transparent); opacity: var(--preview-tint-strength, .6); mix-blend-mode: color; }
+  #desktopPreview.chameleon .file-icon { filter: saturate(calc(1 - var(--cham-intensity, .55))); opacity: calc(1 - var(--cham-intensity, .55)); }
+
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sliderctl { display: flex; align-items: center; gap: 12px; margin-inline-start: auto; }
+  .sliderctl input[type=range] { width: 128px; accent-color: var(--accent); }
+  .sliderctl .sliderval { min-width: 44px; text-align: end; font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
+  .sliderctl input[type=range]:disabled { opacity: .4; }
+  .swatch { width: 28px; height: 28px; min-width: 0; padding: 0; border-radius: 50%; position: relative; background: var(--swatch); border: 1px solid #00000026; }
+  .swatch:hover { background: var(--swatch); filter: brightness(1.08); }
+  .swatch.none { background: var(--control); border-color: var(--control-strong); }
+  .swatch.none::after { content: ""; position: absolute; left: 50%; top: 4px; bottom: 4px; width: 1.5px; margin-left: -.75px; background: var(--text2); transform: rotate(45deg); }
+  .swatch[aria-checked=true] { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--text); }
+
+  /* Rules page. */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 40px; }
+  .chip { min-width: 0; padding: 0 12px 0 10px; border-radius: 16px; display: inline-flex; align-items: center; gap: 8px; }
+  .chip .ic { font-size: 16px; }
+  .card.rule { flex-wrap: nowrap; }
+  #ruleList { counter-reset: rule; }
+  #ruleList .rule { min-height: 60px; padding: 10px 12px 10px 16px; gap: 16px; }
+  #ruleList .rule::before { counter-increment: rule; content: counter(rule); flex: none; width: 20px; text-align: center; color: var(--text3); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .rule .row { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+  .rule .row > .text { flex: 1 1 180px; min-width: 0; }
+  .rule .conds { color: var(--text2); font-size: 12px; line-height: 16px; margin-top: 2px; overflow-wrap: anywhere; }
+  .rule .actions { display: flex; flex: none; gap: 4px; align-items: center; }
+  .rule .actions .toggle { margin: 0 6px; }
+  .rule.disabled .t, .rule.disabled .conds { color: var(--text-disabled); }
+  /* Target fence tag: the hash-picked hue makes the destination scannable at a glance
+     without touching the list's priority order. */
+  .rule-target { display: inline-block; padding: 0 7px; border-radius: 6px; font-weight: 600; white-space: nowrap;
+    background: hsl(var(--th, 215) 75% 50% / .18); color: hsl(var(--th, 215) 80% 72%); }
+  :root.light .rule-target { color: hsl(var(--th, 215) 65% 33%); background: hsl(var(--th, 215) 75% 45% / .14); }
+  button.warn { color: var(--caution); }
+  button.warn:hover { background: var(--caution-bg); }
+  details.card { display: block; padding: 0; interpolate-size: allow-keywords; }
+  details.card > summary { display: flex; align-items: center; gap: 16px; min-height: 66px; padding: 12px 16px; list-style: none; border-radius: inherit; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary:hover { background: var(--subtle); }
+  details.card > summary .chev { font-size: 12px; color: var(--text2); transition: transform .15s; }
+  details.card[open] > summary { border-bottom: 1px solid var(--line); border-radius: var(--r-card) var(--r-card) 0 0; }
+  details.card[open] > summary .chev { transform: rotate(180deg); }
+  /* WinUI Expander motion: opens over 333 ms decelerating, closes over 167 ms accelerating.
+     Only closing delays content-visibility; opening shows the fields at once so they can take focus. */
+  details.card::details-content { block-size: 0; overflow-y: clip; transition: block-size .167s cubic-bezier(1, 1, 0, 1), content-visibility .167s allow-discrete; }
+  details.card[open]::details-content { block-size: auto; transition: block-size .333s cubic-bezier(0, 0, 0, 1); }
+  .newrule { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px 16px 0 56px; }
+  .newrule label { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: var(--text2); font-size: 12px; line-height: 16px; }
+  .newrule > label > input, .newrule > label > select { width: 100%; min-width: 0; color: var(--text); }
+  .newrule-foot { display: flex; justify-content: flex-end; padding: 16px; }
+  .cats { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+  .cats label { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 14px; line-height: 20px; }
+  .cats input[type=checkbox] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+  .cats input[type=text] { width: 104px; } .cats input[type=time] { min-width: 128px; }
+  .cats .s { color: var(--text2); font-size: 12px; }
+
+  /* Fences page: the fence picker frames the page instead of posing as a setting. */
+  .picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 2px 6px; }
+  .picker select { min-width: 260px; }
+  .fence-dot { width: 14px; height: 14px; flex: none; border-radius: 50%; border: 1px solid var(--control-strong); }
+  .picker-count { margin-left: auto; color: var(--text3); font-size: 12px; }
+  .picker-note { margin: 0 2px 20px; color: var(--text2); font-size: 12px; line-height: 16px; }
+
+  /* Feedback form (on 关于). */
+  .page-lede { margin: -4px 2px 16px; color: var(--text2); }
+  .fb-note { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; margin-bottom: 4px; border-radius: var(--r-card); background: var(--caution-bg); border: 1px solid var(--card-stroke); }
+  .fb-note .ic { color: var(--caution); font-size: 16px; line-height: 20px; }
+  .fb-note[hidden], .fb-preview-box[hidden], .card[hidden] { display: none; }
+  .fb-form { gap: 12px; }
+  .fb-kinds { display: flex; flex-wrap: wrap; gap: 8px 24px; padding-left: 40px; }
+  .fb-kinds label { display: flex; align-items: center; gap: 8px; }
+  .fb-kinds input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+  .fb-field { display: flex; flex-direction: column; gap: 6px; padding-left: 40px; color: var(--text2); font-size: 12px; line-height: 16px; }
+  .fb-field > textarea, .fb-field > input { width: 100%; min-width: 0; color: var(--text); }
+  .fb-count { align-self: flex-end; color: var(--text3); font-variant-numeric: tabular-nums; }
+  .fb-preview { margin: 0; padding: 12px 16px 16px 56px; max-height: 280px; overflow: auto; white-space: pre-wrap; font: 12px/16px "Cascadia Mono", Consolas, monospace; color: var(--text2); user-select: text; }
+  .fb-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; margin: 16px 2px 0; }
+  .fb-foot .s { color: var(--text2); font-size: 12px; line-height: 16px; }
+  #fbSend { min-width: 120px; } #fbSend .busy, #fbSend.sending .idle { display: none; } #fbSend.sending .busy { display: inline; }
+  .about-head { display: flex; align-items: center; gap: 20px; padding: 4px 2px 20px; }
+  .about-head .brand-mark { width: 56px; height: 56px; }
+  .about-head .name { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 20px; line-height: 28px; font-weight: 600; }
+  .about-head .s { color: var(--text2); font-size: 12px; line-height: 16px; margin-top: 2px; }
+  #ver { font-size: 12px; line-height: 18px; font-weight: 400; color: var(--text2); border: 1px solid var(--control-stroke); padding: 0 6px; border-radius: 4px; }
+  code { font: 12px/16px "Cascadia Mono", Consolas, monospace; color: var(--text2); overflow-wrap: anywhere; user-select: text; }
+
+  /* Centred over the content column (the visible page), not the whole window. */
+  .infobar { position: fixed; z-index: 5; left: 16px; right: 16px; left: anchor(--page left, 16px); right: anchor(--page right, 16px); width: fit-content; margin: 0 auto; bottom: 24px; transform: translateY(8px); min-height: 48px; border-radius: var(--r-card); background: var(--ok-bg); border: 1px solid var(--card-stroke); box-shadow: var(--shadow);
+    padding: 13px 16px; overflow-wrap: anywhere; display: flex; gap: 12px; align-items: center; opacity: 0; transition: opacity .18s, transform .18s; pointer-events: none; }
+  .infobar .ic::before { content: "\E73E"; font-size: 16px; color: var(--ok); }
+  .infobar.on { opacity: 1; transform: none; }
+  .infobar.error { background: var(--error-bg); } .infobar.error .ic::before { content: "\E783"; color: var(--error); }
+
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 200px minmax(0, 1fr); } main { padding: 20px 24px 32px 20px; }
+  }
+  @media (max-width: 740px) {
+    .app { grid-template-columns: 172px minmax(0, 1fr); }
+    nav a { gap: 12px; padding: 8px 10px; } .brand { padding-left: 10px; }
+    .newrule { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 540px) {
+    .app { grid-template-columns: 56px minmax(0, 1fr); } nav { padding: 12px 6px; }
+    .brand { justify-content: center; padding: 8px 0 16px; }
+    .brand-name, .nav-text, .nav-footer { display: none; } nav a { justify-content: center; padding: 8px 0; }
+    main { padding: 16px 12px 24px; } .card { padding: 12px; } .card.child, .rows > .card { padding-left: 12px; }
+    .style-tiles, .chips, .fb-kinds, .fb-field { padding-left: 0; } .newrule, .fb-preview { padding-left: 12px; }
+    .about-head { gap: 14px; } .about-head .brand-mark { width: 44px; height: 44px; }
+  }
+  /* Liquid Glass keeps the Fluent sheet (an opaque window has nothing to refract); only the
+     rounder geometry and a top highlight echo the material. */
+  :root.liquid-glass { --r-card: 8px; --r-control: 6px; --glass-highlight: #ffffff12; }
+  :root.liquid-glass.light { --glass-highlight: #ffffffe6; }
+  :root:not(.liquid-glass) [data-bind=labelColor] option[value=perFence] { display: none; }
+  /* Transparency effects off must not collapse every theme to one block: the real fences
+     keep their materials regardless, so only the blur is dropped and each tile keeps its
+     own plate colour/wood/dashed look. */
+  @media all {
+    .tile .mini-fence { backdrop-filter: none; }
+    .preview-glass { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } ::details-content { transition: none !important; } }
+  @media (forced-colors: active) {
+    .card { border-color: CanvasText; }
+    .toggle, .swatch { forced-color-adjust: none; }
+    .toggle { border-color: ButtonText; background: Canvas; } .toggle::after { background: ButtonText; }
+    .toggle.on { background: Highlight; border-color: Highlight; } .toggle.on::after { background: HighlightText; }
+    .disabled .toggle { border-color: GrayText; } .disabled .toggle::after { background: GrayText; }
+    .swatch[aria-checked=true] { outline: 2px solid Highlight; outline-offset: 3px; }
+    nav a.sel { outline: 2px solid Highlight; outline-offset: -2px; }
+    .tile:has(input:checked) { outline: 2px solid Highlight; outline-offset: -2px; }
+    .preview-glass, .tile-glass .mini-fence::before, .tile-glass .mini-fence::after { display: none; }
+    .mini-fence { border: 1px solid CanvasText; }
+  }
+  /* Arabic: mirror the few physical side rules that dir=rtl cannot flip on its own. */
+  [dir=rtl] nav a.sel::before { left: auto; right: 0; }
+  [dir=rtl] .card.child, [dir=rtl] .rows > .card { padding-left: 0; padding-right: 57px; }
+  [dir=rtl] .style-tiles, [dir=rtl] .chips, [dir=rtl] .fb-kinds, [dir=rtl] .fb-field { padding-left: 0; padding-right: 40px; }
+  [dir=rtl] .brand { padding-left: 0; padding-right: 10px; }
+  [dir=rtl] .toggle::after { right: 3px; transition: transform .15s cubic-bezier(.2, 0, 0, 1), right .15s, top .15s, width .15s, height .15s; }
+  [dir=rtl] .toggle.on::after { transform: translateX(-20px); }
+  [dir=rtl] .toggle:not([aria-disabled=true]):hover::after { right: 2px; }
+  [dir=rtl] .toggle.on:not([aria-disabled=true]):active::after { transform: translateX(-17px); }
+</style></head><body style="padding:40px;background:#1f1f1f"><div class="style-tiles" id="desktopPreview" role="radiogroup" aria-labelledby="themeStyleTitle">
+          <label class="tile tile-fluent"><input type="radio" name="themeStyle" value="fluent">
+            <span class="shot" aria-hidden="true"><span class="mini-fence"><span class="preview-title">工作空间</span><span class="mini-items"><span class="file-icon folder ic">&#xE8B7;</span><span class="file-icon ic">&#xE8A5;</span><span class="file-icon sheet ic">&#xE9F9;</span></span></span></span>
+            <span class="cap">Fluent · 经典</span></label>
+          <label class="tile tile-glass"><input type="radio" name="themeStyle" value="liquidGlass">
+            <span class="shot" aria-hidden="true"><span class="mini-fence"><span class="preview-title">工作空间</span><span class="mini-items"><span class="file-icon folder ic">&#xE8B7;</span><span class="file-icon ic">&#xE8A5;</span><span class="file-icon sheet ic">&#xE9F9;</span></span></span></span>
+            <span class="cap">Liquid Glass · 液态玻璃</span></label>
+          <label class="tile tile-bookshelf" title="经典木质书架风格"><input type="radio" name="themeStyle" value="bookshelf">
+            <span class="shot" aria-hidden="true"><span class="mini-fence"><span class="preview-title">工作空间</span><span class="mini-items"><span class="file-icon folder ic">&#xE8B7;</span><span class="file-icon ic">&#xE8A5;</span><span class="file-icon sheet ic">&#xE9F9;</span></span></span></span>
+            <span class="cap">Bookshelf · 书架</span></label>
+          <label class="tile tile-invisible" title="完全透明画布：栅栏背景完全隐藏，图标悬浮在壁纸上"><input type="radio" name="themeStyle" value="invisibleCanvas">
+            <span class="shot" aria-hidden="true"><span class="mini-fence"><span class="preview-title">工作空间</span><span class="mini-items"><span class="file-icon folder ic">&#xE8B7;</span><span class="file-icon ic">&#xE8A5;</span><span class="file-icon sheet ic">&#xE9F9;</span></span></span></span>
+            <span class="cap">Invisible Canvas · 隐形画布</span></label></div></body></html>

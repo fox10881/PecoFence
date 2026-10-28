@@ -1037,6 +1037,14 @@ impl WmfWallpaperPlayer {
         &self.path
     }
 
+    /// Whether the playback thread is still running. The desktop video window can die
+    /// independently of this handle — an explorer restart or a playback error ends the thread
+    /// while `video_wallpaper_path` still names the file — so config alone cannot tell an
+    /// active video wallpaper from a stale one.
+    pub fn is_alive(&self) -> bool {
+        self.thread.as_ref().is_some_and(|t| !t.is_finished())
+    }
+
     /// A small (≤640x360) thumbnail of the most recently decoded frame, for `.peco` export
     /// previews. Downscaled on the player thread instead of cloning a full-resolution frame.
     pub fn latest_frame(&self) -> Option<VideoFrame> {
@@ -1047,7 +1055,13 @@ impl WmfWallpaperPlayer {
         self.stop.store(true, Ordering::SeqCst);
         self.wake.1.notify_all();
         if let Some(handle) = self.thread.take() {
+            let started = Instant::now();
             let _ = handle.join();
+            tracing::info!(
+                path = %self.path.display(),
+                elapsed_ms = started.elapsed().as_millis(),
+                "wmf: player stopped — thread joined, video window destroyed"
+            );
         }
     }
 }
@@ -1502,6 +1516,35 @@ impl GpuPipeline {
     /// until the next frame is presented (one-frame FIFO) so MF cannot recycle the
     /// surface while the GPU is still reading it.
     /// SAFETY: COM/D3D11 calls on live interfaces.
+    /// Measures the real vsync grid by blocking on `IDXGIOutput::WaitForVBlank` twice:
+    /// the two return instants are consecutive vblanks, so their delta is the true
+    /// refresh period and the second instant is a phase-locked anchor on that grid.
+    /// (Frame statistics return zeros on composition swap chains — the compositor owns
+    /// the flip — so the period/phase can't come from `GetFrameStatistics`.)
+    fn measure_vsync_grid(&self) -> Option<(Instant, Duration)> {
+        unsafe {
+            let dxgi_dev: IDXGIDevice = self.context.GetDevice().ok()?.cast().ok()?;
+            let adapter = dxgi_dev.GetAdapter().ok()?;
+            let mut output = None;
+            if !adapter.EnumOutputs(0, &mut output).is_ok() {
+                return None;
+            }
+            let output = output?;
+            if !output.WaitForVBlank().is_ok() {
+                return None;
+            }
+            let t1 = Instant::now();
+            if !output.WaitForVBlank().is_ok() {
+                return None;
+            }
+            let t2 = Instant::now();
+            let period = t2 - t1;
+            (Duration::from_millis(1)..=Duration::from_millis(50))
+                .contains(&period)
+                .then_some((t2, period))
+        }
+    }
+
     unsafe fn present(
         &self,
         buffer: &IMFMediaBuffer,
@@ -1715,6 +1758,97 @@ unsafe fn run_gpu_wallpaper(
     result
 }
 
+const CREATE_WAITABLE_TIMER_MANUAL_RESET: u32 = 0x1;
+const CREATE_WAITABLE_TIMER_HIGH_RESOLUTION: u32 = 0x2;
+const TIMER_ALL_ACCESS: u32 = 0x001F_0003;
+const WAIT_INFINITE: u32 = 0xFFFF_FFFF;
+
+/// High-resolution frame pacing. `Condvar::wait_timeout`/`Sleep` quantize to the OS
+/// timer tick (~15.6 ms at default resolution — measured median ~7.6 ms late per
+/// 30 ms frame), which turns a clean PTS stream into visible judder on non-integer
+/// rates like 33.3 fps. A manual-reset waitable timer created with
+/// `CREATE_WAITABLE_TIMER_HIGH_RESOLUTION` (Windows 10 1803+) lands within ~1 ms.
+struct FramePacer {
+    timer: HANDLE,
+}
+
+impl FramePacer {
+    fn new() -> Option<Self> {
+        unsafe {
+            windows_core::link!("kernel32.dll" "system" fn CreateWaitableTimerExW(
+                lptimerattributes: *const core::ffi::c_void,
+                lptimername: PCWSTR,
+                dwflags: u32,
+                dwdesiredaccess: u32
+            ) -> HANDLE);
+            let timer = CreateWaitableTimerExW(
+                std::ptr::null(),
+                PCWSTR::null(),
+                CREATE_WAITABLE_TIMER_MANUAL_RESET | CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+                TIMER_ALL_ACCESS,
+            );
+            (!timer.0.is_null()).then_some(Self { timer })
+        }
+    }
+
+    /// Block until `due`. Lands within ~1 ms of the deadline; a short final spin trims
+    /// the residual sub-millisecond overshoot.
+    fn wait_until(&self, due: Instant) {
+        let now = Instant::now();
+        if now >= due {
+            return;
+        }
+        unsafe {
+            windows_core::link!("kernel32.dll" "system" fn SetWaitableTimer(
+                htimer: HANDLE,
+                lpduetime: *const i64,
+                lperiod: i32,
+                pfncompleteroutine: *const core::ffi::c_void,
+                lpargtocompleteroutine: *const core::ffi::c_void,
+                fresume: windows_core::BOOL
+            ) -> windows_core::BOOL);
+            // Negative due time = relative offset in 100 ns units.
+            let rel = -(((due - now).as_nanos() / 100) as i64);
+            let armed = SetWaitableTimer(
+                self.timer,
+                &rel,
+                0,
+                std::ptr::null(),
+                std::ptr::null(),
+                windows_core::BOOL(0),
+            );
+            if armed.as_bool() {
+                let _ = WaitForSingleObject(self.timer, WAIT_INFINITE);
+            }
+        }
+        // Trim residual sub-ms overshoot — capped so a failed timer can't spin a whole
+        // frame interval on one core.
+        let spin_cap = Instant::now() + Duration::from_millis(2);
+        while Instant::now() < due && Instant::now() < spin_cap {
+            std::hint::spin_loop();
+        }
+    }
+}
+
+impl Drop for FramePacer {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = CloseHandle(self.timer);
+        }
+    }
+}
+
+/// Rounds a deadline to the middle of the vsync window whose boundary is nearest `t`
+/// on the measured grid — the present then reliably lands the frame on that vsync.
+fn snap_to_vsync_grid(t: Instant, anchor: Instant, period: Duration) -> Instant {
+    let Some(off) = t.checked_duration_since(anchor) else {
+        return t;
+    };
+    let p = period.as_secs_f64();
+    let k = (off.as_secs_f64() / p + 0.5).floor();
+    anchor + period.mul_f64(k) - period / 2
+}
+
 /// The post-attach body of [`run_gpu_wallpaper`]: builds the pipeline, presents frame 0,
 /// then runs the PTS-paced loop until `stop` or an unrecoverable GPU error.
 /// SAFETY: all calls act on interfaces/windows created on this thread.
@@ -1761,6 +1895,32 @@ unsafe fn run_gpu_attached(
         // from pause the same way.
         let mut pts0 = first.GetSampleTime().unwrap_or(0);
         let mut clock0 = Instant::now();
+        let pacer = FramePacer::new();
+        if pacer.is_none() {
+            tracing::warn!(
+                "wmf: high-res timer unavailable; frame pacing falls back to OS timer resolution"
+            );
+        }
+        // Cadence snapping: measure the real vsync grid once (period + a phase-locked
+        // anchor), then decide whether the media interval is a non-integer multiple of
+        // it (e.g. 33.3 fps on 120 Hz = 3.6 vsyncs). If so the compositor must shorten
+        // one frame every few frames — the periodic hitch reported as "continuous
+        // stutter" in every player. When a whole number of vsyncs stays within ~12% of
+        // the media interval, pace to the snapped interval instead: playback runs a few
+        // percent fast/slow but every frame holds an even vsync count.
+        let vsync_grid = gp.measure_vsync_grid();
+        let cadence_step = vsync_grid.and_then(|(_, period)| {
+            let f = interval.as_secs_f64();
+            let snapped = (f / period.as_secs_f64()).round().max(1.0) * period.as_secs_f64();
+            ((snapped - f).abs() / f <= 0.12).then(|| Duration::from_secs_f64(snapped))
+        });
+        tracing::info!(
+            vsync_ms = vsync_grid.map(|(_, p)| p.as_secs_f64() * 1000.0),
+            media_ms = interval.as_secs_f64() * 1000.0,
+            snapped_ms = cadence_step.map(|s| s.as_secs_f64() * 1000.0),
+            "wmf: vsync grid measured; cadence snap decision"
+        );
+        let mut sample_index: u64 = 0;
         let mut paused = false;
         let mut last_visibility_check = Instant::now();
         let mut frame_counter: u64 = 1;
@@ -1776,6 +1936,15 @@ unsafe fn run_gpu_attached(
 
             if last_visibility_check.elapsed() >= Duration::from_millis(300) {
                 last_visibility_check = Instant::now();
+                // An Explorer restart or a wallpaper reset can destroy the attached window;
+                // keep decoding to a dead HWND would burn GPU forever on nothing.
+                if !IsWindow(Some(hwnd)).as_bool() {
+                    tracing::info!(
+                        frame_counter,
+                        "wmf: video window destroyed; stopping playback"
+                    );
+                    break;
+                }
                 let now_paused = should_pause_playback();
                 if now_paused != paused {
                     paused = now_paused;
@@ -1814,17 +1983,37 @@ unsafe fn run_gpu_attached(
                 // `video_length` late and every frame is dropped as overdue.
                 pts0 = pts;
                 clock0 = Instant::now();
+                sample_index = 0;
             }
-            let due = clock0 + Duration::from_nanos((pts - pts0).max(0) as u64 * 100);
+            let step = cadence_step.unwrap_or(interval);
+            // Snapped mode paces by sample index on an even vsync grid; PTS mode paces
+            // each sample to its own timestamp.
+            let raw_due = match cadence_step {
+                Some(step) => clock0 + step.mul_f64(sample_index as f64),
+                None => clock0 + Duration::from_nanos((pts - pts0).max(0) as u64 * 100),
+            };
+            // Phase-lock to the measured vblank grid so every frame gets the same
+            // integer number of vsyncs instead of drifting across boundaries.
+            let due = match (vsync_grid, cadence_step) {
+                (Some((anchor, period)), Some(_)) => snap_to_vsync_grid(raw_due, anchor, period),
+                _ => raw_due,
+            };
+            sample_index = sample_index.wrapping_add(1);
             let now = Instant::now();
-            if now > due + interval * 2 {
+            if now > due + step * 2 {
                 dropped += 1;
                 continue; // iGPU can't keep up — drop the frame entirely.
             }
-            if now < due
-                && let Ok(guard) = wake.0.lock()
-            {
-                let _ = wake.1.wait_timeout(guard, due - now);
+            if now < due {
+                match &pacer {
+                    Some(p) => p.wait_until(due),
+                    // Legacy fallback: condvar waits are quantized to the OS timer tick.
+                    None => {
+                        if let Ok(guard) = wake.0.lock() {
+                            let _ = wake.1.wait_timeout(guard, due - now);
+                        }
+                    }
+                }
             }
             if stop.load(Ordering::Relaxed) {
                 break;
@@ -2002,6 +2191,15 @@ fn run_player_thread(
 
             if last_visibility_check.elapsed() >= Duration::from_millis(300) {
                 last_visibility_check = Instant::now();
+                // An Explorer restart or a wallpaper reset can destroy the attached window;
+                // keep decoding to a dead HWND would burn CPU forever on nothing.
+                if !IsWindow(Some(hwnd)).as_bool() {
+                    tracing::info!(
+                        frame_counter,
+                        "wmf: video window destroyed; stopping playback"
+                    );
+                    break;
+                }
                 let now_paused = should_pause_playback();
                 if now_paused != paused {
                     paused = now_paused;
@@ -2205,6 +2403,10 @@ pub fn encode_jpeg(width: u32, height: u32, bgra: &[u8]) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
 
+    /// Serializes the heavy WMF tests: they run in one process on parallel threads, and a
+    /// GPU/decode test's live pools would otherwise pollute the memory-attribution numbers.
+    static PIPELINE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn jpeg_encoder_produces_valid_jfif_bytes() {
         let width = 32u32;
@@ -2224,6 +2426,7 @@ mod tests {
 
     #[test]
     fn wmf_memory_attribution() {
+        let _lock = PIPELINE_TEST_LOCK.lock().unwrap();
         let path = Path::new(r"C:\Users\yahya\Downloads\WALL\Video Project.mp4");
         if !path.is_file() {
             return;
@@ -2272,6 +2475,7 @@ mod tests {
     /// D3D11 or the sample video.
     #[test]
     fn gpu_zero_copy_pipeline_presents_decoded_frames() {
+        let _lock = PIPELINE_TEST_LOCK.lock().unwrap();
         let path = Path::new(r"C:\Users\yahya\Downloads\WALL\Video Project.mp4");
         if !path.is_file() {
             return;
@@ -2355,6 +2559,219 @@ mod tests {
             last_pts = pts;
         }
         panic!("video never reached EOS within 20_000 frames");
+    }
+
+    /// Profiling probe: decodes the whole stream through the hardware reader and prints
+    /// per-frame decode wall time vs the media frame interval, plus the PTS delta
+    /// distribution — the two numbers that explain continuous stutter (decode can't
+    /// keep up vs erratic timestamps confusing the pacer).
+    #[test]
+    fn diagnose_wallpaper_pacing() {
+        let _lock = PIPELINE_TEST_LOCK.lock().unwrap();
+        let path = Path::new(
+            r"C:\Users\yahya\Downloads\WALL\mp4\yugioh-albaz-and-ecclesia-live-wallpaper.mp4",
+        );
+        if !path.is_file() {
+            eprintln!("missing test file");
+            return;
+        }
+        let _com = ComThreadGuard::init().unwrap();
+        let _mf = MfSessionGuard::init().unwrap();
+        let Some((_device, _context, manager)) = create_d3d_device() else {
+            eprintln!("no D3D11 device");
+            return;
+        };
+        let clean = path.to_string_lossy().to_string();
+        let opened =
+            try_open_reader(&clean, OutputKind::Nv12, Some(&manager)).expect("hardware reader");
+        eprintln!(
+            "negotiated: {}x{} interval={:?} fps={}/{} kind={:?}",
+            opened.width,
+            opened.height,
+            opened.frame_interval,
+            opened.fps_num,
+            opened.fps_den,
+            opened.kind
+        );
+        let reader = &opened.reader;
+        let interval_ms = opened.frame_interval.as_secs_f64() * 1000.0;
+        let mut dims_changed = false;
+        let mut decode_ms: Vec<f64> = Vec::new();
+        let mut pts_deltas: Vec<i64> = Vec::new();
+        let mut prev_pts: Option<i64> = None;
+        let t0 = Instant::now();
+        let mut frames = 0u32;
+        unsafe {
+            loop {
+                let mut rewound = false;
+                let t = Instant::now();
+                let Ok(sample) = read_next_sample(reader, &mut dims_changed, &mut rewound) else {
+                    break;
+                };
+                decode_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+                let pts = sample.GetSampleTime().unwrap_or(0);
+                if let Some(p) = prev_pts {
+                    pts_deltas.push(pts - p);
+                }
+                prev_pts = Some(pts);
+                frames += 1;
+                if rewound || frames >= 20_000 {
+                    break;
+                }
+            }
+        }
+        let total_ms = t0.elapsed().as_secs_f64() * 1000.0;
+        decode_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let pct = |p: f64| decode_ms[(decode_ms.len() as f64 * p / 100.0) as usize];
+        pts_deltas.sort();
+        let expected = frames as f64 * interval_ms;
+        eprintln!("decoded {frames} frames in {total_ms:.0}ms (expected playback {expected:.0}ms)");
+        eprintln!(
+            "decode ms/frame: median={:.2} p90={:.2} p99={:.2} max={:.2} (interval {interval_ms:.2})",
+            pct(50.0),
+            pct(90.0),
+            pct(99.0),
+            decode_ms.last().copied().unwrap_or(0.0)
+        );
+        let mut uniq: Vec<(i64, u32)> = Vec::new();
+        for d in &pts_deltas {
+            match uniq.last_mut() {
+                Some((v, c)) if *v == *d => *c += 1,
+                _ => uniq.push((*d, 1)),
+            }
+        }
+        eprintln!("pts deltas (hns x10000=ms): {uniq:?}");
+        let odd: Vec<_> = pts_deltas
+            .iter()
+            .filter(|d| (**d - (interval_ms * 10_000.0) as i64).abs() > 60_000)
+            .collect();
+        eprintln!(
+            "pts deltas deviating >6ms from interval: {} {odd:?}",
+            odd.len()
+        );
+
+        // Second pass through the full GPU present path on a hidden window: measures the
+        // presentation half of the pipeline (VP blit + flip-queue behaviour) that decode
+        // timing alone cannot see.
+        let opened2 = try_open_reader(&clean, OutputKind::Nv12, Some(&manager))
+            .expect("hardware reader (pass 2)");
+        let reader2 = &opened2.reader;
+        unsafe {
+            let class_name = to_wide("PecoFence.WmfWallpaper.GpuDiag");
+            let hwnd = create_video_window(&class_name, 0).expect("window");
+            let gp = GpuPipeline::new(
+                hwnd,
+                &_device,
+                &_context,
+                opened2.width,
+                opened2.height,
+                opened2.width, // present at native 4K, the real workload
+                opened2.height,
+                opened2.fps_num,
+                opened2.fps_den,
+            )
+            .expect("GPU pipeline");
+            // Measured vsync grid + snap decision for this file on this display.
+            let grid = gp.measure_vsync_grid();
+            eprintln!("measured vsync grid: {grid:?}");
+            if let Some((_, period)) = grid {
+                let f = interval_ms / 1000.0;
+                let snapped = (f / period.as_secs_f64()).round().max(1.0) * period.as_secs_f64();
+                eprintln!(
+                    "frame/refresh ratio {:.3} -> snapped {:.2}ms vs media {:.2}ms (engage: {})",
+                    f / period.as_secs_f64(),
+                    snapped * 1000.0,
+                    f * 1000.0,
+                    (snapped - f).abs() / f <= 0.12
+                );
+            }
+            let mut present_ms: Vec<f64> = Vec::new();
+            let mut blit_ms: Vec<f64> = Vec::new();
+            for _ in 0..400 {
+                let mut rewound = false;
+                let Ok(sample) = read_next_sample(reader2, &mut dims_changed, &mut rewound) else {
+                    break;
+                };
+                let (buf, tex, slice) = match sample_texture(&sample) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let t = Instant::now();
+                // time the whole present call (view creation + blit + Present)
+                let _ = gp.present(&buf, &tex, slice);
+                present_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+                blit_ms.push(0.0);
+            }
+            present_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let pp = |p: f64| present_ms[(present_ms.len() as f64 * p / 100.0) as usize];
+            eprintln!(
+                "present ms/frame at 4K out: median={:.2} p90={:.2} p99={:.2} max={:.2} n={} (interval {interval_ms:.2})",
+                pp(50.0),
+                pp(90.0),
+                pp(99.0),
+                present_ms.last().copied().unwrap_or(0.0),
+                present_ms.len()
+            );
+            // Third pass: simulate the real render loop — FramePacer wait until `due`,
+            // then present. Records how late each present lands vs its ideal deadline.
+            let pacer = FramePacer::new();
+            let mut overshoot: Vec<f64> = Vec::new();
+            let mut lateness: Vec<f64> = Vec::new();
+            let interval = Duration::from_nanos(
+                (opened2.fps_den as u64 * 1_000_000_000) / opened2.fps_num as u64,
+            );
+            let mut clock0: Option<Instant> = None;
+            let mut pts0: i64 = 0;
+            for _ in 0..200 {
+                let mut rewound = false;
+                let Ok(sample) = read_next_sample(reader2, &mut dims_changed, &mut rewound) else {
+                    break;
+                };
+                let pts = sample.GetSampleTime().unwrap_or(0);
+                let (buf, tex, slice) = match sample_texture(&sample) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let now = Instant::now();
+                if rewound || clock0.is_none() || pts < pts0 {
+                    pts0 = pts;
+                    clock0 = Some(now);
+                }
+                let due = clock0.unwrap() + Duration::from_nanos((pts - pts0).max(0) as u64 * 100);
+                if now > due + interval * 2 {
+                    lateness.push((now - due).as_secs_f64() * 1000.0);
+                    continue;
+                }
+                if now < due
+                    && let Some(p) = &pacer
+                {
+                    p.wait_until(due);
+                }
+                overshoot.push((Instant::now() - due).as_secs_f64() * 1000.0);
+                let _ = gp.present(&buf, &tex, slice);
+            }
+            overshoot.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let po = |p: f64| overshoot[(overshoot.len() as f64 * p / 100.0) as usize];
+            eprintln!(
+                "present overshoot vs due: median={:.2} p90={:.2} p99={:.2} max={:.2} n={} dropped_late={}",
+                po(50.0),
+                po(90.0),
+                po(99.0),
+                overshoot.last().copied().unwrap_or(0.0),
+                overshoot.len(),
+                lateness.len()
+            );
+            lateness.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            if !lateness.is_empty() {
+                eprintln!(
+                    "late-frame lateness: median={:.2} max={:.2}",
+                    lateness[lateness.len() / 2],
+                    lateness.last().copied().unwrap_or(0.0)
+                );
+            }
+            drop(gp);
+            let _ = DestroyWindow(hwnd);
+        }
     }
 
     #[test]

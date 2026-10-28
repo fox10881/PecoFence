@@ -640,4 +640,113 @@ mod tests {
         snapshot.background = [255, 255, 255];
         assert_ne!(fit, snapshot.signature());
     }
+
+    /// `cargo test -p pecofence-platform wall_export_probe -- --ignored --nocapture` —
+    /// applies a real image from `C:\Users\yahya\Downloads\WALL` as the desktop wallpaper
+    /// (like the user's "switch back to a static image"), then verifies every provider the
+    /// theme exporter uses reports that image and that a `.peco` written from it bundles
+    /// the image with `video_wallpaper_path` cleared.
+    #[test]
+    #[ignore = "changes the real desktop wallpaper"]
+    fn wall_export_probe() {
+        let img = std::env::var("WALL_PROBE_IMAGE")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::path::PathBuf::from(
+                    r"C:\Users\yahya\Downloads\WALL\Gemini_Generated_Image_91tt0891tt0891tt.jpg",
+                )
+            });
+        assert!(img.is_file(), "WALL asset missing: {}", img.display());
+        // Apply it exactly as the theme-import restore path does.
+        assert!(crate::sysparams::set_desktop_wallpaper(
+            &img.to_string_lossy()
+        ));
+
+        // Provider chain as `current_background_source` consults it (no live player).
+        let spi = crate::sysparams::desktop_wallpaper();
+        eprintln!("SPI_GETDESKWALLPAPER -> {spi:?}");
+        let _com = crate::com::OleGuard::init().expect("OLE init");
+        let snap = query().expect("IDesktopWallpaper query");
+        let via_idw = snap.monitors.iter().find_map(|m| m.path.clone());
+        eprintln!("IDesktopWallpaper -> {via_idw:?}");
+
+        let bg = spi
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_file())
+            .or(via_idw.filter(|p| p.is_file()));
+        let bg = bg.expect("a provider must report the static image");
+        eprintln!("bundled source = {}", bg.display());
+        // The image applied must be what gets bundled (TranscodedWallpaper counts — it is
+        // Windows' own copy of the same picture).
+        let is_image = bg
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_none_or(|e| !e.eq_ignore_ascii_case("mp4"));
+        assert!(is_image, "provider still reports video: {}", bg.display());
+
+        // The export payload path, end to end: entry → archive → extract → verify.
+        let mut cfg = pecofence_core::Config::default();
+        cfg.settings.video_wallpaper_path = Some(r"C:\stale\video.mp4".into());
+        let (name, data) =
+            pecofence_core::peco_theme::background_entry(&mut cfg, &bg).expect("bg entry");
+        assert!(name.starts_with("background."));
+        assert!(!name.ends_with(".mp4"));
+        assert_eq!(cfg.settings.video_wallpaper_path, None);
+
+        // The preview decode the export performs on the same source.
+        let preview = decode_scaled(&bg, 640, 360).expect("preview decode");
+        eprintln!("preview {}x{} from {name}", preview.width, preview.height);
+
+        let cfg_json = pecofence_core::ConfigStore::to_json(&cfg).expect("json");
+        assert!(!cfg_json.contains("stale\\video.mp4"));
+        let dir = std::env::temp_dir().join("peco-wall-probe");
+        let _ = std::fs::create_dir_all(&dir);
+        let peco = dir.join("wall-image.peco");
+        pecofence_core::peco_theme::write_peco_file(
+            &peco,
+            &cfg_json,
+            Some((&name, &data)),
+            b"\xFF\xD8\xFF\xE0preview",
+        )
+        .expect("write .peco");
+        let ex = pecofence_core::peco_theme::extract_peco_to_temp(&peco).expect("extract");
+        let bundled = ex.background_path.expect("background bundled");
+        eprintln!("extracted background = {}", bundled.display());
+        assert_eq!(std::fs::read(&bundled).unwrap(), data);
+        let _ = std::fs::remove_dir_all(&ex.temp_dir);
+    }
+
+    /// `cargo test -p pecofence-platform wall_explorer_apply -- --ignored` —
+    /// applies a WALL image through `IDesktopWallpaper::SetWallpaper`, the path File
+    /// Explorer's "Set as desktop background" takes. Unlike `SystemParametersInfo` this
+    /// does not broadcast `SPI_SETDESKWALLPAPER`, so it exercises the app's
+    /// snapshot-diff retirement rather than the broadcast hook.
+    #[test]
+    #[ignore = "changes the real desktop wallpaper"]
+    fn wall_explorer_apply_probe() {
+        let img = std::env::var("WALL_PROBE_IMAGE")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::path::PathBuf::from(
+                    r"C:\Users\yahya\Downloads\WALL\A_highly_detailed_photorealistic_interior_of_a_dark_moody_ro.webp",
+                )
+            });
+        assert!(img.is_file(), "WALL asset missing: {}", img.display());
+        let _com = crate::com::OleGuard::init().expect("OLE init");
+        let dw: IDesktopWallpaper =
+            unsafe { CoCreateInstance(&DesktopWallpaper, None, CLSCTX_ALL as u32) }
+                .expect("IDesktopWallpaper");
+        let count = unsafe { dw.GetMonitorDevicePathCount() }.expect("monitor count");
+        let img_w = crate::wide::to_wide(img.to_str().unwrap());
+        for i in 0..count {
+            let id = take_string(unsafe { dw.GetMonitorDevicePathAt(i) }.expect("id"));
+            let id_w = crate::wide::to_wide(&id);
+            let hr = unsafe { dw.SetWallpaper(PCWSTR(id_w.as_ptr()), PCWSTR(img_w.as_ptr())) };
+            assert!(hr.is_ok(), "SetWallpaper failed: {hr:?}");
+        }
+        eprintln!("applied via IDesktopWallpaper: {}", img.display());
+        let spi = crate::sysparams::desktop_wallpaper();
+        eprintln!("SPI_GETDESKWALLPAPER now -> {spi:?}");
+    }
 }

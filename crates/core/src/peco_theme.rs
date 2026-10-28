@@ -237,6 +237,41 @@ pub fn write_peco_file(
     fs::write(path, zip_bytes)
 }
 
+/// Reads `src` into a `background.<ext>` archive entry, and prunes `cfg`'s
+/// `video_wallpaper_path` unless the bundled media is a video: a theme exported over a
+/// static image must not resurrect a stale video wallpaper on import. `None` when `src`
+/// cannot be read.
+pub fn background_entry(cfg: &mut Config, src: &Path) -> Option<(String, Vec<u8>)> {
+    let ext = src
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .filter(|e| {
+            matches!(
+                e.as_str(),
+                "mp4" | "jpg" | "jpeg" | "png" | "bmp" | "webp" | "gif" | "tif" | "tiff"
+            )
+        })
+        .unwrap_or_else(|| "jpg".into());
+    if ext != "mp4" {
+        if let Some(stale) = cfg.settings.video_wallpaper_path.take() {
+            // A still-configured video path reaching an image bundle means a caller
+            // exported without reconciling the player — the path is dropped here,
+            // but the leak is loud so the caller can be traced and fixed.
+            tracing::error!(
+                stale = %stale,
+                image = %src.display(),
+                "stale video_wallpaper_path leaked into an image bundle; dropped"
+            );
+        }
+    } else {
+        tracing::info!(video = %src.display(), "bundling video wallpaper asset");
+    }
+    std::fs::read(src)
+        .ok()
+        .map(|bytes| (format!("background.{ext}"), bytes))
+}
+
 fn is_background_media_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     if lower == "config.json" || lower == "preview.jpg" || lower == "preview.jpeg" {
@@ -561,5 +596,57 @@ mod tests {
         assert_eq!(unpacked[1].data, fake_media);
         assert_eq!(unpacked[2].name, "preview.jpg");
         assert_eq!(unpacked[2].data, fake_preview);
+    }
+
+    /// A theme exported while a stale `video_wallpaper_path` lingers must not carry it:
+    /// an image bundle keeps the picture and clears the video field.
+    #[test]
+    fn background_entry_bundles_image_and_prunes_video_path() {
+        let dir = std::env::temp_dir().join(format!("peco-bg-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let img = dir.join("wall.webp");
+        let pixels = b"fake-webp-payload";
+        fs::write(&img, pixels).unwrap();
+
+        let mut cfg = Config::default();
+        cfg.settings.video_wallpaper_path = Some(r"C:\stale\old-video.mp4".into());
+        let (name, data) = background_entry(&mut cfg, &img).expect("entry");
+        assert_eq!(name, "background.webp");
+        assert_eq!(data, pixels);
+        assert_eq!(cfg.settings.video_wallpaper_path, None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn background_entry_keeps_video_path_for_video_bundle() {
+        let dir = std::env::temp_dir().join(format!("peco-bg-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let vid = dir.join("wall.mp4");
+        fs::write(&vid, b"fake-mp4").unwrap();
+
+        let mut cfg = Config::default();
+        cfg.settings.video_wallpaper_path = Some(vid.to_string_lossy().into_owned());
+        let (name, _) = background_entry(&mut cfg, &vid).expect("entry");
+        assert_eq!(name, "background.mp4");
+        assert!(cfg.settings.video_wallpaper_path.is_some());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `cargo test -p pecofence-core wall_dir -- --ignored --nocapture` —
+    /// bundles a real image from the user's wallpaper folder like the export does.
+    #[test]
+    #[ignore = "reads real files from the local wallpaper folder"]
+    fn wall_dir_image_bundles_as_background_entry() {
+        let img =
+            Path::new(r"C:\Users\yahya\Downloads\WALL\Gemini_Generated_Image_91tt0891tt0891tt.jpg");
+        let mut cfg = Config::default();
+        cfg.settings.video_wallpaper_path =
+            Some(r"C:\Users\yahya\Downloads\WALL\mp4\upscale_4k_00004-audio.mp4".into());
+        let (name, data) = background_entry(&mut cfg, img).expect("WALL image entry");
+        eprintln!("entry={name} bytes={}", data.len());
+        assert!(name.starts_with("background."));
+        assert!(!name.ends_with(".mp4"));
+        assert_eq!(cfg.settings.video_wallpaper_path, None);
+        assert_eq!(data, std::fs::read(img).unwrap());
     }
 }

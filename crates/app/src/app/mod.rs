@@ -19,8 +19,8 @@ use pecofence_core::geometry::WorkArea;
 use pecofence_core::hotkey::Hotkey;
 use pecofence_core::{
     FenceId, FenceKind, IconFrameStyle, IconShape, ItemId, ItemKey, LabelFontWeight,
-    LabelVisibility, ShowDesktopSetting, SortMode, Spacing, Target, ThemeSetting, TitleSize,
-    ViewLayout, ZOrderSetting,
+    LabelVisibility, ShowDesktopSetting, SortMode, Spacing, Target, TaskbarMode, ThemeSetting,
+    TitleSize, ViewLayout, ZOrderSetting,
 };
 use pecofence_platform::clipboard;
 use pecofence_platform::frameclock::FrameClock;
@@ -135,6 +135,7 @@ const TIMER_SYSTEM_SETTINGS_RETRY: usize = 52;
 /// Rebuilding the GPU device failed (driver reset in progress): try again, backing off.
 const TIMER_DEVICE_RETRY: usize = 59;
 const TIMER_LIVE_WALLPAPER: usize = 66;
+const TIMER_WALLPAPER_APPLY_RETRY: usize = 67;
 const DEVICE_RETRY_FIRST_MS: u32 = 1_000;
 /// Re-armed by every panel draw, like `TIMER_GPU_TRIM`: once drawing has been quiet this long,
 /// hands the memory the last burst of work touched back to Windows
@@ -338,6 +339,10 @@ pub struct App {
     live_abandoned: Option<std::thread::JoinHandle<()>>,
     /// Active Windows Media Foundation (WMF) desktop video wallpaper player (`WorkerW`).
     wmf_player: Option<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer>,
+    /// The static desktop wallpaper recorded when the video player started. A different
+    /// image reported later means the user applied it over the video (Explorer applies do
+    /// not broadcast `SPI_SETDESKWALLPAPER`) — the image wins and the video retires.
+    static_under_video: Option<std::path::PathBuf>,
     /// The hotkey currently registered (None = registration failed or Peek disabled).
     peek_hotkey: Option<Hotkey>,
     /// The combination the last `sync_peek_hotkey` tried to register (the user's choice), so a
@@ -807,6 +812,16 @@ impl App {
                                         window::set_timer(hwnd, TIMER_SYSTEM_SETTINGS_RETRY, 250);
                                     }
                                 }
+                                TIMER_WALLPAPER_APPLY_RETRY => {
+                                    window::kill_timer(hwnd, TIMER_WALLPAPER_APPLY_RETRY);
+                                    if let Ok(mut guard) = cell.try_borrow_mut()
+                                        && let Some(app) = guard.as_mut()
+                                    {
+                                        app.on_wallpaper_changed();
+                                    } else {
+                                        window::set_timer(hwnd, TIMER_WALLPAPER_APPLY_RETRY, 250);
+                                    }
+                                }
                                 TIMER_TRAY_RETRY => {
                                     window::kill_timer(hwnd, TIMER_TRAY_RETRY);
                                     let shown = cell
@@ -836,6 +851,16 @@ impl App {
                         msg::WM_SETTINGCHANGE if wparam == SPI_SETDESKWALLPAPER => {
                             sync_desktops_differ(hwnd, &desktops_differ);
                             notify_wallpaper(hwnd);
+                            // A static image was applied — by us (state already cleared;
+                            // the call no-ops) or outside the app (the user's wallpaper
+                            // intent moved to the image; the video must yield).
+                            if let Ok(mut guard) = cell.try_borrow_mut()
+                                && let Some(app) = guard.as_mut()
+                            {
+                                app.on_wallpaper_changed();
+                            } else {
+                                window::set_timer(hwnd, TIMER_WALLPAPER_APPLY_RETRY, 250);
+                            }
                             None
                         }
                         WM_APP_FRAME => {
@@ -1255,6 +1280,7 @@ impl App {
             live_capture: None,
             live_abandoned: None,
             wmf_player: None,
+            static_under_video: None,
         };
         app.sync_video_wallpaper();
         // Watch both wallpaper settings and virtual-desktop state; either signal starts a
@@ -1378,6 +1404,18 @@ impl App {
         }
         if let Some(a) = app.anchor.borrow_mut().as_mut() {
             a.reanchor("startup");
+        }
+        // A saved Clear/Blur mode re-injects the TAP now that the taskbar exists.
+        let saved_mode = match app.state.config.settings.taskbar_mode {
+            TaskbarMode::Normal => pecofence_platform::tap::TapMode::Normal,
+            TaskbarMode::Clear => pecofence_platform::tap::TapMode::Clear,
+            TaskbarMode::Blur => pecofence_platform::tap::TapMode::Blur,
+            TaskbarMode::Opaque => pecofence_platform::tap::TapMode::Opaque,
+        };
+        if saved_mode != pecofence_platform::tap::TapMode::Normal {
+            std::thread::spawn(move || {
+                let _ = pecofence_platform::tap::apply(saved_mode);
+            });
         }
         for f in app.fences.values().chain(app.desktop_windows.values()) {
             f.show(false);
@@ -2049,6 +2087,8 @@ impl App {
     pub fn shutdown(&mut self) {
         self.end_peek_now();
         self.wmf_player = None;
+        // Restore the taskbar before the TAP's death-watch would have to.
+        pecofence_platform::tap::shutdown();
         self.state.save_if_dirty();
         self.fences.clear();
         self.desktop_windows.clear();

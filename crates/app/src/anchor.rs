@@ -1143,7 +1143,11 @@ impl DesktopAnchor {
 
     fn on_timer(&mut self, id: usize) {
         match id {
-            TIMER_ANCHOR_CHECK => self.ensure_anchored("periodic check"),
+            TIMER_ANCHOR_CHECK => {
+                self.ensure_anchored("periodic check");
+                // Re-injects the TAP if Explorer restarted under Clear/Blur.
+                pecofence_platform::tap::ensure();
+            }
             TIMER_RETRY => {
                 self.sentinel.kill_timer(TIMER_RETRY);
                 self.ensure_anchored("retry");

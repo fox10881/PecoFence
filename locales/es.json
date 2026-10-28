@@ -154,6 +154,7 @@
     "中": "Media",
     "强": "Alta",
     "图标融入背景（Chameleon）": "Integrar iconos en el fondo (Chameleon)",
+    "融入强度": "Intensidad de fusión",
     "显示快捷方式箭头": "Mostrar flechas de acceso directo",
     "行为": "Comportamiento",
     "收起的栅栏悬停时自动展开": "Expandir los grupos contraídos al pasar el cursor",
@@ -267,6 +268,7 @@
     "删除快照：": "Eliminar instantánea: ",
     "恢复备份：": "Restaurar copia de seguridad: ",
     "打开配置文件夹": "Abrir carpeta de configuración",
+    "打开主题文件夹": "Abrir carpeta de temas",
     "桌面与启动": "Escritorio e inicio",
     "随 Windows 启动": "Iniciar con Windows",
     "隐藏 Windows 桌面图标": "Ocultar iconos del escritorio de Windows",
@@ -628,5 +630,12 @@
     "保存主题失败：{0}": "No se pudo guardar el tema: {0}",
     "导出主题：": "Exportar tema: ",
     "导出快照：": "Exportar instantánea: ",
-    "主题": "Tema"
+    "主题": "Tema",
+    "任务栏样式": "Estilo de la barra de tareas",
+    "完全透明或磨砂玻璃的任务栏背景；切换后立即生效": "Fondo de la barra de tareas totalmente transparente o de cristal esmerilado; se aplica al instante",
+    "正常": "Normal",
+    "透明": "Transparente",
+    "磨砂": "Desenfoque",
+    "不透明": "Opaco",
+    "任务栏状态未能更改，请稍后重试。": "No se pudo cambiar el estado de la barra de tareas; inténtelo de nuevo más tarde."
 }

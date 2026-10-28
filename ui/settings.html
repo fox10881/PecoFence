@@ -33,7 +33,7 @@
     --ok: #6ccb5f; --ok-bg: #393d1b; --error: #ff99a4; --error-bg: #442726; --caution: #fce100; --caution-bg: #433519;
     --shadow: 0 8px 16px #00000042; --brand: #8098f2;
     --r-card: 4px; --r-control: 4px; --glass-highlight: transparent;
-    --wall: radial-gradient(120% 110% at 12% 0%, #6f93d8 0%, transparent 58%), radial-gradient(90% 110% at 100% 100%, #c98a78 0%, transparent 55%), linear-gradient(160deg, #34467a, #1f2744);
+    --wall: radial-gradient(120% 110% at 12% 0%, #6f93d8 0%, transparent 58%), radial-gradient(90% 110% at 100% 100%, #4a7ac7 0%, transparent 55%), linear-gradient(160deg, #34467a, #1f2744);
     --mini-panel: #2020209e; --mini-stroke: #ffffff1f; --glass-panel: #ffffff03; --glass-label-shadow: 0 1px 3px #0009;
     --chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='m2.5 4.25 3.5 3.5 3.5-3.5' fill='none' stroke='%23cfcfcf' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   }
@@ -47,7 +47,7 @@
     --accent: #005fb8; --accent-hover: #005fb8e6; --on-accent: #ffffff;
     --ok: #0f7b0f; --ok-bg: #dff6dd; --error: #c42b1c; --error-bg: #fde7e9; --caution: #9d5d00; --caution-bg: #fff4ce;
     --shadow: 0 8px 16px #00000024; --brand: #4768de;
-    --wall: radial-gradient(120% 110% at 12% 0%, #a9c3f3 0%, transparent 58%), radial-gradient(90% 110% at 100% 100%, #f1c3b3 0%, transparent 55%), linear-gradient(160deg, #c3d3f5, #e9eefb);
+    --wall: radial-gradient(120% 110% at 12% 0%, #a9c3f3 0%, transparent 58%), radial-gradient(90% 110% at 100% 100%, #9db8ee 0%, transparent 55%), linear-gradient(160deg, #c3d3f5, #e9eefb);
     --mini-panel: #f3f3f3b8; --mini-stroke: #ffffff8c; --glass-panel: #ffffff02; --glass-label-shadow: 0 1px 2px #ffffffa0;
     --chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='m2.5 4.25 3.5 3.5 3.5-3.5' fill='none' stroke='%235d5d5d' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   }
@@ -147,8 +147,8 @@
     border: 1px solid var(--control-stroke); border-bottom-color: var(--control-stroke-bottom); font-size: 14px; line-height: 20px; user-select: text; }
   input[type=text]:focus, input[type=time]:focus, input[type=number]:focus, input[type=email]:focus, textarea:focus { outline: none; border-bottom: 2px solid var(--accent); background-color: var(--card); }
   input::placeholder { color: var(--text3); }
-  .snapwall { display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
-  .snapwall input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+
+
   button { padding: 0 12px; min-width: 96px; }
   button:active, select:active { background-color: var(--control-pressed); color: var(--text2); }
   button:disabled, select:disabled { color: var(--text-disabled); background-color: var(--control-disabled); border-color: var(--control-stroke); }
@@ -250,12 +250,12 @@
     color: #eef7ff; background: #749cca; box-shadow: inset 0 1px 0 #ffffff5c, 0 3px 6px #00000012; transition: width .2s, height .2s, opacity .2s; }
   .file-icon.folder { background: #d1ac65; } .file-icon.sheet { background: #689d88; }
   .file-icon::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--preview-tint, transparent); opacity: var(--preview-tint-strength, .6); mix-blend-mode: color; }
-  #desktopPreview.chameleon .file-icon { filter: saturate(.35); opacity: .65; }
+  #desktopPreview.chameleon .file-icon { filter: saturate(calc(1 - var(--cham-intensity, .55))); opacity: calc(1 - var(--cham-intensity, .55)); }
 
   .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
-  .sliderctl { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+  .sliderctl { display: flex; align-items: center; gap: 12px; margin-inline-start: auto; }
   .sliderctl input[type=range] { width: 128px; accent-color: var(--accent); }
-  .sliderctl .sliderval { min-width: 44px; text-align: right; font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
+  .sliderctl .sliderval { min-width: 44px; text-align: end; font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
   .sliderctl input[type=range]:disabled { opacity: .4; }
   .swatch { width: 28px; height: 28px; min-width: 0; padding: 0; border-radius: 50%; position: relative; background: var(--swatch); border: 1px solid #00000026; }
   .swatch:hover { background: var(--swatch); filter: brightness(1.08); }
@@ -363,8 +363,11 @@
   :root.liquid-glass { --r-card: 8px; --r-control: 6px; --glass-highlight: #ffffff12; }
   :root.liquid-glass.light { --glass-highlight: #ffffffe6; }
   :root:not(.liquid-glass) [data-bind=labelColor] option[value=perFence] { display: none; }
+  /* Transparency effects off must not collapse every theme to one block: the real fences
+     keep their materials regardless, so only the blur is dropped and each tile keeps its
+     own plate colour/wood/dashed look. */
   @media (prefers-reduced-transparency: reduce) {
-    .tile .mini-fence { backdrop-filter: none; background: var(--card); }
+    .tile .mini-fence { backdrop-filter: none; }
     .preview-glass { display: none; }
   }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } ::details-content { transition: none !important; } }
@@ -443,7 +446,11 @@
         <div class="card child"><div class="l"><div><div class="t">图标着色强度</div></div></div>
           <select id="iconTintStrength"><option value="0.35">弱</option><option value="0.6">中</option><option value="0.9">强</option></select></div>
       </div>
-      <div class="card"><div class="l"><span class="ic">&#xE793;</span><div><div class="t">图标融入背景（Chameleon）</div><div class="s">降低图标饱和度和不透明度，让桌面看起来更清爽</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="icons.chameleon"></div></div>
+      <div class="group">
+        <div class="card"><div class="l"><span class="ic">&#xE793;</span><div><div class="t">图标融入背景（Chameleon）</div><div class="s">降低图标饱和度和不透明度，让桌面看起来更清爽</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="icons.chameleon"></div></div>
+        <div class="card child"><div class="l"><div><div class="t">融入强度</div></div></div>
+          <div class="sliderctl"><input type="range" id="chameleonIntensity" min="0" max="100" step="1"><span class="sliderval" id="chameleonIntensityVal"></span></div></div>
+      </div>
       <div class="card"><div class="l"><span class="ic">&#xE71B;</span><div><div class="t">显示快捷方式箭头</div><div class="s">和 Windows 桌面一样，在快捷方式图标的左下角显示小箭头</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="icons.shortcutArrows"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE8AA;</span><div><div class="t">动态壁纸玻璃捕获</div><div class="s">液态玻璃实时透出 Wallpaper Engine、Lively 等动态壁纸的画面；关闭后改用静态截图，更省 GPU</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="liveWallpaperCapture"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE774;</span><div><div class="t">显示语言</div><div class="s">立即切换界面语言；你的文件和自定义名称保持不变</div></div></div>
@@ -458,6 +465,8 @@
       <div class="card"><div class="l"><span class="ic">&#xE8B3;</span><div><div class="t">在桌面空白处拖出矩形时提供“在此新建栅栏”</div><div class="s">矩形没有碰到任何栅栏时弹出这一项；关闭后拖出矩形只用来框选，仍可从托盘菜单新建栅栏</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="offerNewFence"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE7C4;</span><div><div class="t">显示桌面 (Win+D) 时</div></div></div>
         <select data-bind="showDesktop"><option value="keepVisible">保持栅栏可见</option><option value="hideWithDesktop">随桌面隐藏</option></select></div>
+      <div class="card"><div class="l"><span class="ic">&#xE7F0;</span><div><div class="t">任务栏样式</div><div class="s">完全透明或磨砂玻璃的任务栏背景；切换后立即生效</div></div></div>
+        <select data-bind="taskbarMode"><option value="normal">正常</option><option value="clear">透明</option><option value="blur">磨砂</option><option value="opaque">不透明</option></select></div>
       <h3>行为</h3>
       <div class="card"><div class="l"><span class="ic">&#xE70D;</span><div><div class="t">收起的栅栏悬停时自动展开</div><div class="s">鼠标移开后自动收起</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.hoverPeek"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE7C9;</span><div><div class="t">收起的栅栏需点击标题才展开</div><div class="s">开启后不再悬停展开；拖动标题仍可移动栅栏</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.clickToExpand"></div></div>
@@ -604,10 +613,10 @@
       <h3>主题画廊</h3>
       <div class="gallery-bar">
         <input type="text" id="themeName" aria-label="主题名称（可选）" placeholder="主题名称（可选）">
-        <label class="snapwall"><input type="checkbox" id="themeBg">包含当前背景</label>
         <span class="bar-gap"></span>
         <button class="accent" id="themeSave">保存当前配置</button>
         <button type="button" id="themeImport">导入 .peco 主题</button>
+        <button type="button" id="themeFolder">打开主题文件夹</button>
       </div>
       <div class="theme-grid" id="galleryGrid"></div>
       <h3 id="swapHeading">多显示器</h3>
@@ -691,6 +700,7 @@
     const settings = state.settings, preview = document.getElementById('desktopPreview');
     document.documentElement.classList.toggle('liquid-glass', settings.themeStyle === 'liquidGlass');
     preview.classList.toggle('chameleon', !!settings.icons.chameleon);
+    preview.style.setProperty('--cham-intensity', (settings.icons.chameleonIntensity ?? 55) / 100);
     preview.style.setProperty('--preview-icon-size', ({ 32: 21, 48: 26, 64: 31, 96: 36 }[settings.iconSize] || 26) + 'px');
     preview.style.setProperty('--preview-tint', settings.icons.tintRgb ? '#' + rgbToHex(settings.icons.tintRgb) : 'transparent');
     preview.style.setProperty('--preview-tint-strength', settings.icons.tintStrength);
@@ -835,6 +845,7 @@
       if (el.tagName === 'SELECT') el.disabled = !on;
       else { el.tabIndex = on ? 0 : -1; el.setAttribute('aria-disabled', String(!on)); }
     }
+    renderChameleonDependent();
     renderPeekHotkey();
   }
 
@@ -991,6 +1002,20 @@
     sel.onchange = () => { state.settings.icons.tintRgb = sel.value ? hexToRgb(sel.value) : null; enableStrength(!!sel.value); commit('icons'); };
     str.onchange = () => { state.settings.icons.tintStrength = Number(str.value); commit('icons'); };
     renderSwatches(document.getElementById('iconTintSwatches'), sel);
+  }
+  function bindChameleonIntensity() {
+    const rng = document.getElementById('chameleonIntensity'), val = document.getElementById('chameleonIntensityVal');
+    const v = Math.round(state.settings.icons.chameleonIntensity ?? 55);
+    // A host echo mid-drag must not pull the thumb out from under the pointer.
+    if (document.activeElement !== rng) rng.value = v;
+    val.textContent = v + '%';
+    rng.oninput = () => { state.settings.icons.chameleonIntensity = Number(rng.value); val.textContent = rng.value + '%'; renderAppearance(); };
+    rng.onchange = () => commit('icons.chameleonIntensity');
+  }
+  function renderChameleonDependent() {
+    const on = !!state.settings.icons.chameleon;
+    const rng = document.getElementById('chameleonIntensity');
+    rng.disabled = !on; rng.closest('.card').classList.toggle('disabled', !on);
   }
   function commit(path) {
     renderAppearance();
@@ -1327,7 +1352,7 @@
   document.getElementById('applyRules').onclick = () => send({ type: 'action', name: 'applyRules' });
   document.getElementById('applyRulesForce').onclick = () => send({ type: 'action', name: 'applyRulesForce' });
   document.querySelectorAll('#templates [data-template]').forEach(b => { b.onclick = () => send({ type: 'action', name: 'addTemplate', template: b.dataset.template }); });
-  document.getElementById('themeSave').onclick = () => { const n = document.getElementById('themeName').value; send({ type: 'action', name: 'saveSetup', themeName: n, includeBackground: document.getElementById('themeBg').checked }); document.getElementById('themeName').value = ''; };
+  document.getElementById('themeSave').onclick = () => { const n = document.getElementById('themeName').value; send({ type: 'action', name: 'saveSetup', themeName: n }); document.getElementById('themeName').value = ''; };
   document.getElementById('cfgExport').onclick = () => send({ type: 'action', name: 'exportConfig' });
   document.getElementById('cfgImport').onclick = () => send({ type: 'action', name: 'importConfig' });
   document.getElementById('swapDo').onclick = () => { const a = document.getElementById('swapA').value, b = document.getElementById('swapB').value; if (a && b && a !== b) send({ type: 'action', name: 'swapMonitors', a, b }); else toast(t("请选择两个不同的显示器"), true); };
@@ -1409,6 +1434,7 @@
   document.getElementById('openCfg').onclick = () => send({ type: 'action', name: 'openConfigFolder' });
   document.getElementById('pickVideoWallpaper').onclick = () => send({ type: 'action', name: 'pickVideoWallpaper' });
   document.getElementById('themeImport').onclick = () => send({ type: 'action', name: 'importTheme' });
+  document.getElementById('themeFolder').onclick = () => send({ type: 'action', name: 'openThemesFolder' });
   document.querySelectorAll('.ext-link').forEach(link => {
     link.addEventListener('click', e => {
       if (wv) { e.preventDefault(); send({ type: 'action', name: 'openUrl', url: link.href }); }
@@ -1550,12 +1576,14 @@
         document.documentElement.style.setProperty('--accent', m.accent);
         document.documentElement.style.setProperty('--accent-hover', m.accent + 'E6');
       }
+      // The tiles always preview over the painted blue backdrop; the fence materials
+      // alone tell the themes apart.
       document.getElementById('ver').textContent = 'v' + m.version;
       // Only the Store edition has the Store's rating dialog.
       document.getElementById('rateStore').hidden = !m.storeEdition;
       renderWorkspaceSummary(m.fences.length, m.itemCount);
       document.getElementById('cfgPath').textContent = m.configPath;
-      bindAll(); bindThemeStyle(); bindIconTint(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
+      bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
       update = m.update; renderUpdate();
       // Transitions come on a frame after this state has been drawn: a single frame would style
       // both changes together and start them after all.

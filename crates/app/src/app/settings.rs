@@ -659,11 +659,13 @@ impl App {
                 }
                 Some("saveSetup") => {
                     let name = v.get("themeName").and_then(|n| n.as_str()).unwrap_or("");
-                    let include_bg = v
-                        .get("includeBackground")
-                        .and_then(|f| f.as_bool())
-                        .unwrap_or(false);
-                    self.save_theme_to_library(name, include_bg);
+                    // Themes always bundle the active background — no opt-out.
+                    self.save_theme_to_library(name);
+                }
+                Some("openThemesFolder") => {
+                    let dir = self.themes_dir();
+                    let _ = std::fs::create_dir_all(&dir);
+                    let _ = std::process::Command::new("explorer.exe").arg(&dir).spawn();
                 }
                 Some("exportItem") => match v.get("kind").and_then(|k| k.as_str()) {
                     Some("theme") => {
@@ -749,7 +751,7 @@ impl App {
                         // A snapshot saved with a wallpaper restores it too; a missing file
                         // or a failing shell reports but never blocks the layout restore.
                         if let Some(path) = wallpaper {
-                            if !pecofence_platform::sysparams::set_desktop_wallpaper(&path) {
+                            if !self.apply_static_wallpaper(&path) {
                                 tracing::warn!(path, "restoreSnapshot: wallpaper not applied");
                             }
                         }
@@ -950,6 +952,20 @@ impl App {
                 "桌面图标状态未能更改，请稍后重试。",
             ));
         }
+        if new.taskbar_mode != old.taskbar_mode {
+            let mode = match new.taskbar_mode {
+                TaskbarMode::Normal => pecofence_platform::tap::TapMode::Normal,
+                TaskbarMode::Clear => pecofence_platform::tap::TapMode::Clear,
+                TaskbarMode::Blur => pecofence_platform::tap::TapMode::Blur,
+                TaskbarMode::Opaque => pecofence_platform::tap::TapMode::Opaque,
+            };
+            if !pecofence_platform::tap::apply(mode) {
+                new.taskbar_mode = old.taskbar_mode;
+                self.settings_error(pecofence_core::i18n::text(
+                    "任务栏状态未能更改，请稍后重试。",
+                ));
+            }
+        }
         let icons_toggled = new.hide_real_icons != old.hide_real_icons;
         if new.quick_hide.enabled != old.quick_hide.enabled
             && let Some(a) = self.anchor.borrow_mut().as_mut()
@@ -1083,18 +1099,25 @@ impl App {
             .filter(|s| !s.is_empty());
         let Some(path_str) = wanted else {
             self.wmf_player = None;
+            self.static_under_video = None;
             return;
         };
         let path = PathBuf::from(&path_str);
-        if self.wmf_player.as_ref().is_some_and(|p| p.path() == path) {
+        if self
+            .wmf_player
+            .as_ref()
+            .is_some_and(|p| p.path() == path && p.is_alive())
+        {
             return;
         }
         self.wmf_player = None;
+        self.static_under_video = None;
         if !path.is_file() {
             return;
         }
         match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path) {
             Ok(player) => {
+                self.static_under_video = Self::static_wallpaper_now();
                 self.wmf_player = Some(player);
                 self.capture_live_wallpapers(Duration::ZERO);
             }
@@ -1106,6 +1129,97 @@ impl App {
                 ));
             }
         }
+    }
+
+    /// Applies a static image as the desktop wallpaper and retires the video engine:
+    /// choosing a static background must stop a still-playing video and clear its stored
+    /// path so exports and restarts don't resurrect it. Returns `set_desktop_wallpaper`'s
+    /// result.
+    pub(super) fn apply_static_wallpaper(&mut self, path: &str) -> bool {
+        self.wmf_player = None;
+        self.static_under_video = None;
+        if self
+            .state
+            .config
+            .settings
+            .video_wallpaper_path
+            .take()
+            .is_some()
+        {
+            self.settings_mutated();
+        }
+        pecofence_platform::sysparams::set_desktop_wallpaper(path)
+    }
+
+    /// `WM_SETTINGCHANGE`/`SPI_SETDESKWALLPAPER`: a static wallpaper was applied — by us
+    /// (`apply_static_wallpaper` already cleared state, so the guard makes it a no-op) or
+    /// outside the app (Settings > Personalization, Explorer's "Set as desktop background").
+    /// An outside change means wallpaper intent moved to the image, so a running or
+    /// configured video yields — otherwise it keeps covering the image and exports keep
+    /// bundling it.
+    pub(super) fn on_wallpaper_changed(&mut self) {
+        if self.wmf_player.is_none() && self.state.config.settings.video_wallpaper_path.is_none() {
+            return;
+        }
+        tracing::info!(
+            player_alive = self.wmf_player.as_ref().is_some_and(|p| p.is_alive()),
+            configured = ?self.state.config.settings.video_wallpaper_path,
+            "external wallpaper change; retiring video wallpaper"
+        );
+        self.wmf_player = None;
+        self.static_under_video = None;
+        self.state.config.settings.video_wallpaper_path = None;
+        // `settings_mutated` — not bare `schedule_save` — or the cleared path never
+        // reaches disk (`save_if_dirty` writes only flagged state) and the next
+        // launch resurrects the video.
+        self.settings_mutated();
+    }
+
+    /// The static wallpaper path as `IDesktopWallpaper` resolves it — the same provider
+    /// `follow_snapshot` compares `static_under_video` against, so a SPI↔IDW divergence
+    /// (`TranscodedWallpaper` vs the source path) cannot look like a user apply.
+    fn static_wallpaper_now() -> Option<PathBuf> {
+        pecofence_platform::wallpaper::query()
+            .ok()
+            .and_then(|q| q.monitors.into_iter().find_map(|m| m.path))
+            .filter(|p| p.is_file())
+            .or_else(|| {
+                pecofence_platform::sysparams::desktop_wallpaper()
+                    .map(PathBuf::from)
+                    .filter(|p| p.is_file())
+            })
+    }
+
+    /// A static image applied over a running video retires it — for applies the
+    /// `SPI_SETDESKWALLPAPER` broadcast misses (Explorer's "Set as desktop background"
+    /// goes through `IDesktopWallpaper`). Detected by the reported static path differing
+    /// from `static_under_video`, recorded when the player started. `desktops_differ`
+    /// guards virtual-desktop switches, which legitimately report another image.
+    pub(super) fn retire_video_for_static(&mut self, static_path: Option<&Path>) {
+        let player_alive = self.wmf_player.as_ref().is_some_and(|p| p.is_alive());
+        let (Some(baseline), Some(now)) = (self.static_under_video.as_ref(), static_path) else {
+            return;
+        };
+        if !player_alive || now == baseline {
+            return;
+        }
+        if pecofence_platform::wallpaper::desktops_differ() {
+            tracing::debug!(
+                applied = %now.display(),
+                "static wallpaper changed but virtual desktops differ; keeping video"
+            );
+            return;
+        }
+        tracing::info!(
+            applied = %now.display(),
+            was = %baseline.display(),
+            video = %self.wmf_player.as_ref().map(|p| p.path().display().to_string()).unwrap_or_default(),
+            "static image applied over video wallpaper; retiring player"
+        );
+        self.wmf_player = None;
+        self.static_under_video = None;
+        self.state.config.settings.video_wallpaper_path = None;
+        self.settings_mutated();
     }
 
     pub(super) fn pick_video_wallpaper(&mut self) {
@@ -1126,8 +1240,10 @@ impl App {
     pub(super) fn apply_video_wallpaper(&mut self, path: &Path) {
         tracing::info!(path = %path.display(), "applying video wallpaper from settings");
         self.wmf_player = None;
+        self.static_under_video = None;
         match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(path) {
             Ok(player) => {
+                self.static_under_video = Self::static_wallpaper_now();
                 self.wmf_player = Some(player);
                 self.state.config.settings.video_wallpaper_path =
                     Some(path.to_string_lossy().into_owned());
@@ -1165,27 +1281,47 @@ impl App {
         }
     }
 
-    /// The active desktop background media: the WMF video when one is set, else the desktop
-    /// wallpaper image — only paths that still exist.
-    fn current_background_source(&self) -> Option<PathBuf> {
-        self.state
-            .config
-            .settings
-            .video_wallpaper_path
-            .as_deref()
+    /// The active desktop background media: the playing WMF video, else the desktop
+    /// wallpaper image — only paths that still exist. `video_wallpaper_path` keeps the
+    /// last-used path even after playback stopped or a static wallpaper took over, so the
+    /// live player — not the config string — decides.
+    fn current_background_source(&mut self) -> Option<PathBuf> {
+        let spi = pecofence_platform::sysparams::desktop_wallpaper()
             .map(PathBuf::from)
-            .filter(|p| p.is_file())
-            .or_else(|| {
-                pecofence_platform::sysparams::desktop_wallpaper()
-                    .map(PathBuf::from)
-                    .filter(|p| p.is_file())
-                    .or_else(|| {
-                        pecofence_platform::wallpaper::query()
-                            .ok()
-                            .and_then(|q| q.monitors.into_iter().find_map(|m| m.path))
-                            .filter(|p| p.is_file())
-                    })
-            })
+            .filter(|p| p.is_file());
+        let idw = spi.is_none().then(|| {
+            pecofence_platform::wallpaper::query()
+                .ok()
+                .and_then(|q| q.monitors.into_iter().find_map(|m| m.path))
+                .filter(|p| p.is_file())
+        });
+        let static_src = spi.clone().or_else(|| idw.clone().flatten());
+        // A static image applied after the video started overrides it — including
+        // Explorer applies that broadcast nothing. The comparison uses the same
+        // IDW-resolved provider as the recorded baseline (`static_wallpaper_now`).
+        self.retire_video_for_static(Self::static_wallpaper_now().as_deref());
+        let player = self.wmf_player.as_ref();
+        let player_alive = player.is_some_and(|p| p.is_alive());
+        let player_path = player.map(|p| p.path().to_path_buf());
+        let player_file = player_path.as_ref().is_some_and(|p| p.is_file());
+        let chosen = if player_alive && player_file {
+            player_path.clone()
+        } else {
+            static_src.clone()
+        };
+        tracing::info!(
+            player_present = player.is_some(),
+            player_alive,
+            player_path = ?player_path,
+            player_file,
+            spi_wallpaper = ?spi,
+            idw_wallpaper = ?idw.as_ref().map(|o| o.as_ref().map(|p| p.display().to_string())),
+            static_under_video = ?self.static_under_video,
+            configured_video = ?self.state.config.settings.video_wallpaper_path,
+            chosen = ?chosen,
+            "background source evaluated"
+        );
+        chosen
     }
 
     /// Serializes `cfg` and builds a `.peco` payload: an optional `background.<ext>` entry
@@ -1199,6 +1335,20 @@ impl App {
     ) -> std::result::Result<(String, Option<(String, Vec<u8>)>, Vec<u8>), String> {
         let mut cfg = cfg.clone();
         cfg.make_theme_portable();
+        // A bundle whose background is not the video must not resurrect a stale
+        // `video_wallpaper_path` on import — it only survives when a video is embedded.
+        let video_bg = bg_source
+            .and_then(|p| p.extension())
+            .is_some_and(|e| e.eq_ignore_ascii_case("mp4"));
+        if !video_bg {
+            if cfg.settings.video_wallpaper_path.is_some() {
+                tracing::info!(
+                    stale = ?cfg.settings.video_wallpaper_path,
+                    "clearing video_wallpaper_path for non-video export"
+                );
+            }
+            cfg.settings.video_wallpaper_path = None;
+        }
         // Portal contents are runtime data, not config.items: their names become the
         // manifest so a machine without that folder restores a virtual fence holding
         // whatever desktop files match instead of showing "folder not found".
@@ -1213,26 +1363,28 @@ impl App {
                 }
             }
         }
-        let config_json = pecofence_core::ConfigStore::to_json(&cfg).map_err(|e| e.to_string())?;
         let mut bg_entry: Option<(String, Vec<u8>)> = None;
         let mut frame = preview_frame;
         if let Some(src) = bg_source.filter(|p| p.is_file()) {
-            let ext = src
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.to_ascii_lowercase())
-                .filter(|e| {
-                    matches!(
-                        e.as_str(),
-                        "mp4" | "jpg" | "jpeg" | "png" | "bmp" | "webp" | "gif" | "tif" | "tiff"
-                    )
-                })
-                .unwrap_or_else(|| "jpg".into());
-            if let Ok(bytes) = std::fs::read(src) {
-                bg_entry = Some((format!("background.{ext}"), bytes));
+            bg_entry = pecofence_core::peco_theme::background_entry(&mut cfg, src);
+            match &bg_entry {
+                Some((name, data)) => tracing::info!(
+                    asset_type = if video_bg { "video" } else { "image" },
+                    path = %src.display(),
+                    entry = %name,
+                    bytes = data.len(),
+                    "packing theme asset"
+                ),
+                None => {
+                    tracing::warn!(path = %src.display(), "theme background unreadable; none packed")
+                }
             }
             if frame.is_none() {
-                frame = if ext == "mp4" {
+                frame = if src
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .is_some_and(|e| e.eq_ignore_ascii_case("mp4"))
+                {
                     pecofence_platform::wmf_wallpaper::decode_video_first_frame(src)
                         .ok()
                         .map(|f| (f.width, f.height, f.bgra))
@@ -1242,7 +1394,13 @@ impl App {
                         .map(|d| (d.width, d.height, d.bgra))
                 };
             }
+        } else {
+            tracing::info!(
+                ?bg_source,
+                "packing theme asset: none — no usable background"
+            );
         }
+        let config_json = pecofence_core::ConfigStore::to_json(&cfg).map_err(|e| e.to_string())?;
         let bg_ref = frame.as_ref().map(|(w, h, px)| (*w, *h, px.as_slice()));
         let preview_bgra =
             pecofence_core::peco_theme::render_layout_preview_bgra(&cfg, bg_ref, 640, 360);
@@ -1260,6 +1418,13 @@ impl App {
         preview_jpg: &[u8],
     ) -> bool {
         let bg_slice = bg_entry.as_ref().map(|(n, b)| (n.as_str(), b.as_slice()));
+        tracing::info!(
+            dest = %dest.display(),
+            background = ?bg_slice.map(|(n, b)| (n, b.len())),
+            config_bytes = config_json.len(),
+            preview_bytes = preview_jpg.len(),
+            "writing .peco archive"
+        );
         match pecofence_core::peco_theme::write_peco_file(dest, config_json, bg_slice, preview_jpg)
         {
             Ok(()) => {
@@ -1282,11 +1447,20 @@ impl App {
     pub(super) fn export_theme_to(&mut self, dest: &Path) {
         self.state.save_if_dirty();
         let bg = self.current_background_source();
-        let live = self
-            .wmf_player
-            .as_ref()
-            .and_then(|p| p.latest_frame())
-            .map(|f| (f.width, f.height, f.bgra));
+        tracing::info!(dest = %dest.display(), background = ?bg, "theme export: background source selected");
+        // The live frame backs the preview only when the video is the bundled background —
+        // a stopped player still holds its last frame, which would paint over the image.
+        let live = bg
+            .as_deref()
+            .and_then(|p| p.extension())
+            .is_some_and(|e| e.eq_ignore_ascii_case("mp4"))
+            .then(|| {
+                self.wmf_player
+                    .as_ref()
+                    .and_then(|p| p.latest_frame())
+                    .map(|f| (f.width, f.height, f.bgra))
+            })
+            .flatten();
         match self.peco_payload(&self.state.config, bg.as_deref(), live) {
             Ok((config_json, bg_entry, preview_jpg)) => {
                 self.write_theme_archive(dest, &config_json, bg_entry, &preview_jpg);
@@ -1335,17 +1509,16 @@ impl App {
     }
 
     /// Gallery "Save Current Setup": the live configuration becomes a `.peco` in the theme
-    /// library — a card with a generated thumbnail. `include_bg` embeds the active video or
-    /// wallpaper; without it the archived config clears `video_wallpaper_path` so applying
-    /// the theme never resurrects a background the user excluded.
-    fn save_theme_to_library(&mut self, name: &str, include_bg: bool) {
-        let mut cfg = self.state.config.clone();
-        let bg = if include_bg {
-            self.current_background_source()
-        } else {
-            cfg.settings.video_wallpaper_path = None;
-            None
-        };
+    /// library — a card with a generated thumbnail. The active video or wallpaper is always
+    /// embedded; there is no way to save a theme without its background.
+    fn save_theme_to_library(&mut self, name: &str) {
+        let cfg = self.state.config.clone();
+        let bg = self.current_background_source();
+        tracing::info!(
+            theme = name,
+            background = ?bg,
+            "theme library save: background source selected"
+        );
         let live = bg
             .as_deref()
             .and_then(|p| p.extension())
@@ -1469,6 +1642,12 @@ impl App {
             .as_deref()
             .map(PathBuf::from)
             .filter(|p| p.is_file());
+        tracing::info!(
+            snapshot = %snap.name,
+            snapshot_wallpaper = ?snap.wallpaper_path,
+            background = ?bg,
+            "snapshot export: background source selected"
+        );
         match self.peco_payload(&cfg, bg.as_deref(), None) {
             Ok((config_json, bg_entry, preview_jpg)) => {
                 self.write_theme_archive(&dest, &config_json, bg_entry, &preview_jpg);
@@ -1699,9 +1878,8 @@ impl App {
             if is_video {
                 self.sync_video_wallpaper();
             } else {
-                self.wmf_player = None;
                 let bg_str = bg.to_string_lossy();
-                if !pecofence_platform::sysparams::set_desktop_wallpaper(&bg_str) {
+                if !self.apply_static_wallpaper(&bg_str) {
                     tracing::warn!(path = %bg.display(), "importTheme: image wallpaper not applied");
                 }
             }

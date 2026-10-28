@@ -724,6 +724,7 @@ pub(super) fn icon_variant_for(s: &pecofence_core::IconSettings) -> IconVariant 
         tint: s.tint_rgb,
         tint_strength: (s.tint_strength.clamp(0.0, 1.0) * 100.0).round() as u8,
         chameleon: s.chameleon,
+        chameleon_intensity: s.chameleon_intensity.min(100),
         shortcut_arrows: s.shortcut_arrows,
     }
 }
@@ -1072,6 +1073,10 @@ impl App {
         snapshot: &wallpaper::WallpaperSnapshot,
         reason: &str,
     ) {
+        // A static image applied over a running video retires it before backdrops
+        // are rebuilt — Explorer applies broadcast nothing (IDesktopWallpaper path),
+        // so the snapshot itself is the detection.
+        self.retire_video_for_static(snapshot.monitors.iter().find_map(|m| m.path.as_deref()));
         self.detect_live_wallpapers(snapshot);
         self.show_wallpaper(snapshot, reason);
         self.capture_live_wallpapers(LIVE_REFRESH);

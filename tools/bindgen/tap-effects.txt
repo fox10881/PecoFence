@@ -1,0 +1,18 @@
+--out crates/tap/src/fx_bindings.rs
+--flat --dead-code
+
+// Extra interfaces needed to rebuild TranslucentTB's XamlBlurBrush inside
+// pecofence_tap.dll: the D2D-backed effect descriptions (GaussianBlur +
+// Flood + Composite), the composition-brush plumbing, and the property
+// bag factory. Kept separate from bindings.rs, which predates this list.
+--filter
+    Windows.Graphics.Effects.IGraphicsEffect
+    Windows.Graphics.Effects.IGraphicsEffectSource
+    Windows.UI.Xaml.Media.IXamlCompositionBrushBaseProtected
+    Windows.UI.Xaml.Media.IXamlCompositionBrushBaseOverrides
+    Windows.Foundation.PropertyValue
+    Windows.Foundation.IPropertyValue
+    Windows.Foundation.IPropertyValueStatics
+    Windows.UI.Composition.ICompositionObjectStatics
+    // IGraphicsEffectD2DInterop is a header-only COM interface absent from the
+    // winmd — hand-written in fx_bindings.rs alongside GRAPHICS_EFFECT_PROPERTY_MAPPING.

@@ -16,7 +16,7 @@ const fixture = {
     language: 'zh-CN',
     autostart: false, hideRealIcons: false, hideInboxWhenIconsShown: false, offerNewFence: true, quickHide: { enabled: true },
     showDesktop: 'keepVisible', theme: 'dark', themeStyle: 'fluent', labelColor: 'auto', titleAlign: 'left', tabBar: 'top', backdrop: 'acrylic', iconSize: 48,
-    icons: { tintRgb: null, tintStrength: 0.6, chameleon: false, shortcutArrows: true },
+    icons: { tintRgb: null, tintStrength: 0.6, chameleon: false, chameleonIntensity: 55, shortcutArrows: true },
     rollUp: { hoverPeek: true, clickToExpand: false, pushNeighbors: true, titleOnHover: false, hideInactiveScrollbar: false, switchTabOnHover: false, hideCountAndChevron: false },
     snapping: { enabled: true, gapPx: 8, sizeToCells: false, guideLines: true }, peek: { enabled: true, dim: true, hotkey: 'ctrlAltSpace' },
   },
@@ -469,6 +469,7 @@ async function runTests() {
     assert(preview.style.getPropertyValue('--preview-tint') === '#123456', 'Custom tint did not update');
     assert(preview.style.getPropertyValue('--preview-tint-strength') === '0.9', 'Tint strength did not update');
     assert(preview.classList.contains('chameleon'), 'Chameleon preview did not update');
+    assert(preview.style.getPropertyValue('--cham-intensity') === '0.55', 'Chameleon intensity var did not update');
     assert(doc.getElementById('workspaceSummary').textContent === '4 个栅栏 · 12 个项目', 'Workspace summary does not reflect host state');
   });
   await test('Liquid Glass persists independently of the colour mode and can switch back', async () => {

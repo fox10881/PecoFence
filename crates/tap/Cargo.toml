@@ -1,0 +1,19 @@
+[package]
+name = "pecofence-tap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+windows-core = { workspace = true }
+windows-collections = "0.100"
+windows-future = "0.100"
+windows-numerics = { workspace = true }
+windows-time = "0.100"
+retour = "0.3"
+
+[lints]
+workspace = true

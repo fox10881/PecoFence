@@ -93,6 +93,7 @@ pub mod shell_menu;
 pub mod shell_notify;
 pub mod store;
 pub mod sysparams;
+pub mod tap;
 pub mod theme;
 pub mod tooltip;
 pub mod tray;

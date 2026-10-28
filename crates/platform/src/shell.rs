@@ -4,7 +4,7 @@ use crate::bindings::*;
 use crate::wide::to_wide;
 use std::os::windows::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use windows_core::{GUID, Interface, PCWSTR, PWSTR, Result};
+use windows_core::{GUID, HRESULT, Interface, PCWSTR, PWSTR, Result};
 
 // FOLDERID_Desktop / FOLDERID_PublicDesktop (KnownFolders.h).
 const FOLDERID_DESKTOP: GUID = GUID::from_u128(0xB4BFCC3A_DB2C_424C_B029_7FE99A87C641);
@@ -1046,23 +1046,262 @@ pub fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
 
 /// Opens an item with the shell (default verb), or runs `verb` (`"runas"`, `"properties"`,
 /// `"openas"`…).
+///
+/// A `.lnk` is a shell namespace object first: the primary route is
+/// [`shell_invoke_pidl`] — the absolute PIDL armed in `SEE_MASK_INVOKEIDLIST` is the same
+/// activation Explorer's double-click takes, including AppUserModel/PIDL targets a
+/// reconstructed `lpFile`/`lpParameters` call cannot reach (the Start menu's failure
+/// mode). Only when PIDL invocation itself fails does the launch fall back to the link's
+/// resolved target, arguments, working directory and show command. A default launch
+/// refused for elevation is retried through the UAC prompt.
 pub fn shell_execute(path: &Path, verb: Option<&str>, owner: Option<HWND>) -> Result<()> {
+    if is_lnk(path) {
+        match shell_invoke_pidl(path, verb, owner) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    verb = verb.unwrap_or("<default>"),
+                    %e,
+                    "PIDL launch failed; falling back to link context"
+                );
+            }
+        }
+    }
+    let ctx = (verb.is_none() && is_lnk(path))
+        .then(|| shortcut_context(path))
+        .flatten();
+    let (file, args, dir, show) = match &ctx {
+        Some(c) => {
+            let file = c.target.as_deref().unwrap_or(path);
+            (
+                file,
+                c.args.as_deref(),
+                // The link's own directory, else the launched file's folder: a namespace
+                // link with no stored directory gets the Desktop (the `.lnk`'s parent)
+                // rather than this process's arbitrary cwd.
+                c.dir
+                    .as_deref()
+                    .or_else(|| file.parent().and_then(|p| p.to_str())),
+                c.show,
+            )
+        }
+        None => (path, None, None, SW_SHOWNORMAL),
+    };
+    if ctx.is_some()
+        && let Some(c) = &ctx
+    {
+        tracing::info!(
+            path = %path.display(),
+            file = %file.display(),
+            args = ?args,
+            dir = ?dir,
+            show,
+            has_target = c.target.is_some(),
+            "launching with shortcut context",
+        );
+    }
+    match shell_execute_raw(file, args, dir, verb, show, owner) {
+        Ok(()) => Ok(()),
+        Err(e) if verb.is_none() => {
+            if needs_elevation(&e) {
+                tracing::info!(path = %path.display(), error = %e, "launch denied; retrying runas");
+                return shell_execute_raw(file, args, dir, Some("runas"), show, owner);
+            }
+            // A resolved target that refuses may still open through the link itself
+            // (`file != path` means the target was launched, not the `.lnk`).
+            if file != path {
+                tracing::info!(
+                    path = %path.display(),
+                    error = %e,
+                    "resolved target refused; trying the link itself",
+                );
+                return shell_execute_raw(path, None, None, None, show, owner);
+            }
+            Err(e)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// `ShellExecuteExW` on `path` with optional parameters, working directory, verb and show
+/// command. A real process handle the call leaves behind is watched briefly so a child that
+/// dies before showing a window gets logged instead of looking like a click that did nothing.
+fn shell_execute_raw(
+    path: &Path,
+    args: Option<&str>,
+    dir: Option<&str>,
+    verb: Option<&str>,
+    show: i32,
+    owner: Option<HWND>,
+) -> Result<()> {
+    // shellapi.h: keep the spawned process's handle in `hProcess` for us to close.
+    const SEE_MASK_NOCLOSEPROCESS: u32 = 0x40;
     let file = path_wide(path);
     let verb_w = verb.map(to_wide);
+    let args_w = args.map(to_wide);
+    let dir_w = dir.map(to_wide);
     let mut info = SHELLEXECUTEINFOW {
         cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
-        fMask: (SEE_MASK_INVOKEIDLIST | SEE_MASK_NOASYNC) as u32,
+        fMask: (SEE_MASK_INVOKEIDLIST | SEE_MASK_NOASYNC) as u32 | SEE_MASK_NOCLOSEPROCESS,
         hwnd: owner.unwrap_or_default(),
         lpVerb: verb_w
             .as_ref()
             .map(|v| PCWSTR(v.as_ptr()))
             .unwrap_or(PCWSTR::null()),
         lpFile: PCWSTR(file.as_ptr()),
-        nShow: SW_SHOWNORMAL,
+        lpParameters: args_w
+            .as_ref()
+            .map(|v| PCWSTR(v.as_ptr()))
+            .unwrap_or(PCWSTR::null()),
+        lpDirectory: dir_w
+            .as_ref()
+            .map(|v| PCWSTR(v.as_ptr()))
+            .unwrap_or(PCWSTR::null()),
+        nShow: show,
         ..Default::default()
     };
-    // SAFETY: all referenced buffers outlive the call.
-    unsafe { ShellExecuteExW(&mut info).ok() }
+    // SAFETY: all referenced buffers outlive the call; `hProcess` is closed by the watcher.
+    match unsafe { ShellExecuteExW(&mut info) }.ok() {
+        Ok(()) => {
+            tracing::info!(
+                path = %path.display(),
+                verb = verb.unwrap_or("<default>"),
+                has_process = !info.hProcess.0.is_null(),
+                "shell launch accepted",
+            );
+            watch_launched(path, info.hProcess);
+            Ok(())
+        }
+        Err(e) => {
+            // `hInstApp` ≤ 32 is the SE_ERR_* code; `GetLastError` (already inside `e`)
+            // carries the Win32 cause, e.g. 740 when the target's manifest needs elevation.
+            tracing::warn!(
+                path = %path.display(),
+                verb = verb.unwrap_or("<default>"),
+                code = e.code().0,
+                hinst = info.hInstApp.0 as isize,
+                "ShellExecuteEx failed",
+            );
+            Err(e)
+        }
+    }
+}
+
+/// Invokes `path` through the shell namespace exactly like an Explorer double-click: the
+/// absolute PIDL armed under `SEE_MASK_INVOKEIDLIST` routes activation through the item's own
+/// verb handler (`IContextMenu::InvokeCommand` semantics), so a `.lnk` is resolved by the
+/// shell itself — the only route that reaches AppUserModel/PIDL-target and broker-based
+/// links whose `GetPath` has no filesystem target to hand `lpFile`. `lpFile`, `lpParameters`
+/// and `lpDirectory` stay NULL on purpose: nothing is reconstructed for the shell.
+fn shell_invoke_pidl(path: &Path, verb: Option<&str>, owner: Option<HWND>) -> Result<()> {
+    const SEE_MASK_NOCLOSEPROCESS: u32 = 0x40;
+    let name = path_wide(path);
+    let mut pidl: LPITEMIDLIST = core::ptr::null_mut();
+    // SAFETY: `name` is NUL-terminated and outlives the call; `pidl` is a live out-pointer.
+    // The PIDL is shell-allocated below and freed with `ILFree` in all paths after this.
+    unsafe {
+        SHParseDisplayName(PCWSTR(name.as_ptr()), None, &mut pidl, SFGAOF(0), None).ok()?;
+    }
+    if pidl.is_null() {
+        return Err(windows_core::Error::from_hresult(HRESULT(
+            0x8007_0002_u32 as i32, // HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)
+        )));
+    }
+    let verb_w = verb.map(to_wide);
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: (SEE_MASK_INVOKEIDLIST | SEE_MASK_NOASYNC) as u32 | SEE_MASK_NOCLOSEPROCESS,
+        hwnd: owner.unwrap_or_default(),
+        lpVerb: verb_w
+            .as_ref()
+            .map(|v| PCWSTR(v.as_ptr()))
+            .unwrap_or(PCWSTR::null()),
+        nShow: SW_SHOWNORMAL,
+        lpIDList: pidl as *mut core::ffi::c_void,
+        ..Default::default()
+    };
+    // SAFETY: `pidl` is a valid absolute PIDL; `verb_w` outlives the call; `lpFile`,
+    // `lpParameters` and `lpDirectory` are NULL so the shell activates the item itself.
+    let result = unsafe { ShellExecuteExW(&mut info) };
+    unsafe { ILFree(Some(pidl as *const ITEMIDLIST)) };
+    match result.ok() {
+        Ok(()) => {
+            tracing::info!(
+                path = %path.display(),
+                verb = verb.unwrap_or("<default>"),
+                has_process = !info.hProcess.0.is_null(),
+                "shell PIDL launch accepted",
+            );
+            watch_launched(path, info.hProcess);
+            Ok(())
+        }
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                verb = verb.unwrap_or("<default>"),
+                code = e.code().0,
+                hinst = info.hInstApp.0 as isize,
+                "ShellExecuteEx(IDList) failed",
+            );
+            Err(e)
+        }
+    }
+}
+
+/// Refusals the UAC prompt (`runas` verb) can turn into a success: access denied, or a target
+/// whose manifest requires elevation (ERROR_ELEVATION_REQUIRED). `HRESULT::code().0 as u16`
+/// reads the Win32 code out of a `HRESULT_FROM_WIN32` value, same as ERROR_OPERATION_ABORTED
+/// matching in pipe.rs.
+fn needs_elevation(e: &windows_core::Error) -> bool {
+    const ERROR_ACCESS_DENIED: u16 = 5;
+    const ERROR_ELEVATION_REQUIRED: u16 = 740;
+    matches!(
+        e.code().0 as u16,
+        ERROR_ACCESS_DENIED | ERROR_ELEVATION_REQUIRED
+    )
+}
+
+fn is_lnk(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("lnk"))
+}
+
+/// Waits briefly on a launched process handle and logs how the child fared: `ShellExecuteEx`
+/// can report success while the child dies before showing a window, and a `.lnk` often hands
+/// back a broker/helper rather than the app itself — a quick exit with code 0 is normal for
+/// those. Namespace/PIDL activations hand back no handle and are skipped.
+fn watch_launched(path: &Path, process: HANDLE) {
+    const WAIT_OBJECT_0: u32 = 0;
+    if process.0.is_null() || process.0 == INVALID_HANDLE_VALUE.0 {
+        return;
+    }
+    let label = path.to_path_buf();
+    // HANDLE is a raw pointer (not Send): hand its value across and rebuild it there.
+    let raw = process.0 as usize;
+    std::thread::spawn(move || {
+        let process = HANDLE(raw as *mut core::ffi::c_void);
+        const LAUNCH_GRACE_MS: u32 = 8_000;
+        // SAFETY: `process` is ours to wait on and close (SEE_MASK_NOCLOSEPROCESS).
+        unsafe {
+            if WaitForSingleObject(process, LAUNCH_GRACE_MS) == WAIT_OBJECT_0 {
+                let mut code = 0u32;
+                let _ = GetExitCodeProcess(process, &mut code);
+                tracing::info!(
+                    path = %label.display(),
+                    exit = code,
+                    "launched process exited early",
+                );
+            } else {
+                tracing::info!(
+                    path = %label.display(),
+                    "launched process still running",
+                );
+            }
+            let _ = CloseHandle(process);
+        }
+    });
 }
 
 /// Resolves a `.lnk` file's target path (raw, unexpanded), or `None`.
@@ -1070,17 +1309,15 @@ pub fn shortcut_target(path: &Path) -> Option<String> {
     shortcut_info(path).map(|(target, _)| target)
 }
 
-/// The filesystem target a `.lnk` points at after shell resolution, without UI or a disk
-/// search. Namespace links and broken targets that have no filesystem path return `None`.
-pub fn resolved_shortcut_target(path: &Path) -> Option<PathBuf> {
-    // IShellLink::Resolve flags (shobjidl.h): no UI, do not rewrite the link, do not search
-    // the disk for a moved target and do not track the object.
-    const SLR_NO_UI: u32 = 0x1;
-    const SLR_NOUPDATE: u32 = 0x8;
-    const SLR_NOSEARCH: u32 = 0x10;
-    const SLR_NOTRACK: u32 = 0x20;
+/// IShellLink::Resolve flags (shobjidl.h): no UI, do not rewrite the link, do not search the
+/// disk for a moved target and do not track the object.
+const SLR_QUIET: u32 = 0x1 | 0x8 | 0x10 | 0x20;
+
+/// Loads `path` into an `IShellLinkW`, optionally resolving the target first. Namespace and
+/// unreadable links return `None`.
+fn open_link(path: &Path, resolve: bool) -> Option<IShellLinkW> {
     let w = path_wide(path);
-    // SAFETY: standard IShellLink usage; all strings and buffers outlive their calls.
+    // SAFETY: standard IShellLink usage; `w` outlives Load.
     unsafe {
         let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).ok()?;
         let persist: IPersistFile = link.cast().ok()?;
@@ -1088,58 +1325,79 @@ pub fn resolved_shortcut_target(path: &Path) -> Option<PathBuf> {
             .Load(PCWSTR(w.as_ptr()), STGM_READ as u32)
             .ok()
             .ok()?;
-        let _ = link.Resolve(
-            HWND::default(),
-            SLR_NO_UI | SLR_NOUPDATE | SLR_NOSEARCH | SLR_NOTRACK,
-        );
-        let mut buf = [0u16; 1024];
-        link.GetPath(
-            PWSTR(buf.as_mut_ptr()),
-            buf.len() as i32,
-            core::ptr::null_mut(),
-            0,
-        )
-        .ok()
-        .ok()?;
-        let target = crate::wide::from_wide(&buf);
-        let path = (!target.is_empty()).then(|| PathBuf::from(target))?;
-        path.is_absolute().then_some(path)
+        if resolve {
+            let _ = link.Resolve(HWND::default(), SLR_QUIET);
+        }
+        Some(link)
     }
+}
+
+/// Reads one IShellLinkW string member (`GetPath`-style getter) into a `String`.
+unsafe fn link_string(get: impl Fn(PWSTR, i32) -> HRESULT) -> Option<String> {
+    let mut buf = [0u16; 1024];
+    get(PWSTR(buf.as_mut_ptr()), buf.len() as i32).ok().ok()?;
+    let s = crate::wide::from_wide(&buf).trim().to_string();
+    (!s.is_empty()).then_some(s)
+}
+
+/// The filesystem target a `.lnk` points at after shell resolution, without UI or a disk
+/// search. Namespace links and broken targets that have no filesystem path return `None`.
+pub fn resolved_shortcut_target(path: &Path) -> Option<PathBuf> {
+    let link = open_link(path, true)?;
+    // SAFETY: the getter writes a sized, NUL-terminated buffer.
+    let target = unsafe { link_string(|p, cch| link.GetPath(p, cch, core::ptr::null_mut(), 0)) }?;
+    let path = PathBuf::from(target);
+    path.is_absolute().then_some(path)
 }
 
 /// A `.lnk`'s target path and its command-line arguments (`None` when it has none).
 pub fn shortcut_info(path: &Path) -> Option<(String, Option<String>)> {
-    let w = path_wide(path);
-    // SAFETY: standard IShellLink usage; buffers are sized and NUL-terminated.
+    let link = open_link(path, false)?;
+    // SAFETY: the getters write sized, NUL-terminated buffers.
     unsafe {
-        let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).ok()?;
-        let persist: IPersistFile = link.cast().ok()?;
-        persist
-            .Load(PCWSTR(w.as_ptr()), STGM_READ as u32)
-            .ok()
-            .ok()?;
-        let mut buf = [0u16; 1024];
-        link.GetPath(
-            PWSTR(buf.as_mut_ptr()),
-            buf.len() as i32,
-            core::ptr::null_mut(),
-            SLGP_RAWPATH,
-        )
-        .ok()
-        .ok()?;
-        let target = crate::wide::from_wide(&buf);
-        if target.is_empty() {
-            return None;
-        }
+        let target =
+            link_string(|p, cch| link.GetPath(p, cch, core::ptr::null_mut(), SLGP_RAWPATH))?;
         // Longer arguments come back truncated, which is enough to tell shortcuts apart.
-        let mut args = [0u16; 1024];
-        let arguments = link
-            .GetArguments(PWSTR(args.as_mut_ptr()), args.len() as i32)
-            .ok()
-            .ok()
-            .map(|_| crate::wide::from_wide(&args).trim().to_string())
-            .filter(|a| !a.is_empty());
+        let arguments = link_string(|p, cch| link.GetArguments(p, cch));
         Some((target, arguments))
+    }
+}
+
+/// The execution context a `.lnk` prescribes: its target (filesystem links only), arguments,
+/// working directory and show command. Namespace links — Start-menu app links whose PIDL
+/// `GetPath` cannot express — keep `target: None`; their other fields still apply to the
+/// shell-activation launch. `show` is always a valid `SW_*` value.
+struct ShortcutContext {
+    target: Option<PathBuf>,
+    args: Option<String>,
+    dir: Option<String>,
+    show: i32,
+}
+
+fn shortcut_context(path: &Path) -> Option<ShortcutContext> {
+    // SW_SHOWMAXIMIZED / SW_SHOWMINNOACTIVE: the only non-normal values a .lnk can store
+    // (shell link spec); a missing or unexpected value means normal.
+    const SW_SHOWMAXIMIZED: i32 = 3;
+    const SW_SHOWMINNOACTIVE: i32 = 7;
+    let link = open_link(path, true)?;
+    // SAFETY: the getters write sized, NUL-terminated buffers.
+    unsafe {
+        let target = link_string(|p, cch| link.GetPath(p, cch, core::ptr::null_mut(), 0))
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute());
+        let args = link_string(|p, cch| link.GetArguments(p, cch));
+        let dir = link_string(|p, cch| link.GetWorkingDirectory(p, cch));
+        let show = link
+            .GetShowCmd()
+            .ok()
+            .filter(|s| matches!(*s, SW_SHOWNORMAL | SW_SHOWMAXIMIZED | SW_SHOWMINNOACTIVE))
+            .unwrap_or(SW_SHOWNORMAL);
+        Some(ShortcutContext {
+            target,
+            args,
+            dir,
+            show,
+        })
     }
 }
 
@@ -1642,6 +1900,225 @@ mod namespace_tests {
             assert_eq!(entry.origin, EntryOrigin::Namespace);
             assert!(!entry.is_folder);
             assert!(!entry.file_name.is_empty());
+        }
+    }
+}
+
+#[cfg(test)]
+mod lnk_probe {
+    use super::*;
+    use std::path::Path;
+
+    /// `cargo test -p pecofence-platform lnk_probe -- --ignored --nocapture` —
+    /// launches the two reported .lnk files and prints the ShellExecuteEx
+    /// result (`hInstApp` <= 32 = SE_ERR_* on failure).
+    #[test]
+    #[ignore = "launches real apps on the local desktop"]
+    fn lnk_launch_probe() {
+        for p in [
+            r"C:\Users\yahya\Desktop\Devin.lnk",
+            r"C:\Users\yahya\Desktop\IPTVnator (3).lnk",
+        ] {
+            match shell_execute(Path::new(p), None, None) {
+                Ok(()) => eprintln!("{p} -> OK"),
+                Err(e) => eprintln!("{p} -> ERR {e:?}"),
+            }
+        }
+    }
+
+    /// `cargo test -p pecofence-platform lnk_pidl_probe -- --ignored --nocapture` —
+    /// runs the PIDL route on each link, prints the handle ShellExecuteEx hands back
+    /// (NULL for fully-async activations like WSA), then waits on it and prints the
+    /// child's exit status — a spawned-then-forwarded Electron shows exit 0 fast.
+    #[test]
+    #[ignore = "launches real apps on the local desktop"]
+    fn lnk_pidl_probe() {
+        const SEE_MASK_NOCLOSEPROCESS: u32 = 0x40;
+        for p in [
+            r"C:\Users\yahya\Desktop\Devin.lnk",
+            r"C:\Users\yahya\Desktop\IPTVnator (3).lnk",
+        ] {
+            let name = path_wide(Path::new(p));
+            let mut pidl: LPITEMIDLIST = core::ptr::null_mut();
+            unsafe {
+                let hr =
+                    SHParseDisplayName(PCWSTR(name.as_ptr()), None, &mut pidl, SFGAOF(0), None);
+                eprintln!("{p} parse={hr:?} pidl={pidl:?}");
+                if pidl.is_null() {
+                    continue;
+                }
+                let mut info = SHELLEXECUTEINFOW {
+                    cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+                    fMask: (SEE_MASK_INVOKEIDLIST | SEE_MASK_NOASYNC) as u32
+                        | SEE_MASK_NOCLOSEPROCESS,
+                    nShow: SW_SHOWNORMAL,
+                    lpIDList: pidl as *mut core::ffi::c_void,
+                    ..Default::default()
+                };
+                eprintln!("  exec={:?}", ShellExecuteExW(&mut info));
+                eprintln!(
+                    "  hInstApp={:?} hProcess={:?}",
+                    info.hInstApp, info.hProcess
+                );
+                ILFree(Some(pidl as *const ITEMIDLIST));
+                if !info.hProcess.0.is_null() {
+                    let wait = WaitForSingleObject(info.hProcess, 20_000);
+                    let mut code = 0u32;
+                    let _ = GetExitCodeProcess(info.hProcess, &mut code);
+                    eprintln!("  wait={wait} exit={code}");
+                    let _ = CloseHandle(info.hProcess);
+                }
+            }
+        }
+    }
+
+    /// `cargo test -p pecofence-platform lnk_info_probe -- --ignored --nocapture` —
+    /// dumps what each reported .lnk resolves to (target/args/working dir).
+    #[test]
+    #[ignore = "reads real links on the local desktop"]
+    fn lnk_info_probe() {
+        let _ole = crate::com::OleGuard::init().expect("OLE init");
+        for p in [
+            r"C:\Users\yahya\Desktop\Devin.lnk",
+            r"C:\Users\yahya\Desktop\IPTVnator (3).lnk",
+        ] {
+            let ctx = shortcut_context(Path::new(p));
+            eprintln!(
+                "{p} -> target={:?} args={:?} dir={:?} show={:?}",
+                ctx.as_ref().map(|c| c.target.clone()),
+                ctx.as_ref().map(|c| c.args.clone()),
+                ctx.as_ref().map(|c| c.dir.clone()),
+                ctx.as_ref().map(|c| c.show),
+            );
+            let w = path_wide(Path::new(p));
+            unsafe {
+                match CoCreateInstance::<_, IShellLinkW>(&ShellLink, None, CLSCTX_INPROC_SERVER) {
+                    Err(e) => eprintln!("  cocreate: {e}"),
+                    Ok(link) => {
+                        let persist: IPersistFile = link.cast().unwrap();
+                        eprintln!(
+                            "  load: {:?}",
+                            persist.Load(PCWSTR(w.as_ptr()), STGM_READ as u32)
+                        );
+                        eprintln!("  resolve: {:?}", link.Resolve(HWND::default(), SLR_QUIET));
+                        let mut buf = [0u16; 1024];
+                        eprintln!(
+                            "  getpath0: {:?} -> {:?}",
+                            link.GetPath(
+                                PWSTR(buf.as_mut_ptr()),
+                                buf.len() as i32,
+                                core::ptr::null_mut(),
+                                0
+                            ),
+                            crate::wide::from_wide(&buf)
+                        );
+                        let mut buf2 = [0u16; 1024];
+                        eprintln!(
+                            "  getpath-raw: {:?} -> {:?}",
+                            link.GetPath(
+                                PWSTR(buf2.as_mut_ptr()),
+                                buf2.len() as i32,
+                                core::ptr::null_mut(),
+                                SLGP_RAWPATH
+                            ),
+                            crate::wide::from_wide(&buf2)
+                        );
+                        let mut dir = [0u16; 1024];
+                        eprintln!(
+                            "  workdir: {:?} -> {:?}",
+                            link.GetWorkingDirectory(PWSTR(dir.as_mut_ptr()), dir.len() as i32),
+                            crate::wide::from_wide(&dir)
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod lnk_flags {
+    use super::*;
+    use std::path::Path;
+
+    /// Tries each SEE_MASK variant on the packaged-app link and reports which
+    /// actually spawns IPTVnator.exe (checked via `tasklist` afterwards).
+    #[test]
+    #[ignore = "launches real apps on the local desktop"]
+    fn lnk_flag_probe() {
+        let path = r"C:\Users\yahya\Desktop\IPTVnator (3).lnk";
+        let file = path_wide(Path::new(path));
+        // (name, fMask) — run one per invocation via env filter to keep the
+        // spawned-process attribution unambiguous.
+        let variant = std::env::var("LNK_FLAGS").unwrap_or_else(|_| "0".into());
+        let fmask: u32 = match variant.as_str() {
+            "invoke" => SEE_MASK_INVOKEIDLIST as u32,
+            "noasync" => SEE_MASK_NOASYNC as u32,
+            "both" => (SEE_MASK_INVOKEIDLIST | SEE_MASK_NOASYNC) as u32,
+            _ => 0,
+        };
+        let mut info = SHELLEXECUTEINFOW {
+            cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+            fMask: fmask,
+            lpFile: PCWSTR(file.as_ptr()),
+            nShow: SW_SHOWNORMAL,
+            ..Default::default()
+        };
+        eprintln!("variant={variant} fMask={fmask:#x}");
+        if unsafe { ShellExecuteExW(&mut info) }.as_bool() {
+            eprintln!("  ShellExecuteEx OK hInstApp={:?}", info.hInstApp);
+        } else {
+            eprintln!(
+                "  ERR hInstApp={:?} last_error={:?}",
+                info.hInstApp,
+                std::io::Error::last_os_error()
+            );
+        }
+    }
+
+    /// `cargo test -p pecofence-platform hprocess_probe -- --ignored --nocapture` —
+    /// whether SEE_MASK_NOCLOSEPROCESS hands back a watchable handle for each link,
+    /// and whether an explicit lpDirectory changes the child's lifetime.
+    #[test]
+    #[ignore = "launches real apps on the local desktop"]
+    fn hprocess_probe() {
+        const SEE_MASK_NOCLOSEPROCESS: u32 = 0x40;
+        let variant = std::env::var("LNK_DIR").unwrap_or_default();
+        for p in [
+            r"C:\Users\yahya\Desktop\Devin.lnk",
+            r"C:\Users\yahya\Desktop\IPTVnator (3).lnk",
+        ] {
+            let file = path_wide(Path::new(p));
+            let dir_w = (!variant.is_empty()).then(|| to_wide(&variant));
+            let mut info = SHELLEXECUTEINFOW {
+                cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+                fMask: (SEE_MASK_INVOKEIDLIST | SEE_MASK_NOASYNC) as u32 | SEE_MASK_NOCLOSEPROCESS,
+                lpFile: PCWSTR(file.as_ptr()),
+                lpDirectory: dir_w
+                    .as_ref()
+                    .map(|d| PCWSTR(d.as_ptr()))
+                    .unwrap_or(PCWSTR::null()),
+                nShow: SW_SHOWNORMAL,
+                ..Default::default()
+            };
+            if unsafe { ShellExecuteExW(&mut info) }.as_bool() {
+                eprintln!("{p} -> OK hProcess={:?}", info.hProcess);
+                if !info.hProcess.0.is_null() {
+                    unsafe {
+                        WaitForSingleObject(info.hProcess, 10_000);
+                        let mut code = 0u32;
+                        let _ = GetExitCodeProcess(info.hProcess, &mut code);
+                        eprintln!("  exit/wait done, code={code}");
+                        let _ = CloseHandle(info.hProcess);
+                    }
+                }
+            } else {
+                eprintln!(
+                    "{p} -> ERR hInstApp={:?} last={:?}",
+                    info.hInstApp,
+                    std::io::Error::last_os_error()
+                );
+            }
         }
     }
 }
