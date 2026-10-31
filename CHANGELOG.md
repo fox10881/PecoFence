@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.7
+
+- **Shell styling for Start menu, Notification Center and File Explorer**: three new style dropdowns (Settings › 常规) apply full visual themes to the Windows shell's own XAML surfaces through the resident `pecofence_tap.dll` — the Start menu and Notification Center run on their `Windows.UI.Xaml` trees, while File Explorer's modern chrome (command bar, tab strip, navigation pane) is styled through a second WinUI3 (`Microsoft.UI.Xaml`) diagnostics session inside `explorer.exe`, with translucent window backdrops pushed via `DWMWA_SYSTEMBACKDROP_TYPE`. Each catalog ships complete themes (Start menu 11+, Notification Center 17, File Explorer 16) plus 「Windows Default」 to restore stock visuals instantly.
+- **Accent color overlay** (「主题色叠加」): a swatch row tints the taskbar, Start menu and File Explorer chrome with a semi-transparent layer of the chosen color, blended over whichever shell style is active; the slash swatch clears it. Tint rules ride the same atomic style wire as the theme itself, so switching colors or themes never stacks stale layers.
+- **Restart Explorer button** (「重启资源管理器」): a one-click refresh on the General page restarts the shell when the taskbar, Start menu or File Explorer misbehaves — armed styles are re-applied automatically afterwards.
+- **Stability**: taskbar styling now suspends itself while the taskbar is docked left/right (an unsupported vertical layout whose XAML never converges) and a visual-tree storm guard caps per-second styling work inside explorer, eliminating the freeze that made the taskbar and Alt+Tab unresponsive; shell-injection hardening fixes video→video wallpaper handoff, theme-load fence drift, and canvas-placed fences now anchor to the edge opposite the taskbar.
+- **Security**: downloaded update installers are now verified against their published SHA-256 before launch, and the resident DLL's `DllGetClassObject` export is private to PecoFence's own loading path.
+
 ## 0.2.6
 
 - **Taskbar appearance modes**: 「任务栏样式」 (Settings › 常规) restyles the Windows taskbar — Normal, Clear (fully transparent), Blur (frosted glass) and Opaque (solid plate). The modes are applied through the new `pecofence_tap.dll`, a companion module PecoFence injects into `explorer.exe` (modelled on TranslucentTB's ExplorerTAP): it detours `SetWindowCompositionAttribute` so Explorer cannot overwrite the applied accent, and drives a XAML visual-tree brush so Clear and Opaque hold on Windows 11 builds where the accent alone falls back to the stock look. The DLL stays resident only while a non-Normal mode is selected, and Explorer is left untouched on Normal or when the feature is off.
