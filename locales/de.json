@@ -658,5 +658,5 @@
   "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Visuelle Designs und Fensterhintergrund für den Datei-Explorer; gilt sofort nach Auswahl",
   "资源管理器样式未能更改，请稍后重试。": "Der Explorer-Stil konnte nicht geändert werden — bitte erneut versuchen.",
   "主题色叠加": "Akzentfarben-Overlay",
-  "给任务栏、开始菜单和通知中心叠加一层所选颜色；斜杠为关闭": "Legt die gewählte Farbe über Taskleiste, Startmenü und Info-Center; die Schaltfläche mit Schrägstrich deaktiviert es"
+  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Legt die gewählte Farbe über Taskleiste, Startmenü und Datei-Explorer; die Schaltfläche mit Schrägstrich deaktiviert es"
 }

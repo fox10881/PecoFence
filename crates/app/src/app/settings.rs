@@ -918,7 +918,7 @@ impl App {
         if new.notification_center_style != old.notification_center_style {
             let id = new.notification_center_style.as_str();
             let applied = pecofence_core::notification_center_themes::is_style_id(id)
-                && pecofence_platform::notification_center::apply(id, &new.color_tint);
+                && pecofence_platform::notification_center::apply(id);
             if !applied {
                 new.notification_center_style
                     .clone_from(&old.notification_center_style);
@@ -930,7 +930,7 @@ impl App {
         if new.file_explorer_style != old.file_explorer_style {
             let id = new.file_explorer_style.as_str();
             let applied = pecofence_core::file_explorer_themes::is_style_id(id)
-                && pecofence_platform::file_explorer_styler::apply(id);
+                && pecofence_platform::file_explorer_styler::apply(id, &new.color_tint);
             if !applied {
                 new.file_explorer_style.clone_from(&old.file_explorer_style);
                 self.settings_error(pecofence_core::i18n::text(
@@ -950,10 +950,7 @@ impl App {
                 let tint = new.color_tint.as_str();
                 pecofence_platform::start_menu::apply_start_menu_theme(&new.start_menu_style, tint);
                 pecofence_platform::taskbar_styler::apply(&new.taskbar_style, tint);
-                pecofence_platform::notification_center::apply(
-                    &new.notification_center_style,
-                    tint,
-                );
+                pecofence_platform::file_explorer_styler::apply(&new.file_explorer_style, tint);
             }
         }
         let icons_toggled = new.hide_real_icons != old.hide_real_icons;

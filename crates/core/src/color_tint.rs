@@ -29,9 +29,15 @@ pub const START_MENU_TARGETS: &[(&str, &str)] = &[
     ("Border#AcrylicBorder", "Background"),
     ("Border#AcrylicOverlay", "Background"),
 ];
-pub const NOTIFICATION_CENTER_TARGETS: &[(&str, &str)] = &[
-    ("Grid#NotificationCenterGrid", "Background"),
-    ("Grid#ControlCenterRegion", "Background"),
+/// File Explorer's WinUI3 chrome — command bar, tab strip + tabs, and the
+/// navigation bar grid. These are the names the theme catalog restyles
+/// most, so the overlay lands on the same elements the FE themes recolor
+/// (appended last, the tint wins the background property).
+pub const FILE_EXPLORER_TARGETS: &[(&str, &str)] = &[
+    ("CommandBar#FileExplorerCommandBar", "Background"),
+    ("Grid#NavigationBarControlGrid", "Background"),
+    ("Grid#TabContainerGrid", "Background"),
+    ("TabViewItem > Grid#LayoutRoot", "Background"),
 ];
 
 /// `Some(argb)` for `#RRGGBB` / `RRGGBB` palette values, `None` for
@@ -122,15 +128,15 @@ mod tests {
         let before = wire.clone();
         apply_to_wire(&mut wire, START_MENU_TARGETS, "");
         assert_eq!(wire, before);
-        assert!(tint_wire("PECO-NCS1", NOTIFICATION_CENTER_TARGETS, "").is_none());
+        assert!(tint_wire("PECO-FES1", FILE_EXPLORER_TARGETS, "").is_none());
     }
 
     #[test]
     fn tint_only_wire_is_wellformed() {
-        let wire = tint_wire("PECO-NCS1", NOTIFICATION_CENTER_TARGETS, "#0078D4").unwrap();
-        assert!(wire.starts_with("PECO-NCS1\n"));
+        let wire = tint_wire("PECO-FES1", FILE_EXPLORER_TARGETS, "#0078D4").unwrap();
+        assert!(wire.starts_with("PECO-FES1\n"));
         assert!(wire.ends_with("E\n"));
-        assert!(wire.contains("T Grid#NotificationCenterGrid\n"));
+        assert!(wire.contains("T CommandBar#FileExplorerCommandBar\n"));
         assert!(wire.contains("S Background:=<SolidColorBrush Color=\"#800078D4\"/>"));
     }
 }

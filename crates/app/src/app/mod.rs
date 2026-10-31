@@ -1440,20 +1440,22 @@ impl App {
         // A saved Notification Center style injects into the Shell hosts —
         // apply() stores it either way, and the tick's ensure() delivers it
         // to hosts that launch later.
+        // The color tint does NOT reach the Notification Center — boot
+        // reapply carries the style alone.
         let saved_nc_style = app.state.config.settings.notification_center_style.clone();
-        if !saved_nc_style.is_empty() || !saved_tint.is_empty() {
-            let tint = saved_tint.clone();
+        if !saved_nc_style.is_empty() {
             std::thread::spawn(move || {
-                let _ = pecofence_platform::notification_center::apply(&saved_nc_style, &tint);
+                let _ = pecofence_platform::notification_center::apply(&saved_nc_style);
             });
         }
         // A saved File Explorer style rides the same explorer resident —
-        // apply() arms + delivers it, and the ensure tick re-asserts the
-        // backdrop on cabinet windows.
+        // apply() arms + delivers it (with the tint overlay baked in), and
+        // the ensure tick re-asserts the backdrop on cabinet windows.
         let saved_fe_style = app.state.config.settings.file_explorer_style.clone();
-        if !saved_fe_style.is_empty() {
+        if !saved_fe_style.is_empty() || !saved_tint.is_empty() {
+            let tint = saved_tint.clone();
             std::thread::spawn(move || {
-                let _ = pecofence_platform::file_explorer_styler::apply(&saved_fe_style);
+                let _ = pecofence_platform::file_explorer_styler::apply(&saved_fe_style, &tint);
             });
         }
         for f in app.fences.values().chain(app.desktop_windows.values()) {

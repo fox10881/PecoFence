@@ -658,5 +658,5 @@
   "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Temi visivi e sfondo della finestra per Esplora file; si applica alla selezione",
   "资源管理器样式未能更改，请稍后重试。": "Impossibile cambiare lo stile di Esplora file — riprova.",
   "主题色叠加": "Sovrapposizione tinta",
-  "给任务栏、开始菜单和通知中心叠加一层所选颜色；斜杠为关闭": "Sovrappone il colore scelto a barra delle applicazioni, menu Start e centro notifiche; il pulsante barrato lo disattiva"
+  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Sovrappone il colore scelto a barra delle applicazioni, menu Start ed Esplora file; il campione barrato lo rimuove"
 }

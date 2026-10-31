@@ -658,5 +658,5 @@
   "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Thèmes visuels et arrière-plan de la fenêtre pour l'Explorateur de fichiers ; s'applique dès la sélection",
   "资源管理器样式未能更改，请稍后重试。": "Impossible de changer le style de l'Explorateur de fichiers — réessayez.",
   "主题色叠加": "Superposition de teinte",
-  "给任务栏、开始菜单和通知中心叠加一层所选颜色；斜杠为关闭": "Superpose la couleur choisie sur la barre des tâches, le menu Démarrer et le centre de notifications ; le bouton barré la désactive"
+  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Superpose la couleur choisie sur la barre des tâches, le menu Démarrer et l'Explorateur de fichiers ; l'échantillon barré la retire"
 }

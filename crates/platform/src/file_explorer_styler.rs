@@ -278,17 +278,33 @@ fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
     }
 }
 
-/// Applies the selected File Explorer style. `id` is a catalog id (`""` =
-/// Windows Default → reset). The selection is armed first, then delivered
-/// best-effort: when the resident is missing (explorer restarting) the
-/// periodic `ensure` keeps retrying — mirroring `taskbar_styler` semantics.
-/// Returns `false` only for an unknown id so settings reverts.
-pub fn apply(id: &str) -> bool {
-    if id.is_empty() {
-        return reset();
-    }
-    let Some(wire) = pecofence_core::file_explorer_themes::theme_wire(id) else {
-        return false;
+/// Applies the selected File Explorer style + color tint. `id` is a
+/// catalog id (`""` = no theme — tint-only when `tint` is set, `Windows
+/// Default` → reset when both are empty). The tint rides the same wire as
+/// appended `controlStyles` rules, so a theme switch or tint clear
+/// restores cleanly through the resident's atomic re-apply path — no
+/// stale layer can stack. Returns `false` only for an unknown id so
+/// settings reverts.
+pub fn apply(id: &str, tint: &str) -> bool {
+    let wire = if id.is_empty() {
+        match pecofence_core::color_tint::tint_wire(
+            "PECO-FES1",
+            pecofence_core::color_tint::FILE_EXPLORER_TARGETS,
+            tint,
+        ) {
+            Some(w) => w,
+            None => return reset(),
+        }
+    } else {
+        let Some(mut w) = pecofence_core::file_explorer_themes::theme_wire(id) else {
+            return false;
+        };
+        pecofence_core::color_tint::apply_to_wire(
+            &mut w,
+            pecofence_core::color_tint::FILE_EXPLORER_TARGETS,
+            tint,
+        );
+        w
     };
     let effect = pecofence_core::file_explorer_themes::backdrop(id)
         .unwrap_or_default()
