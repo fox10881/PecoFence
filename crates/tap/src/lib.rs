@@ -24,7 +24,6 @@
 )]
 mod bindings;
 mod command;
-mod fe_glass;
 #[allow(
     dead_code,
     non_snake_case,
@@ -33,6 +32,7 @@ mod fe_glass;
     clippy::all
 )]
 mod effects;
+mod fe_glass;
 #[allow(
     dead_code,
     non_snake_case,

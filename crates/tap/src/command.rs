@@ -280,6 +280,10 @@ const CDS_NC_HELLO: usize = u32::from_be_bytes(*b"NCHI") as usize;
 const CDS_FE_THEME: usize = u32::from_be_bytes(*b"FEST") as usize;
 const CDS_FE_RESET: usize = u32::from_be_bytes(*b"FESR") as usize;
 const CDS_FE_HELLO: usize = u32::from_be_bytes(*b"FEHI") as usize;
+/// Backdrop/accent state for `fe_glass` — `[backdrop:i32, accent_state:u32,
+/// accent_flags:u32, gradient:u32]` LE; tells the resident which
+/// `DWMWA_SYSTEMBACKDROP_TYPE` to substitute and which accent policy to push.
+const CDS_FE_BACKDROP: usize = u32::from_be_bytes(*b"FEBD") as usize;
 
 fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
     if msg == UNLOAD_MSG.load(Ordering::Acquire) && msg != 0 {
@@ -348,6 +352,12 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
                 // the timer keeps retrying `ensure_watching_winui3`.
                 crate::site::ensure_watching_winui3();
                 crate::styler::mux::apply_wire(text);
+            }
+            CDS_FE_BACKDROP if !cds.lp_data.is_null() && cds.cb_data >= 16 => {
+                let bytes = unsafe {
+                    core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
+                };
+                crate::fe_glass::set_backdrop_params(bytes);
             }
             CDS_HELLO | CDS_TB_HELLO | CDS_NC_HELLO | CDS_FE_HELLO
                 if !cds.lp_data.is_null() && cds.cb_data == 4 =>

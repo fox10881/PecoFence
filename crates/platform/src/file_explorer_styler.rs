@@ -20,6 +20,9 @@ use windows_core::{PCSTR, PCWSTR};
 windows_core::link!("kernel32.dll" "system" fn GetModuleHandleW(name: PCWSTR) -> *mut core::ffi::c_void);
 windows_core::link!("kernel32.dll" "system" fn GetProcAddress(hmodule: *mut core::ffi::c_void, lpprocname: PCSTR) -> *mut core::ffi::c_void);
 windows_core::link!("dwmapi.dll" "system" fn DwmSetWindowAttribute(hwnd: crate::bindings::HWND, dwattribute: u32, pvattribute: *const core::ffi::c_void, cbattribute: u32) -> i32);
+windows_core::link!("dwmapi.dll" "system" fn DwmEnableBlurBehindWindow(hwnd: crate::bindings::HWND, bb: *const DwmBlurBehind) -> i32);
+windows_core::link!("gdi32.dll" "system" fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> *mut core::ffi::c_void);
+windows_core::link!("gdi32.dll" "system" fn DeleteObject(obj: *mut core::ffi::c_void) -> windows_core::BOOL);
 windows_core::link!("user32.dll" "system" fn GetClassNameW(hwnd: crate::bindings::HWND, lpclassname: windows_core::PWSTR, nmaxcount: i32) -> i32);
 windows_core::link!("user32.dll" "system" fn RedrawWindow(hwnd: crate::bindings::HWND, lprcupdate: *const core::ffi::c_void, hrgnupdate: *mut core::ffi::c_void, flags: u32) -> windows_core::BOOL);
 
@@ -27,13 +30,48 @@ windows_core::link!("user32.dll" "system" fn RedrawWindow(hwnd: crate::bindings:
 const CDS_FE_THEME: usize = u32::from_be_bytes(*b"FEST") as usize;
 const CDS_FE_RESET: usize = u32::from_be_bytes(*b"FESR") as usize;
 const CDS_FE_HELLO: usize = u32::from_be_bytes(*b"FEHI") as usize;
+/// Backdrop/accent state for the resident's `fe_glass` detours —
+/// `[backdrop:i32, accent_state:u32, accent_flags:u32, gradient:u32]` LE.
+const CDS_FE_BACKDROP: usize = u32::from_be_bytes(*b"FEBD") as usize;
 
 // DWMWA_SYSTEMBACKDROP_TYPE (38) values — the same DWMSBT_* mapping the mod
 // applies through its DwmSetWindowAttribute hook.
 const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
+const DWMSBT_AUTO: i32 = 0; // let the system decide — used on the accent path
 const DWMSBT_MAINWINDOW: i32 = 2; // Mica
 const DWMSBT_TRANSIENTWINDOW: i32 = 3; // Acrylic
 const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt
+
+const ACCENT_DISABLED: u32 = 0;
+const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
+
+/// Translucent-Windows `HandleEffects` mutual exclusion:
+/// `DWMWA_SYSTEMBACKDROP_TYPE` (2/3/4) and `WCA_ACCENT_POLICY`
+/// (`ACCENT_STATE_ENABLE_ACRYLICBLURBEHIND`) are never both active — an
+/// extended `-1` frame with a conflicting pair renders a solid black void.
+/// Returns `(backdrop, accent_state, accent_flags, gradient_abgr)`.
+/// - Case B (`blur` effect, or a Color Tint swatch selected): backdrop
+///   drops to `DWMSBT_AUTO`, accent acrylic carries the tint.
+/// - Case A (acrylic/mica/micaAlt, no tint): accent off, system backdrop
+///   carries the material.
+fn desired_glass(effect: &str, tint: &str) -> (i32, u32, u32, u32) {
+    if effect == "blur" || !tint.is_empty() {
+        (
+            DWMSBT_AUTO,
+            ACCENT_ENABLE_ACRYLICBLURBEHIND,
+            0,
+            tint_abgr(tint),
+        )
+    } else {
+        let backdrop = match effect {
+            "acrylic" => DWMSBT_TRANSIENTWINDOW,
+            "mica" => DWMSBT_MAINWINDOW,
+            "micaAlt" => DWMSBT_TABBEDWINDOW,
+            _ => DWMSBT_TABBEDWINDOW,
+        };
+        (backdrop, ACCENT_DISABLED, 0, 0)
+    }
+}
 
 const RDW_INVALIDATE: u32 = 0x0001;
 const RDW_ERASE: u32 = 0x0004;
@@ -137,13 +175,6 @@ fn cabinet_windows() -> Vec<crate::bindings::HWND> {
 /// cabinet appears — the ensure tick calls this every 2 s, so painting
 /// everything unconditionally would be a constant repaint storm.
 fn apply_backdrop(effect: &str) {
-    let backdrop = match effect {
-        "blur" => DWMSBT_TABBEDWINDOW, // blur rides the accent policy below
-        "acrylic" => DWMSBT_TRANSIENTWINDOW,
-        "mica" => DWMSBT_MAINWINDOW,
-        "micaAlt" => DWMSBT_TABBEDWINDOW,
-        _ => DWMSBT_TABBEDWINDOW,
-    };
     let hwnds = cabinet_windows();
     let (changed, mut seen, tint) = {
         let mut guard = lock();
@@ -158,7 +189,11 @@ fn apply_backdrop(effect: &str) {
         }
         (changed, std::mem::take(&mut fe.seen_hwnds), fe.tint.clone())
     };
-    let glass = !effect.is_empty();
+    let (backdrop, accent_state, accent_flags, gradient) = desired_glass(effect, &tint);
+    let accent_on = accent_state == ACCENT_ENABLE_ACRYLICBLURBEHIND;
+    // Any glass path — a named effect OR a tint overlay — needs the
+    // extended frame + dark caption + blur-behind region.
+    let glass = !effect.is_empty() || accent_on;
     for hwnd in &hwnds {
         if !changed && seen.contains(&(hwnd.0 as usize as isize)) {
             continue;
@@ -180,11 +215,8 @@ fn apply_backdrop(effect: &str) {
             );
         }
         extend_frame(*hwnd, glass);
-        // Accent policy drives the `blur` path AND the Color Tint Overlay
-        // on any glass effect; mica/acrylic without a tint ride
-        // DWMWA_SYSTEMBACKDROP_TYPE alone (same split as the mod).
-        let accent_on = effect == "blur" || (glass && !tint.is_empty());
-        set_accent_blur(*hwnd, accent_on, &tint);
+        blur_behind(*hwnd, accent_on);
+        set_accent_policy(*hwnd, accent_state, accent_flags, gradient);
         trigger_composition_update(*hwnd);
         seen.insert(hwnd.0 as usize as isize);
     }
@@ -193,6 +225,38 @@ fn apply_backdrop(effect: &str) {
         // Keep only live cabinets — dead hwnds can be reused by the OS.
         seen.retain(|h| hwnds.iter().any(|w| w.0 as usize as isize == *h));
         fe.seen_hwnds = seen;
+    }
+}
+
+#[repr(C)]
+struct DwmBlurBehind {
+    flags: u32,
+    enable: windows_core::BOOL,
+    rgn: *mut core::ffi::c_void,
+    transition_on_max: windows_core::BOOL,
+}
+
+/// `DwmEnableBlurBehindWindow` — the accent path blurs the whole client
+/// region (`CreateRectRgn(0,0,-1,-1)`), the SYSTEMBACKDROP path disables
+/// it: blur-behind plus a system backdrop is another mutually-exclusive
+/// pairing that renders black instead of glass.
+fn blur_behind(hwnd: crate::bindings::HWND, on: bool) {
+    let rgn = if on {
+        unsafe { CreateRectRgn(0, 0, -1, -1) }
+    } else {
+        core::ptr::null_mut()
+    };
+    let bb = DwmBlurBehind {
+        flags: 1 | if on { 2 } else { 0 }, // DWM_BB_ENABLE | DWM_BB_BLURREGION
+        enable: windows_core::BOOL(on as i32),
+        rgn,
+        transition_on_max: windows_core::BOOL(0),
+    };
+    unsafe {
+        let _ = DwmEnableBlurBehindWindow(hwnd, &bb);
+        if !rgn.is_null() {
+            let _ = DeleteObject(rgn);
+        }
     }
 }
 
@@ -225,9 +289,19 @@ fn extend_frame(hwnd: crate::bindings::HWND, on: bool) {
     let f: unsafe extern "system" fn(crate::bindings::HWND, *const Margins) -> i32 =
         unsafe { core::mem::transmute(f) };
     let m = if on {
-        Margins { left: -1, right: -1, top: -1, bottom: -1 }
+        Margins {
+            left: -1,
+            right: -1,
+            top: -1,
+            bottom: -1,
+        }
     } else {
-        Margins { left: 0, right: 0, top: 0, bottom: 0 }
+        Margins {
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+        }
     };
     unsafe {
         let _ = f(hwnd, &m);
@@ -250,12 +324,13 @@ fn tint_abgr(tint: &str) -> u32 {
     0x40101010
 }
 
-/// `SetAccentBlurBehind` — `SetWindowCompositionAttribute` ACCENT_POLICY
-/// blur for the `blur` backdrop (the mod's fallback + its blur path).
-/// `on` arms `ACCENT_STATE_ENABLE_ACRYLICBLURBEHIND` (4) with the
-/// modern-acrylic flag and the tint-derived `GradientColor`; off restores
-/// `ACCENT_DISABLED`.
-fn set_accent_blur(hwnd: crate::bindings::HWND, on: bool, tint: &str) {
+/// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY` acrylic blur
+/// (the `blur` effect and the Color Tint overlay path). `state` is
+/// `ACCENT_STATE_*` (4 = acrylic blur behind, 0 = disabled); `gradient`
+/// is the ABGR `GradientColor` (`alpha<<24 | blue<<16 | green<<8 | red`).
+/// Never combined with a non-AUTO `DWMWA_SYSTEMBACKDROP_TYPE` — see
+/// `desired_glass`.
+fn set_accent_policy(hwnd: crate::bindings::HWND, state: u32, flags: u32, gradient: u32) {
     #[repr(C)]
     struct AccentPolicy {
         accent_state: u32,
@@ -269,8 +344,6 @@ fn set_accent_blur(hwnd: crate::bindings::HWND, on: bool, tint: &str) {
         pv_data: *const core::ffi::c_void,
         cb_data: usize,
     }
-    const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
-    const ACCENT_DISABLED: u32 = 0;
     const WCA_ACCENT_POLICY: u32 = 19;
 
     let user32 = unsafe { GetModuleHandleW(PCWSTR(widestr("user32.dll").as_ptr())) };
@@ -291,13 +364,9 @@ fn set_accent_blur(hwnd: crate::bindings::HWND, on: bool, tint: &str) {
         *const WindowCompositionAttribData,
     ) -> windows_core::BOOL = unsafe { core::mem::transmute(f) };
     let policy = AccentPolicy {
-        accent_state: if on {
-            ACCENT_ENABLE_ACRYLICBLURBEHIND
-        } else {
-            ACCENT_DISABLED
-        },
-        accent_flags: 2, // ACCENT_FLAG_ENABLE_MODERN_ACRYLIC_RECIPE
-        gradient_color: if on { tint_abgr(tint) } else { 0 },
+        accent_state: state,
+        accent_flags: flags,
+        gradient_color: gradient,
         animation_id: 0,
     };
     let data = WindowCompositionAttribData {
@@ -348,6 +417,17 @@ fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
             fe.hello_sent = true;
         }
     }
+    // The resident's fe_glass detours need our desired backdrop BEFORE the
+    // theme wire arms them — send FEBD first so `set_armed`'s in-process
+    // apply already pushes the right values.
+    let effect = pecofence_core::file_explorer_themes::backdrop(&fe.style).unwrap_or_default();
+    let (bd, st, fl, gr) = desired_glass(effect, &fe.tint);
+    let mut payload = [0u8; 16];
+    payload[0..4].copy_from_slice(&bd.to_le_bytes());
+    payload[4..8].copy_from_slice(&st.to_le_bytes());
+    payload[8..12].copy_from_slice(&fl.to_le_bytes());
+    payload[12..16].copy_from_slice(&gr.to_le_bytes());
+    let _ = crate::tap::send_copydata(hwnd, CDS_FE_BACKDROP, &payload);
     if crate::tap::send_copydata(hwnd, CDS_FE_THEME, fe.wire.as_bytes()) {
         fe.cmd_hwnd = hwnd.0 as usize;
         true

@@ -75,9 +75,9 @@
     {
      "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
      "styles": [
-      "Background=Transparent",
       "BorderThickness=0,0,0,1",
-      "BorderBrush=#40A0A0A0"
+      "BorderBrush=#40A0A0A0",
+      "Background=Transparent"
      ]
     },
     {
@@ -133,10 +133,51 @@
      "styles": [
       "Background=Transparent"
      ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+     "styles": [
+      "Background=Transparent"
+     ]
     }
    ],
    "styleConstants": [],
-   "themeResourceVariables": [],
+   "themeResourceVariables": [
+    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+   ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kAcrylic"
   },
@@ -693,8 +734,8 @@
     {
      "target": "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
      "styles": [
-      "Background=Transparent",
-      "RenderTransform:=<TranslateTransform X=\"0\"/>"
+      "RenderTransform:=<TranslateTransform X=\"0\"/>",
+      "Background=Transparent"
      ]
     },
     {
@@ -720,8 +761,8 @@
     {
      "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
      "styles": [
-      "Background=Transparent",
-      "BorderBrush=Transparent"
+      "BorderBrush=Transparent",
+      "Background=Transparent"
      ]
     },
     {
@@ -730,7 +771,8 @@
       "RenderTransform:=<TranslateTransform X=\"0\" Y=\"0\" />",
       "HorizontalAlignment=Center",
       "Margin=-4",
-      "Padding=10"
+      "Padding=10",
+      "Background=Transparent"
      ]
     },
     {
@@ -765,9 +807,9 @@
     {
      "target": "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
      "styles": [
-      "Background=Transparent",
       "BorderBrush=Transparent",
-      "ColumnDefinitions:=<ColumnDefinitionCollection><ColumnDefinition Width=\"Auto\"/><ColumnDefinition Width=\"*\"/><ColumnDefinition Width=\"430\"/></ColumnDefinitionCollection>"
+      "ColumnDefinitions:=<ColumnDefinitionCollection><ColumnDefinition Width=\"Auto\"/><ColumnDefinition Width=\"*\"/><ColumnDefinition Width=\"430\"/></ColumnDefinitionCollection>",
+      "Background=Transparent"
      ]
     },
     {
@@ -777,7 +819,8 @@
       "CornerRadius=8",
       "BorderThickness=0",
       "Margin=0,0,8,8",
-      "Background:=$MainContentBG"
+      "Background:=$MainContentBG",
+      "Background=Transparent"
      ]
     },
     {
@@ -787,13 +830,15 @@
       "CornerRadius=8",
       "BorderThickness=0",
       "Margin=0,0,8,8",
-      "Background:=$MainContentBG"
+      "Background:=$MainContentBG",
+      "Background=Transparent"
      ]
     },
     {
      "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
      "styles": [
-      "Background:=$MainContentBG"
+      "Background:=$MainContentBG",
+      "Background=Transparent"
      ]
     },
     {
@@ -987,6 +1032,30 @@
      "styles": [
       "RenderTransform:=<TranslateTransform X=\"-5\" Y=\"12\" />"
      ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#DetailsViewControlRootGrid",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail > Grid",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+     "styles": [
+      "Background=Transparent"
+     ]
     }
    ],
    "styleConstants": [
@@ -994,13 +1063,24 @@
     "AcrylicBackground=<AcrylicBrush TintColor=\"{ThemeResource SystemChromeMediumLowColor}\" TintOpacity=\"0.9\" Opacity=\"0.96\"/>",
     "BorderBrush=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"0,1\"><GradientStop Color=\"{ThemeResource SystemChromeHighColor}\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SystemChromeLowColor}\" Offset=\"0.15\" /><GradientStop Color=\"{ThemeResource SystemChromeHighColor}\" Offset=\"0.95\" /></LinearGradientBrush>",
     "BorderThickness=0.3,1,0.3,0.3",
-    "ButtonBackground=<SolidColorBrush Color=\"{ThemeResource SystemAccentColor}\" Opacity=\"1\" />",
-    "ButtonBorder=<SolidColorBrush Color=\"{ThemeResource SystemAccentColorLight3}\" Opacity=\"1\" />",
+    "ButtonBackground=<SolidColorBrush Color=\"{ThemeResource SystemAccentColor}\" Opacity=\"0\" />",
+    "ButtonBorder=<SolidColorBrush Color=\"{ThemeResource SystemAccentColorLight3}\" Opacity=\"0\" />",
     "CornerRadius=8",
     "Background2=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"0\" />",
-    "MainContentBG=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"1\" />"
+    "MainContentBG=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"0\" />"
    ],
-   "themeResourceVariables": [],
+   "themeResourceVariables": [
+    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+   ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kAcrylic"
   },
@@ -1064,7 +1144,8 @@
      "styles": [
       "Background:=$CommonBgBrush",
       "BorderThickness=0,0,0,0",
-      "BorderBrush=$CommonBgBrush"
+      "BorderBrush=$CommonBgBrush",
+      "Background=Transparent"
      ]
     },
     {
@@ -1076,7 +1157,8 @@
     {
      "target": "Grid#NavigationBarControlGrid",
      "styles": [
-      "Background:=$CommonBgBrush"
+      "Background:=$CommonBgBrush",
+      "Background=Transparent"
      ]
     },
     {
@@ -1088,13 +1170,15 @@
     {
      "target": "Grid#HomeViewRootGrid",
      "styles": [
-      "Background:=$CommonBgBrush"
+      "Background:=$CommonBgBrush",
+      "Background=Transparent"
      ]
     },
     {
      "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
      "styles": [
-      "Background:=$CommonBgBrush"
+      "Background:=$CommonBgBrush",
+      "Background=Transparent"
      ]
     },
     {
@@ -1112,20 +1196,63 @@
     {
      "target": "Grid#DetailsViewControlRootGrid",
      "styles": [
-      "Background:=$CommonBgBrush"
+      "Background:=$CommonBgBrush",
+      "Background=Transparent"
      ]
     },
     {
      "target": "StackPanel#DetailsViewThumbnail > Grid",
      "styles": [
-      "Background:=$CommonBgBrush"
+      "Background:=$CommonBgBrush",
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+     "styles": [
+      "Background=Transparent"
      ]
     }
    ],
    "styleConstants": [
     "CommonBgBrush=<WindhawkBlur BlurAmount=\"18\" TintColor=\"#80000000\"/>"
    ],
-   "themeResourceVariables": [],
+   "themeResourceVariables": [
+    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+   ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kAcrylic"
   },
@@ -1134,8 +1261,8 @@
     {
      "target": "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
      "styles": [
-      "Background=Transparent",
-      "HorizontalAlignment=Stretch"
+      "HorizontalAlignment=Stretch",
+      "Background=Transparent"
      ]
     },
     {
@@ -1163,7 +1290,8 @@
      "target": "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
      "styles": [
       "Background:=Transparent",
-      "BorderBrush:=Transparent"
+      "BorderBrush:=Transparent",
+      "Background=Transparent"
      ]
     },
     {
@@ -1172,7 +1300,8 @@
       "BorderBrush:=$ElementBorderBrush",
       "CornerRadius=$ElementCornerRadius",
       "BorderThickness=$ElementBorderThickness",
-      "Margin=4,0"
+      "Margin=4,0",
+      "Background=Transparent"
      ]
     },
     {
@@ -1181,13 +1310,15 @@
       "BorderBrush:=$ElementBorderBrush",
       "CornerRadius=$ElementCornerRadius",
       "BorderThickness=$ElementBorderThickness",
-      "Margin=4,0"
+      "Margin=4,0",
+      "Background=Transparent"
      ]
     },
     {
      "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
      "styles": [
-      "Background:=Transparent"
+      "Background:=Transparent",
+      "Background=Transparent"
      ]
     },
     {
@@ -1321,7 +1452,8 @@
     {
      "target": "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
      "styles": [
-      "Background:=Transparent"
+      "Background:=Transparent",
+      "Background=Transparent"
      ]
     },
     {
@@ -1364,18 +1496,44 @@
     {
      "target": "Grid#DetailsViewControlRootGrid",
      "styles": [
-      "Background:=Transparent"
+      "Background:=Transparent",
+      "Background=Transparent"
      ]
     },
     {
      "target": "StackPanel#DetailsViewThumbnail",
      "styles": [
-      "Background:=Transparent"
+      "Background:=Transparent",
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail > Grid",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+     "styles": [
+      "Background=Transparent"
      ]
     }
    ],
    "styleConstants": [
-    "ContentBG=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"1\" />",
+    "ContentBG=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"0\" />",
     "Background=<WindhawkBlur BlurAmount=\"15\" TintColor=\"{ThemeResource SystemAltLowColor}\" TintOpacity=\"0.2\" />",
     "ElementBackground=<WindhawkBlur BlurAmount=\"20\" TintColor=\"{ThemeResource SystemAltLowColor}\" TintOpacity=\"0.4\" />",
     "ElementBackground2=<WindhawkBlur BlurAmount=\"20\" TintColor=\"{ThemeResource SystemAltLowColor}\" TintOpacity=\"0.2\" />",
@@ -1387,7 +1545,18 @@
     "CornerRadius=12",
     "ElementCornerRadius=8"
    ],
-   "themeResourceVariables": [],
+   "themeResourceVariables": [
+    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+   ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kDefault"
   },
@@ -1542,7 +1711,8 @@
      "styles": [
       "Margin=20,20,20,1",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15"
+      "CornerRadius=15",
+      "Background=Transparent"
      ]
     },
     {
@@ -1556,7 +1726,8 @@
      "styles": [
       "Margin=20,20,20,0",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15"
+      "CornerRadius=15",
+      "Background=Transparent"
      ]
     },
     {
@@ -1564,7 +1735,8 @@
      "styles": [
       "Margin=20,20,20,0",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15"
+      "CornerRadius=15",
+      "Background=Transparent"
      ]
     },
     {
@@ -1628,8 +1800,8 @@
     {
      "target": "CommandBar#FileExplorerCommandBar",
      "styles": [
-      "Background=Transparent",
-      "HorizontalAlignment=1"
+      "HorizontalAlignment=1",
+      "Background=Transparent"
      ]
     },
     {
@@ -1726,7 +1898,8 @@
       "CornerRadius=14",
       "BorderThickness=1",
       "Margin=2",
-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>"
+      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+      "Background=Transparent"
      ]
     },
     {
@@ -1805,10 +1978,45 @@
      "styles": [
       "Margin=0,9,9,0"
      ]
+    },
+    {
+     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+     "styles": [
+      "Background=Transparent"
+     ]
     }
    ],
    "styleConstants": [],
-   "themeResourceVariables": [],
+   "themeResourceVariables": [
+    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+   ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kDefault"
   },
@@ -1893,7 +2101,8 @@
      "styles": [
       "Margin=20,20,20,1",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15"
+      "CornerRadius=15",
+      "Background=Transparent"
      ]
     },
     {
@@ -1935,7 +2144,8 @@
      "styles": [
       "Margin=20,20,20,0",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15"
+      "CornerRadius=15",
+      "Background=Transparent"
      ]
     },
     {
@@ -1943,7 +2153,8 @@
      "styles": [
       "Margin=20,20,20,0",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15"
+      "CornerRadius=15",
+      "Background=Transparent"
      ]
     },
     {
@@ -1963,7 +2174,8 @@
       "Width=400",
       "HorizontalAlignment=Left",
       "Background:=transparent",
-      "Padding=0,0,0,0"
+      "Padding=0,0,0,0",
+      "Background=Transparent"
      ]
     },
     {
@@ -2069,7 +2281,8 @@
      "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
      "styles": [
       "Background:=",
-      "BorderBrush:="
+      "BorderBrush:=",
+      "Background=Transparent"
      ]
     },
     {
@@ -2085,7 +2298,8 @@
       "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
       "CornerRadius=10",
       "BorderThickness=1",
-      "Margin=2"
+      "Margin=2",
+      "Background=Transparent"
      ]
     },
     {
@@ -2193,10 +2407,45 @@
      "styles": [
       "Grid.RowSpan=2"
      ]
+    },
+    {
+     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+     "styles": [
+      "Background=Transparent"
+     ]
+    },
+    {
+     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+     "styles": [
+      "Background=Transparent"
+     ]
     }
    ],
    "styleConstants": [],
-   "themeResourceVariables": [],
+   "themeResourceVariables": [
+    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+   ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kDefault"
   },

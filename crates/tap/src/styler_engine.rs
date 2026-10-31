@@ -2209,8 +2209,11 @@ fn set_or_clear(
             let Ok(ui) = Interface::cast::<UIElement>(el) else {
                 return None;
             };
-            match fxe::make_blur_brush_any(&ui, p.amount, p.tint) {
-                Ok(b) => Interface::cast(&b).ok(),
+            // Per-module bridge: WUX compositor brush for wux elements,
+            // a native AcrylicBrush through the mux XamlReader for WinUI3
+            // (a WUX brush here would fail SetValue with E_NOINTERFACE).
+            match blur_brush(&ui, p) {
+                Ok(v) => Some(v),
                 Err(e) => {
                     crate::tap_log!("blur brush failed: {e:?}");
                     return None;
