@@ -679,6 +679,7 @@ name = "tool_bindgen"
 version = "0.0.0"
 dependencies = [
  "windows-bindgen",
+ "windows-metadata",
 ]
 
 [[package]]

@@ -140,7 +140,7 @@ unique id prefix, or a name (only while that name is unique).
 | `config export <FILE>` | `pecofence-cli config export C:\Users\me\Desktop\pecofence.json` (absolute path, overwrites) |
 | `config import <FILE>` | `pecofence-cli config import C:\Users\me\Desktop\pecofence.json` (replaces everything; layout snapshotted first) |
 | `config check [FILE]` | `pecofence-cli config check C:\Users\me\Desktop\pecofence.json` (offline; defaults to the config in use) |
-| `backup list` | `pecofence-cli backup list` (daily backups beside config.json, newest first) |
+| `backup list` | `pecofence-cli backup list` (legacy daily backups beside config.json, newest first; no longer written) |
 | `backup restore <FILE>` | `pecofence-cli backup restore "C:\Users\me\AppData\Roaming\PecoFence\backups\2026-09-23.json"` (a path from `backup list`) |
 | `peek start` / `peek end` | `pecofence-cli peek start` |
 | `watch [--fence <FENCE>] [--events <E,...>] [--once] [--heartbeat]` | `pecofence-cli watch --fence desktop --once` |

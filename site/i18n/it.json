@@ -43,7 +43,7 @@
   "detail.space.title": "Spazio quando serve",
   "detail.space.text": "Arrotola un riquadro fino alla barra del titolo. Passaci sopra con il puntatore per espanderlo. Blocca il layout quando ti soddisfa.",
   "detail.back.title": "Un modo per tornare indietro",
-  "detail.back.text": "Istantanee del layout, backup giornalieri, importazione ed esportazione della configurazione e spostamento dei riquadri tra gli schermi.",
+  "detail.back.text": "Istantanee del layout, temi .peco portatili, importazione ed esportazione della configurazione e spostamento dei riquadri tra gli schermi.",
   "detail.footprint.title": "Ingombro ridotto",
   "detail.footprint.text": "Un'applicazione nativa scritta in Rust. Il pannello delle impostazioni carica WebView2 solo quando lo apri.",
   "detail.safe.title": "I tuoi file restano al loro posto",

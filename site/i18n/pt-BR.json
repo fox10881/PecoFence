@@ -43,7 +43,7 @@
   "detail.space.title": "Espaço quando você precisa",
   "detail.space.text": "Recolha um grupo até o título. Passe o mouse para expandir. Bloqueie o layout quando estiver do seu jeito.",
   "detail.back.title": "Um caminho de volta",
-  "detail.back.text": "Instantâneos de layout, backups diários, importação e exportação da configuração e troca de grupos entre monitores.",
+  "detail.back.text": "Instantâneos de layout, temas .peco portáteis, importação e exportação da configuração e troca de grupos entre monitores.",
   "detail.footprint.title": "Leve de verdade",
   "detail.footprint.text": "Um aplicativo nativo em Rust. O painel de configurações só carrega o WebView2 quando você o abre.",
   "detail.safe.title": "Seus arquivos continuam seus",

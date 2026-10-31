@@ -414,12 +414,67 @@ pub fn query() -> Result<WallpaperSnapshot> {
     }
 }
 
+/// `IDesktopWallpaper::SetWallpaper` for one monitor — Explorer's own per-monitor route;
+/// it does not broadcast `SPI_SETDESKWALLPAPER`. `monitor_id` is the `\\?\DISPLAY#…`
+/// device path a [`query`] snapshot reports.
+pub fn set_monitor_wallpaper(monitor_id: &str, path: &Path) -> Result<()> {
+    // SAFETY: standard COM activation.
+    let dw: IDesktopWallpaper =
+        unsafe { CoCreateInstance(&DesktopWallpaper, None, CLSCTX_ALL as u32)? };
+    let id_w = to_wide(monitor_id);
+    let path_w = path.as_os_str().encode_wide_nul();
+    // SAFETY: both pointers are NUL-terminated buffers that outlive the call.
+    unsafe { dw.SetWallpaper(PCWSTR(id_w.as_ptr()), PCWSTR(path_w.as_ptr())) }.ok()
+}
+
+/// `DWPOS_FILL` for every monitor — a wallpaper composited at exact monitor pixels lands
+/// 1:1 only under Fill; Center/Tile would shift or repeat it.
+pub fn set_position_fill() -> Result<()> {
+    // SAFETY: standard COM activation.
+    let dw: IDesktopWallpaper =
+        unsafe { CoCreateInstance(&DesktopWallpaper, None, CLSCTX_ALL as u32)? };
+    // SAFETY: COM call on a live interface.
+    unsafe { dw.SetPosition(DWPOS_FILL) }.ok()
+}
+
 /// Decoded opaque BGRA pixels.
 #[derive(Clone, Debug)]
 pub struct DecodedImage {
     pub width: u32,
     pub height: u32,
     pub bgra: Vec<u8>,
+}
+
+/// Just the image's own pixel size — decoder + frame `GetSize`, no pixel copy.
+pub fn image_dimensions(path: &Path) -> Result<(u32, u32)> {
+    let wide: Vec<u16> = path.as_os_str().encode_wide_nul();
+    // SAFETY: standard WIC pipeline; every interface is owned for the call.
+    unsafe {
+        let factory: IWICImagingFactory =
+            CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)?;
+        let decoder = factory.CreateDecoderFromFilename(
+            PCWSTR(wide.as_ptr()),
+            core::ptr::null(),
+            GENERIC_READ,
+            WICDecodeMetadataCacheOnDemand,
+        )?;
+        let frame = decoder.GetFrame(0)?;
+        let src: IWICBitmapSource = frame.cast()?;
+        let (mut w, mut h) = (0u32, 0u32);
+        src.GetSize(&mut w, &mut h).ok()?;
+        if w == 0 || h == 0 {
+            return Err(windows_core::Error::from_hresult(E_FAIL));
+        }
+        Ok((w, h))
+    }
+}
+
+/// Decodes `path` to exactly `width` x `height`, aspect ratio ignored — the anisotropic
+/// stretch the adaptive theme engine uses for both the blurred underlay and the
+/// capped-stretch asset.
+pub fn decode_stretched(path: &Path, width: u32, height: u32) -> Result<DecodedImage> {
+    let (w, h) = (width.max(1), height.max(1));
+    decode(path, |_, _| ((w, h), [0, 0, w, h]))
 }
 
 /// Decodes `path` and scales it (preserving aspect ratio) so it fits within
@@ -522,6 +577,157 @@ fn decode(
             bgra,
         })
     }
+}
+
+/// Separable box blur on premultiplied BGRA, `passes` horizontal+vertical rounds of
+/// `radius` — three passes read as a gaussian. Edges clamp by index saturation.
+fn blur_bgra(bgra: &mut [u8], w: usize, h: usize, radius: usize, passes: usize) {
+    if w == 0 || h == 0 || radius == 0 {
+        return;
+    }
+    let mut tmp = vec![0u8; bgra.len()];
+    for _ in 0..passes {
+        // Horizontal.
+        for y in 0..h {
+            let row = y * w;
+            for x in 0..w {
+                let mut acc = [0u32; 4];
+                let lo = x.saturating_sub(radius);
+                let hi = (x + radius).min(w - 1);
+                for sx in lo..=hi {
+                    let s = (row + sx) * 4;
+                    acc[0] += bgra[s] as u32;
+                    acc[1] += bgra[s + 1] as u32;
+                    acc[2] += bgra[s + 2] as u32;
+                    acc[3] += bgra[s + 3] as u32;
+                }
+                let n = (hi - lo + 1) as u32;
+                let d = (row + x) * 4;
+                tmp[d] = (acc[0] / n) as u8;
+                tmp[d + 1] = (acc[1] / n) as u8;
+                tmp[d + 2] = (acc[2] / n) as u8;
+                tmp[d + 3] = (acc[3] / n) as u8;
+            }
+        }
+        // Vertical.
+        for x in 0..w {
+            for y in 0..h {
+                let mut acc = [0u32; 4];
+                let lo = y.saturating_sub(radius);
+                let hi = (y + radius).min(h - 1);
+                for sy in lo..=hi {
+                    let s = (sy * w + x) * 4;
+                    acc[0] += tmp[s] as u32;
+                    acc[1] += tmp[s + 1] as u32;
+                    acc[2] += tmp[s + 2] as u32;
+                    acc[3] += tmp[s + 3] as u32;
+                }
+                let n = (hi - lo + 1) as u32;
+                let d = (y * w + x) * 4;
+                bgra[d] = (acc[0] / n) as u8;
+                bgra[d + 1] = (acc[1] / n) as u8;
+                bgra[d + 2] = (acc[2] / n) as u8;
+                bgra[d + 3] = (acc[3] / n) as u8;
+            }
+        }
+    }
+}
+
+/// Bilinear-resample BGRA `src` (sw×sh) into a new dw×dh buffer.
+fn bilinear_resize(src: &[u8], sw: usize, sh: usize, dw: usize, dh: usize) -> Vec<u8> {
+    let mut out = vec![0u8; dw * dh * 4];
+    for y in 0..dh {
+        let fy = (y as f32 + 0.5) * sh as f32 / dh as f32 - 0.5;
+        let y0 = fy.floor().max(0.0) as usize;
+        let y1 = (y0 + 1).min(sh - 1);
+        let ty = (fy - y0 as f32).clamp(0.0, 1.0);
+        for x in 0..dw {
+            let fx = (x as f32 + 0.5) * sw as f32 / dw as f32 - 0.5;
+            let x0 = fx.floor().max(0.0) as usize;
+            let x1 = (x0 + 1).min(sw - 1);
+            let tx = (fx - x0 as f32).clamp(0.0, 1.0);
+            let d = (y * dw + x) * 4;
+            for c in 0..4 {
+                let s00 = src[(y0 * sw + x0) * 4 + c] as f32;
+                let s10 = src[(y0 * sw + x1) * 4 + c] as f32;
+                let s01 = src[(y1 * sw + x0) * 4 + c] as f32;
+                let s11 = src[(y1 * sw + x1) * 4 + c] as f32;
+                let v = s00 * (1.0 - tx) * (1.0 - ty)
+                    + s10 * tx * (1.0 - ty)
+                    + s01 * (1.0 - tx) * ty
+                    + s11 * tx * ty;
+                out[d + c] = v.round().clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+    out
+}
+
+/// The adaptive theme engine's Contain composite for one monitor: the asset stretched
+/// to the full `dst` frame and heavily blurred as the base layer, with the uncropped
+/// asset uniformly scaled to fit drawn centered at `bg` — the classic
+/// blurred pillarbox, generated entirely from the same image. `bg` is the
+/// `[left, top, right, bottom]` rect `adaptive_fit` returned.
+pub fn adaptive_wallpaper(
+    src: &Path,
+    dst_w: u32,
+    dst_h: u32,
+    bg: [i32; 4],
+) -> Result<DecodedImage> {
+    // Blur at 1/8 resolution, then upscale: indistinguishable at pillarbox distances
+    // and ~64x cheaper than blurring the full frame.
+    let small = decode_stretched(src, (dst_w / 8).max(1), (dst_h / 8).max(1))?;
+    let mut px = small.bgra;
+    let radius = (small.width.min(small.height) as usize / 20).clamp(6, 48);
+    blur_bgra(
+        &mut px,
+        small.width as usize,
+        small.height as usize,
+        radius,
+        3,
+    );
+    let mut canvas = bilinear_resize(
+        &px,
+        small.width as usize,
+        small.height as usize,
+        dst_w as usize,
+        dst_h as usize,
+    );
+    let (bw, bh) = ((bg[2] - bg[0]).max(1) as u32, (bg[3] - bg[1]).max(1) as u32);
+    let fg = decode_stretched(src, bw, bh)?;
+    let (dw, dh) = (dst_w as usize, dst_h as usize);
+    for y in 0..bh as usize {
+        let dy = bg[1] as usize + y;
+        if dy >= dh {
+            break;
+        }
+        for x in 0..bw as usize {
+            let dx = bg[0] as usize + x;
+            if dx >= dw {
+                break;
+            }
+            let s = (y * bw as usize + x) * 4;
+            let d = (dy * dw + dx) * 4;
+            canvas[d..d + 4].copy_from_slice(&fg.bgra[s..s + 4]);
+        }
+    }
+    Ok(DecodedImage {
+        width: dst_w,
+        height: dst_h,
+        bgra: canvas,
+    })
+}
+
+/// Blurred-backdrop-only composite from an already-decoded BGRA frame (video first
+/// frames — files go through [`adaptive_wallpaper`]): downscale to 1/8, blur, upscale
+/// to `dst_w x dst_h`. The result is meant to sit UNDER a video/cover blit — the region
+/// the media draws on top of is never visible, so no sharp foreground pass runs.
+pub fn blurred_backdrop_bgra(src: &[u8], sw: usize, sh: usize, dw: usize, dh: usize) -> Vec<u8> {
+    let (tw, th) = ((dw / 8).max(1), (dh / 8).max(1));
+    let mut small = bilinear_resize(src, sw, sh, tw, th);
+    let radius = (tw.min(th) / 20).clamp(6, 48);
+    blur_bgra(&mut small, tw, th, radius, 3);
+    bilinear_resize(&small, tw, th, dw, dh)
 }
 
 trait EncodeWideNul {
@@ -706,6 +912,7 @@ mod tests {
         pecofence_core::peco_theme::write_peco_file(
             &peco,
             &cfg_json,
+            None,
             Some((&name, &data)),
             b"\xFF\xD8\xFF\xE0preview",
         )
@@ -748,5 +955,52 @@ mod tests {
         eprintln!("applied via IDesktopWallpaper: {}", img.display());
         let spi = crate::sysparams::desktop_wallpaper();
         eprintln!("SPI_GETDESKWALLPAPER now -> {spi:?}");
+    }
+
+    /// The adaptive composite end-to-end on a synthetic asset: a 16:9 two-tone image on a
+    /// 32:9 frame. The asset is drawn centered at its capped rect; both margins are painted
+    /// from a blurred copy (non-black), while the asset region itself keeps the sharp edge.
+    #[test]
+    fn adaptive_wallpaper_pillarboxes() {
+        let _com = crate::com::OleGuard::init().expect("OLE init");
+        let (w, h) = (160usize, 90usize);
+        let mut px = vec![0u8; w * h * 4];
+        for y in 0..h {
+            for x in 0..w {
+                let i = (y * w + x) * 4;
+                let left = x < w / 2;
+                px[i] = if left { 220 } else { 30 }; // B
+                px[i + 1] = if left { 50 } else { 140 }; // G
+                px[i + 2] = if left { 20 } else { 220 }; // R
+                px[i + 3] = 255;
+            }
+        }
+        let jpg = crate::wmf_wallpaper::encode_jpeg(w as u32, h as u32, &px).expect("jpeg");
+        let dir = std::env::temp_dir().join(format!("peco-adaptive-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("src.jpg");
+        std::fs::write(&src, &jpg).unwrap();
+
+        let (dw, dh) = (320u32, 90u32); // 32:9 target — strict Contain
+        let fit = pecofence_core::adaptive::adaptive_fit(160, 90, dw, dh, true);
+        let bg = pecofence_core::adaptive::bg_rect(&fit, dw, dh);
+        assert!(bg[0] > 0 && bg[2] < dw as i32, "expected side bars: {bg:?}");
+        let img = adaptive_wallpaper(&src, dw, dh, bg).expect("composite");
+        assert_eq!((img.width, img.height), (dw, dh));
+
+        let cy = ((bg[1] + bg[3]) / 2) as usize;
+        // Inside the drawn asset's left quarter: the sharp dark-blue survives.
+        let in_x = bg[0] as usize + (bg[2] - bg[0]) as usize / 4;
+        let s = (cy * dw as usize + in_x) * 4;
+        assert!(
+            img.bgra[s] > 140 && img.bgra[s + 2] < 140,
+            "asset pixel lost its color: {:?}",
+            &img.bgra[s..s + 3]
+        );
+        // Far-left pillarbox: painted by the blurred copy, not left black.
+        let m = (cy * dw as usize + 4) * 4;
+        let margin = img.bgra[m] as u32 + img.bgra[m + 1] as u32 + img.bgra[m + 2] as u32;
+        assert!(margin > 90, "pillarbox margin is black");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

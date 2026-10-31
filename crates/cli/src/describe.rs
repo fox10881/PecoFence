@@ -288,7 +288,7 @@ pub const COMMANDS: &[Entry] = &[
     entry!(
         "backup list",
         Some("backups.list"),
-        "Daily config backups the app keeps (path, name), newest first",
+        "Legacy daily config backups beside config.json (path, name), newest first; no longer written",
         "pecofence-cli backup list"
     ),
     entry!(

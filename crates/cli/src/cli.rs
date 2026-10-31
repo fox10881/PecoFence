@@ -89,7 +89,7 @@ pub enum Command {
         #[command(subcommand)]
         cmd: ConfigCmd,
     },
-    /// Daily configuration backups the app keeps
+    /// Legacy daily configuration backups written by older versions
     Backup {
         #[command(subcommand)]
         cmd: BackupCmd,
@@ -580,7 +580,7 @@ pub enum ConfigCmd {
 
 #[derive(Subcommand, Debug)]
 pub enum BackupCmd {
-    /// Daily backups beside config.json, newest first
+    /// Legacy daily backups beside config.json, newest first
     #[command(after_help = "Example: pecofence-cli backup list")]
     List,
     /// Restore one of the listed backups (the current layout is snapshotted first)

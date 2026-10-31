@@ -1,4 +1,6 @@
-//! Config persistence: atomic writes, `.bak` rotation, daily backups, load fallbacks (plan §7.5).
+//! Config persistence: atomic writes, `.bak` rotation, load fallbacks (plan §7.5).
+//! Historical daily backups under `backups/` are read as a last-resort fallback but are no
+//! longer written — the .peco theme file is the single portable artifact.
 
 use crate::geometry::MAX_DIP;
 use crate::model::{Config, ItemSourceSpec, NormGeometry, SCHEMA_VERSION};
@@ -9,7 +11,6 @@ use std::path::{Path, PathBuf};
 /// Fences per layout. Enforced where fences are created (`AppState::new_fence`, the IPC create
 /// paths) as well as here, so a save can never be refused for it.
 pub const MAX_FENCES: usize = 64;
-pub const DAILY_BACKUPS_KEPT: usize = 7;
 /// Unreadable primaries moved aside by [`ConfigStore::load_reporting`]; the oldest go first.
 pub const UNREADABLE_KEPT: usize = 5;
 const UNREADABLE_PREFIX: &str = "config.unreadable-";
@@ -246,7 +247,7 @@ impl ConfigStore {
         serde_json::to_string_pretty(&cfg).map_err(io::Error::other)
     }
 
-    /// Loads with fallbacks: primary → .bak → newest daily backup → default.
+    /// Loads with fallbacks: primary → .bak → newest legacy daily backup → default.
     pub fn load(&self) -> LoadOutcome {
         self.load_reporting().0
     }
@@ -322,7 +323,8 @@ impl ConfigStore {
         LoadOutcome::Fresh(Config::default())
     }
 
-    /// Daily backups (`backups/YYYY-MM-DD.json`), unsorted.
+    /// Legacy daily backups (`backups/YYYY-MM-DD.json`), unsorted. No longer written;
+    /// kept readable so older installs can still restore them via `backup restore`.
     pub fn list_backups(&self) -> Vec<PathBuf> {
         fs::read_dir(self.backups_dir())
             .map(|rd| {
@@ -376,25 +378,6 @@ impl ConfigStore {
                 }
                 return Err(at("replace config.json")(e));
             }
-        }
-        self.daily_backup(&json).map_err(at("daily backup"))?;
-        Ok(())
-    }
-
-    /// Writes at most one backup per day and prunes to `DAILY_BACKUPS_KEPT`.
-    fn daily_backup(&self, json: &str) -> io::Result<()> {
-        let dir = self.backups_dir();
-        fs::create_dir_all(&dir)?;
-        let today = today_yyyy_mm_dd();
-        let path = dir.join(format!("{today}.json"));
-        if !path.exists() {
-            fs::write(&path, json)?;
-        }
-        let mut backups = self.list_backups();
-        backups.sort();
-        while backups.len() > DAILY_BACKUPS_KEPT {
-            let oldest = backups.remove(0);
-            let _ = fs::remove_file(oldest);
         }
         Ok(())
     }
@@ -711,6 +694,13 @@ pub fn migrate(mut cfg: Config) -> Config {
     if peek.chosen_hotkey() == peek.hotkey.combo() {
         peek.hotkey = crate::model::PeekHotkey::CtrlAltSpace;
     }
+    // `stretchTolerancePct` is gone — a negative value meant strict Contain; any
+    // non-negative value belonged to the distortion engine, which strict Cover
+    // replaces. `skip_serializing` drops the legacy key on the next save.
+    if cfg.settings.stretch_tolerance_pct < 0 {
+        cfg.settings.contain_background = true;
+    }
+    cfg.settings.stretch_tolerance_pct = 0;
     dedupe_restore_backups(&mut cfg);
     cfg
 }
@@ -758,6 +748,12 @@ pub fn today_yyyy_mm_dd() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
+    yyyy_mm_dd_of(secs)
+}
+
+/// `yyyy_mm_dd` of a Unix timestamp (same civil-from-days math as [`today_yyyy_mm_dd`]) —
+/// used to compare a file's mtime day against "today" without a date crate.
+pub fn yyyy_mm_dd_of(secs: i64) -> String {
     let days = secs.div_euclid(86_400);
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
@@ -816,7 +812,8 @@ mod tests {
         assert!(matches!(store.load(), LoadOutcome::Primary(_)));
         assert!(store.primary_path().exists());
         assert!(!store.tmp_path().exists());
-        assert_eq!(store.list_backups().len(), 1);
+        // One theme = one file: saves rotate config.bak only — no daily JSON backups.
+        assert!(store.list_backups().is_empty());
     }
 
     #[test]

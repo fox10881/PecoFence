@@ -6,7 +6,12 @@ publish = false
 
 [dependencies]
 windows-bindgen = { workspace = true }
+windows-metadata = { workspace = true }
 
 [[bin]]
 name = "tool_bindgen"
 path = "src/main.rs"
+
+[[bin]]
+name = "dump_md"
+path = "src/dump_md.rs"

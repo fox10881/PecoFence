@@ -255,8 +255,9 @@
   .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
   .sliderctl { display: flex; align-items: center; gap: 12px; margin-inline-start: auto; }
   .sliderctl input[type=range] { width: 128px; accent-color: var(--accent); }
+  .sliderctl input[type=number] { width: 76px; min-width: 76px; }
   .sliderctl .sliderval { min-width: 44px; text-align: end; font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
-  .sliderctl input[type=range]:disabled { opacity: .4; }
+  .sliderctl input[type=range]:disabled, .sliderctl input[type=number]:disabled { opacity: .4; }
   .swatch { width: 28px; height: 28px; min-width: 0; padding: 0; border-radius: 50%; position: relative; background: var(--swatch); border: 1px solid #00000026; }
   .swatch:hover { background: var(--swatch); filter: brightness(1.08); }
   .swatch.none { background: var(--control); border-color: var(--control-strong); }
@@ -336,6 +337,12 @@
   code { font: 12px/16px "Cascadia Mono", Consolas, monospace; color: var(--text2); overflow-wrap: anywhere; user-select: text; }
 
   /* Centred over the content column (the visible page), not the whole window. */
+  .modal-veil { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
+  .modal-veil[hidden] { display: none; }
+  .modal-card { width: 360px; max-width: calc(100vw - 48px); padding: 20px; border-radius: 12px; background: var(--card); border: 1px solid var(--card-stroke); box-shadow: var(--shadow); display: grid; gap: 10px; }
+  .modal-card .t { font-size: 15px; font-weight: 600; }
+  .modal-card .s { font-size: 12.5px; line-height: 1.5; color: var(--text2); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
   .infobar { position: fixed; z-index: 5; left: 16px; right: 16px; left: anchor(--page left, 16px); right: anchor(--page right, 16px); width: fit-content; margin: 0 auto; bottom: 24px; transform: translateY(8px); min-height: 48px; border-radius: var(--r-card); background: var(--ok-bg); border: 1px solid var(--card-stroke); box-shadow: var(--shadow);
     padding: 13px 16px; overflow-wrap: anywhere; display: flex; gap: 12px; align-items: center; opacity: 0; transition: opacity .18s, transform .18s; pointer-events: none; }
   .infobar .ic::before { content: "\E73E"; font-size: 16px; color: var(--ok); }
@@ -438,7 +445,7 @@
       <div class="card"><div class="l"><span class="ic">&#xE90C;</span><div><div class="t">标签栏位置</div><div class="s">有多个标签页时，标签排在标题栏里，或在栅栏左侧排成一列</div></div></div>
         <select data-bind="tabBar"><option value="top">顶部</option><option value="left">左侧</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE8B9;</span><div><div class="t">默认图标大小</div><div class="s">新建栅栏时使用，每个栅栏可在“栅栏”页或右键菜单中单独设置</div></div></div>
-        <select data-bind="iconSize"><option value="32">小图标</option><option value="48">中等图标</option><option value="64">较大图标</option><option value="96">大图标</option></select></div>
+        <input type="number" data-bind="iconSize" min="16" max="512" step="1"></div>
       <div class="group">
         <div class="card"><div class="l"><span class="ic">&#xE790;</span><div><div class="t" id="iconTintTitle">图标着色</div></div></div>
           <div class="swatches" id="iconTintSwatches" role="radiogroup" aria-labelledby="iconTintTitle"></div>
@@ -465,8 +472,14 @@
       <div class="card"><div class="l"><span class="ic">&#xE8B3;</span><div><div class="t">在桌面空白处拖出矩形时提供“在此新建栅栏”</div><div class="s">矩形没有碰到任何栅栏时弹出这一项；关闭后拖出矩形只用来框选，仍可从托盘菜单新建栅栏</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="offerNewFence"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE7C4;</span><div><div class="t">显示桌面 (Win+D) 时</div></div></div>
         <select data-bind="showDesktop"><option value="keepVisible">保持栅栏可见</option><option value="hideWithDesktop">随桌面隐藏</option></select></div>
-      <div class="card"><div class="l"><span class="ic">&#xE7F0;</span><div><div class="t">任务栏样式</div><div class="s">完全透明或磨砂玻璃的任务栏背景；切换后立即生效</div></div></div>
-        <select data-bind="taskbarMode"><option value="normal">正常</option><option value="clear">透明</option><option value="blur">磨砂</option><option value="opaque">不透明</option></select></div>
+      <div class="card" id="taskbarStyleCard"><div class="l"><span class="ic">&#xE8FC;</span><div><div class="t">任务栏样式</div><div class="s">任务栏视觉主题；选择后立即生效</div></div></div>
+        <select id="taskbarStyleSel" data-bind="taskbarStyle" data-str></select></div>
+      <div class="card" id="startMenuStyleCard"><div class="l"><span class="ic">&#xE8FC;</span><div><div class="t">开始菜单样式</div><div class="s">开始菜单视觉主题；选择后立即生效</div></div></div>
+        <select id="startMenuStyleSel" data-bind="startMenuStyle" data-str></select></div>
+      <div class="card" id="notificationCenterStyleCard"><div class="l"><span class="ic">&#xE91C;</span><div><div class="t">通知中心样式</div><div class="s">通知中心和操作中心视觉主题；选择后立即生效</div></div></div>
+        <select id="notificationCenterStyleSel" data-bind="notificationCenterStyle" data-str></select></div>
+      <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">重启资源管理器</div><div class="s">出现卡顿或异常时按一下</div></div></div>
+        <div class="actions"><button id="restartExplorer">重启</button></div></div>
       <h3>行为</h3>
       <div class="card"><div class="l"><span class="ic">&#xE70D;</span><div><div class="t">收起的栅栏悬停时自动展开</div><div class="s">鼠标移开后自动收起</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.hoverPeek"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE7C9;</span><div><div class="t">收起的栅栏需点击标题才展开</div><div class="s">开启后不再悬停展开；拖动标题仍可移动栅栏</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.clickToExpand"></div></div>
@@ -540,17 +553,17 @@
         <select id="fenceFrameColor" data-fence="iconFrameColor" hidden><option value="">默认</option></select></div>
       <h3>布局</h3>
       <div class="card"><div class="l"><span class="ic">&#xE8B9;</span><div><div class="t">图标大小</div><div class="s">也可以在栅栏内按住 Ctrl 滚动鼠标滚轮</div></div></div>
-        <select id="fenceIconSize" data-fence="iconSize"><option value="32">小图标</option><option value="48">中等图标</option><option value="64">较大图标</option><option value="96">大图标</option></select></div>
+        <input type="number" id="fenceIconSize" data-fence="iconSize" min="16" max="512" step="1"></div>
       <div class="card"><div class="l"><span class="ic">&#xF0E2;</span><div><div class="t">图标间距</div></div></div>
         <select id="fenceSpacing" data-fence="spacing"><option value="compact">紧凑</option><option value="normal">标准</option><option value="loose">宽松</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE8D8;</span><div><div class="t">图标形状</div><div class="s">海报形状把图标裁成 2:3 封面，铺满无空隙，适合游戏封面</div></div></div>
         <select id="fenceIconShape" data-fence="iconShape"><option value="standard">标准</option><option value="poster">海报</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE71B;</span><div><div class="t">自定义图标大小</div><div class="s">覆盖“图标大小”预设，可在 16–512 间自由调整</div></div></div>
-        <div class="sliderctl"><input type="range" id="fenceCustomSize" min="16" max="512" step="8"><span class="sliderval" id="fenceCustomSizeVal"></span><div class="toggle" role="switch" tabindex="0" id="fenceCustomSizeOn"></div></div></div>
+        <div class="sliderctl"><input type="number" id="fenceCustomSize" min="16" max="512" step="1"><span class="sliderval" id="fenceCustomSizeVal"></span><div class="toggle" role="switch" tabindex="0" id="fenceCustomSizeOn"></div></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE8C8;</span><div><div class="t">水平间距</div><div class="s">图标列之间的间距；拖到 0 让图标完全贴合，关闭则跟随“图标间距”</div></div></div>
-        <div class="sliderctl"><input type="range" id="fenceGapX" min="0" max="256" step="4"><span class="sliderval" id="fenceGapXVal"></span><div class="toggle" role="switch" tabindex="0" id="fenceGapXOn"></div></div></div>
+        <div class="sliderctl"><input type="number" id="fenceGapX" min="0" max="256" step="1"><span class="sliderval" id="fenceGapXVal"></span><div class="toggle" role="switch" tabindex="0" id="fenceGapXOn"></div></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE8CB;</span><div><div class="t">垂直间距</div><div class="s">图标行之间的间距；拖到 0 让图标完全贴合，关闭则跟随“图标间距”</div></div></div>
-        <div class="sliderctl"><input type="range" id="fenceGapY" min="0" max="256" step="4"><span class="sliderval" id="fenceGapYVal"></span><div class="toggle" role="switch" tabindex="0" id="fenceGapYOn"></div></div></div>
+        <div class="sliderctl"><input type="number" id="fenceGapY" min="0" max="256" step="1"><span class="sliderval" id="fenceGapYVal"></span><div class="toggle" role="switch" tabindex="0" id="fenceGapYOn"></div></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE762;</span><div><div class="t">隐藏滚动条</div><div class="s">完全不绘制滚动条；鼠标滚轮仍可滚动</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="hideScrollbar"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE72E;</span><div><div class="t">锁定滚动</div><div class="s">完全禁止滚动；滚轮、拖动和自动滚动都不起作用，内容固定在顶部，适合静态橱窗布局</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="lockScroll"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xF0CE;</span><div><div class="t">3D 倾斜层架</div><div class="s">把栅栏沿纵向倾斜成平行四边形以贴合斜置壁纸；左右边缘顶部各留一个手柄，分别调整两侧高度</div></div></div><div class="toggle" role="switch" tabindex="0" data-fence="shelf3d"></div></div>
@@ -618,16 +631,14 @@
         <button type="button" id="themeImport">导入 .peco 主题</button>
         <button type="button" id="themeFolder">打开主题文件夹</button>
       </div>
+      <div class="card"><div class="l"><span class="ic">&#xE91B;</span><div><div class="t">无论屏幕比例都完整显示背景</div><div class="s">开启：等比缩放完整居中，边缘用模糊填充；关闭：等比放大铺满屏幕，超出部分裁掉</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="containBackground" aria-label="无论屏幕比例都完整显示背景"></div></div>
+      <div class="card"><div class="l"><span class="ic">&#xE946;</span><div><div class="t">每天自动更新当前主题</div><div class="s">每日把当前布局写回正在使用的主题文件本身；只覆盖原文件，不新建版本或副本</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="themeAutoUpdateDaily"></div></div>
       <div class="theme-grid" id="galleryGrid"></div>
       <h3 id="swapHeading">多显示器</h3>
       <div class="card" id="swapCard"><div class="l"><span class="ic">&#xE7F8;</span><div><div class="t">交换两个显示器上的栅栏</div><div class="s">把一个显示器上的全部栅栏搬到另一个，反之亦然</div></div></div>
         <div class="actions"><select id="swapA" aria-label="第一个显示器"></select><select id="swapB" aria-label="第二个显示器"></select><button id="swapDo">交换</button></div></div>
-      <h3>备份</h3>
       <div class="group">
-        <div class="card"><div class="l"><span class="ic">&#xE78C;</span><div><div class="t">导出 / 导入配置文件</div><div class="s">导出为 JSON 以便迁移到另一台电脑；导入前会自动保存一份快照</div></div></div>
-          <div class="actions"><button id="cfgExport">导出…</button><button id="cfgImport">导入…</button></div></div>
         <div class="card"><div class="l"><span class="ic">&#xE8A5;</span><div><div class="t">配置文件</div><div class="s"><code id="cfgPath"></code></div></div></div><button id="openCfg">打开配置文件夹</button></div>
-        <div class="rows" id="backupList"></div>
       </div>
     </section>
 
@@ -667,6 +678,17 @@
         <div class="actions"><button id="repairIcons">恢复显示桌面图标</button><button id="hideIconsAgain">重新隐藏桌面图标</button></div></div>
     </section>
   </main>
+</div>
+<div class="modal-veil" id="themeSwitchVeil" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="tswTitle" aria-describedby="tswText">
+    <div class="t" id="tswTitle">未保存的更改</div>
+    <div class="s" id="tswText">当前布局有未保存的更改。切换到新主题前，要先把更改保存到当前主题吗？</div>
+    <div class="modal-actions">
+      <button class="accent" id="tswSave">保存并切换</button>
+      <button id="tswDiscard">不保存</button>
+      <button id="tswCancel">取消</button>
+    </div>
+  </div>
 </div>
 <div class="infobar" id="toast" role="status"><span class="ic" aria-hidden="true"></span><span id="toastText"></span></div>
 <script>
@@ -828,7 +850,15 @@
         keyToggle(el);
       } else if (el.tagName === 'SELECT') {
         el.value = String(cur);
-        el.onchange = () => { const v = el.value; set(root, p, isNaN(v) || v === '' ? v : Number(v)); commit(path); };
+        // data-str opts out of numeric coercion - the Start Menu catalog has
+        // ids like "21996" that must reach the backend as strings.
+        el.onchange = () => { const v = el.value; set(root, p, el.hasAttribute('data-str') || isNaN(v) || v === '' ? v : Number(v)); commit(path); };
+      } else if (el.type === 'number') {
+        if (document.activeElement !== el) el.value = cur ?? '';
+        el.onchange = () => {
+          const v = el.value.trim();
+          if (v !== '') { set(root, p, Number(v)); commit(path); }
+        };
       }
     });
   }
@@ -845,8 +875,68 @@
       if (el.tagName === 'SELECT') el.disabled = !on;
       else { el.tabIndex = on ? 0 : -1; el.setAttribute('aria-disabled', String(!on)); }
     }
+    // Daily auto-update writes into the active theme's own file — with no anchored
+    // theme there is nothing to overwrite, so the switch stays inert.
+    const au = document.querySelector('[data-bind="themeAutoUpdateDaily"]');
+    const hasTheme = !!state.settings.activeThemePath;
+    au.closest('.card').classList.toggle('disabled', !hasTheme);
+    au.tabIndex = hasTheme ? 0 : -1;
+    au.setAttribute('aria-disabled', String(!hasTheme));
     renderChameleonDependent();
     renderPeekHotkey();
+  }
+
+  // Start Menu Style options arrive with each state push ({id, label} only -
+  // the converted theme payload never leaves the backend). Rebuilt only when
+  // the id list changes so an in-progress pick isn't clobbered; the native
+  // engine applies it inside StartMenuExperienceHost.
+  function renderStartMenuStyles(m) {
+    const sel = document.getElementById('startMenuStyleSel');
+    const opts = m.startMenuStyles || [];
+    const sig = opts.map(o => o.id).join('');
+    if (sel.dataset.opts !== sig) {
+      sel.dataset.opts = sig;
+      sel.replaceChildren(...opts.map(o => {
+        const e = document.createElement('option');
+        e.value = o.id;
+        e.textContent = o.label;
+        return e;
+      }));
+    }
+  }
+
+  // Taskbar Style — the same {id, label}-only contract; the resident
+  // pecofence_tap.dll applies it inside explorer.exe.
+  function renderTaskbarStyles(m) {
+    const sel = document.getElementById('taskbarStyleSel');
+    const opts = m.taskbarStyles || [];
+    const sig = opts.map(o => o.id).join('');
+    if (sel.dataset.opts !== sig) {
+      sel.dataset.opts = sig;
+      sel.replaceChildren(...opts.map(o => {
+        const e = document.createElement('option');
+        e.value = o.id;
+        e.textContent = o.label;
+        return e;
+      }));
+    }
+  }
+
+  // Notification Center Style — the same {id, label}-only contract; the
+  // resident applies it inside ShellExperienceHost.exe/ShellHost.exe.
+  function renderNotificationCenterStyles(m) {
+    const sel = document.getElementById('notificationCenterStyleSel');
+    const opts = m.notificationCenterStyles || [];
+    const sig = opts.map(o => o.id).join('');
+    if (sel.dataset.opts !== sig) {
+      sel.dataset.opts = sig;
+      sel.replaceChildren(...opts.map(o => {
+        const e = document.createElement('option');
+        e.value = o.id;
+        e.textContent = o.label;
+        return e;
+      }));
+    }
   }
 
   // 速览栅栏 › 快捷键: the box records the next combination, the host checks it, tries
@@ -1097,6 +1187,9 @@
         if (prop === 'titleColor') { ensureOption(el, /^[0-9A-F]{6}$/i.test(value) ? value : '', t("自定义 #") + value); el.querySelector('[value=tint]').disabled = !f.tint; el.closest('.card').querySelector('.s').hidden = !!f.tint; }
         el.value = value;
         el.onchange = () => setFence(f.id, prop, prop === 'iconSize' ? Number(el.value) : colourProp ? (el.value || null) : el.value);
+      } else if (el.tagName === 'INPUT' && el.type === 'number') {
+        if (document.activeElement !== el) el.value = cur ?? '';
+        el.onchange = () => { const v = el.value.trim(); if (v !== '') setFence(f.id, prop, Number(v)); };
       } else if (el.tagName === 'INPUT') {
         if (document.activeElement !== el) el.value = cur;
         el.onchange = () => { const v = el.value.trim(); if (v && v !== f.title) setFence(f.id, prop, v); else el.value = f.title; };
@@ -1353,8 +1446,6 @@
   document.getElementById('applyRulesForce').onclick = () => send({ type: 'action', name: 'applyRulesForce' });
   document.querySelectorAll('#templates [data-template]').forEach(b => { b.onclick = () => send({ type: 'action', name: 'addTemplate', template: b.dataset.template }); });
   document.getElementById('themeSave').onclick = () => { const n = document.getElementById('themeName').value; send({ type: 'action', name: 'saveSetup', themeName: n }); document.getElementById('themeName').value = ''; };
-  document.getElementById('cfgExport').onclick = () => send({ type: 'action', name: 'exportConfig' });
-  document.getElementById('cfgImport').onclick = () => send({ type: 'action', name: 'importConfig' });
   document.getElementById('swapDo').onclick = () => { const a = document.getElementById('swapA').value, b = document.getElementById('swapB').value; if (a && b && a !== b) send({ type: 'action', name: 'swapMonitors', a, b }); else toast(t("请选择两个不同的显示器"), true); };
   function renderLayout() {
     // One gallery for every saved state: .peco themes carry their preview.jpg as the card
@@ -1364,7 +1455,9 @@
     const focus = focusBookmark(gg);
     const items = [
       ...(state.themes || []).map(x => ({ kind: 'theme', ...x })),
-      ...(state.snapshots || []).map(x => ({ kind: 'snapshot', ...x })),
+      // Automatic "…前" backup snapshots are an internal undo slot, not a theme —
+      // "One Theme = One File" keeps them out of the gallery entirely.
+      ...(state.snapshots || []).filter(x => !x.isAutoBackup).map(x => ({ kind: 'snapshot', ...x })),
     ].sort((a, b) => (b.ts || 0) - (a.ts || 0));
     gg.innerHTML = items.length ? '' : `<div class="theme-empty">${esc(t("尚无已保存的主题或快照"))}</div>`;
     items.forEach(it => {
@@ -1415,21 +1508,6 @@
     const opts = mons.map(m => `<option value="${esc(m.id)}">${esc(m.label)}</option>`).join('');
     const a = document.getElementById('swapA'), b = document.getElementById('swapB');
     if (a.innerHTML !== opts) { a.innerHTML = opts; b.innerHTML = opts; if (mons.length >= 2) b.selectedIndex = 1; }
-    const bl = document.getElementById('backupList');
-    const backupFocus = focusBookmark(bl);
-    const backups = state.backups || [];
-    bl.innerHTML = backups.length ? '' : `<div class="card"><div class="s">${esc(t("尚无每日备份"))}</div></div>`;
-    backups.forEach(bk => {
-      const div = document.createElement('div');
-      div.className = 'card';
-      div.dataset.rowId = bk.path;
-      div.innerHTML = `<div class="l"><div><div class="t">${esc(bk.name)}</div><div class="s">${esc(t("每日自动备份"))}</div></div></div>
-        <div class="actions"><button data-act="restore">${esc(t("恢复"))}</button></div>`;
-      div.querySelector('[data-act=restore]').onclick = () => send({ type: 'action', name: 'restoreBackup', path: bk.path });
-      div.querySelector('[data-act=restore]').setAttribute('aria-label', t("恢复备份：") + bk.name);
-      bl.appendChild(div);
-    });
-    restoreFocus(bl, backupFocus);
   }
   document.getElementById('openCfg').onclick = () => send({ type: 'action', name: 'openConfigFolder' });
   document.getElementById('pickVideoWallpaper').onclick = () => send({ type: 'action', name: 'pickVideoWallpaper' });
@@ -1444,6 +1522,7 @@
   document.getElementById('starRepo').onclick = () => send({ type: 'action', name: 'openRepository' });
   document.getElementById('openManual').onclick = () => send({ type: 'action', name: 'openManual' });
   document.getElementById('repairIcons').onclick = () => send({ type: 'action', name: 'repairIcons' });
+  document.getElementById('restartExplorer').onclick = () => send({ type: 'action', name: 'restartExplorer' });
 
   // 关于 → 更新: an installed copy downloads and runs the new setup, a ZIP opens the release page.
   let update = null;
@@ -1583,6 +1662,9 @@
       document.getElementById('rateStore').hidden = !m.storeEdition;
       renderWorkspaceSummary(m.fences.length, m.itemCount);
       document.getElementById('cfgPath').textContent = m.configPath;
+      renderStartMenuStyles(m);
+      renderTaskbarStyles(m);
+      renderNotificationCenterStyles(m);
       bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
       update = m.update; renderUpdate();
       // Transitions come on a frame after this state has been drawn: a single frame would style
@@ -1596,6 +1678,14 @@
     else if (m.type === 'feedbackInfo') { fbInfo = m; fbCrash ||= !!m.crashed; renderFeedback(); }
     else if (m.type === 'showFeedback') showFeedback(!!m.crash);
     else if (m.type === 'toast') toast(m.text, !!m.error);
+    else if (m.type === 'themeSwitchPrompt') {
+      // Dirty-switch dialog: the backend intercepted a gallery Apply; the decision goes
+      // back as themeSwitchDecision {save|discard|cancel}.
+      pendingThemeSwitch = m.path;
+      const veil = document.getElementById('themeSwitchVeil');
+      veil.hidden = false;
+      document.getElementById('tswSave').focus();
+    }
     else if (m.type === 'update') { update = m.update; renderUpdate(); }
     else if (m.type === 'peekHotkeyResult') {
       // Saved: recording is over (the host registered the new shortcut). Refused: the page
@@ -1605,6 +1695,19 @@
       renderPeekHotkey();
     }
   });
+  // Dirty-switch dialog wiring: one pending path, three explicit outcomes.
+  let pendingThemeSwitch = null;
+  const tswVeil = document.getElementById('themeSwitchVeil');
+  const tswDecide = decision => {
+    const path = pendingThemeSwitch;
+    pendingThemeSwitch = null;
+    tswVeil.hidden = true;
+    if (decision !== 'cancel' && path) send({ type: 'action', name: 'themeSwitchDecision', decision, path });
+  };
+  document.getElementById('tswSave').onclick = () => tswDecide('save');
+  document.getElementById('tswDiscard').onclick = () => tswDecide('discard');
+  document.getElementById('tswCancel').onclick = () => tswDecide('cancel');
+  tswVeil.addEventListener('keydown', e => { if (e.key === 'Escape') tswDecide('cancel'); });
   send({ type: 'ready' });
 })();
 </script>

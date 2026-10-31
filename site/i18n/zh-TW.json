@@ -43,7 +43,7 @@
   "detail.space.title": "要用時展開，不用時收合",
   "detail.space.text": "把圍欄收合成一條標題列，滑鼠停留就展開；也可以鎖定已經擺好的位置與大小。",
   "detail.back.title": "喜歡的配置留得住",
-  "detail.back.text": "儲存配置快照、每日自動備份、匯入匯出設定、交換兩個顯示器上的圍欄。",
+  "detail.back.text": "儲存配置快照、可攜式 .peco 主題、匯入匯出設定、交換兩個顯示器上的圍欄。",
   "detail.footprint.title": "輕巧地待在桌面上",
   "detail.footprint.text": "以 Rust 撰寫的原生應用程式，設定面板要開啟時才載入 WebView2。",
   "detail.safe.title": "檔案還是你的檔案",

@@ -3,6 +3,8 @@
 //! A `.peco` file is an uncompressed (`STORE`, method = 0) ZIP archive containing:
 //! - `config.json`: all current fences, exact coordinates, sizes, and visual settings.
 //! - `background.<ext>`: the background media file (image or H.264 `.mp4` video).
+//! - `theme.json`: adaptive-engine metadata (source monitor canvas, per-fence asset
+//!   coordinates) — absent in archives written before the engine existed.
 //! - `preview.jpg`: a generated thumbnail of the desktop layout.
 
 use crate::model::{Config, ThemeStyle};
@@ -32,6 +34,8 @@ pub struct ExtractedPecoTheme {
     pub config_path: PathBuf,
     pub background_path: Option<PathBuf>,
     pub preview_path: Option<PathBuf>,
+    /// `theme.json`, when the archive carries adaptive-engine metadata.
+    pub meta: Option<crate::adaptive::ThemeMeta>,
 }
 
 /// Standard IEEE 802.3 CRC-32 used by ZIP headers.
@@ -220,15 +224,20 @@ pub fn unpack_uncompressed_zip(archive: &[u8]) -> Result<Vec<PecoArchiveEntry>, 
     Ok(entries)
 }
 
-/// Writes a `.peco` theme archive containing `config.json`, optional `background.<ext>`, and `preview.jpg`.
+/// Writes a `.peco` theme archive containing `config.json`, optional `theme.json`,
+/// optional `background.<ext>`, and `preview.jpg`.
 pub fn write_peco_file(
     path: &Path,
     config_json: &str,
+    meta_json: Option<&str>,
     background: Option<(&str, &[u8])>,
     preview_jpg: &[u8],
 ) -> io::Result<()> {
-    let mut entries: Vec<(&str, &[u8])> = Vec::with_capacity(3);
+    let mut entries: Vec<(&str, &[u8])> = Vec::with_capacity(4);
     entries.push(("config.json", config_json.as_bytes()));
+    if let Some(meta) = meta_json {
+        entries.push(("theme.json", meta.as_bytes()));
+    }
     if let Some((bg_name, bg_bytes)) = background {
         entries.push((bg_name, bg_bytes));
     }
@@ -389,11 +398,17 @@ pub fn extract_peco_to_temp(peco_path: &Path) -> Result<ExtractedPecoTheme, Stri
     let mut config_path = None;
     let mut background_path = None;
     let mut preview_path = None;
+    let mut meta = None;
 
     for entry in entries {
+        let lower = entry.name.to_ascii_lowercase();
+        // theme.json is parsed from memory — nothing on disk needs it.
+        if lower == "theme.json" {
+            meta = serde_json::from_slice(&entry.data).ok();
+            continue;
+        }
         let dest = temp_dir.join(&entry.name);
         fs::write(&dest, &entry.data).map_err(|e| e.to_string())?;
-        let lower = entry.name.to_ascii_lowercase();
         if lower == "config.json" {
             config_path = Some(dest);
         } else if lower == "preview.jpg" || lower == "preview.jpeg" {
@@ -413,6 +428,7 @@ pub fn extract_peco_to_temp(peco_path: &Path) -> Result<ExtractedPecoTheme, Stri
         config_path,
         background_path,
         preview_path,
+        meta,
     })
 }
 
@@ -575,6 +591,60 @@ mod tests {
         fs::write(&peco, &packed).unwrap();
         let preview = read_peco_preview(&peco).expect("preview entry");
         assert_eq!(preview, jpg);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Adaptive metadata: `theme.json` survives write → extract, and archives without it
+    /// (everything written before the engine existed) read `meta == None` — the apply path
+    /// then falls back to remapped geometry.
+    #[test]
+    fn theme_meta_roundtrips_and_legacy_reads_none() {
+        let cfg_json = r#"{"schemaVersion":1}"#;
+        let meta = crate::adaptive::ThemeMeta {
+            source: Some(crate::adaptive::SourceCanvas {
+                resolution: [3840, 2160],
+                dpi: 192,
+                bg_rect: [0, 0, 3840, 2160],
+                asset: Some([1920, 1080]),
+            }),
+            canvas: [(
+                "fence-1".to_string(),
+                crate::adaptive::NormRect {
+                    x: 0.25,
+                    y: 0.5,
+                    w: 0.5,
+                    h: 0.25,
+                },
+            )]
+            .into_iter()
+            .collect(),
+            canvas_space: crate::adaptive::CanvasSpace::Media,
+        };
+        let meta_json = serde_json::to_string(&meta).unwrap();
+        let dir = std::env::temp_dir().join(format!("peco-meta-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+
+        let with_meta = dir.join("with-meta.peco");
+        write_peco_file(
+            &with_meta,
+            cfg_json,
+            Some(&meta_json),
+            None,
+            b"\xFF\xD8\xFF\xE0p",
+        )
+        .unwrap();
+        let ex = extract_peco_to_temp(&with_meta).unwrap();
+        let got = ex.meta.expect("theme.json parsed");
+        assert_eq!(got.source.as_ref().unwrap().resolution, [3840, 2160]);
+        assert_eq!(got.source.as_ref().unwrap().dpi, 192);
+        assert_eq!(got.canvas["fence-1"].w, 0.5);
+        let _ = fs::remove_dir_all(&ex.temp_dir);
+
+        let legacy = dir.join("legacy.peco");
+        write_peco_file(&legacy, cfg_json, None, None, b"\xFF\xD8\xFF\xE0p").unwrap();
+        let ex = extract_peco_to_temp(&legacy).unwrap();
+        assert!(ex.meta.is_none());
+        let _ = fs::remove_dir_all(&ex.temp_dir);
         let _ = fs::remove_dir_all(&dir);
     }
 

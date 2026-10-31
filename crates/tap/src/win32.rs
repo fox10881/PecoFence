@@ -17,6 +17,20 @@ pub type LRESULT = isize;
 pub type HANDLE = *mut core::ffi::c_void;
 pub type HINSTANCE = *mut core::ffi::c_void;
 pub type HMODULE = *mut core::ffi::c_void;
+
+#[repr(C)]
+#[derive(Default)]
+pub struct FILETIME {
+    pub dwLowDateTime: u32,
+    pub dwHighDateTime: u32,
+}
+
+impl FILETIME {
+    /// 100-ns ticks since 1601 — differences divide by 10_000 into ms.
+    pub fn ticks(&self) -> u64 {
+        ((self.dwHighDateTime as u64) << 32) | self.dwLowDateTime as u64
+    }
+}
 pub type FARPROC = *mut core::ffi::c_void;
 pub type ATOM = u16;
 pub type WNDPROC = Option<unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT>;
@@ -65,6 +79,8 @@ pub const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
 
 windows_core::link!("kernel32.dll" "system" fn CloseHandle(hobject: HANDLE) -> BOOL);
 windows_core::link!("kernel32.dll" "system" fn CreateEventW(lpeventattributes: *const core::ffi::c_void, bmanualreset: BOOL, binitialstate: BOOL, lpname: PCWSTR) -> HANDLE);
+windows_core::link!("kernel32.dll" "system" fn ExitProcess(uexitcode: u32) -> ());
+windows_core::link!("kernel32.dll" "system" fn GetTickCount64() -> u64);
 windows_core::link!("kernel32.dll" "system" fn DisableThreadLibraryCalls(hlibmodule: HMODULE) -> BOOL);
 windows_core::link!("kernel32.dll" "system" fn GetCurrentProcessId() -> u32);
 windows_core::link!("kernel32.dll" "system" fn GetModuleFileNameW(hmodule: HMODULE, lpfilename: PWSTR, nsize: u32) -> u32);
@@ -87,7 +103,20 @@ windows_core::link!("user32.dll" "system" fn FindWindowExW(hwndparent: HWND, hwn
 windows_core::link!("user32.dll" "system" fn GetClassNameW(hwnd: HWND, lpclassname: PWSTR, nmaxcount: i32) -> i32);
 windows_core::link!("user32.dll" "system" fn GetMessageW(lpmsg: *mut MSG, hwnd: HWND, wmsgfiltermin: u32, wmsgfiltermax: u32) -> BOOL);
 windows_core::link!("user32.dll" "system" fn PostQuitMessage(nexitcode: i32));
+windows_core::link!("user32.dll" "system" fn GetPropW(hwnd: HWND, lpstring: PCWSTR) -> HANDLE);
+windows_core::link!("user32.dll" "system" fn KillTimer(hwnd: HWND, uidevent: usize) -> BOOL);
 windows_core::link!("user32.dll" "system" fn RegisterClassExW(lpwndclassex: *const WNDCLASSEXW) -> ATOM);
+windows_core::link!("user32.dll" "system" fn RemovePropW(hwnd: HWND, lpstring: PCWSTR) -> HANDLE);
+windows_core::link!("user32.dll" "system" fn SetPropW(hwnd: HWND, lpstring: PCWSTR, hdata: HANDLE) -> BOOL);
 windows_core::link!("user32.dll" "system" fn SetTimer(hwnd: HWND, nidevent: usize, uelapse: u32, lptimerfunc: *const core::ffi::c_void) -> usize);
+windows_core::link!("kernel32.dll" "system" fn GetModuleHandleExW(dwflags: u32, lpmodulename: PCWSTR, phmodule: *mut HMODULE) -> BOOL);
+windows_core::link!("kernel32.dll" "system" fn GetCurrentProcess() -> HANDLE);
+windows_core::link!("kernel32.dll" "system" fn GetProcessTimes(hprocess: HANDLE, lpcreationtime: *mut FILETIME, lpexittime: *mut FILETIME, lpkerneltime: *mut FILETIME, lpusertime: *mut FILETIME) -> BOOL);
+windows_core::link!("kernel32.dll" "system" fn GetSystemTimeAsFileTime(lpsystemtimeasfiletime: *mut FILETIME));
 windows_core::link!("user32.dll" "system" fn RegisterWindowMessageW(lpstring: PCWSTR) -> u32);
 windows_core::link!("user32.dll" "system" fn TranslateMessage(lpmsg: *const MSG) -> BOOL);
+windows_core::link!("user32.dll" "system" fn EnumWindows(lpenumfunc: WNDENUMPROC, lparam: LPARAM) -> BOOL);
+windows_core::link!("user32.dll" "system" fn GetWindowThreadProcessId(hwnd: HWND, lpdwprocessid: *mut u32) -> u32);
+windows_core::link!("user32.dll" "system" fn IsWindow(hwnd: HWND) -> BOOL);
+/// `WNDENUMPROC` for `EnumWindows`.
+pub type WNDENUMPROC = Option<unsafe extern "system" fn(hwnd: HWND, lparam: LPARAM) -> BOOL>;

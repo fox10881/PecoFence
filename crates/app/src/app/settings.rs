@@ -56,6 +56,8 @@ pub(super) enum ConfigSource {
     Import,
     Backup,
     Theme,
+    /// The last theme re-fitted on a contain/cover switch — same machinery, its own toast.
+    Retune,
 }
 
 impl ConfigSource {
@@ -64,21 +66,14 @@ impl ConfigSource {
             Self::Import => pecofence_core::i18n::text("已导入配置"),
             Self::Backup => pecofence_core::i18n::text("已恢复备份"),
             Self::Theme => pecofence_core::i18n::text("已导入主题"),
+            Self::Retune => pecofence_core::i18n::text("已应用背景显示方式"),
         }
     }
 
     fn before(self) -> &'static str {
         match self {
-            Self::Import | Self::Theme => pecofence_core::i18n::text("导入配置前"),
+            Self::Import | Self::Theme | Self::Retune => pecofence_core::i18n::text("导入配置前"),
             Self::Backup => pecofence_core::i18n::text("恢复备份前"),
-        }
-    }
-
-    /// The i18n key stored as the auto backup's `name`; display layers localize it on read.
-    fn before_key(self) -> &'static str {
-        match self {
-            Self::Import | Self::Theme => "导入配置前",
-            Self::Backup => "恢复备份前",
         }
     }
 }
@@ -182,6 +177,11 @@ impl App {
         if pecofence_platform::process::is_packaged() {
             new_settings.autostart = old_settings.autostart;
         }
+        if !matches!(source, ConfigSource::Theme | ConfigSource::Retune) {
+            // A plain config import/backup restore severs the link to whatever theme
+            // described the old setup — never trust a path a foreign file carried.
+            new_settings.active_theme_path = None;
+        }
         self.sync_desktop_if_available("config adopted");
         // `.peco` manifests bind fence contents to this desktop's actual files (names that
         // match nothing are dropped); a theme's folder portal whose directory is missing
@@ -190,8 +190,10 @@ impl App {
             .into_iter()
             .flatten()
             .collect();
-        self.state
-            .bind_theme_members(&desktop_dirs, matches!(source, ConfigSource::Theme));
+        self.state.bind_theme_members(
+            &desktop_dirs,
+            matches!(source, ConfigSource::Theme | ConfigSource::Retune),
+        );
         self.relayout_from_state();
         // The file's portals need enumerating; runtime state of the replaced ones is pruned.
         self.refresh_portals();
@@ -209,80 +211,6 @@ impl App {
         self.state.save_if_dirty();
         self.push_settings_state();
         self.settings_toast(source.done());
-    }
-
-    pub(super) fn export_config(&mut self) {
-        let owner = self.settings.as_ref().map(|h| h.hwnd());
-        let name = format!(
-            "pecofence-{}.json",
-            pecofence_core::config_store::today_yyyy_mm_dd()
-        );
-        match pecofence_platform::filedialog::save_json(
-            owner,
-            pecofence_core::i18n::text("导出 PecoFence 配置"),
-            &name,
-        ) {
-            Ok(Some(path)) => {
-                self.state.save_if_dirty();
-                match pecofence_core::ConfigStore::export_to(&self.state.config, &path) {
-                    Ok(()) => self.settings_toast(&pecofence_core::i18n::format(
-                        "已导出到 {0}",
-                        &[format!("{}", path.display())],
-                    )),
-                    Err(e) => self.settings_error(&pecofence_core::i18n::format(
-                        "导出失败：{0}",
-                        &[e.to_string()],
-                    )),
-                }
-            }
-            Ok(None) => {}
-            Err(e) => self.settings_error(&pecofence_core::i18n::format(
-                "无法打开保存对话框：{0}",
-                &[e.to_string()],
-            )),
-        }
-    }
-
-    pub(super) fn import_config(&mut self) {
-        let owner = self.settings.as_ref().map(|h| h.hwnd());
-        match pecofence_platform::filedialog::open_json(
-            owner,
-            pecofence_core::i18n::text("导入 PecoFence 配置"),
-        ) {
-            Ok(Some(path)) => self.restore_from_file(&path, ConfigSource::Import),
-            Ok(None) => {}
-            Err(e) => self.settings_error(&pecofence_core::i18n::format(
-                "无法打开文件对话框：{0}",
-                &[e.to_string()],
-            )),
-        }
-    }
-
-    pub(super) fn restore_from_file(&mut self, path: &std::path::Path, source: ConfigSource) {
-        match self.state.parse_import_file(path) {
-            Ok(cfg) => {
-                // Keep a snapshot of what we are replacing so the step can be undone — the
-                // fixed-id auto backup slot overwrites itself, so only a first-time slot
-                // needs room. A list full of the user's own snapshots has none, so nothing
-                // is replaced.
-                let has_slot = self
-                    .state
-                    .config
-                    .snapshots
-                    .iter()
-                    .any(|s| s.id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID);
-                if !has_slot && !auto_snapshot_room(&mut self.state.config.snapshots, None) {
-                    self.settings_error(&snapshot_limit_text());
-                    return;
-                }
-                self.state.save_restore_backup(source.before_key());
-                self.adopt_config(cfg, source);
-            }
-            Err(e) => self.settings_error(&pecofence_core::i18n::format(
-                "无法使用此文件：{0}",
-                std::slice::from_ref(&e),
-            )),
-        }
     }
 
     pub(super) fn open_settings(&mut self) {
@@ -380,17 +308,6 @@ impl App {
                 })
             })
             .collect();
-        let backups: Vec<serde_json::Value> = self
-            .state
-            .backup_files()
-            .iter()
-            .map(|p| {
-                serde_json::json!({
-                    "path": p.to_string_lossy(),
-                    "name": p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
-                })
-            })
-            .collect();
         let themes = self.themes_json();
         let monitors: Vec<serde_json::Value> = self
             .monitor_labels()
@@ -410,7 +327,6 @@ impl App {
             "rules": self.state.config.rules,
             "fences": fences,
             "snapshots": snapshots,
-            "backups": backups,
             "themes": themes,
             "monitors": monitors,
             "tintPalette": fence_options::tint_palette_json(),
@@ -423,6 +339,14 @@ impl App {
             "accent": accent,
             "update": self.update_json(),
             "peekHotkey": self.peek_hotkey_json(),
+            "themeDirty": self.theme_dirty.get(),
+            // Start Menu Style dropdown: only {id, label} reach the page — the
+            // converted rule payload stays behind start_menu_themes::theme().
+            "startMenuStyles": pecofence_core::start_menu_themes::style_options_json(),
+            // Taskbar Style dropdown — same isolation for the taskbar catalog.
+            "taskbarStyles": pecofence_core::taskbar_themes::style_options_json(),
+            // Notification Center Style dropdown — same isolation again.
+            "notificationCenterStyles": pecofence_core::notification_center_themes::style_options_json(),
         })
         .to_string()
     }
@@ -654,7 +578,23 @@ impl App {
                 }
                 Some("applyTheme") => {
                     if let Some(p) = v.get("path").and_then(|p| p.as_str()) {
-                        self.apply_theme_from_library(Path::new(p));
+                        self.request_theme_switch(Path::new(p));
+                    }
+                }
+                Some("themeSwitchDecision") => {
+                    let decision = v.get("decision").and_then(|d| d.as_str()).unwrap_or("");
+                    let path = v.get("path").and_then(|p| p.as_str()).map(PathBuf::from);
+                    match (decision, path) {
+                        ("save", Some(p)) => {
+                            // Save the live state into the ACTIVE theme's archive first,
+                            // then switch — the file keeps its name, nothing is appended.
+                            if !self.overwrite_active_theme() {
+                                return;
+                            }
+                            self.apply_theme_from_library(&p);
+                        }
+                        ("discard", Some(p)) => self.apply_theme_from_library(&p),
+                        _ => {} // "cancel" (or a malformed message) leaves everything as is
                     }
                 }
                 Some("saveSetup") => {
@@ -804,17 +744,6 @@ impl App {
                         self.swap_monitors(&a, &b);
                     }
                 }
-                Some("exportConfig") => self.export_config(),
-                Some("importConfig") => self.import_config(),
-                Some("restoreBackup") => {
-                    if let Some(p) = v.get("path").and_then(|p| p.as_str()) {
-                        let path = PathBuf::from(p);
-                        // Only files from our own backups folder.
-                        if self.state.backup_files().contains(&path) {
-                            self.restore_from_file(&path, ConfigSource::Backup);
-                        }
-                    }
-                }
                 Some(name @ ("feedbackInfo" | "feedbackResult")) => {
                     self.on_feedback_action(name, &v);
                 }
@@ -832,6 +761,13 @@ impl App {
                     } else {
                         self.resume_peek_hotkey();
                     }
+                }
+                Some("restartExplorer") => {
+                    // Failsafe for a stuck taskbar/desktop: kill the shell and
+                    // let Windows' own respawn (or our detached spawn) bring it
+                    // back — the anchor tick then re-injects and re-styles it.
+                    self.settings_toast(pecofence_core::i18n::text("正在重启资源管理器…"));
+                    std::thread::spawn(pecofence_platform::tap::restart_explorer);
                 }
                 Some("repairIcons") => self.set_desktop_icons_hidden(false),
                 Some("hideDesktopIcons") => self.set_desktop_icons_hidden(true),
@@ -952,17 +888,39 @@ impl App {
                 "桌面图标状态未能更改，请稍后重试。",
             ));
         }
-        if new.taskbar_mode != old.taskbar_mode {
-            let mode = match new.taskbar_mode {
-                TaskbarMode::Normal => pecofence_platform::tap::TapMode::Normal,
-                TaskbarMode::Clear => pecofence_platform::tap::TapMode::Clear,
-                TaskbarMode::Blur => pecofence_platform::tap::TapMode::Blur,
-                TaskbarMode::Opaque => pecofence_platform::tap::TapMode::Opaque,
-            };
-            if !pecofence_platform::tap::apply(mode) {
-                new.taskbar_mode = old.taskbar_mode;
+        if new.start_menu_style != old.start_menu_style {
+            // The dropdown only offers catalog ids; an unknown id here means a
+            // hand-edited patchSettings — same treatment as a failed write.
+            let id = new.start_menu_style.as_str();
+            let applied = pecofence_core::start_menu_themes::is_style_id(id)
+                && pecofence_platform::start_menu::apply_start_menu_theme(id);
+            if !applied {
+                new.start_menu_style.clone_from(&old.start_menu_style);
                 self.settings_error(pecofence_core::i18n::text(
-                    "任务栏状态未能更改，请稍后重试。",
+                    "开始菜单样式未能更改，请稍后重试。",
+                ));
+            }
+        }
+        if new.taskbar_style != old.taskbar_style {
+            let id = new.taskbar_style.as_str();
+            let applied = pecofence_core::taskbar_themes::is_style_id(id)
+                && pecofence_platform::taskbar_styler::apply(id);
+            if !applied {
+                new.taskbar_style.clone_from(&old.taskbar_style);
+                self.settings_error(pecofence_core::i18n::text(
+                    "任务栏样式未能更改，请稍后重试。",
+                ));
+            }
+        }
+        if new.notification_center_style != old.notification_center_style {
+            let id = new.notification_center_style.as_str();
+            let applied = pecofence_core::notification_center_themes::is_style_id(id)
+                && pecofence_platform::notification_center::apply(id);
+            if !applied {
+                new.notification_center_style
+                    .clone_from(&old.notification_center_style);
+                self.settings_error(pecofence_core::i18n::text(
+                    "通知中心样式未能更改，请稍后重试。",
                 ));
             }
         }
@@ -1061,6 +1019,7 @@ impl App {
         let push_changed = new.roll_up.push_neighbors != old.roll_up.push_neighbors;
         let inbox_hiding_changed =
             new.hide_inbox_when_icons_shown != old.hide_inbox_when_icons_shown;
+        let fit_changed = new.contain_background != old.contain_background;
         // 「调整大小时按整行整列对齐」 switched on keeps every rectangle: the rows fill any
         // height with whole icons (redrawn above), and rounding would undo fences lined up.
         self.state.config.settings = new;
@@ -1084,6 +1043,11 @@ impl App {
         if inbox_hiding_changed {
             self.sync_inbox_window();
         }
+        if fit_changed {
+            // Canvas re-anchoring and image refit run here; the video player's
+            // cover/contain restart rides the sync right below.
+            self.retune_background_fit();
+        }
         self.sync_video_wallpaper();
         self.push_settings_state();
     }
@@ -1103,10 +1067,11 @@ impl App {
             return;
         };
         let path = PathBuf::from(&path_str);
+        let letterbox = self.contain_background();
         if self
             .wmf_player
             .as_ref()
-            .is_some_and(|p| p.path() == path && p.is_alive())
+            .is_some_and(|p| p.path() == path && p.is_alive() && p.letterbox() == letterbox)
         {
             return;
         }
@@ -1115,7 +1080,7 @@ impl App {
         if !path.is_file() {
             return;
         }
-        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path) {
+        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path, letterbox) {
             Ok(player) => {
                 self.static_under_video = Self::static_wallpaper_now();
                 self.wmf_player = Some(player);
@@ -1127,6 +1092,53 @@ impl App {
                     "无法使用此文件：{0}",
                     std::slice::from_ref(&error),
                 ));
+            }
+        }
+    }
+
+    /// Self-heal for the desktop video wallpaper: an Explorer restart destroys the
+    /// WorkerW/Progman layer the video window is parented to, so the player thread
+    /// exits while `video_wallpaper_path` still names the file. When the shell is
+    /// back up, `WmfWallpaperPlayer::start` re-runs the `0x052C` WorkerW spawn and
+    /// re-attaches — driven from the periodic `check_wallpaper` so any cause of
+    /// Explorer loss (our Restart Explorer failsafe, a crash, a user taskkill)
+    /// recovers without a settings round-trip. Failures stay quiet: a shell that
+    /// is mid-boot retries on the next poll.
+    pub(super) fn ensure_video_wallpaper(&mut self) {
+        let Some(path_str) = self
+            .state
+            .config
+            .settings
+            .video_wallpaper_path
+            .clone()
+            .filter(|s| !s.is_empty())
+        else {
+            return;
+        };
+        if self.wmf_player.as_ref().is_some_and(|p| p.is_alive()) {
+            return;
+        }
+        // Shell down (GetShellWindow is a live query) — attach would just fail;
+        // the next poll retries once Progman exists again.
+        if pecofence_platform::desktop::shell_window().0.is_null() {
+            return;
+        }
+        self.wmf_player = None;
+        self.static_under_video = None;
+        let path = PathBuf::from(&path_str);
+        if !path.is_file() {
+            return;
+        }
+        let letterbox = self.contain_background();
+        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path, letterbox) {
+            Ok(player) => {
+                self.static_under_video = Self::static_wallpaper_now();
+                self.wmf_player = Some(player);
+                self.capture_live_wallpapers(Duration::ZERO);
+                tracing::info!("wmf video wallpaper re-attached after desktop restart");
+            }
+            Err(error) => {
+                tracing::debug!(%error, "video wallpaper re-attach deferred; shell not ready");
             }
         }
     }
@@ -1241,7 +1253,8 @@ impl App {
         tracing::info!(path = %path.display(), "applying video wallpaper from settings");
         self.wmf_player = None;
         self.static_under_video = None;
-        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(path) {
+        let letterbox = self.contain_background();
+        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(path, letterbox) {
             Ok(player) => {
                 self.static_under_video = Self::static_wallpaper_now();
                 self.wmf_player = Some(player);
@@ -1414,6 +1427,7 @@ impl App {
         &mut self,
         dest: &Path,
         config_json: &str,
+        meta_json: Option<&str>,
         bg_entry: Option<(String, Vec<u8>)>,
         preview_jpg: &[u8],
     ) -> bool {
@@ -1425,8 +1439,13 @@ impl App {
             preview_bytes = preview_jpg.len(),
             "writing .peco archive"
         );
-        match pecofence_core::peco_theme::write_peco_file(dest, config_json, bg_slice, preview_jpg)
-        {
+        match pecofence_core::peco_theme::write_peco_file(
+            dest,
+            config_json,
+            meta_json,
+            bg_slice,
+            preview_jpg,
+        ) {
             Ok(()) => {
                 self.settings_toast(&pecofence_core::i18n::format(
                     "已导出到 {0}",
@@ -1461,9 +1480,21 @@ impl App {
                     .map(|f| (f.width, f.height, f.bgra))
             })
             .flatten();
+        let meta = self.theme_meta(bg.as_deref());
+        let meta_json = meta
+            .source
+            .is_some()
+            .then(|| serde_json::to_string(&meta).ok())
+            .flatten();
         match self.peco_payload(&self.state.config, bg.as_deref(), live) {
             Ok((config_json, bg_entry, preview_jpg)) => {
-                self.write_theme_archive(dest, &config_json, bg_entry, &preview_jpg);
+                self.write_theme_archive(
+                    dest,
+                    &config_json,
+                    meta_json.as_deref(),
+                    bg_entry,
+                    &preview_jpg,
+                );
             }
             Err(e) => self.settings_error(&pecofence_core::i18n::format("导出失败：{0}", &[e])),
         }
@@ -1508,17 +1539,384 @@ impl App {
         dest
     }
 
-    /// Gallery "Save Current Setup": the live configuration becomes a `.peco` in the theme
-    /// library — a card with a generated thumbnail. The active video or wallpaper is always
-    /// embedded; there is no way to save a theme without its background.
-    fn save_theme_to_library(&mut self, name: &str) {
+    /// Adaptive-engine metadata for a `.peco` export: the monitor the theme was captured
+    /// on, where its background asset lands there under the capped fit, and every fence's
+    /// rect normalized onto that asset — so fences re-attach to the same visual feature
+    /// (shelves, frame graphics) wherever the theme is applied. Empty when no bundled
+    /// background can be measured.
+    fn theme_meta(&self, bg_source: Option<&Path>) -> pecofence_core::adaptive::ThemeMeta {
+        use pecofence_core::adaptive as ad;
+        use pecofence_core::geometry;
+        let mut meta = ad::ThemeMeta::default();
+        let areas = &self.state.work_areas;
+        let Some(primary) = areas.first() else {
+            return meta;
+        };
+        // The asset's own pixel size: a live video reports its decoded frame, a file its
+        // WIC/MF header. Best-effort `source.asset` telemetry — a video's drawn rect does
+        // not depend on it at all.
+        let asset = bg_source.and_then(|p| {
+            if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("mp4")) {
+                self.wmf_player
+                    .as_ref()
+                    .and_then(|pl| pl.latest_frame())
+                    .map(|f| (f.width, f.height))
+                    .or_else(|| {
+                        pecofence_platform::wmf_wallpaper::decode_video_first_frame(p)
+                            .ok()
+                            .map(|f| (f.width, f.height))
+                    })
+            } else {
+                pecofence_platform::wallpaper::image_dimensions(p).ok()
+            }
+        });
+        // Media-anchored canvas needs the asset's own pixel dims — without them there is
+        // no media space to normalize against, so the theme ships with no metadata.
+        let Some((aw, ah)) = asset else {
+            return meta;
+        };
+        // Where the asset is actually drawn on a `w x h` monitor (telemetry for
+        // `source.bg_rect`): strict Contain draws the whole frame centered and
+        // uncropped; strict Cover fills the monitor and lets the platform crop it.
+        let contain = self.contain_background();
+        let drawn_rect = |w: u32, h: u32| -> [i32; 4] {
+            if contain {
+                ad::bg_rect(&ad::adaptive_fit(aw, ah, w, h, true), w, h)
+            } else {
+                [0, 0, w as i32, h as i32]
+            }
+        };
+        // The media→monitor transform per panel: cover maps through the symmetric
+        // center crop (media-agnostic — video blit and Windows "Fill" crop alike);
+        // contain maps the whole frame onto the fitted rect.
+        let media_map = |w: u32, h: u32| {
+            if contain {
+                ad::image_map(aw, ah, w, h)
+            } else {
+                ad::video_map(aw, ah, w, h)
+            }
+        };
+        let layout_idx = self.state.config.last_shown().unwrap_or(0);
+        let Some(layout) = self.state.config.layouts.get(layout_idx) else {
+            return meta;
+        };
+        // The "source monitor" is the first fenced monitor — where the shelf art sits;
+        // single-monitor themes collapse to the primary display.
+        let source_area = layout
+            .fences
+            .first()
+            .and_then(|f| geometry::resolve_work_area(&f.geometry, areas))
+            .unwrap_or(primary);
+        let [pw, ph] = source_area.screen_px().map(|v| v.max(0) as u32);
+        meta.source = Some(ad::SourceCanvas {
+            resolution: [pw, ph],
+            dpi: source_area.dpi,
+            bg_rect: drawn_rect(pw, ph),
+            asset: asset.map(|(w, h)| [w, h]),
+        });
+        // Each fence is measured against the media frame: its monitor-relative px rect
+        // runs through the monitor's media→screen map inverted, yielding normalized
+        // media coords glued to asset pixels rather than screen positions.
+        for fence in &layout.fences {
+            let Some(work) = geometry::resolve_work_area(&fence.geometry, areas) else {
+                continue;
+            };
+            let [mw, mh] = work.screen_px().map(|v| v.max(0) as u32);
+            let map = media_map(mw, mh);
+            let px = geometry::window_rect(&fence.geometry, work);
+            let mon = [
+                px.left - work.mon_left,
+                px.top - work.mon_top,
+                px.right - work.mon_left,
+                px.bottom - work.mon_top,
+            ];
+            meta.canvas
+                .insert(fence.id.to_string(), ad::to_media_canvas(mon, &map, aw, ah));
+        }
+        meta.canvas_space = ad::CanvasSpace::Media;
+        meta
+    }
+
+    /// Adaptive theme import: maps each fence's stored coordinate onto its target
+    /// monitor — media-anchored themes invert the monitor's media→screen transform so
+    /// fences land on the same asset pixel across crops; legacy screen-anchored themes
+    /// map onto the drawn asset rect. Then the hardcoded spacing compensation runs.
+    /// Returns the measured asset size so the caller can composite pillarboxed
+    /// wallpapers; `None` when the theme carries no usable canvas (legacy files fall
+    /// through to the ordinary path).
+    fn apply_adaptive_layout(
+        &mut self,
+        cfg: &mut pecofence_core::Config,
+        meta: &pecofence_core::adaptive::ThemeMeta,
+        bg: Option<&Path>,
+        is_video: bool,
+    ) -> Option<(u32, u32)> {
+        use pecofence_core::adaptive as ad;
+        let source = meta.source.as_ref()?;
+        let media_anchored = meta.canvas_space == ad::CanvasSpace::Media;
+        // Media-anchored coords need the asset's own dims — probe the bundled file,
+        // then the dims saved in the metadata. A screen-anchored video needs none (the
+        // monitor itself is the canvas); images always need them for the capped fit.
+        let meta_asset = source.asset.map(|[w, h]| (w, h));
+        let asset = if is_video {
+            bg.and_then(|p| {
+                pecofence_platform::wmf_wallpaper::decode_video_first_frame(p)
+                    .ok()
+                    .map(|f| (f.width, f.height))
+            })
+            .or(meta_asset)
+        } else {
+            bg.and_then(|p| pecofence_platform::wallpaper::image_dimensions(p).ok())
+                .or(meta_asset)
+        };
+        if asset.is_none() && (!is_video || media_anchored) {
+            return None;
+        }
+        let areas = &self.state.work_areas;
+        let contain = self.contain_background();
+        // Canvas re-anchoring (screen space only): themes saved while the drawn rect
+        // meant something else — the capped hybrid fit, or a letterboxed video's
+        // contain rect — carry normalized coords against that rect. `source.bg_rect`
+        // records the rect the canvas was built on; when it disagrees with what the
+        // media truly draws now (the whole source monitor in Cover, the contain rect
+        // in Contain), renormalize each entry through px first so old archives land
+        // correctly.
+        let src_fix = if !media_anchored {
+            let res = source.resolution;
+            let true_src = if contain {
+                asset.map(|(aw, ah)| {
+                    ad::bg_rect(
+                        &ad::adaptive_fit(aw, ah, res[0], res[1], true),
+                        res[0],
+                        res[1],
+                    )
+                })
+            } else {
+                Some([0, 0, res[0] as i32, res[1] as i32])
+            };
+            true_src.and_then(|t| (source.bg_rect != t).then_some((source.bg_rect, t)))
+        } else {
+            None
+        };
+        let mut placed = 0usize;
+        for layout in &mut cfg.layouts {
+            for fence in &mut layout.fences {
+                let Some(n) = meta.canvas.get(&fence.id.to_string()).copied() else {
+                    continue;
+                };
+                let Some(work) =
+                    pecofence_core::geometry::resolve_work_area(&fence.geometry, areas)
+                else {
+                    continue;
+                };
+                let [mw, mh] = work.screen_px().map(|v| v.max(0) as u32);
+                let px = if media_anchored {
+                    // Media-anchored: invert the monitor's media→screen map so the fence
+                    // lands on the same media pixel — shelves keep their fences across
+                    // crops. A fence whose media region this panel crops out clamps
+                    // onto the nearest edge instead of going off-screen.
+                    let (aw, ah) = asset.unwrap_or((1, 1));
+                    let map = if contain {
+                        ad::image_map(aw, ah, mw, mh)
+                    } else {
+                        ad::video_map(aw, ah, mw, mh)
+                    };
+                    let r = ad::from_media_canvas(n, &map, aw, ah);
+                    let (w, h) = ((r[2] - r[0]).max(8), (r[3] - r[1]).max(8));
+                    let l = r[0].clamp(0, (mw as i32 - w).max(0));
+                    let t = r[1].clamp(0, (mh as i32 - h).max(0));
+                    [l, t, l + w.min(mw as i32), t + h.min(mh as i32)]
+                } else {
+                    let n = match src_fix {
+                        Some((old_bg, new_bg)) => ad::to_canvas(ad::from_canvas(n, old_bg), new_bg),
+                        None => n,
+                    };
+                    // The physical screen rect the asset is actually drawn into: the
+                    // contain rect in Contain, the whole monitor in Cover — the
+                    // center crop is what the platform sees, media-agnostic.
+                    let fbg = if contain {
+                        match asset {
+                            Some((aw, ah)) => {
+                                ad::bg_rect(&ad::adaptive_fit(aw, ah, mw, mh, true), mw, mh)
+                            }
+                            None => [0, 0, mw as i32, mh as i32],
+                        }
+                    } else {
+                        [0, 0, mw as i32, mh as i32]
+                    };
+                    ad::from_canvas(n, fbg)
+                };
+                let rect = pecofence_core::geometry::PxRect {
+                    left: px[0] + work.mon_left,
+                    top: px[1] + work.mon_top,
+                    right: px[2] + work.mon_left,
+                    bottom: px[3] + work.mon_top,
+                };
+                let mut g = pecofence_core::geometry::normalize(rect, work);
+                g.skew_left = fence.geometry.skew_left;
+                g.skew_right = fence.geometry.skew_right;
+                // Spacing compensation is decoupled from the background engine: the
+                // multiplier is strictly the inverse OS display-scale ratio
+                // (source_dpi / target_dpi), rounded to one decimal place so
+                // floating-point error never jitters the gaps. Icon sizes stay locked
+                // to the theme's exact pixels to match the wallpaper art.
+                //   300%→200%: 1.5x · 200%→300%: 0.67→0.7x · 100%→300%: 0.33→0.3x
+                let factor = ((source.dpi as f32 / work.dpi.max(1) as f32) * 10.0).round() / 10.0;
+                if factor != 1.0 {
+                    for v in [&mut fence.view.spacing_x, &mut fence.view.spacing_y]
+                        .into_iter()
+                        .flatten()
+                    {
+                        *v = (*v * factor).clamp(0.0, 256.0);
+                    }
+                }
+                fence.geometry = g;
+                placed += 1;
+            }
+        }
+        tracing::info!(
+            placed,
+            canvas = meta.canvas.len(),
+            space = ?meta.canvas_space,
+            asset = ?asset,
+            source_dpi = source.dpi,
+            "adaptive theme: canvas coordinates applied"
+        );
+        asset
+    }
+
+    /// Applies a theme image to every monitor through `IDesktopWallpaper` (Explorer's own
+    /// per-monitor route). Cover hands the raw asset to Windows "Fill" (its native
+    /// uniform crop); Contain composites the frame centered over a blurred copy of
+    /// itself — shelves inside the image keep their canvas mapping either way.
+    fn apply_adaptive_wallpapers(&mut self, bg: &Path, asset_w: u32, asset_h: u32) {
+        use pecofence_core::adaptive as ad;
+        // Same retirement the plain route performs — the video engine yields to images.
+        self.wmf_player = None;
+        self.static_under_video = None;
+        if self
+            .state
+            .config
+            .settings
+            .video_wallpaper_path
+            .take()
+            .is_some()
+        {
+            self.settings_mutated();
+        }
+        let snap = pecofence_platform::wallpaper::query().ok();
+        let dir = self
+            .state
+            .config_path()
+            .parent()
+            .map(|p| p.join("imported_wallpapers"));
+        if let Some(d) = &dir {
+            let _ = std::fs::create_dir_all(d);
+        }
+        let contain = self.contain_background();
+        let mut applied = 0usize;
+        for (i, area) in self.state.work_areas.clone().iter().enumerate() {
+            let [mw, mh] = area.screen_px().map(|v| v.max(0) as u32);
+            let path = match ad::adaptive_fit(asset_w, asset_h, mw, mh, contain) {
+                // Cover: the raw asset — Windows "Fill" does the uniform
+                // scale-and-crop natively, so no composite is needed.
+                ad::AspectFit::Cover => bg.to_path_buf(),
+                ad::AspectFit::Capped { bg: rect, .. } => dir
+                    .as_ref()
+                    .and_then(|d| {
+                        let dest = d.join(format!("adaptive-{i}.jpg"));
+                        pecofence_platform::wallpaper::adaptive_wallpaper(bg, mw, mh, rect)
+                            .and_then(|img| {
+                                pecofence_platform::wmf_wallpaper::encode_jpeg(
+                                    img.width, img.height, &img.bgra,
+                                )
+                                .map(|jpg| (dest, jpg))
+                            })
+                            .ok()
+                            .and_then(|(dest, jpg)| std::fs::write(&dest, &jpg).ok().map(|_| dest))
+                    })
+                    .unwrap_or_else(|| bg.to_path_buf()),
+            };
+            // `IDesktopWallpaper` monitor ids differ from `WorkArea::device_path`; the
+            // snapshot's px rect is the join key.
+            let id = snap.as_ref().and_then(|s| {
+                s.monitors.iter().find_map(|m| {
+                    (m.rect.left == area.mon_left
+                        && m.rect.top == area.mon_top
+                        && m.rect.right == area.mon_right
+                        && m.rect.bottom == area.mon_bottom)
+                        .then(|| m.monitor_id.clone())
+                })
+            });
+            match id {
+                Some(id) => {
+                    if let Err(e) = pecofence_platform::wallpaper::set_monitor_wallpaper(&id, &path)
+                    {
+                        tracing::warn!(error = %e, "adaptive wallpaper: set failed");
+                    } else {
+                        applied += 1;
+                    }
+                }
+                None => {
+                    let _ = pecofence_platform::sysparams::set_desktop_wallpaper(
+                        &path.to_string_lossy(),
+                    );
+                    applied += 1;
+                }
+            }
+        }
+        // Fill is mandatory under the canvas math: both Cover (raw asset, OS crops)
+        // and the Contain composite are drawn for the exact monitor rect, and a
+        // remembered Center/Tile position would misplace them.
+        let _ = pecofence_platform::wallpaper::set_position_fill();
+        tracing::info!(applied, "adaptive wallpapers committed");
+    }
+
+    /// `settings.containBackground`: strict Contain + blurred margins when on,
+    /// strict Cover + crop when off — the whole background engine reads this.
+    fn contain_background(&self) -> bool {
+        self.state.config.settings.contain_background
+    }
+
+    /// The contain/cover toggle flipped: re-run the adaptive engine against the
+    /// live state — canvas fences re-anchor to the new drawn rect and every
+    /// monitor's image refits — committed once on the flip, never per keystroke.
+    /// A live video's cover/contain flip is handled by the `sync_video_wallpaper`
+    /// the caller always runs next.
+    fn retune_background_fit(&mut self) {
+        let contain = self.state.config.settings.contain_background;
+        tracing::info!(contain, "background fit mode applied");
+        let Some(bg) = self.current_background_source() else {
+            return;
+        };
+        let is_video = bg
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("mp4"));
+        if let Some(meta) = self.last_theme_meta.clone() {
+            let mut cfg = self.state.config.clone();
+            let asset = self.apply_adaptive_layout(&mut cfg, &meta, Some(&bg), is_video);
+            // Video's return is its probed dims, not whether fences moved — a
+            // screen-anchored canvas may still have been re-placed, so always adopt.
+            if is_video || asset.is_some() {
+                self.adopt_config(cfg, ConfigSource::Retune);
+            }
+            if !is_video && let Some((aw, ah)) = asset {
+                self.apply_adaptive_wallpapers(&bg, aw, ah);
+            }
+            return;
+        }
+        // No theme canvas — the wallpaper itself still refits (cover ↔ contain).
+        if !is_video && let Ok((aw, ah)) = pecofence_platform::wallpaper::image_dimensions(&bg) {
+            self.apply_adaptive_wallpapers(&bg, aw, ah);
+        }
+    }
+
+    /// Packs the live configuration (meta canvas + background + preview) into `dest` —
+    /// the shared writer behind library saves, the dirty-prompt Save and the daily
+    /// auto-update. `false` after the error is reported to the page.
+    fn write_current_theme(&mut self, dest: &Path) -> bool {
         let cfg = self.state.config.clone();
         let bg = self.current_background_source();
-        tracing::info!(
-            theme = name,
-            background = ?bg,
-            "theme library save: background source selected"
-        );
         let live = bg
             .as_deref()
             .and_then(|p| p.extension())
@@ -1530,28 +1928,64 @@ impl App {
                     .map(|f| (f.width, f.height, f.bgra))
             })
             .flatten();
-        let dest = self.unique_theme_path(&Self::sanitize_theme_stem(name));
-        match self.peco_payload(&cfg, bg.as_deref(), live) {
-            Ok((config_json, bg_entry, preview_jpg)) => {
-                let bg_slice = bg_entry.as_ref().map(|(n, b)| (n.as_str(), b.as_slice()));
-                match pecofence_core::peco_theme::write_peco_file(
-                    &dest,
-                    &config_json,
-                    bg_slice,
-                    &preview_jpg,
-                ) {
-                    Ok(()) => {
-                        self.push_settings_state();
-                        self.settings_toast(pecofence_core::i18n::text("已保存主题"));
-                    }
-                    Err(e) => self.settings_error(&pecofence_core::i18n::format(
-                        "保存主题失败：{0}",
-                        &[e.to_string()],
-                    )),
+        let meta = self.theme_meta(bg.as_deref());
+        let (config_json, bg_entry, preview_jpg) =
+            match self.peco_payload(&cfg, bg.as_deref(), live) {
+                Ok(p) => p,
+                Err(e) => {
+                    self.settings_error(&pecofence_core::i18n::format("保存主题失败：{0}", &[e]));
+                    return false;
                 }
+            };
+        let bg_slice = bg_entry.as_ref().map(|(n, b)| (n.as_str(), b.as_slice()));
+        let meta_json = meta
+            .source
+            .is_some()
+            .then(|| serde_json::to_string(&meta).ok())
+            .flatten();
+        match pecofence_core::peco_theme::write_peco_file(
+            dest,
+            &config_json,
+            meta_json.as_deref(),
+            bg_slice,
+            &preview_jpg,
+        ) {
+            Ok(()) => true,
+            Err(e) => {
+                self.settings_error(&pecofence_core::i18n::format(
+                    "保存主题失败：{0}",
+                    &[e.to_string()],
+                ));
+                false
             }
-            Err(e) => self.settings_error(&pecofence_core::i18n::format("保存主题失败：{0}", &[e])),
         }
+    }
+
+    /// Gallery "Save Current Setup": the live configuration becomes a `.peco` in the theme
+    /// library — a card with a generated thumbnail. The active video or wallpaper is always
+    /// embedded; there is no way to save a theme without its background. The saved file
+    /// becomes the active theme: it is the current setup's own archive now.
+    fn save_theme_to_library(&mut self, name: &str) {
+        tracing::info!(theme = name, "theme library save requested");
+        // Meta first: `My Setup` becomes `My Setup_3840x2160_100%.peco` — the source
+        // canvas rides in the filename so the card says what the theme was authored on.
+        let bg = self.current_background_source();
+        let meta = self.theme_meta(bg.as_deref());
+        let mut stem = Self::sanitize_theme_stem(name);
+        if let Some(s) = &meta.source {
+            stem.push('_');
+            stem.push_str(&pecofence_core::adaptive::source_suffix(s));
+        }
+        let dest = self.unique_theme_path(&stem);
+        if !self.write_current_theme(&dest) {
+            return;
+        }
+        self.state.config.settings.active_theme_path = Some(dest.to_string_lossy().into_owned());
+        self.settings_mutated();
+        // The new archive now describes the live state — clean baseline (clear AFTER the
+        // mutation plumbing ran: schedule_save re-arms the flag).
+        self.theme_dirty.set(false);
+        self.settings_toast(pecofence_core::i18n::text("已保存主题"));
     }
 
     /// `path` is a `.peco` file directly inside the theme library — the only paths a gallery
@@ -1650,7 +2084,7 @@ impl App {
         );
         match self.peco_payload(&cfg, bg.as_deref(), None) {
             Ok((config_json, bg_entry, preview_jpg)) => {
-                self.write_theme_archive(&dest, &config_json, bg_entry, &preview_jpg);
+                self.write_theme_archive(&dest, &config_json, None, bg_entry, &preview_jpg);
             }
             Err(e) => self.settings_error(&pecofence_core::i18n::format("导出失败：{0}", &[e])),
         }
@@ -1733,18 +2167,20 @@ impl App {
 
     /// Copies an imported `.peco` into the theme library so it appears as a card. A file
     /// already inside the library, or one whose bytes match an existing entry, is kept as is;
-    /// name collisions get a " (n)" suffix.
-    fn store_theme_copy(&self, src: &Path) {
+    /// name collisions get a " (n)" suffix. Returns the library path that represents the
+    /// theme — the anchor `active_theme_path` records (never the original file outside
+    /// the library).
+    fn store_theme_copy(&self, src: &Path) -> PathBuf {
         let dir = self.themes_dir();
         let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
         if src
             .parent()
             .is_some_and(|parent| canon(parent) == canon(&dir))
         {
-            return;
+            return src.to_path_buf();
         }
         if std::fs::create_dir_all(&dir).is_err() {
-            return;
+            return src.to_path_buf();
         }
         let stem = src
             .file_stem()
@@ -1760,7 +2196,7 @@ impl App {
         let mut dest = dir.join(format!("{stem}.peco"));
         if dest.exists() {
             if same_bytes(src, &dest) {
-                return;
+                return dest;
             }
             for i in 2..100 {
                 let candidate = dir.join(format!("{stem} ({i}).peco"));
@@ -1769,13 +2205,14 @@ impl App {
                     break;
                 }
                 if same_bytes(src, &candidate) {
-                    return;
+                    return candidate;
                 }
             }
         }
         if let Err(e) = std::fs::copy(src, &dest) {
             tracing::warn!(error = %e, dest = %dest.display(), "theme library copy failed");
         }
+        dest
     }
 
     /// Applies a `.peco` already living in the theme library (a gallery card click).
@@ -1783,11 +2220,99 @@ impl App {
         self.apply_theme_path(path, false);
     }
 
+    /// Gallery Apply on a theme card. With unsaved layout changes AND a known active
+    /// theme, the page is asked first — Save writes the live state into the active
+    /// archive before switching, Don't Save discards them, Cancel aborts. Anything
+    /// else applies instantly. Without a page to answer there is nothing to ask, so
+    /// the apply proceeds.
+    fn request_theme_switch(&mut self, path: &Path) {
+        if self.theme_dirty.get()
+            && self.state.config.settings.active_theme_path.is_some()
+            && let Some(h) = &self.settings
+        {
+            h.post_json(
+                &serde_json::json!({
+                    "type": "themeSwitchPrompt",
+                    "path": path.to_string_lossy(),
+                })
+                .to_string(),
+            );
+            return;
+        }
+        self.apply_theme_from_library(path);
+    }
+
+    /// Writes the live state over the ACTIVE theme's own archive — the file keeps its
+    /// name and its card, nothing new is created. `false` (after reporting the problem)
+    /// means there is no active theme or the write failed; the caller then aborts the
+    /// pending switch so the user can decide again.
+    fn overwrite_active_theme(&mut self) -> bool {
+        let Some(p) = self.state.config.settings.active_theme_path.clone() else {
+            return false;
+        };
+        let dest = PathBuf::from(&p);
+        if !self.theme_in_library(&dest) {
+            return false;
+        }
+        if !self.write_current_theme(&dest) {
+            return false;
+        }
+        tracing::info!(theme = %dest.display(), "active theme overwritten in place");
+        self.theme_dirty.set(false);
+        self.push_settings_state();
+        true
+    }
+
+    /// Once a day, rewrites the active theme's archive in place with the current layout —
+    /// the file's mtime is the clock, so restarts neither skip nor double-write. Never
+    /// creates a file: a card deleted behind our back is simply left alone.
+    pub(super) fn maybe_auto_update_theme(&mut self) {
+        if !self.state.config.settings.theme_auto_update_daily {
+            return;
+        }
+        let Some(p) = self.state.config.settings.active_theme_path.clone() else {
+            return;
+        };
+        let path = PathBuf::from(&p);
+        if !self.theme_in_library(&path) || !path.is_file() {
+            return;
+        }
+        let today = pecofence_core::config_store::today_yyyy_mm_dd();
+        let file_day = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| pecofence_core::config_store::yyyy_mm_dd_of(d.as_secs() as i64));
+        if file_day.as_deref() == Some(today.as_str()) {
+            return;
+        }
+        tracing::info!(theme = %path.display(), "daily auto-update: rewriting active theme");
+        if self.write_current_theme(&path) {
+            self.theme_dirty.set(false);
+            // The card's date (its mtime) just moved — refresh the gallery quietly.
+            self.push_settings_state();
+        }
+    }
+
     /// Deletes a `.peco` from the theme library. Only files directly inside the library
-    /// folder are removable — a page-supplied path can never reach outside it.
+    /// folder are removable — a page-supplied path can never reach outside it. Removing
+    /// the active theme's archive severs its anchor: nothing remains to overwrite.
     pub(super) fn delete_library_theme(&mut self, path: &Path) {
         if self.theme_in_library(path) {
             let _ = std::fs::remove_file(path);
+            let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+            if self
+                .state
+                .config
+                .settings
+                .active_theme_path
+                .as_deref()
+                .is_some_and(|p| canon(Path::new(p)) == canon(path))
+            {
+                self.state.config.settings.active_theme_path = None;
+                self.state.mark_dirty();
+                self.schedule_save();
+            }
         }
         self.push_settings_state();
     }
@@ -1821,12 +2346,6 @@ impl App {
                 return;
             }
         };
-
-        if !auto_snapshot_room(&mut self.state.config.snapshots, None) {
-            let _ = std::fs::remove_dir_all(&extracted.temp_dir);
-            self.settings_error(&snapshot_limit_text());
-            return;
-        }
 
         // Persist the extracted background media next to config.json so it survives temp cleanup.
         let mut persisted_bg: Option<PathBuf> = None;
@@ -1862,21 +2381,32 @@ impl App {
             cfg.settings.video_wallpaper_path = None;
         }
 
+        // A picked file joins the library first: the card it becomes (not the file the
+        // user picked outside the library) is the active theme anchor — the file the
+        // unsaved-changes Save and the daily auto-update overwrite in place. It rides
+        // `cfg` into `adopt_config`, replacing whatever path a foreign theme.json carried.
+        let active_path = if save_to_library {
+            self.store_theme_copy(path)
+        } else {
+            path.to_path_buf()
+        };
+        cfg.settings.active_theme_path = Some(active_path.to_string_lossy().into_owned());
         remap_theme_monitors(&mut cfg, &self.state.work_areas);
-        // A picked file joins the library before the state push so its card appears with the
-        // same update that applies it.
-        if save_to_library {
-            self.store_theme_copy(path);
-        }
-        // The fixed-id auto backup slot: every apply overwrites the same "…前" entry
-        // instead of appending another card to the gallery.
-        self.state
-            .save_restore_backup(ConfigSource::Theme.before_key());
+        // Adaptive engine: canvas coordinates ride `theme.json`; when present they re-place
+        // fences onto the fitted asset and scale the grid by the DPI ratio. Legacy archives
+        // have no metadata and keep the remapped geometry untouched. The canvas is also kept
+        // for the contain/cover toggle re-fit (a legacy theme clears any stale one).
+        self.last_theme_meta = extracted.meta.clone();
+        let adaptive_asset = self.last_theme_meta.clone().and_then(|m| {
+            self.apply_adaptive_layout(&mut cfg, &m, persisted_bg.as_deref(), is_video)
+        });
         self.adopt_config(cfg, ConfigSource::Theme);
 
         if let Some(bg) = persisted_bg {
             if is_video {
                 self.sync_video_wallpaper();
+            } else if let Some((aw, ah)) = adaptive_asset {
+                self.apply_adaptive_wallpapers(&bg, aw, ah);
             } else {
                 let bg_str = bg.to_string_lossy();
                 if !self.apply_static_wallpaper(&bg_str) {
@@ -1884,6 +2414,9 @@ impl App {
                 }
             }
         }
+        // The apply's own writes do not count as user edits: whatever the incoming theme
+        // normalized is the new baseline the dirty flag measures against.
+        self.theme_dirty.set(false);
     }
 
     pub(super) fn refresh_language(&mut self) {

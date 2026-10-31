@@ -43,7 +43,7 @@
   "detail.space.title": "Space when you need it",
   "detail.space.text": "Roll a fence up to its title bar. Hover to expand. Lock a layout once you like it.",
   "detail.back.title": "A way back",
-  "detail.back.text": "Layout snapshots, daily backups, configuration import and export, and swapping fences between displays.",
+  "detail.back.text": "Layout snapshots, portable .peco themes, configuration import and export, and swapping fences between displays.",
   "detail.footprint.title": "A small footprint",
   "detail.footprint.text": "A native Rust application. The settings panel loads WebView2 only when you open it.",
   "detail.safe.title": "Your files stay put",

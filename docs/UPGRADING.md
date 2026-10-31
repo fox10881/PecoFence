@@ -43,8 +43,8 @@ Versions after 0.1.3 know a monitor by its model and connection. 0.1.3 and
 earlier do not, so with a configuration a newer version has saved they show no
 fences. Nothing is lost: the fences come back as soon as the newer version runs
 again. To stay on the older version, restore a daily backup from before the
-upgrade in Settings → 布局与备份 (the files are in the `backups` folder next to
-`config.json`).
+upgrade with `pecofence-cli backup list` and `backup restore` (the files are in
+the `backups` folder next to `config.json`).
 
 ## Windows startup
 

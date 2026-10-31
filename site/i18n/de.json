@@ -43,7 +43,7 @@
   "detail.space.title": "Platz, wenn du ihn brauchst",
   "detail.space.text": "Klappe einen Bereich bis auf den Titel ein. Zum Ausklappen einfach mit der Maus darauf zeigen. Sperre ein Layout, das dir gefällt.",
   "detail.back.title": "Ein Weg zurück",
-  "detail.back.text": "Layout-Momentaufnahmen, tägliche Sicherungen, Import/Export der Konfiguration und Tausch von Bereichen zwischen Bildschirmen.",
+  "detail.back.text": "Layout-Momentaufnahmen, portable .peco-Designs, Import/Export der Konfiguration und Tausch von Bereichen zwischen Bildschirmen.",
   "detail.footprint.title": "Ein kleiner Fußabdruck",
   "detail.footprint.text": "Eine native Rust-Anwendung. Die Einstellungen laden WebView2 erst, wenn du sie öffnest.",
   "detail.safe.title": "Deine Dateien gehören dir",

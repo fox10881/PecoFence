@@ -160,9 +160,49 @@ pub struct Settings {
     /// Active H.264 `.mp4` video wallpaper path played by PecoFence's WMF desktop player.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_wallpaper_path: Option<String>,
-    /// How the Windows taskbar's background looks.
+    /// The Start Menu style applied through Windhawk's
+    /// `windows-11-start-menu-styler` mod — a [`crate::start_menu_themes`]
+    /// catalog id, `""` = Windows Default (the mod's `theme` setting cleared).
+    /// Local device preference — themes never carry it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub start_menu_style: String,
+    /// The Taskbar style applied through the native XAML styler — a
+    /// [`crate::taskbar_themes`] catalog id, `""` = Windows Default (stock
+    /// taskbar restored). Local device preference — themes never carry it.
+    /// Always serialized (unlike `startMenuStyle`): the CLI's
+    /// `settings set` allowlist comes from the serialized object, so a
+    /// skipped-empty field could never be set.
     #[serde(default)]
-    pub taskbar_mode: TaskbarMode,
+    pub taskbar_style: String,
+    /// The Notification Center style applied through the native XAML
+    /// styler — a [`crate::notification_center_themes`] catalog id, `""` =
+    /// Windows Default (stock Action/Notification Center restored).
+    /// Local device preference — themes never carry it.
+    #[serde(default)]
+    pub notification_center_style: String,
+    /// Background fit mode for bundled theme assets: `false` = strict Cover (a
+    /// uniform scale fills the screen, the overflowing axis crops); `true` =
+    /// strict Contain (the whole frame centered and uncropped, the leftover
+    /// margins filled with a blurred copy). Replaces `stretchTolerancePct` —
+    /// a negative value there meant Contain ([`crate::config_store::migrate`]).
+    /// Local device preference — themes never carry it.
+    #[serde(default)]
+    pub contain_background: bool,
+    /// Legacy `stretchTolerancePct`: read only so `migrate` can map `< 0` →
+    /// `contain_background`. Never serialized — the key dies on the next save.
+    #[serde(default, skip_serializing)]
+    #[cfg_attr(feature = "schema", schemars(skip))]
+    pub stretch_tolerance_pct: i8,
+    /// The `.peco` the last applied/saved theme lives in — the gallery's "One Theme =
+    /// One File" anchor. The unsaved-changes prompt's Save and the daily auto-update
+    /// overwrite exactly this file, never a copy. `None` until a theme is applied or
+    /// saved, and cleared by config imports and by deleting the file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_theme_path: Option<String>,
+    /// When on, a once-a-day housekeeping tick rewrites the active theme's archive in
+    /// place with the current layout — no versions, no extra files.
+    #[serde(default)]
+    pub theme_auto_update_daily: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -263,7 +303,13 @@ impl Default for Settings {
             icons: IconSettings::default(),
             desktop_path: None,
             video_wallpaper_path: None,
-            taskbar_mode: TaskbarMode::Normal,
+            start_menu_style: String::new(),
+            taskbar_style: String::new(),
+            notification_center_style: String::new(),
+            contain_background: false,
+            stretch_tolerance_pct: 0,
+            active_theme_path: None,
+            theme_auto_update_daily: false,
         }
     }
 }
@@ -305,26 +351,6 @@ pub enum ThemeStyle {
 /// Text colour (「文字颜色」). Auto: Liquid Glass picks dark or light text from the wallpaper,
 /// for the item names under each fence and for each tab and title under it, and Fluent follows
 /// the colour mode; the halo pairs with the text. Anything else swaps the halo for a soft shadow.
-/// Taskbar background mode: untouched Windows default, a fully transparent
-/// taskbar, or a frosted-glass blur. Applied through `pecofence_tap.dll`
-/// inside Explorer (XAML Diagnostics + a `SetWindowCompositionAttribute`
-/// detour — see `pecofence_platform::tap`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(rename_all = "camelCase")]
-pub enum TaskbarMode {
-    /// Factory appearance: no injection, original XAML brushes, `ACCENT_DISABLED`.
-    #[default]
-    Normal,
-    /// 100% invisible taskbar background (`ACCENT_ENABLE_TRANSPARENTGRADIENT`).
-    Clear,
-    /// Frosted-glass taskbar (`ACCENT_ENABLE_BLURBEHIND`).
-    Blur,
-    /// Forced solid taskbar plate (`ACCENT_ENABLE_GRADIENT` + opaque XAML
-    /// brush — TranslucentTB's "Opaque": `color.A` forced to `0xFF`).
-    Opaque,
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]

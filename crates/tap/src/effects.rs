@@ -516,7 +516,21 @@ pub fn make_blur_brush(
     blur_amount: f32,
     tint: [f32; 4],
 ) -> windows_core::Result<Brush> {
-    let visual = ElementCompositionPreview::GetElementVisual(element)?;
+    let element = windows_core::Interface::cast::<UIElement>(element)?;
+    make_blur_brush_any(&element, blur_amount, tint)
+}
+
+/// Same brush for any `UIElement` — the styler's `<WindhawkBlur/>` values
+/// target elements of arbitrary type, not just taskbar `Rectangle`s.
+/// Generic over the caller's projection type (`bindings`/`styler_bindings`
+/// emit separate `UIElement`s over the same IID).
+pub fn make_blur_brush_any<T: windows_core::Interface>(
+    element: &T,
+    blur_amount: f32,
+    tint: [f32; 4],
+) -> windows_core::Result<Brush> {
+    let element: UIElement = windows_core::Interface::cast(element)?;
+    let visual = ElementCompositionPreview::GetElementVisual(&element)?;
     let compositor = visual.Compositor()?;
     let comp_brush = make_effect_brush(&compositor, blur_amount, tint)?;
 

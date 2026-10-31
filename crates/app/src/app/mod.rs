@@ -19,8 +19,8 @@ use pecofence_core::geometry::WorkArea;
 use pecofence_core::hotkey::Hotkey;
 use pecofence_core::{
     FenceId, FenceKind, IconFrameStyle, IconShape, ItemId, ItemKey, LabelFontWeight,
-    LabelVisibility, ShowDesktopSetting, SortMode, Spacing, Target, TaskbarMode, ThemeSetting,
-    TitleSize, ViewLayout, ZOrderSetting,
+    LabelVisibility, ShowDesktopSetting, SortMode, Spacing, Target, ThemeSetting, TitleSize,
+    ViewLayout, ZOrderSetting,
 };
 use pecofence_platform::clipboard;
 use pecofence_platform::frameclock::FrameClock;
@@ -343,6 +343,15 @@ pub struct App {
     /// image reported later means the user applied it over the video (Explorer applies do
     /// not broadcast `SPI_SETDESKWALLPAPER`) — the image wins and the video retires.
     static_under_video: Option<std::path::PathBuf>,
+    /// The `theme.json` canvas of the last applied `.peco` — kept so the contain/cover
+    /// toggle can re-place fences and re-composite the wallpaper without importing
+    /// the theme again. `None` after plain config imports/backup restores and legacy
+    /// themes without metadata.
+    last_theme_meta: Option<pecofence_core::adaptive::ThemeMeta>,
+    /// "Unsaved changes" relative to the active theme file: every mutation that schedules
+    /// a config save arms it (Cell because `schedule_save` is `&self`); applying or
+    /// overwriting a theme resets it to the new baseline.
+    theme_dirty: std::cell::Cell<bool>,
     /// The hotkey currently registered (None = registration failed or Peek disabled).
     peek_hotkey: Option<Hotkey>,
     /// The combination the last `sync_peek_hotkey` tried to register (the user's choice), so a
@@ -1281,6 +1290,8 @@ impl App {
             live_abandoned: None,
             wmf_player: None,
             static_under_video: None,
+            last_theme_meta: None,
+            theme_dirty: std::cell::Cell::new(false),
         };
         app.sync_video_wallpaper();
         // Watch both wallpaper settings and virtual-desktop state; either signal starts a
@@ -1405,16 +1416,31 @@ impl App {
         if let Some(a) = app.anchor.borrow_mut().as_mut() {
             a.reanchor("startup");
         }
-        // A saved Clear/Blur mode re-injects the TAP now that the taskbar exists.
-        let saved_mode = match app.state.config.settings.taskbar_mode {
-            TaskbarMode::Normal => pecofence_platform::tap::TapMode::Normal,
-            TaskbarMode::Clear => pecofence_platform::tap::TapMode::Clear,
-            TaskbarMode::Blur => pecofence_platform::tap::TapMode::Blur,
-            TaskbarMode::Opaque => pecofence_platform::tap::TapMode::Opaque,
-        };
-        if saved_mode != pecofence_platform::tap::TapMode::Normal {
+        // A saved Start Menu style injects the styler once SMEH exists —
+        // apply_start_menu_theme stores it either way, and the periodic
+        // ensure() delivers it on the host's next launch.
+        let saved_style = app.state.config.settings.start_menu_style.clone();
+        if !saved_style.is_empty() {
             std::thread::spawn(move || {
-                let _ = pecofence_platform::tap::apply(saved_mode);
+                let _ = pecofence_platform::start_menu::apply_start_menu_theme(&saved_style);
+            });
+        }
+        // A saved Taskbar style rides the same resident — apply() injects
+        // the DLL when explorer is up and the tick's ensure() re-delivers
+        // it after restarts.
+        let saved_tb_style = app.state.config.settings.taskbar_style.clone();
+        if !saved_tb_style.is_empty() {
+            std::thread::spawn(move || {
+                let _ = pecofence_platform::taskbar_styler::apply(&saved_tb_style);
+            });
+        }
+        // A saved Notification Center style injects into the Shell hosts —
+        // apply() stores it either way, and the tick's ensure() delivers it
+        // to hosts that launch later.
+        let saved_nc_style = app.state.config.settings.notification_center_style.clone();
+        if !saved_nc_style.is_empty() {
+            std::thread::spawn(move || {
+                let _ = pecofence_platform::notification_center::apply(&saved_nc_style);
             });
         }
         for f in app.fences.values().chain(app.desktop_windows.values()) {
@@ -1528,6 +1554,12 @@ impl App {
     }
 
     fn schedule_save(&self) {
+        // Every queued config write means the live state has moved away from whatever
+        // the active theme's archive holds — the dirty baseline until a theme apply or
+        // overwrite re-baselines it. With no anchored theme there is nothing to go stale.
+        if self.state.config.settings.active_theme_path.is_some() {
+            self.theme_dirty.set(true);
+        }
         window::set_timer(self.control.hwnd(), TIMER_SAVE, 800);
     }
 
@@ -1556,6 +1588,8 @@ impl App {
             self.state.save_if_dirty();
             self.notice_save_failure();
         }
+        // Once a day, the active theme's .peco is rewritten in place (never a new file).
+        self.maybe_auto_update_theme();
         // Icons no window needs any more, if a change left some behind without a redraw; the
         // GPU trim then frees the released uploads.
         if self.prune_icons() {
@@ -2087,8 +2121,13 @@ impl App {
     pub fn shutdown(&mut self) {
         self.end_peek_now();
         self.wmf_player = None;
-        // Restore the taskbar before the TAP's death-watch would have to.
+        // Restore the taskbar + Start Menu before the TAP's death-watch
+        // would have to. The taskbar styler's reset must reach the resident
+        // first — `tap::shutdown` unloads the channel it arrives on.
+        pecofence_platform::taskbar_styler::shutdown();
         pecofence_platform::tap::shutdown();
+        pecofence_platform::start_menu::shutdown();
+        pecofence_platform::notification_center::shutdown();
         self.state.save_if_dirty();
         self.fences.clear();
         self.desktop_windows.clear();

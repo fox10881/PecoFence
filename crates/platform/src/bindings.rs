@@ -683,6 +683,11 @@ pub unsafe fn GdiFlush() -> windows_core::BOOL {
     unsafe { GdiFlush() }
 }
 #[inline]
+pub unsafe fn GetPropW(hwnd: HWND, lpstring: windows_core::PCWSTR) -> HANDLE {
+    windows_core::link!("user32.dll" "system" fn GetPropW(hwnd : HWND, lpstring : windows_core::PCWSTR) -> HANDLE);
+    unsafe { GetPropW(hwnd, lpstring) }
+}
+#[inline]
 pub unsafe fn GetAncestor(hwnd: HWND, gaflags: u32) -> HWND {
     windows_core::link!("user32.dll" "system" fn GetAncestor(hwnd : HWND, gaflags : u32) -> HWND);
     unsafe { GetAncestor(hwnd, gaflags) }

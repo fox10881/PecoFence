@@ -43,7 +43,7 @@
   "detail.space.title": "필요할 때는 공간을",
   "detail.space.text": "펜스를 제목만 남기고 접어 두고, 마우스를 올리면 펼치세요. 마음에 드는 배치는 잠가 둘 수 있습니다.",
   "detail.back.title": "되돌아갈 길",
-  "detail.back.text": "배치 스냅샷, 매일 자동 백업, 설정 내보내기 / 가져오기, 디스플레이 간 펜스 교환.",
+  "detail.back.text": "배치 스냅샷, 휴대용 .peco 테마, 설정 내보내기 / 가져오기, 디스플레이 간 펜스 교환.",
   "detail.footprint.title": "가볍고 빠르게",
   "detail.footprint.text": "Rust로 만든 네이티브 앱. WebView2 설정 화면은 열 때만 로드됩니다.",
   "detail.safe.title": "내 파일은 그대로",

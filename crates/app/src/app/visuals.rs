@@ -1060,6 +1060,9 @@ impl App {
     /// A wallpaper signal or the 5 s poll: follows the Windows wallpaper and the live
     /// wallpapers over it, and captures those that are due.
     pub(super) fn check_wallpaper(&mut self, reason: &str) {
+        // An Explorer restart kills the WorkerW layer the video window is
+        // parented to — re-attach before the snapshot logic runs.
+        self.ensure_video_wallpaper();
         let Ok(snapshot) = wallpaper_snapshot(self.wallpaper_override.as_deref()) else {
             return;
         };

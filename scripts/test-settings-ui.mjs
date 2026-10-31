@@ -35,7 +35,6 @@ const fixture = {
   ],
   tintPalette: [{ name: '红', hex: 'E74856' }, { name: '蓝', hex: '0078D4' }, { name: '灰', hex: '7A7574' }],
   snapshots: [{ id: 'snapshot-a', name: 'Before changes', date: '2026-09-09', fenceCount: 4 }],
-  backups: [{ name: '2026-09-09', path: 'C:\\PecoFence\\backups\\2026-09-09.json' }],
   monitors: [{ id: 'one', label: 'Display 1' }, { id: 'two', label: 'Display 2' }],
   desktopIconsHidden: false,
   version: 'test', configPath: 'C:\\PecoFence\\config.json', memoryMb: 28, itemCount: 12,
@@ -442,13 +441,14 @@ async function runTests() {
     assert(main.scrollWidth <= main.clientWidth + 1, 'Path forces horizontal scrolling');
     assert(frame.contentWindow.getComputedStyle(doc.getElementById('cfgPath')).userSelect === 'text', 'Path cannot be copied');
   });
-  await test('Snapshot and backup restore controls retain focus on refresh', async () => {
+  await test('Gallery card controls retain focus on refresh', async () => {
     doc.querySelector('[data-page=layout]').click();
-    for (const id of ['snapList', 'backupList']) {
-      doc.querySelector('#' + id + ' [data-act=restore]').focus();
-      frame.contentWindow.testRefresh();
-      assert(doc.activeElement.closest('#' + id), id + ' lost focus');
-    }
+    const grid = doc.getElementById('galleryGrid');
+    const btn = grid.querySelector('[data-act=apply]');
+    assert(btn, 'No gallery card rendered');
+    btn.focus();
+    frame.contentWindow.testRefresh();
+    assert(doc.activeElement.closest('#galleryGrid'), 'galleryGrid lost focus');
   });
   await test('Light theme updates without losing selected values', async () => {
     doc.querySelector('[data-page=general]').click();

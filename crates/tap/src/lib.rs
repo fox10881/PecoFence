@@ -1,15 +1,19 @@
-//! `pecofence_tap.dll` — the Explorer-side half of the taskbar transparency
-//! feature, modelled on TranslucentTB's `ExplorerTAP`.
+//! `pecofence_tap.dll` — the resident XAML-styling engine injected into
+//! `explorer.exe` (taskbar themes), `StartMenuExperienceHost.exe` (Start
+//! Menu themes) and `ShellExperienceHost.exe`/`ShellHost.exe` (Notification
+//! Center themes), modelled on TranslucentTB's `ExplorerTAP` + Windhawk's
+//! `visualtreewatcher`.
 //!
-//! Injected into `explorer.exe` by `pecofence.exe` through a `WH_CALLWNDPROC`
-//! hook (the `CallWndProc` export is the injection vector). On attach it:
-//!  1. detours `user32!SetWindowCompositionAttribute` in-process so Explorer
-//!     cannot overwrite the taskbar accent we apply from the host;
-//!  2. opens a message-only command window (`PecoFenceTAP`) the host posts
-//!     state changes to;
-//!  3. initializes XAML Diagnostics (`InitializeXamlDiagnosticsEx`) so a
-//!     `TAPSite` COM object hands us the visual-tree service used to repaint
-//!     the taskbar's `BackgroundFill`/`BackgroundStroke` rectangles.
+//! Injected by `pecofence.exe` through a `WH_CALLWNDPROC` hook (the
+//! `CallWndProc` export is the injection vector). On attach it:
+//!  1. opens a message-only command window (`PecoFenceTAP` /
+//!     `PecoFenceTAPSM`) the host delivers `PECO-TBS1`/`PECO-SMS1` theme
+//!     wires to over `WM_COPYDATA`;
+//!  2. initializes XAML Diagnostics (`InitializeXamlDiagnosticsEx`) so a
+//!     `TAPSite` COM object hands us the visual-tree service that feeds
+//!     `styler`;
+//!  3. restores every original property value when the host exits, resets,
+//!     or sends `PecoFence.TAP.Unload`.
 
 #[allow(
     dead_code,
@@ -36,9 +40,24 @@ mod effects;
     clippy::all
 )]
 mod fx_bindings;
-mod hook;
 mod shared;
 mod site;
+#[allow(
+    dead_code,
+    non_snake_case,
+    non_camel_case_types,
+    non_upper_case_globals,
+    clippy::all
+)]
+mod styler;
+#[allow(
+    dead_code,
+    non_snake_case,
+    non_camel_case_types,
+    non_upper_case_globals,
+    clippy::all
+)]
+mod styler_bindings;
 mod win32;
 
 /// Debug-build-only tracing: the DLL swallows COM errors by design (Explorer
@@ -94,9 +113,32 @@ pub unsafe extern "system" fn DllMain(
         unsafe {
             let _ = win32::DisableThreadLibraryCalls(hinstance);
         }
-        if is_explorer_process() {
+        if is_explorer_process() || is_smeh_process() || is_nch_process() {
+            // Self-pin: the host unhooks right after our command window
+            // appears, and `InitializeXamlDiagnosticsEx` only pins us later,
+            // inside `SetSite`. Without our own pin the gap between
+            // `UnhookWindowsHookEx` and `SetSite` lets the refcount hit zero
+            // — the resident unloaded ~40ms after every inject and the whole
+            // cycle repeated each host tick. The inert-resident design makes
+            // a permanent pin correct anyway.
+            const GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS: u32 = 0x4;
+            const GET_MODULE_HANDLE_EX_FLAG_PIN: u32 = 0x1;
+            let mut pinned = core::ptr::null_mut();
+            unsafe {
+                let _ = win32::GetModuleHandleExW(
+                    GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                    windows_core::PCWSTR(hinstance as *const u16),
+                    &mut pinned,
+                );
+            }
+            tap_log!("DllMain attach hmod={hinstance:?} smeh={}", is_smeh());
             std::thread::spawn(bootstrap);
         }
+    } else if reason == 0 && (is_explorer_process() || is_smeh_process() || is_nch_process()) {
+        // DLL_PROCESS_DETACH — only meaningful inside a host; the host-side
+        // `FreeLibrary(tap.lib)` in pecofence.exe would otherwise log the
+        // same line and look like a resident unload.
+        tap_log!("DllMain DETACH smeh={} nch={}", is_smeh(), is_nch_process());
     }
     1
 }
@@ -115,7 +157,27 @@ pub unsafe extern "system" fn CallWndProc(
     unsafe { win32::CallNextHookEx(core::ptr::null_mut(), code, wparam, lparam) }
 }
 
-fn is_explorer_process() -> bool {
+/// The exported win-event procedure — the `WINEVENT_INCONTEXT` injection
+/// vector for suspended AppContainer hosts: the OS maps this DLL into the
+/// target when it fires its first accessibility event (i.e. exactly when a
+/// frozen host wakes to render). The proc itself is a no-op; `DllMain` did
+/// the bootstrap at map time.
+///
+/// # Safety
+/// Called by Windows inside the hooked process with valid arguments.
+#[unsafe(no_mangle)]
+pub unsafe extern "system" fn WinEventProc(
+    _hook: *mut core::ffi::c_void,
+    _event: u32,
+    _hwnd: win32::HWND,
+    _object: i32,
+    _child: i32,
+    _tid: u32,
+    _time: u32,
+) {
+}
+
+fn process_name_is(target: &str) -> bool {
     let mut path = [0u16; 260];
     let len = unsafe {
         win32::GetModuleFileNameW(
@@ -128,13 +190,41 @@ fn is_explorer_process() -> bool {
         return false;
     }
     let name = &path[..len as usize];
-    let explorer: Vec<u16> = "explorer.exe".encode_utf16().collect();
+    let want: Vec<u16> = target.encode_utf16().collect();
     // `|0x20` lowercases ASCII letters — enough for a suffix compare.
-    name.len() >= explorer.len()
-        && name[name.len() - explorer.len()..]
+    name.len() >= want.len()
+        && name[name.len() - want.len()..]
             .iter()
-            .zip(&explorer)
+            .zip(&want)
             .all(|(a, b)| (*a | 0x20) == *b)
+}
+
+fn is_explorer_process() -> bool {
+    process_name_is("explorer.exe")
+}
+
+/// `true` inside `StartMenuExperienceHost.exe` — the Start Menu styler's
+/// host process. Checked once; the process image never changes.
+pub(crate) fn is_smeh() -> bool {
+    static IS_SMEH: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *IS_SMEH.get_or_init(|| process_name_is("startmenuexperiencehost.exe"))
+}
+
+fn is_smeh_process() -> bool {
+    is_smeh()
+}
+
+/// `true` inside `ShellExperienceHost.exe` or `ShellHost.exe` — the
+/// Notification Center styler's host processes.
+pub(crate) fn is_nch() -> bool {
+    static IS_NCH: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *IS_NCH.get_or_init(|| {
+        process_name_is("shellexperiencehost.exe") || process_name_is("shellhost.exe")
+    })
+}
+
+fn is_nch_process() -> bool {
+    is_nch()
 }
 
 fn bootstrap() {
@@ -143,9 +233,6 @@ fn bootstrap() {
     unsafe {
         let _ = win32::RoInitialize(0);
     }
-    // The detour goes in first — it must be live before the host posts its
-    // first state command so no Explorer write can slip through.
-    let _ = hook::install();
     std::thread::spawn(command::run);
     std::thread::spawn(site::install);
 }

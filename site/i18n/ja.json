@@ -43,7 +43,7 @@
   "detail.space.title": "必要なときだけ広げる",
   "detail.space.text": "フェンスをタイトルだけに折りたたみ、ホバーで展開。気に入った配置は位置とサイズを固定できます。",
   "detail.back.title": "いつでも元に戻せる",
-  "detail.back.text": "レイアウトのスナップショット、毎日の自動バックアップ、設定のエクスポート・インポート、ディスプレイ間のフェンス交換。",
+  "detail.back.text": "レイアウトのスナップショット、持ち運べる .peco テーマ、設定のエクスポート・インポート、ディスプレイ間のフェンス交換。",
   "detail.footprint.title": "軽く、小さく",
   "detail.footprint.text": "Rust で書かれたネイティブアプリ。WebView2 の設定パネルは開いたときだけ読み込まれます。",
   "detail.safe.title": "ファイルはあなたのもの",

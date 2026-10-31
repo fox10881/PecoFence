@@ -70,10 +70,10 @@ impl GridMetrics {
     }
 
     /// Label line height from the system icon-title font (Accessibility text scaling): the
-    /// cell grows with it, rounded up to the 4 px grid so cells stay on the grid (16 for the
-    /// default 12 px font, i.e. a no-op). Apply before `with_spacing`.
+    /// cell grows with it at 1 px precision so grid metrics stay pixel-exact. Apply
+    /// before `with_spacing`.
     pub fn with_line_h(mut self, line_h: f32) -> Self {
-        let line_h = (line_h.max(1.0) / 4.0).ceil() * 4.0;
+        let line_h = line_h.max(1.0);
         self.line_h = line_h;
         self.cell_h = self.icon_h + 8.0 + Self::label_h(line_h, self.label_lines) + 4.0;
         self
@@ -1308,19 +1308,23 @@ mod tests {
     }
 
     /// The default icon-title font (12 px, 16 line) reproduces today's cells exactly; a
-    /// scaled font grows the cell on the 4 px grid, before spacing is applied.
+    /// scaled font grows the cell at 1 px precision, before spacing is applied.
     #[test]
     fn line_height_follows_the_icon_title_font_on_the_grid() {
         let base = GridMetrics::for_icon_size(48, 2);
         assert_eq!(base.with_line_h(16.0), base);
-        assert_eq!(base.with_line_h(15.0), base, "rounds up to the 4 px grid");
+        let tighter = base.with_line_h(15.0);
+        assert_eq!(
+            tighter.line_h, 15.0,
+            "no 4 px quantization — exact line height"
+        );
+        assert_eq!(tighter.cell_h, base.cell_h - 2.0);
         let big = GridMetrics::for_icon_size(48, 2).with_line_h(20.0);
         assert_eq!(big.line_h, 20.0);
         assert_eq!(big.cell_h, base.cell_h + 8.0);
         assert_eq!(big.cell_w, base.cell_w);
         let odd = GridMetrics::for_icon_size(48, 1).with_line_h(17.0);
-        assert_eq!(odd.line_h, 20.0);
-        assert_eq!(odd.cell_h % 4.0, 0.0);
+        assert_eq!(odd.line_h, 17.0);
         let compact = GridMetrics::for_icon_size(48, 2)
             .with_line_h(20.0)
             .with_spacing(pecofence_core::Spacing::Compact);

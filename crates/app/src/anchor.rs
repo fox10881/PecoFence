@@ -1145,8 +1145,13 @@ impl DesktopAnchor {
         match id {
             TIMER_ANCHOR_CHECK => {
                 self.ensure_anchored("periodic check");
-                // Re-injects the TAP if Explorer restarted under Clear/Blur.
-                pecofence_platform::tap::ensure();
+                // Re-injects the styler when StartMenuExperienceHost restarts.
+                pecofence_platform::start_menu::ensure();
+                // Re-delivers an armed taskbar theme after an explorer restart.
+                pecofence_platform::taskbar_styler::ensure();
+                // Re-injects the Notification Center styler when a Shell
+                // host restarts or launches after the style was chosen.
+                pecofence_platform::notification_center::ensure();
             }
             TIMER_RETRY => {
                 self.sentinel.kill_timer(TIMER_RETRY);

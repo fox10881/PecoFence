@@ -659,13 +659,19 @@ mod tests {
         ("stack", "%frames.join(\"\\n\")"), // crashlog: `module+rva` per frame
         ("storage", "state.storage_kind()"), // fixed names of the config folder's kind
         ("style", "?style"),            // backdrop style enum
+        ("style", "%fe.style"),         // File Explorer theme catalog id (fixed set)
+        ("id", "%id"),                  // File Explorer theme catalog id (fixed set)
+        ("hwnd", "hwnd.0 as usize"),    // window handle (not user data)
+        ("ok", "ok"),                   // delivery success bool
+        ("residents", "hwnds.len()"),   // resident count
+        ("booting", "booting"),         // booting count
         ("verb", "verb"),               // shell verb (canonical name)
         ("verb", "%verb"),
         ("verb", "verb.unwrap_or(\"<default>\")"), // verb or the literal "<default>"
-        ("wanted", "%h"),   // Hotkey
-        ("what", "what"),   // `&'static str` operation names
-        ("what", "e.step"), // ConfigStore::save step name
-        ("what", "kind"),   // JavaScript error type from a fixed list
+        ("wanted", "%h"),                          // Hotkey
+        ("what", "what"),                          // `&'static str` operation names
+        ("what", "e.step"),                        // ConfigStore::save step name
+        ("what", "kind"),                          // JavaScript error type from a fixed list
     ];
 
     struct Callsite {

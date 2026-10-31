@@ -959,12 +959,17 @@ struct SharedSurface {
     width: i32,
     height: i32,
     bgra: Vec<u8>,
+    /// Letterbox mode (`containBackground` → strict Contain): the blurred
+    /// backdrop covering the whole window, and the centered rect the video draws into.
+    margin: Vec<u8>,
+    dst: Option<(i32, i32, i32, i32)>,
 }
 
 /// Active WMF desktop video wallpaper player. Dropping or calling `stop` cleanly shuts down the
 /// playback thread, destroys the `WorkerW` child window, and repaints the desktop background.
 pub struct WmfWallpaperPlayer {
     path: PathBuf,
+    letterbox: bool,
     stop: Arc<AtomicBool>,
     wake: Arc<(Mutex<()>, Condvar)>,
     latest_frame: Arc<Mutex<Option<VideoFrame>>>,
@@ -975,9 +980,11 @@ impl WmfWallpaperPlayer {
     /// Starts playing `path` on the desktop `WorkerW` layer. Initializes WMF, decodes the first
     /// H.264 frame, attaches the desktop window, and presents Frame #0 on the worker thread
     /// before returning `Ok` (or surfaces the exact failure reason to the caller).
-    pub fn start(path: impl Into<PathBuf>) -> std::result::Result<Self, String> {
+    /// `letterbox` (`containBackground`) draws strict-Contain — the whole frame
+    /// centered over a blurred backdrop instead of cover-cropped.
+    pub fn start(path: impl Into<PathBuf>, letterbox: bool) -> std::result::Result<Self, String> {
         let path = path.into();
-        tracing::info!(path = %path.display(), "wmf: starting WmfWallpaperPlayer");
+        tracing::info!(path = %path.display(), letterbox, "wmf: starting WmfWallpaperPlayer");
         let stop = Arc::new(AtomicBool::new(false));
         let wake = Arc::new((Mutex::new(()), Condvar::new()));
         let latest_frame = Arc::new(Mutex::new(None));
@@ -994,6 +1001,7 @@ impl WmfWallpaperPlayer {
             .spawn(move || {
                 run_player_thread(
                     video_path,
+                    letterbox,
                     stop_thread,
                     wake_thread,
                     latest_thread,
@@ -1013,6 +1021,7 @@ impl WmfWallpaperPlayer {
                 tracing::info!(path = %path.display(), "wmf: WmfWallpaperPlayer started and rendering");
                 Ok(Self {
                     path,
+                    letterbox,
                     stop,
                     wake,
                     latest_frame,
@@ -1035,6 +1044,12 @@ impl WmfWallpaperPlayer {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Whether this player renders strict-Contain (letterbox) or cover-cropped —
+    /// `sync_video_wallpaper` restarts rather than reuses when the mode changed.
+    pub fn letterbox(&self) -> bool {
+        self.letterbox
     }
 
     /// Whether the playback thread is still running. The desktop video window can die
@@ -1101,6 +1116,22 @@ unsafe extern "system" fn video_wnd_proc(
 
 /// Aspect-fill (cover) crop in source coordinates: the part of a `sw`x`sh` frame that fills
 /// `dw`x`dh` without distorting, centred.
+/// Strict-contain inverse of [`cover_crop`]: the centered `{l, t, r, b}` window rect an
+/// `sw x sh` frame occupies at the uniform min scale — letterbox mode's dst rect.
+fn contain_rect(sw: i32, sh: i32, dw: i32, dh: i32) -> (i32, i32, i32, i32) {
+    if sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 {
+        return (0, 0, dw.max(0), dh.max(0));
+    }
+    let (sxf, syf) = (dw as f32 / sw as f32, dh as f32 / sh as f32);
+    let s = sxf.min(syf);
+    let (bw, bh) = (
+        (sw as f32 * s).round().min(dw as f32).max(1.0) as i32,
+        (sh as f32 * s).round().min(dh as f32).max(1.0) as i32,
+    );
+    let (l, t) = ((dw - bw) / 2, (dh - bh) / 2);
+    (l, t, l + bw, t + bh)
+}
+
 fn cover_crop(sw: i32, sh: i32, dw: i32, dh: i32) -> (i32, i32, i32, i32) {
     if dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0 {
         return (0, 0, sw.max(1), sh.max(1));
@@ -1139,10 +1170,59 @@ unsafe fn paint_surface_dc(hwnd: HWND, dc: HDC) {
             },
             ..Default::default()
         };
-        let (sx, sy, sw, sh) =
-            cover_crop(surface.width, surface.height, surface.out_w, surface.out_h);
         let wmf_dc = crate::wmf_bindings::HDC(dc.0);
         let _ = SetStretchBltMode(wmf_dc, HALFTONE);
+        if let Some((dl, dt, dr, db)) = surface.dst {
+            // Letterbox: blurred backdrop covers the whole window; the video frame
+            // draws uncropped into its centered contain rect.
+            if surface.margin.len() == (surface.out_w * surface.out_h * 4) as usize {
+                let mbi = crate::wmf_bindings::BITMAPINFO {
+                    bmiHeader: crate::wmf_bindings::BITMAPINFOHEADER {
+                        biSize: size_of::<crate::wmf_bindings::BITMAPINFOHEADER>() as u32,
+                        biWidth: surface.out_w,
+                        biHeight: -surface.out_h,
+                        biPlanes: 1,
+                        biBitCount: 32,
+                        biCompression: BI_RGB as u32,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                };
+                let _ = StretchDIBits(
+                    wmf_dc,
+                    0,
+                    0,
+                    surface.out_w,
+                    surface.out_h,
+                    0,
+                    0,
+                    surface.out_w,
+                    surface.out_h,
+                    Some(surface.margin.as_ptr().cast()),
+                    &mbi,
+                    DIB_RGB_COLORS as u32,
+                    SRCCOPY,
+                );
+            }
+            let _ = StretchDIBits(
+                wmf_dc,
+                dl,
+                dt,
+                dr - dl,
+                db - dt,
+                0,
+                0,
+                surface.width,
+                surface.height,
+                Some(surface.bgra.as_ptr().cast()),
+                &bmi,
+                DIB_RGB_COLORS as u32,
+                SRCCOPY,
+            );
+            return;
+        }
+        let (sx, sy, sw, sh) =
+            cover_crop(surface.width, surface.height, surface.out_w, surface.out_h);
         let _ = StretchDIBits(
             wmf_dc,
             0,
@@ -1281,6 +1361,9 @@ struct GpuPipeline {
     dst_rect: crate::wmf_bindings::RECT,
     vid_w: usize,
     vid_h: usize,
+    win_w: u32,
+    win_h: u32,
+    letterbox: bool,
 }
 
 impl GpuPipeline {
@@ -1298,6 +1381,7 @@ impl GpuPipeline {
         win_h: u32,
         fps_num: u32,
         fps_den: u32,
+        letterbox: bool,
     ) -> std::result::Result<Self, String> {
         unsafe {
             let video_dev: ID3D11VideoDevice = device
@@ -1412,25 +1496,48 @@ impl GpuPipeline {
                 .map_err(|e| format!("CreateVideoProcessorOutputView: {e}"))?;
             let out_view = out_view.ok_or("output view was null")?;
 
-            // Cover-crop: pick the source rect in video coordinates that fills the
-            // window without distortion — identical math to the GDI path.
-            let (sx, sy, sw, sh) =
-                cover_crop(vid_w as i32, vid_h as i32, win_w as i32, win_h as i32);
+            // Cover-crop picks the source rect filling the window without distortion
+            // (same math as the GDI path); letterbox mode keeps the WHOLE frame and
+            // aims it at the centered contain rect, margins left to a blurred backdrop
+            // that `fill_letterbox_backdrop` burns into both swap-chain buffers.
+            let (sx, sy, sw, sh) = if letterbox {
+                (0, 0, vid_w as i32, vid_h as i32)
+            } else {
+                cover_crop(vid_w as i32, vid_h as i32, win_w as i32, win_h as i32)
+            };
             let src_rect = crate::wmf_bindings::RECT {
                 left: sx,
                 top: sy,
                 right: sx + sw,
                 bottom: sy + sh,
             };
+            let (dl, dt, dr, db) = if letterbox {
+                contain_rect(vid_w as i32, vid_h as i32, win_w as i32, win_h as i32)
+            } else {
+                (0, 0, win_w as i32, win_h as i32)
+            };
             let dst_rect = crate::wmf_bindings::RECT {
-                left: 0,
-                top: 0,
-                right: win_w as i32,
-                bottom: win_h as i32,
+                left: dl,
+                top: dt,
+                right: dr,
+                bottom: db,
+            };
+            // The output target must equal the contain rect in letterbox mode: a full-
+            // window target makes the video processor paint everything OUTSIDE dst_rect
+            // with its background color, erasing the blurred margins every frame.
+            let out_rect = if letterbox {
+                dst_rect
+            } else {
+                crate::wmf_bindings::RECT {
+                    left: 0,
+                    top: 0,
+                    right: win_w as i32,
+                    bottom: win_h as i32,
+                }
             };
             video_ctx.VideoProcessorSetStreamSourceRect(&vp, 0, true, Some(&src_rect));
             video_ctx.VideoProcessorSetStreamDestRect(&vp, 0, true, Some(&dst_rect));
-            video_ctx.VideoProcessorSetOutputTargetRect(&vp, true, Some(&dst_rect));
+            video_ctx.VideoProcessorSetOutputTargetRect(&vp, true, Some(&out_rect));
 
             // CPU-readable staging texture used ONLY for `.peco` thumbnail captures
             // (once per 30 frames) — never part of the per-frame render path.
@@ -1481,21 +1588,50 @@ impl GpuPipeline {
                 dst_rect,
                 vid_w: vid_w as usize,
                 vid_h: vid_h as usize,
+                win_w,
+                win_h,
+                letterbox,
             })
         }
     }
 
-    /// Recomputes the cover-crop rects after a mid-stream media-type change.
+    /// Recomputes the crop/contain rects after a mid-stream media-type change.
     unsafe fn set_video_dims(&mut self, w: u32, h: u32) {
-        let dw = self.dst_rect.right - self.dst_rect.left;
-        let dh = self.dst_rect.bottom - self.dst_rect.top;
-        let (sx, sy, sw, sh) = cover_crop(w as i32, h as i32, dw, dh);
-        self.src_rect = crate::wmf_bindings::RECT {
-            left: sx,
-            top: sy,
-            right: sx + sw,
-            bottom: sy + sh,
-        };
+        if self.letterbox {
+            let (dl, dt, dr, db) =
+                contain_rect(w as i32, h as i32, self.win_w as i32, self.win_h as i32);
+            self.dst_rect = crate::wmf_bindings::RECT {
+                left: dl,
+                top: dt,
+                right: dr,
+                bottom: db,
+            };
+            self.src_rect = crate::wmf_bindings::RECT {
+                left: 0,
+                top: 0,
+                right: w as i32,
+                bottom: h as i32,
+            };
+            // The output target tracks the contain rect so the processor never paints
+            // over the blurred margins — re-apply after the rect moves.
+            unsafe {
+                self.video_ctx.VideoProcessorSetOutputTargetRect(
+                    &self.vp,
+                    true,
+                    Some(&self.dst_rect),
+                );
+            }
+        } else {
+            let dw = self.dst_rect.right - self.dst_rect.left;
+            let dh = self.dst_rect.bottom - self.dst_rect.top;
+            let (sx, sy, sw, sh) = cover_crop(w as i32, h as i32, dw, dh);
+            self.src_rect = crate::wmf_bindings::RECT {
+                left: sx,
+                top: sy,
+                right: sx + sw,
+                bottom: sy + sh,
+            };
+        }
         self.vid_w = w as usize;
         self.vid_h = h as usize;
         // SAFETY: re-applies sticky VP stream state on a live processor.
@@ -1592,6 +1728,38 @@ impl GpuPipeline {
                 .Present(0, 0)
                 .ok()
                 .map_err(|e| format!("Present: {e}"))?;
+            Ok(())
+        }
+    }
+
+    /// Burns `bgra` (win_w x win_h) into BOTH swap-chain buffers so the margins the
+    /// video processor never writes — everything outside the contain dst rect — keep
+    /// the blurred backdrop instead of a stale last-presented frame.
+    /// SAFETY: UpdateSubresource/Present on the live swap chain.
+    unsafe fn fill_letterbox_backdrop(&self, bgra: &[u8]) -> std::result::Result<(), String> {
+        unsafe {
+            let pitch = self.win_w as usize * 4;
+            if bgra.len() != pitch * self.win_h as usize {
+                return Err("letterbox backdrop size mismatch".to_string());
+            }
+            for _ in 0..2 {
+                let back_buffer: ID3D11Texture2D = self
+                    .swapchain
+                    .GetBuffer(0)
+                    .map_err(|e| format!("GetBuffer: {e}"))?;
+                self.context.UpdateSubresource(
+                    &back_buffer,
+                    0,
+                    None,
+                    bgra.as_ptr().cast(),
+                    pitch as u32,
+                    0,
+                );
+                self.swapchain
+                    .Present(0, 0)
+                    .ok()
+                    .map_err(|e| format!("backdrop Present: {e}"))?;
+            }
             Ok(())
         }
     }
@@ -1694,6 +1862,7 @@ unsafe fn detach_video_window(hwnd: HWND, host: HWND) {
 #[allow(clippy::too_many_arguments)]
 unsafe fn run_gpu_wallpaper(
     path: &Path,
+    letterbox: bool,
     stop: &AtomicBool,
     wake: &(Mutex<()>, Condvar),
     latest_frame: &Mutex<Option<VideoFrame>>,
@@ -1734,6 +1903,7 @@ unsafe fn run_gpu_wallpaper(
     let result = unsafe {
         run_gpu_attached(
             hwnd,
+            letterbox,
             &device,
             &context,
             &reader,
@@ -1855,6 +2025,7 @@ fn snap_to_vsync_grid(t: Instant, anchor: Instant, period: Duration) -> Instant 
 #[allow(clippy::too_many_arguments)]
 unsafe fn run_gpu_attached(
     hwnd: HWND,
+    letterbox: bool,
     device: &ID3D11Device,
     context: &ID3D11DeviceContext,
     reader: &IMFSourceReader,
@@ -1876,12 +2047,26 @@ unsafe fn run_gpu_attached(
 ) -> std::result::Result<(), String> {
     unsafe {
         let mut gp = GpuPipeline::new(
-            hwnd, device, context, vid_w, vid_h, win_w, win_h, fps_num, fps_den,
+            hwnd, device, context, vid_w, vid_h, win_w, win_h, fps_num, fps_den, letterbox,
         )?;
 
         // Frame #0 straight to the screen through the GPU path.
         gp.present(first_buf, first_tex, first_slice)?;
         let thumb = gp.capture_thumb(first_tex, first_slice).unwrap_or_default();
+        if letterbox && !thumb.is_empty() {
+            // Blurred backdrop into both buffers: the video processor only writes the
+            // contain rect each frame, so the margins keep this fill forever.
+            let backdrop = crate::wallpaper::blurred_backdrop_bgra(
+                &thumb,
+                THUMB_W,
+                THUMB_H,
+                win_w as usize,
+                win_h as usize,
+            );
+            if let Err(e) = gp.fill_letterbox_backdrop(&backdrop) {
+                tracing::warn!(error = %e, "wmf: letterbox backdrop fill failed; margins show last frame");
+            }
+        }
         let _ = startup_tx.send(Ok(VideoFrame {
             width: THUMB_W as u32,
             height: THUMB_H as u32,
@@ -2054,6 +2239,7 @@ unsafe fn run_gpu_attached(
 
 fn run_player_thread(
     path: PathBuf,
+    letterbox: bool,
     stop: Arc<AtomicBool>,
     wake: Arc<(Mutex<()>, Condvar)>,
     latest_frame: Arc<Mutex<Option<VideoFrame>>>,
@@ -2077,7 +2263,7 @@ fn run_player_thread(
     // Zero-copy GPU path first: DXVA decode → D3D11 video processor → DirectComposition
     // swap chain. Any failure (no D3D11 device, DXVA refused, DComp unavailable) falls
     // through to the software path below.
-    match unsafe { run_gpu_wallpaper(&path, &stop, &wake, &latest_frame, &startup_tx) } {
+    match unsafe { run_gpu_wallpaper(&path, letterbox, &stop, &wake, &latest_frame, &startup_tx) } {
         Ok(()) => return,
         Err(e) => {
             tracing::warn!(
@@ -2131,6 +2317,8 @@ fn run_player_thread(
             width: 0,
             height: 0,
             bgra: Vec::new(),
+            margin: Vec::new(),
+            dst: None,
         }));
         let surface_ptr = &*surface as *const Mutex<SharedSurface>;
 
@@ -2154,13 +2342,24 @@ fn run_player_thread(
         };
 
         // Paint Frame #0 immediately before entering the playback loop: the surface keeps the
-        // video-resolution frame and StretchDIBits cover-crops it onto the window at blit time.
+        // video-resolution frame and StretchDIBits cover-crops it onto the window at blit
+        // time — letterbox mode instead keeps a blurred backdrop plus the contain rect.
         if let Ok(mut surf) = surface.lock() {
             surf.out_w = win_w;
             surf.out_h = win_h;
             surf.width = vid_w as i32;
             surf.height = vid_h as i32;
             surf.bgra.clone_from(&raw_frame);
+            if letterbox {
+                surf.margin = crate::wallpaper::blurred_backdrop_bgra(
+                    &raw_frame,
+                    vid_w as usize,
+                    vid_h as usize,
+                    win_w as usize,
+                    win_h as usize,
+                );
+                surf.dst = Some(contain_rect(vid_w as i32, vid_h as i32, win_w, win_h));
+            }
         }
         present_hwnd(hwnd);
         pump_thread_messages();
@@ -2262,6 +2461,22 @@ fn run_player_thread(
                 // The previous frame's buffer comes back as the next decode target: the
                 // hand-off costs no copy at all.
                 std::mem::swap(&mut surf.bgra, &mut raw_frame);
+                // A mid-stream media-type change can alter the frame dims — rebuild the
+                // contain rect and the blurred backdrop so the margins track the new
+                // source instead of stretching the old frame's leftovers.
+                if letterbox {
+                    let d = contain_rect(vid_w as i32, vid_h as i32, win_w, win_h);
+                    if surf.dst != Some(d) {
+                        surf.dst = Some(d);
+                        surf.margin = crate::wallpaper::blurred_backdrop_bgra(
+                            &surf.bgra,
+                            vid_w as usize,
+                            vid_h as usize,
+                            win_w as usize,
+                            win_h as usize,
+                        );
+                    }
+                }
             }
             frame_counter = frame_counter.wrapping_add(1);
 
@@ -2504,6 +2719,7 @@ mod tests {
                 360,
                 opened.fps_num,
                 opened.fps_den,
+                false,
             )
             .expect("GPU pipeline");
             for i in 0..3 {
@@ -2669,6 +2885,7 @@ mod tests {
                 opened2.height,
                 opened2.fps_num,
                 opened2.fps_den,
+                false,
             )
             .expect("GPU pipeline");
             // Measured vsync grid + snap decision for this file on this display.

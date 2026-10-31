@@ -1,11 +1,10 @@
 //! The COM half of the injection: `TAPSite` (`IObjectWithSite`) receives the
 //! XAML diagnostics object from `InitializeXamlDiagnosticsEx`, and
-//! `VisualTreeWatcher` (`IVisualTreeServiceCallback2`) tracks the taskbar's
-//! `BackgroundFill`/`BackgroundStroke` rectangles — the Rust equivalent of
-//! TranslucentTB's `tapsite.cpp` + `visualtreewatcher.cpp`.
+//! `VisualTreeWatcher` (`IVisualTreeServiceCallback2`) feeds every reported
+//! element into `styler` — the native taskbar/Start Menu theme engine.
 
 use crate::bindings::*;
-use crate::shared::{self, RectSlot};
+use crate::shared;
 use crate::win32;
 use std::sync::Mutex;
 use std::sync::atomic::Ordering;
@@ -52,8 +51,54 @@ pub fn install() {
     crate::tap_log!("install exited: {result:?}");
 }
 
+/// `ixde` failures are sticky: injecting into a just-started Explorer lands
+/// before the taskbar's DXamlCore registers with the diagnostics service,
+/// and the first `0x80070490` poisons **every** later attempt for the
+/// process's life (observed: 80+ consecutive failures; every success landed
+/// on attempt 1). So the first attempt waits for the host to be past boot —
+/// the command window's `WM_TIMER` retries `ensure_watching`, which calls
+/// `install` again once the age gate opens.
+fn host_warm_enough() -> bool {
+    host_warm_enough_ms(30_000)
+}
+
+/// `warmup_ms` — the WUX session needs 30s (the taskbar's DXamlCore
+/// registers ~10–25s after explorer spawns); the WinUI3 session only sees
+/// cabinet processes, which exist to host their island — injection lands
+/// after the window already renders, so `FrameworkUdk` presence plus a
+/// short floor covers the diagnostics registration. A poisoned attempt in a
+/// cabinet process is also self-limiting: the next window is a new process.
+fn host_warm_enough_ms(warmup_ms: u64) -> bool {
+    unsafe {
+        let (mut c, mut e, mut k, mut u) = (
+            win32::FILETIME::default(),
+            win32::FILETIME::default(),
+            win32::FILETIME::default(),
+            win32::FILETIME::default(),
+        );
+        if !win32::GetProcessTimes(win32::GetCurrentProcess(), &mut c, &mut e, &mut k, &mut u)
+            .as_bool()
+        {
+            return true; // can't measure — attempt anyway
+        }
+        let mut now = win32::FILETIME::default();
+        win32::GetSystemTimeAsFileTime(&mut now);
+        now.ticks().saturating_sub(c.ticks()) / 10_000 >= warmup_ms
+    }
+}
+
+static WARMUP_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn install_inner() {
-    let wux = unsafe { win32::LoadLibraryW(windows_core::w!("Windows.UI.Xaml.dll")) };
+    if !host_warm_enough() {
+        if !WARMUP_LOGGED.swap(true, Ordering::Relaxed) {
+            crate::tap_log!("IXDEx deferred — host still warming up");
+        }
+        return;
+    }
+    // Attach only once the host loaded the framework itself: `LoadLibraryW`
+    // here would bootstrap `Windows.UI.Xaml` on *our* worker thread instead.
+    let wux = unsafe { win32::GetModuleHandleW(windows_core::w!("Windows.UI.Xaml.dll")) };
     if wux.is_null() {
         return;
     }
@@ -87,6 +132,7 @@ fn install_inner() {
         .collect();
     let hr = std::thread::scope(|s| {
         s.spawn(|| unsafe {
+            let _ = win32::RoInitialize(0);
             ixde(
                 windows_core::PCWSTR(connection.as_ptr()),
                 pid,
@@ -172,14 +218,17 @@ impl IObjectWithSite_Impl for TapSite_Impl {
         punksite: windows_core::Ref<windows_core::IUnknown>,
     ) -> windows_core::Result<()> {
         crate::tap_log!("SetSite entry");
-        let _ = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
+        let _ = std::panic::catch_unwind(core::panic::AssertUnwindSafe(move || {
             let site = punksite.ok().ok().cloned();
             *self.site.lock().unwrap_or_else(|p| p.into_inner()) = site.clone();
             if site.is_none() {
                 return Ok(());
             }
-            if shared::lock().watcher.is_some() {
-                return Ok::<(), windows_core::Error>(()); // only ever one watcher
+            {
+                let shared = shared::lock();
+                if shared.watcher.is_some() {
+                    return Ok::<(), windows_core::Error>(()); // only ever one watcher per session
+                }
             }
             let diagnostics: Option<IXamlDiagnostics> =
                 site.and_then(|s| windows_core::Interface::cast::<IXamlDiagnostics>(&s).ok());
@@ -278,14 +327,22 @@ impl Drop for AdvisingGuard {
 /// (island wasn't ready at first inject), a fresh install pass is spawned —
 /// that is the retry channel the timer drives.
 pub fn ensure_watching() {
-    if shared::lock().watcher.is_some() {
+    // An unloaded resident stays inert — re-advising here would steal the
+    // diagnostics channel back from the live co-resident.
+    if crate::command::is_unloaded() {
         return;
     }
-    let diagnostics = shared::lock().diagnostics.clone();
-    match diagnostics {
-        Some(diagnostics) => start_advise(diagnostics),
-        None => {
-            std::thread::spawn(install);
+    {
+        let shared = shared::lock();
+        if shared.watcher.is_none() {
+            let diagnostics = shared.diagnostics.clone();
+            drop(shared);
+            match diagnostics {
+                Some(diagnostics) => start_advise(diagnostics),
+                None => {
+                    std::thread::spawn(install);
+                }
+            }
         }
     }
 }
@@ -343,284 +400,34 @@ fn on_visual_tree_change(
     element: &VisualElement,
     mutationtype: VisualMutationType,
 ) {
-    if mutationtype == Remove {
-        // Take the slot out under the lock, then release COM refs outside it.
-        let (removed, removed_bg) = {
-            let mut shared = shared::lock();
-            let rect_slot =
-                shared
-                    .slot_handles
-                    .remove(&element.Handle.0)
-                    .and_then(|(frame, is_fill)| {
-                        shared.rects.get_mut(&frame).and_then(|set| {
-                            if is_fill {
-                                set.fill.take()
-                            } else {
-                                set.stroke.take()
-                            }
-                        })
-                    });
-            let bg_slot = shared
-                .bg_handles
-                .remove(&element.Handle.0)
-                .and_then(|frame| {
-                    shared
-                        .rects
-                        .get_mut(&frame)
-                        .and_then(|set| set.background.take())
-                });
-            shared.xaml_sources.remove(&element.Handle.0);
-            (rect_slot, bg_slot)
-        };
-        drop(removed);
-        drop(removed_bg);
-        unsafe { free_element_strings(element) };
-        return;
-    }
-
-    let diagnostics = shared::lock().diagnostics.clone();
-    let Some(diagnostics) = diagnostics else {
-        unsafe { free_element_strings(element) };
-        return;
-    };
-
-    let is_xaml_source =
-        element.Type[..] == **windows_core::h!("Windows.UI.Xaml.Hosting.DesktopWindowXamlSource");
-    if is_xaml_source {
-        shared::lock().xaml_sources.insert(element.Handle.0);
-        unsafe { free_element_strings(element) };
-        return;
-    }
-
-    let is_taskbar_frame = element.Type[..] == **windows_core::h!("Taskbar.TaskbarFrame");
-    if is_taskbar_frame {
-        register_taskbar_frame(&diagnostics, relation, element);
-        unsafe { free_element_strings(element) };
-        return;
-    }
-
-    let is_taskbar_bg = element.Type[..] == **windows_core::h!("Taskbar.TaskbarBackground")
-        && element.Name[..] == **windows_core::h!("BackgroundControl");
-    if is_taskbar_bg {
-        register_taskbar_background(&diagnostics, relation, element);
-        unsafe { free_element_strings(element) };
-        return;
-    }
-
-    let is_rectangle = element.Type[..] == **windows_core::h!("Windows.UI.Xaml.Shapes.Rectangle");
-    let is_fill = element.Name[..] == **windows_core::h!("BackgroundFill");
-    let is_stroke = element.Name[..] == **windows_core::h!("BackgroundStroke");
-    if !is_rectangle || (!is_fill && !is_stroke) {
-        unsafe { free_element_strings(element) };
-        return;
-    }
-
-    // Only rectangles inside a `TaskbarFrame` — Start and friends reuse the
-    // same element names elsewhere in the shell (same check TTB does).
-    let Some(frame) = find_taskbar_frame(&diagnostics, relation) else {
-        crate::tap_log!(
-            "rect {:?}: TaskbarFrame not found",
-            String::from_utf16_lossy(&element.Name[..])
-        );
-        unsafe { free_element_strings(element) };
-        return;
-    };
-    let Ok(frame_handle) = (unsafe { diagnostics.GetHandleFromIInspectable(&frame) }) else {
-        crate::tap_log!("rect: frame handle failed");
-        unsafe { free_element_strings(element) };
-        return;
-    };
-    let Ok(rect) = unsafe { diagnostics.GetIInspectableFromHandle(element.Handle) }
-        .and_then(|o| windows_core::Interface::cast::<Rectangle>(&o))
-    else {
-        crate::tap_log!("rect: IInspectable->Rectangle failed");
-        unsafe { free_element_strings(element) };
-        return;
-    };
-
-    // Explorer re-styles the taskbar's Fill on theme/accent changes; the
-    // property-changed callback (TTB's `OnTaskbarBackgroundUpdated`) puts our
-    // brush straight back instead of waiting for the next state command. It
-    // re-posts through the dispatcher rather than painting inside the
-    // callback: `SetFill` runs this synchronously, so painting here would
-    // nest `SetFill` inside itself.
-    let on_fill_changed = DependencyPropertyChangedCallback::new(|_, _| {
-        // `painting()` filters our own SetFill — otherwise every apply would
-        // queue another apply forever (each fresh brush is a real change).
-        if !shared::painting() && shared::TAP_STATE.load(Ordering::Acquire) != shared::STATE_NORMAL
-        {
-            shared::invalidate_applied();
-            shared::dispatch_apply(0);
-        }
-        Ok(())
-    });
-    if let Ok(dp) = Shape::FillProperty() {
-        let _ = rect.RegisterPropertyChangedCallback(&dp, &on_fill_changed);
-    }
-
-    // XAML getters happen before the lock so `shared` is never held across a
-    // call that can run callbacks on this thread.
-    let dispatcher = rect.Dispatcher().ok();
-    let original = rect.Fill().ok();
+    // DIAG: element-feed telemetry while bringing up the taskbar styler —
+    // counts callbacks and logs the first element types seen per resident.
     {
-        let mut shared = shared::lock();
-        if shared.dispatcher.is_none() {
-            shared.dispatcher = dispatcher;
+        static SEEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let n = SEEN.fetch_add(1, Ordering::Relaxed) + 1;
+        if n <= 40 || n.is_multiple_of(200) {
+            crate::tap_log!(
+                "vtw #{n} {:?} type={:?} handle={}",
+                mutationtype,
+                String::from_utf16_lossy(&element.Type[..]),
+                element.Handle.0
+            );
         }
-        let slot = RectSlot {
-            original,
-            element: rect.clone(),
-            _on_fill_changed: Some(on_fill_changed),
-        };
-        shared
-            .slot_handles
-            .insert(element.Handle.0, (frame_handle.0, is_fill));
-        let set = shared.rects.entry(frame_handle.0).or_default();
-        if is_fill {
-            set.fill = Some(slot);
-        } else {
-            set.stroke = Some(slot);
-        }
-        crate::tap_log!(
-            "rect registered: frame={} fill={is_fill} sets={}",
-            frame_handle.0,
-            shared.rects.len()
-        );
     }
-    // New rectangles appear already styled by Explorer; repaint this one when
-    // a non-Normal mode is active so freshly spawned taskbars match.
-    shared::paint_rect(&rect, is_fill);
-    unsafe { free_element_strings(element) };
-}
-
-/// Matches a new `Taskbar.TaskbarFrame` to the `DesktopWindowXamlSource` that
-/// hosts it (TTB's `m_NonMatchingXamlSources` scan), then stores the island's
-/// real window handle on the frame's set — the accent's actual target.
-fn register_taskbar_frame(
-    diagnostics: &IXamlDiagnostics,
-    relation: &ParentChildRelation,
-    element: &VisualElement,
-) {
-    let Ok(root_grid) = unsafe { diagnostics.GetIInspectableFromHandle(relation.Parent) }
-        .and_then(|o| windows_core::Interface::cast::<UIElement>(&o))
-    else {
-        crate::tap_log!("frame: parent->UIElement failed");
-        return;
-    };
-    let root_unknown = windows_core::Interface::cast::<windows_core::IUnknown>(&root_grid).ok();
-    let sources: Vec<u64> = shared::lock().xaml_sources.iter().copied().collect();
-    let mut matched = None;
-    for handle in sources {
-        let Ok(source) = unsafe { diagnostics.GetIInspectableFromHandle(InstanceHandle(handle)) }
-            .and_then(|o| windows_core::Interface::cast::<DesktopWindowXamlSource>(&o))
-        else {
-            continue;
-        };
-        // `Content` may throw hresult_wrong_thread for a source whose content
-        // is still being set up — TTB skips those the same way.
-        let Ok(content) = source.Content() else {
-            continue;
-        };
-        let content_unknown =
-            windows_core::Interface::cast::<windows_core::IUnknown>(&content).ok();
-        match (&root_unknown, &content_unknown) {
-            (Some(a), Some(b))
-                if windows_core::Interface::as_raw(a) == windows_core::Interface::as_raw(b) =>
-            {
-                let Ok(hwnd) =
-                    windows_core::Interface::cast::<IDesktopWindowXamlSourceNative>(&source)
-                        .and_then(|native| unsafe { native.WindowHandle() })
-                else {
-                    continue;
-                };
-                crate::tap_log!("frame {} -> island {:?}", element.Handle.0, hwnd.0);
-                shared::lock()
-                    .rects
-                    .entry(element.Handle.0)
-                    .or_default()
-                    .island_hwnd = Some(hwnd);
-                matched = Some(handle);
-                break;
+    // Every element feeds the styler — explorer's taskbar and SMEH's Start
+    // Menu alike; the theme's own matchers decide what to touch (no-op when
+    // no theme is armed).
+    match mutationtype {
+        t if t == Remove => {
+            crate::styler::wux::on_element_removed(element.Handle.0);
+        }
+        _ => {
+            let diagnostics = shared::lock().diagnostics.clone();
+            if let Some(diagnostics) = diagnostics {
+                let ty = String::from_utf16_lossy(&element.Type[..]);
+                crate::styler::wux::on_element(&diagnostics, element, relation.Parent.0, &ty);
             }
-            _ => {}
         }
     }
-    if let Some(handle) = matched {
-        shared::lock().xaml_sources.remove(&handle);
-        // A frame arriving while Clear/Blur is active needs its rects painted
-        // immediately — same late-arrival rule as rects and backgrounds.
-        if shared::TAP_STATE.load(Ordering::Acquire) != shared::STATE_NORMAL {
-            shared::invalidate_applied();
-            shared::dispatch_apply(0);
-        }
-    }
-}
-
-/// Registers a `Taskbar.TaskbarBackground` control against its frame and
-/// applies the current state to it. On builds where the plate is the control
-/// itself (not the rects), `Opacity` is the switch that hides it.
-fn register_taskbar_background(
-    diagnostics: &IXamlDiagnostics,
-    relation: &ParentChildRelation,
-    element: &VisualElement,
-) {
-    let Some(frame) = find_taskbar_frame(diagnostics, relation) else {
-        crate::tap_log!("bg: TaskbarFrame not found");
-        return;
-    };
-    let Ok(frame_handle) = (unsafe { diagnostics.GetHandleFromIInspectable(&frame) }) else {
-        return;
-    };
-    let Ok(bg) = unsafe { diagnostics.GetIInspectableFromHandle(element.Handle) }
-        .and_then(|o| windows_core::Interface::cast::<UIElement>(&o))
-    else {
-        crate::tap_log!("bg: IInspectable->UIElement failed");
-        return;
-    };
-    let control = windows_core::Interface::cast::<Control>(&bg).ok();
-    crate::tap_log!("bg: control={}", control.is_some());
-    {
-        let mut shared = shared::lock();
-        if shared.dispatcher.is_none() {
-            shared.dispatcher = bg.Dispatcher().ok();
-        }
-        shared.bg_handles.insert(element.Handle.0, frame_handle.0);
-        shared.rects.entry(frame_handle.0).or_default().background = Some(shared::BgSlot {
-            element: bg.clone(),
-            control,
-        });
-        crate::tap_log!("bg registered: frame={}", frame_handle.0);
-    }
-    // Same late-arrival paint as rects: a background control that appears
-    // while Clear/Blur is active must take our brush immediately. Invalidate
-    // `applied` first — `apply_current_state` skips repainting when it already
-    // matches, and this control still has Explorer's default background.
-    if shared::TAP_STATE.load(Ordering::Acquire) != shared::STATE_NORMAL {
-        shared::invalidate_applied();
-        shared::dispatch_apply(0);
-    }
-}
-
-/// Walks parents from `relation.Parent` until an element named `TaskbarFrame`
-/// is found (`visualtreewatcher.cpp`'s `FindParent`).
-fn find_taskbar_frame(
-    diagnostics: &IXamlDiagnostics,
-    relation: &ParentChildRelation,
-) -> Option<FrameworkElement> {
-    let mut element = unsafe {
-        diagnostics
-            .GetIInspectableFromHandle(relation.Parent)
-            .and_then(|o| windows_core::Interface::cast::<FrameworkElement>(&o))
-            .ok()?
-    };
-    loop {
-        let name = element.Name().ok()?;
-        crate::tap_log!("  walk: {}", String::from_utf16_lossy(&name[..]));
-        if name[..] == **windows_core::h!("TaskbarFrame") {
-            return Some(element);
-        }
-        element = VisualTreeHelper::GetParent(&element)
-            .and_then(|p| windows_core::Interface::cast::<FrameworkElement>(&p))
-            .ok()?;
-    }
+    unsafe { free_element_strings(element) };
 }

@@ -43,7 +43,7 @@
   "detail.space.title": "De la place quand il en faut",
   "detail.space.text": "Repliez un groupe sur son titre. Survolez-le pour le développer. Verrouillez une disposition qui vous convient.",
   "detail.back.title": "Un retour toujours possible",
-  "detail.back.text": "Instantanés de disposition, sauvegardes quotidiennes, import/export de la configuration et échange des groupes entre écrans.",
+  "detail.back.text": "Instantanés de disposition, thèmes .peco portables, import/export de la configuration et échange des groupes entre écrans.",
   "detail.footprint.title": "Une empreinte légère",
   "detail.footprint.text": "Une application native en Rust. La fenêtre Paramètres ne charge WebView2 que lorsque vous l’ouvrez.",
   "detail.safe.title": "Vos fichiers restent les vôtres",

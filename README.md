@@ -144,7 +144,7 @@ Grab what you need, then press **Esc** to return.
 | **Familiar file handling** | File Explorer context menus, drag and drop, copy/paste, multi-select, thumbnails and icon/list/details views. |
 | **Keep folders close** | Put a live folder on your desktop. Browse subfolders and see changes as they happen. |
 | **Space when you need it** | Roll a fence up to its title. Hover to expand. Lock a layout you like. Double-click the desktop to hide your fences. Double-click again to bring them back. |
-| **A way back** | Layout snapshots — rename them and embed the wallpaper for a fully portable backup — daily backups, configuration import/export and swapping fences between displays. |
+| **A way back** | Layout snapshots — rename them and embed the wallpaper for a fully portable backup — configuration import/export and swapping fences between displays. |
 | **3D Shelf Mode (experimental)** | Shear a fence into a parallelogram so its rows follow the shelves of an angled wallpaper, with per-icon depth scaling toward the nearer edge. |
 | **A small footprint** | A native Rust application that idles at about 40 MB of memory in Task Manager. The WebView2 settings panel loads on demand. |
 

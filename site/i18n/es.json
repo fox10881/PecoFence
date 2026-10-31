@@ -43,7 +43,7 @@
   "detail.space.title": "Espacio cuando lo necesitas",
   "detail.space.text": "Contrae un grupo hasta su título. Pasa el cursor para expandirlo. Bloquea la distribución que te gusta.",
   "detail.back.title": "Siempre puedes volver atrás",
-  "detail.back.text": "Instantáneas de distribución, copias de seguridad diarias, importación y exportación de la configuración e intercambio de grupos entre pantallas.",
+  "detail.back.text": "Instantáneas de distribución, temas .peco portátiles, importación y exportación de la configuración e intercambio de grupos entre pantallas.",
   "detail.footprint.title": "Huella mínima",
   "detail.footprint.text": "Una aplicación nativa escrita en Rust. El panel de Configuración carga WebView2 solo cuando lo abres.",
   "detail.safe.title": "Tus archivos siguen siendo tuyos",
