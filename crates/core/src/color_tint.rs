@@ -29,27 +29,46 @@ pub const START_MENU_TARGETS: &[(&str, &str)] = &[
     ("Border#AcrylicBorder", "Background"),
     ("Border#AcrylicOverlay", "Background"),
 ];
-/// File Explorer's WinUI3 chrome — command bar, tab strip + tabs, and the
-/// navigation bar grid. These are the names the theme catalog restyles
-/// most, so the overlay lands on the same elements the FE themes recolor
-/// (appended last, the tint wins the background property).
+/// File Explorer's WinUI3 chrome — the three NON-overlapping top-bar
+/// root containers only. Nested targets (`TabViewItem > Grid#LayoutRoot`)
+/// stacked the veil 2-3 layers deep, and content grids must stay clear:
+/// the Win32 side already lays the identical 0x24-alpha BGRA tint on
+/// `SysTreeView32`/`DirectUIHWND` via `fe_glass::punch_black`.
 pub const FILE_EXPLORER_TARGETS: &[(&str, &str)] = &[
-    ("CommandBar#FileExplorerCommandBar", "Background"),
-    ("Grid#NavigationBarControlGrid", "Background"),
-    ("Grid#TabContainerGrid", "Background"),
-    ("TabViewItem > Grid#LayoutRoot", "Background"),
+    (
+        "FileExplorerExtensions.FileExplorerTabControl > Grid",
+        "Background",
+    ),
+    (
+        "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
+        "Background",
+    ),
+    (
+        "FileExplorerExtensions.CommandBarControl_Wave1 > Grid",
+        "Background",
+    ),
 ];
+/// File Explorer tint alpha — ~14% so the Win32 punch
+/// (`fe_glass::punch_black` BGRA stretch) and this XAML veil carry the
+/// identical opacity. Taskbar/Start Menu keep `TINT_ALPHA`.
+pub const FE_TINT_ALPHA: u8 = 0x24;
 
 /// `Some(argb)` for `#RRGGBB` / `RRGGBB` palette values, `None` for
 /// `""` (tint off) and malformed input — settings treats `None` on a
 /// non-empty value as invalid and reverts.
 pub fn argb(tint: &str) -> Option<String> {
+    argb_with_alpha(tint, TINT_ALPHA)
+}
+
+/// `argb` with a caller-chosen alpha — File Explorer uses the lighter
+/// `FE_TINT_ALPHA` so its XAML veil matches the Win32 punch.
+pub fn argb_with_alpha(tint: &str, alpha: u8) -> Option<String> {
     let hex = tint.strip_prefix('#').unwrap_or(tint);
     if hex.is_empty() {
         return Some(String::new());
     }
     if hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Some(format!("#{TINT_ALPHA:02X}{}", hex.to_uppercase()));
+        return Some(format!("#{alpha:02X}{}", hex.to_uppercase()));
     }
     None
 }
@@ -59,7 +78,12 @@ pub fn argb(tint: &str) -> Option<String> {
 /// writer wins on the background property), restores `E\n`. No-op when
 /// `tint` is `""`.
 pub fn apply_to_wire(wire: &mut String, targets: &[(&str, &str)], tint: &str) {
-    let Some(argb) = argb(tint) else {
+    apply_to_wire_alpha(wire, targets, tint, TINT_ALPHA);
+}
+
+/// `apply_to_wire` with a caller-chosen alpha (File Explorer's `FE_TINT_ALPHA`).
+pub fn apply_to_wire_alpha(wire: &mut String, targets: &[(&str, &str)], tint: &str, alpha: u8) {
+    let Some(argb) = argb_with_alpha(tint, alpha) else {
         return;
     };
     if argb.is_empty() {
@@ -84,7 +108,17 @@ pub fn apply_to_wire(wire: &mut String, targets: &[(&str, &str)], tint: &str) {
 /// A tint-only wire (`""` theme) — just the magic header + tint rules,
 /// so a surface with no selected style still gets the color overlay.
 pub fn tint_wire(magic: &str, targets: &[(&str, &str)], tint: &str) -> Option<String> {
-    let argb = argb(tint)?;
+    tint_wire_alpha(magic, targets, tint, TINT_ALPHA)
+}
+
+/// `tint_wire` with a caller-chosen alpha (File Explorer's `FE_TINT_ALPHA`).
+pub fn tint_wire_alpha(
+    magic: &str,
+    targets: &[(&str, &str)],
+    tint: &str,
+    alpha: u8,
+) -> Option<String> {
+    let argb = argb_with_alpha(tint, alpha)?;
     if argb.is_empty() {
         return None;
     }
@@ -92,7 +126,7 @@ pub fn tint_wire(magic: &str, targets: &[(&str, &str)], tint: &str) -> Option<St
     wire.push_str(magic);
     wire.push('\n');
     wire.push_str("E\n"); // apply_to_wire strips it again — keeps one code path
-    apply_to_wire(&mut wire, targets, tint);
+    apply_to_wire_alpha(&mut wire, targets, tint, alpha);
     Some(wire)
 }
 
@@ -133,10 +167,13 @@ mod tests {
 
     #[test]
     fn tint_only_wire_is_wellformed() {
-        let wire = tint_wire("PECO-FES1", FILE_EXPLORER_TARGETS, "#0078D4").unwrap();
+        let wire =
+            tint_wire_alpha("PECO-FES1", FILE_EXPLORER_TARGETS, "#0078D4", FE_TINT_ALPHA).unwrap();
         assert!(wire.starts_with("PECO-FES1\n"));
         assert!(wire.ends_with("E\n"));
-        assert!(wire.contains("T CommandBar#FileExplorerCommandBar\n"));
-        assert!(wire.contains("S Background:=<SolidColorBrush Color=\"#800078D4\"/>"));
+        assert!(wire.contains("T FileExplorerExtensions.FileExplorerTabControl > Grid\n"));
+        assert!(wire.contains("S Background:=<SolidColorBrush Color=\"#240078D4\"/>"));
+        // One veil per surface — no overlapping child targets.
+        assert_eq!(wire.matches("S Background:=").count(), 3);
     }
 }

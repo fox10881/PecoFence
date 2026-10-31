@@ -37,6 +37,23 @@ static CONN_ATTEMPT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32
 /// landing while `watcher` is still `None` would each advise — registering
 /// duplicate callbacks for the same tree.
 static ADVISING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Separate in-flight guard for the WinUI3 advise — sharing `ADVISING`
+/// would let a WUX advise permanently block File Explorer's session.
+static ADVISING_WINUI3: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// `WinUIVisualDiagConnection{i}` indices that already produced a
+/// `SetSite` — re-calling `ixde` on an occupied endpoint returns a
+/// non-`ERROR_NOT_FOUND` HRESULT *without* a fresh `SetSite`, which
+/// stopped the walk at `i = 1` forever and never attached the second
+/// island (new File Explorer windows).
+static CONNECTED_WINUI3: std::sync::LazyLock<Mutex<std::collections::HashSet<u32>>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+/// Bumped inside `SetSite`'s WinUI3 branch — the endpoint walk attributes
+/// the accepting index to the `ixde` call whose return followed a bump.
+static WINUI3_SETSITE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// Last `CabinetWClass` top-window count seen by `ensure_watching_winui3` —
+/// a new File Explorer window hosts a NEW WinUI3 island on a NEW
+/// `WinUIVisualDiagConnection{N}` endpoint, so growth re-arms the walk.
+static LAST_CABINET_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 /// One install pass. Retries are *not* done in a loop here: after a failed
 /// `ixde` the calling thread can never execute a blocking wait again (sleep,
@@ -154,11 +171,23 @@ fn install_winui3_inner() {
         s.spawn(|| unsafe {
             let _ = win32::RoInitialize(0);
             let mut hr = HRESULT(0x80070490_u32 as _); // ERROR_NOT_FOUND
-            for i in 1..=4096u32 {
+            for i in 1..=256u32 {
+                // Occupied endpoints answer without a SetSite — skip the
+                // ones we already connected; for the rest, keep walking
+                // until an `ixde` actually delivers one (a new island's
+                // endpoint is always a higher unused index).
+                if CONNECTED_WINUI3
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .contains(&i)
+                {
+                    continue;
+                }
                 let mut name = [0u16; 64];
                 let text = format!("WinUIVisualDiagConnection{i}\0");
                 let w: Vec<u16> = text.encode_utf16().collect();
                 name[..w.len()].copy_from_slice(&w);
+                let before = WINUI3_SETSITE.load(Ordering::Acquire);
                 hr = ixde(
                     windows_core::PCWSTR(name.as_ptr()),
                     pid,
@@ -167,7 +196,11 @@ fn install_winui3_inner() {
                     CLSID_PECO_TAP_SITE,
                     windows_core::PCWSTR::null(),
                 );
-                if hr != HRESULT(0x80070490_u32 as _) {
+                if WINUI3_SETSITE.load(Ordering::Acquire) != before {
+                    CONNECTED_WINUI3
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .insert(i);
                     break;
                 }
             }
@@ -199,6 +232,15 @@ pub fn ensure_watching_winui3() {
                 }
             }
         }
+    }
+    // A new `CabinetWClass` hosts a NEW WinUI3 island on the NEXT free
+    // `WinUIVisualDiagConnection{N}` — the existing watcher only sees the
+    // first island's tree. `watcher_winui3` being Some must not suppress
+    // the re-probe: growth means the walk has another endpoint to find.
+    let count = crate::fe_glass::cabinet_count();
+    if count > LAST_CABINET_COUNT.swap(count, Ordering::AcqRel) {
+        crate::tap_log!("winui3: cabinet count {count} — re-probing endpoints");
+        std::thread::spawn(install_winui3);
     }
 }
 
@@ -351,7 +393,7 @@ impl IObjectWithSite_Impl for TapSite_Impl {
                     winui3 = shared.watcher.is_some();
                 }
                 let occupied = if winui3 {
-                    shared.watcher_winui3.is_some()
+                    false // WinUI3 SetSite replaces — see below
                 } else {
                     shared.watcher.is_some()
                 };
@@ -367,6 +409,28 @@ impl IObjectWithSite_Impl for TapSite_Impl {
             );
             if let Some(diagnostics) = diagnostics {
                 if winui3 {
+                    WINUI3_SETSITE.fetch_add(1, Ordering::AcqRel);
+                    // WindhawkTAP::SetSite semantics — a NEW island session
+                    // (new File Explorer window's endpoint) REPLACES the
+                    // previous watcher: the old island may belong to a
+                    // closed window, and refusing left the top bar
+                    // unstyled. Unadvise the dead pair, then advise fresh.
+                    let previous = {
+                        let mut shared = shared::lock();
+                        let pair = shared
+                            .tree_service_winui3
+                            .clone()
+                            .zip(shared.watcher_winui3.clone());
+                        shared.watcher_winui3 = None;
+                        shared.tree_service_winui3 = None;
+                        shared.diagnostics_winui3 = None;
+                        pair
+                    };
+                    if let Some((service, watcher)) = previous {
+                        unsafe {
+                            let _ = service.UnadviseVisualTreeChange(&*watcher);
+                        }
+                    }
                     start_advise_winui3(diagnostics);
                 } else {
                     start_advise(diagnostics);
@@ -420,7 +484,7 @@ fn start_advise(diagnostics: IXamlDiagnostics) {
     }
     let diagnostics = SendDiag(diagnostics);
     std::thread::spawn(move || {
-        let _guard = AdvisingGuard;
+        let _guard = AdvisingGuard(&ADVISING);
         let diagnostics = diagnostics.into_inner();
         let watcher: IVisualTreeServiceCallback2 = VisualTreeWatcher { session: 1 }.into();
         let Ok(service) = windows_core::Interface::cast::<IVisualTreeService3>(&diagnostics) else {
@@ -451,7 +515,7 @@ fn start_advise(diagnostics: IXamlDiagnostics) {
 /// separate slots, watcher tagged `session: 2` so reported elements route
 /// to the mux engine.
 fn start_advise_winui3(diagnostics: IXamlDiagnostics) {
-    if ADVISING.swap(true, Ordering::AcqRel) {
+    if ADVISING_WINUI3.swap(true, Ordering::AcqRel) {
         return;
     }
     struct SendDiag(IXamlDiagnostics);
@@ -463,7 +527,7 @@ fn start_advise_winui3(diagnostics: IXamlDiagnostics) {
     }
     let diagnostics = SendDiag(diagnostics);
     std::thread::spawn(move || {
-        let _guard = AdvisingGuard;
+        let _guard = AdvisingGuard(&ADVISING_WINUI3);
         let diagnostics = diagnostics.into_inner();
         let watcher: IVisualTreeServiceCallback2 = VisualTreeWatcher { session: 2 }.into();
         let Ok(service) = windows_core::Interface::cast::<IVisualTreeService3>(&diagnostics) else {
@@ -476,20 +540,30 @@ fn start_advise_winui3(diagnostics: IXamlDiagnostics) {
             shared.tree_service_winui3 = Some(service.clone());
             shared.watcher_winui3 = Some(watcher.clone());
         }
+        // A new island's session: the mux engine's element handles and
+        // captured dispatcher belong to the OLD island — drop them so the
+        // advise replay re-captures; the armed theme (`wire_rules`) is
+        // kept so every re-reported element restyles immediately.
+        crate::styler::mux::session_reset();
         let advise_hr = unsafe { service.AdviseVisualTreeChange(&*watcher) };
         crate::tap_log!("advise(winui3) hr={advise_hr:?}");
         if advise_hr.is_err() {
             shared::lock().watcher_winui3 = None;
+        } else {
+            // Push a pending/late theme onto the fresh tree right away —
+            // the replay alone only styles what it re-reports.
+            crate::styler::mux::dispatch_apply();
         }
     });
 }
 
-/// Clears `ADVISING` when the advise thread exits — including on panic, so a
-/// failed advise never wedges `ensure_watching` permanently.
-struct AdvisingGuard;
+/// Clears the in-flight advise flag when the advise thread exits —
+/// including on panic, so a failed advise never wedges `ensure_watching`
+/// permanently.
+struct AdvisingGuard(&'static std::sync::atomic::AtomicBool);
 impl Drop for AdvisingGuard {
     fn drop(&mut self) {
-        ADVISING.store(false, Ordering::Release);
+        self.0.store(false, Ordering::Release);
     }
 }
 

@@ -169,7 +169,7 @@ pub mod mux {
         let [r, g, b, a] = p.tint;
         let byte = |v: f32| -> u32 { (v.clamp(0.0, 1.0) * 255.0).round() as u32 };
         let tint_rgb = format!("{:02X}{:02X}{:02X}", byte(r), byte(g), byte(b));
-        let alpha = byte(a).clamp(0x10, 0x45);
+        let alpha = byte(a).clamp(0x10, 0x28);
         let xaml = format!(
             "<SolidColorBrush \
              xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" \

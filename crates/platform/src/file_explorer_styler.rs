@@ -56,16 +56,33 @@ const ACCENT_DISABLED: u32 = 0;
 /// blur-behind and a system backdrop on the same window conflict, and
 /// `DWMSBT_NONE` + accent does not compose on this window class. The
 /// unfocused `#585858` fallback is killed separately by
-/// `WCA_FORCE_ACTIVEWINDOW_APPEARANCE` + `WM_NCACTIVATE`, and the Color
-/// Tint overlay rides the XAML ruleset instead of the accent gradient.
-/// Returns `(backdrop, accent_state, accent_flags, gradient_abgr)`.
-fn desired_glass(effect: &str) -> (i32, u32, u32, u32) {
+/// `WCA_FORCE_ACTIVEWINDOW_APPEARANCE` + `WM_NCACTIVATE`. The Color Tint
+/// swatch rides BOTH layers of the same 14% veil: `tint_abgr` in the
+/// `FEBD` payload feeds `fe_glass::punch_black` on `SysTreeView32`/
+/// `DirectUIHWND`, while the XAML ruleset carries `#24RRGGBB` on the
+/// three top-bar roots. Returns
+/// `(backdrop, accent_state, accent_flags, gradient_abgr)`.
+fn desired_glass(effect: &str, tint: &str) -> (i32, u32, u32, u32) {
     let backdrop = if effect == "mica" {
         DWMSBT_MAINWINDOW
     } else {
         DWMSBT_TRANSIENTWINDOW
     };
-    (backdrop, ACCENT_DISABLED, 0, 0)
+    (backdrop, ACCENT_DISABLED, 0, tint_abgr(tint))
+}
+
+/// Selected swatch `#RRGGBB` → `0x24BBGGRR` (the ABGR layout
+/// `fe_glass::punch_black` stretches across the Win32 surfaces); `""` or
+/// malformed → `0` (transparent-black punch).
+fn tint_abgr(tint: &str) -> u32 {
+    let hex = tint.strip_prefix('#').unwrap_or(tint);
+    if hex.len() == 6
+        && let Ok(rgb) = u32::from_str_radix(hex, 16)
+    {
+        let (r, g, b) = (rgb >> 16 & 0xFF, rgb >> 8 & 0xFF, rgb & 0xFF);
+        return (pecofence_core::color_tint::FE_TINT_ALPHA as u32) << 24 | b << 16 | g << 8 | r;
+    }
+    0
 }
 
 const RDW_INVALIDATE: u32 = 0x0001;
@@ -185,7 +202,11 @@ fn apply_backdrop(effect: &str) {
         (changed, std::mem::take(&mut fe.seen_hwnds))
     };
     let (backdrop, accent_state, accent_flags, gradient) = if is_armed() {
-        desired_glass(effect)
+        let tint = {
+            let guard = lock();
+            guard.as_ref().map(|fe| fe.tint.clone()).unwrap_or_default()
+        };
+        desired_glass(effect, &tint)
     } else {
         // Disarmed — hand the stock tabbed backdrop explorer asks for
         // itself back; everything else below restores too.
@@ -506,7 +527,7 @@ fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
     // theme wire arms them — send FEBD first so `set_armed`'s in-process
     // apply already pushes the right values.
     let effect = pecofence_core::file_explorer_themes::backdrop(&fe.style).unwrap_or_default();
-    let (bd, st, fl, gr) = desired_glass(effect);
+    let (bd, st, fl, gr) = desired_glass(effect, &fe.tint);
     let mut payload = [0u8; 16];
     payload[0..4].copy_from_slice(&bd.to_le_bytes());
     payload[4..8].copy_from_slice(&st.to_le_bytes());
@@ -530,10 +551,11 @@ fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
 /// settings reverts.
 pub fn apply(id: &str, tint: &str) -> bool {
     let wire = if id.is_empty() {
-        match pecofence_core::color_tint::tint_wire(
+        match pecofence_core::color_tint::tint_wire_alpha(
             "PECO-FES1",
             pecofence_core::color_tint::FILE_EXPLORER_TARGETS,
             tint,
+            pecofence_core::color_tint::FE_TINT_ALPHA,
         ) {
             Some(w) => w,
             None => return reset(),
@@ -542,10 +564,11 @@ pub fn apply(id: &str, tint: &str) -> bool {
         let Some(mut w) = pecofence_core::file_explorer_themes::theme_wire(id) else {
             return false;
         };
-        pecofence_core::color_tint::apply_to_wire(
+        pecofence_core::color_tint::apply_to_wire_alpha(
             &mut w,
             pecofence_core::color_tint::FILE_EXPLORER_TARGETS,
             tint,
+            pecofence_core::color_tint::FE_TINT_ALPHA,
         );
         w
     };

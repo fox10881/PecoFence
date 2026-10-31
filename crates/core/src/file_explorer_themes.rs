@@ -94,12 +94,17 @@ pub fn backdrop(id: &str) -> Option<&'static str> {
 /// from `TintOpacity` (else the tint color's own alpha), clamped to
 /// `0x10..=0x45` — translucent, never opaque, never fully clear.
 fn normalize_blur(value: &str) -> String {
+    const TAGS: [&str; 2] = ["<WindhawkBlur", "<AcrylicBrush"];
     let mut out = String::with_capacity(value.len());
     let mut rest = value;
-    while let Some(pos) = rest.find("<WindhawkBlur") {
+    // Earliest occurrence of either blur-brush tag wins each rewrite.
+    while let Some((pos, tag)) = TAGS
+        .iter()
+        .filter_map(|t| rest.find(t).map(|p| (p, *t)))
+        .min_by_key(|(p, _)| *p)
+    {
         out.push_str(&rest[..pos]);
-        let tag_start = pos;
-        let inner = &rest[tag_start + "<WindhawkBlur".len()..];
+        let inner = &rest[pos + tag.len()..];
         let end = inner.find('>').map(|e| e + 1).unwrap_or(inner.len());
         let attrs = &inner[..end.min(inner.len())];
         let attr = |name: &str| -> Option<String> {
@@ -108,42 +113,108 @@ fn normalize_blur(value: &str) -> String {
             let e = attrs[s..].find('"')? + s;
             Some(attrs[s..e].to_string())
         };
-        // TintColor: #AARRGGBB / #RRGGBB / {ThemeResource x}.
-        let (mut r, mut g, mut b, mut a) = (0x10u32, 0x10u32, 0x10u32, 0x80u32);
-        if let Some(c) = attr("TintColor")
-            && let Some(n) = c
-                .strip_prefix('#')
-                .and_then(|h| u32::from_str_radix(h, 16).ok())
-        {
-            match c.len() - 1 {
-                8 => {
-                    a = (n >> 24) & 0xFF;
-                    r = (n >> 16) & 0xFF;
-                    g = (n >> 8) & 0xFF;
-                    b = n & 0xFF;
-                }
-                6 => {
-                    r = (n >> 16) & 0xFF;
-                    g = (n >> 8) & 0xFF;
-                    b = n & 0xFF;
-                }
-                _ => {}
+        let opacity = attr("TintOpacity")
+            .or_else(|| attr("Opacity"))
+            .and_then(|o| o.parse::<f32>().ok())
+            .map(|o| (o.clamp(0.0, 1.0) * 255.0).round() as u32);
+        let tint = attr("TintColor").or_else(|| attr("FallbackColor"));
+        let (r, g, b, a) = match tint.as_deref().map(str::trim) {
+            // `Transparent` (hover/rest states): near-clear white veil so
+            // DWM glass stays visible; alpha rides the brush's opacity.
+            Some(c) if c.eq_ignore_ascii_case("transparent") => {
+                (0xFF, 0xFF, 0xFF, opacity.unwrap_or(0x14).clamp(0x08, 0x24))
             }
-        }
-        if let Some(o) = attr("TintOpacity").or_else(|| attr("Opacity"))
-            && let Ok(o) = o.parse::<f32>()
-        {
-            a = (o.clamp(0.0, 1.0) * 255.0).round() as u32;
-        }
-        let a = a.clamp(0x10, 0x45);
+            // Literal #AARRGGBB / #RRGGBB: keep the author's RGB; alpha
+            // from the color (TintOpacity wins), clamped translucent.
+            Some(c) if c.starts_with('#') => {
+                let n = u32::from_str_radix(&c[1..], 16).unwrap_or(0);
+                match c.len() - 1 {
+                    8 => (
+                        (n >> 16) & 0xFF,
+                        (n >> 8) & 0xFF,
+                        n & 0xFF,
+                        opacity.unwrap_or((n >> 24) & 0xFF).clamp(0x10, 0x28),
+                    ),
+                    6 => (
+                        (n >> 16) & 0xFF,
+                        (n >> 8) & 0xFF,
+                        n & 0xFF,
+                        opacity.unwrap_or(0x80).clamp(0x10, 0x28),
+                    ),
+                    _ => (0x20, 0x20, 0x20, opacity.unwrap_or(0x1A).clamp(0x12, 0x24)),
+                }
+            }
+            // `{ThemeResource x}`, missing, or anything unparseable:
+            // neutral frosted-gray — never the old opaque #45101010 mud.
+            _ => (0x20, 0x20, 0x20, opacity.unwrap_or(0x1A).clamp(0x12, 0x24)),
+        };
         out.push_str(&format!(
             "<SolidColorBrush Color=\"#{a:02X}{r:02X}{g:02X}{b:02X}\"/>"
         ));
-        rest = &inner[end..];
+        rest = &inner[end.min(inner.len())..];
     }
     out.push_str(rest);
     out
 }
+
+/// Top-bar (WinUI 3 island) transparency guaranteed for every theme: the
+/// island's root containers default to opaque theme resources, so these
+/// rules are appended after each theme's own styles — last write wins —
+/// to keep the DWM `DWMSBT_TRANSIENTWINDOW` blur visible end to end.
+const TOP_BAR_RULES: &[(&str, &[&str])] = &[
+    (
+        "FileExplorerExtensions.FileExplorerTabControl",
+        &["Background=Transparent"],
+    ),
+    (
+        "FileExplorerExtensions.FileExplorerTabControl > Grid",
+        &["Background=Transparent"],
+    ),
+    (
+        "Microsoft.UI.Xaml.Controls.TabView",
+        &["Background=Transparent"],
+    ),
+    (
+        "Microsoft.UI.Xaml.Controls.Grid#TabContainerGrid",
+        &["Background=Transparent"],
+    ),
+    (
+        "FileExplorerExtensions.NavigationBarControl",
+        &["Background=Transparent"],
+    ),
+    (
+        "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
+        &["Background=Transparent", "BorderBrush=Transparent"],
+    ),
+    (
+        "FileExplorerExtensions.CommandBarControl_Wave1",
+        &["Background=Transparent"],
+    ),
+    (
+        "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+        &["Background=Transparent", "BorderBrush=Transparent"],
+    ),
+    (
+        "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
+        &["Background=Transparent"],
+    ),
+    (
+        "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot",
+        &["Background=Transparent", "BorderBrush=Transparent"],
+    ),
+    (
+        "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
+        &["Background=Transparent"],
+    ),
+    (
+        "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+        &["Background=Transparent"],
+    ),
+    (
+        "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+        &["Background=Transparent"],
+    ),
+];
 
 /// Serializes the theme into the line wire-format the injected
 /// `pecofence_tap.dll` parses inside `explorer.exe`'s WinUI3 diagnostics
@@ -214,6 +285,18 @@ pub fn theme_wire(id: &str) -> Option<String> {
                     out.push('\n');
                 }
             }
+        }
+    }
+    // Top-bar transparency floor — appended last so it overrides any
+    // opaque island background a theme left behind.
+    for (target, styles) in TOP_BAR_RULES {
+        out.push_str("T ");
+        out.push_str(target);
+        out.push('\n');
+        for style in *styles {
+            out.push_str("S ");
+            out.push_str(style);
+            out.push('\n');
         }
     }
     if let Some(vars) = theme["themeResourceVariables"].as_array() {

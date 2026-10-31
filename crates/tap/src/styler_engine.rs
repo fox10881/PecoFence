@@ -3985,8 +3985,27 @@ pub fn reset() {
 }
 
 /// `dispatch_apply` for the styler — posts `apply_theme_ui` to the captured
+/// A NEW diagnostics session attached (a second WinUI3 island — a new
+/// File Explorer window): every styled-element handle and the captured
+/// dispatcher belong to the OLD island. Drop session-affine state while
+/// keeping the armed theme (`wire_rules`, `applied`, `pending`) — the
+/// fresh `AdviseVisualTreeChange` replay re-reports the new tree and
+/// `on_element` restyles each element against the live rules.
+pub fn session_reset() {
+    {
+        let mut eng = state();
+        eng.elements.clear();
+        eng.to_release.clear();
+        eng.variables.clear();
+        eng.consumers.clear();
+        eng.dispatcher = None;
+        eng.readvising = false;
+    }
+    known().clear();
+}
+
 /// dispatcher; without one the pending theme sits until the first element.
-fn dispatch_apply() {
+pub(crate) fn dispatch_apply() {
     let Some(dispatcher) = state().dispatcher.clone() else {
         crate::tap_log!("styler: no dispatcher yet — apply deferred");
         return;

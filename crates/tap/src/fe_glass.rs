@@ -73,6 +73,7 @@ windows_core::link!("user32.dll" "system" fn SetWindowCompositionAttribute(hwnd:
 windows_core::link!("user32.dll" "system" fn DefWindowProcW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize);
 windows_core::link!("gdi32.dll" "system" fn GetStockObject(i: i32) -> *mut core::ffi::c_void);
 windows_core::link!("gdi32.dll" "system" fn GetObjectW(obj: *mut core::ffi::c_void, cb: i32, pv: *mut core::ffi::c_void) -> i32);
+windows_core::link!("gdi32.dll" "system" fn StretchDIBits(hdc: Hdc, x_dest: i32, y_dest: i32, dest_w: i32, dest_h: i32, x_src: i32, y_src: i32, src_w: i32, src_h: i32, bits: *const core::ffi::c_void, bmi: *const core::ffi::c_void, usage: u32, rop: u32) -> i32);
 windows_core::link!("gdi32.dll" "system" fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> *mut core::ffi::c_void);
 windows_core::link!("gdi32.dll" "system" fn DeleteObject(obj: *mut core::ffi::c_void) -> windows_core::BOOL);
 windows_core::link!("dwmapi.dll" "system" fn DwmEnableBlurBehindWindow(hwnd: Hwnd, bb: *const DwmBlurBehind) -> HResult);
@@ -174,8 +175,11 @@ static DESIRED_BACKDROP: core::sync::atomic::AtomicI32 = core::sync::atomic::Ato
 /// `CabinetWClass`.
 static ACCENT_STATE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 static ACCENT_FLAGS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
-static ACCENT_GRADIENT: core::sync::atomic::AtomicU32 =
-    core::sync::atomic::AtomicU32::new(0x18101010);
+/// `FEBD` slot 4: `0` = no Color Tint swatch → `punch_black` fills
+/// transparent `BLACK_BRUSH`; `0x24BBGGRR` = swatch `#RRGGBB` → the punch
+/// stretches a 14%-alpha premultiplied BGRA pixel instead, matching the
+/// XAML tint veil on the top bar.
+static ACCENT_GRADIENT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 
 /// uxtheme **Ordinal 74** — `GetThemeClass`: resolves a class name for
 /// any `HTHEME`, including handles explorer opened before we armed (the
@@ -337,6 +341,13 @@ fn bg_class(htheme: HTheme) -> bool {
 }
 
 // ------------------------------------------------- in-process cabinet push
+/// Live `CabinetWClass` count — `site::ensure_watching_winui3` watches
+/// this to detect NEW islands (each new File Explorer window registers
+/// the next `WinUIVisualDiagConnection{N}` endpoint).
+pub fn cabinet_count() -> usize {
+    cabinet_windows().len()
+}
+
 /// Every live `CabinetWClass` top window (the platform's `WorkerW`-child
 /// exclusion: legacy Control Panel frames are skipped).
 fn cabinet_windows() -> Vec<Hwnd> {
@@ -743,10 +754,86 @@ unsafe extern "system" fn get_theme_color_hook(
     unsafe { orig(htheme, part, state, prop, pcolor) }
 }
 
-/// Fill through the FillRect TRAMPOLINE — the hooked export would
-/// re-enter `fill_rect_hook`, and `GetStockObject(BLACK_BRUSH)` itself
-/// resolves to a `BS_SOLID 0x00000000` stock-panel brush → recursion.
+/// `StretchDIBits` raster op — plain source overwrite (no alpha blending,
+/// so repeated punches never stack).
+const SRCCOPY: u32 = 0x00CC0020;
+
+/// `BITMAPINFO` for a 1×1 32-bpp top-down DIB — `biHeight < 0` makes row 0
+/// the TOP of the image.
+#[repr(C)]
+struct BitmapInfo {
+    size: u32,
+    width: i32,
+    height: i32,
+    planes: u16,
+    bpp: u16,
+    compression: u32,
+    image_size: u32,
+    xppm: i32,
+    yppm: i32,
+    used: u32,
+    important: u32,
+    colors: [u32; 1],
+}
+
+/// Fill a punched background rect. With no Color Tint swatch
+/// (`ACCENT_GRADIENT == 0`) this is transparent `BLACK_BRUSH` through the
+/// FillRect TRAMPOLINE — the hooked export would re-enter
+/// `fill_rect_hook`, and `GetStockObject(BLACK_BRUSH)` itself resolves to
+/// a `BS_SOLID 0x00000000` stock-panel brush → recursion. With a swatch
+/// (`0x24BBGGRR`) it stretches one premultiplied BGRA pixel over the rect:
+/// `SRCCOPY` overwrites in a single pass, so the same ~14% veil lands on
+/// `SysTreeView32`/`DirectUIHWND` that the XAML ruleset puts on the top
+/// bar, and `DWMSBT_TRANSIENTWINDOW` keeps blurring through.
 fn punch_black(hdc: Hdc, rect: *const Rect) -> bool {
+    let grad = ACCENT_GRADIENT.load(Ordering::Acquire);
+    if grad != 0 {
+        let a = (grad >> 24) & 0xFF;
+        let (r, g, b) = (grad & 0xFF, (grad >> 8) & 0xFF, (grad >> 16) & 0xFF);
+        let pixel: u32 =
+            a << 24 | (((r * a) / 255) << 16) | (((g * a) / 255) << 8) | ((b * a) / 255);
+        let bmi = BitmapInfo {
+            size: 40,
+            width: 1,
+            height: -1,
+            planes: 1,
+            bpp: 32,
+            compression: 0, // BI_RGB
+            image_size: 0,
+            xppm: 0,
+            yppm: 0,
+            used: 0,
+            important: 0,
+            colors: [0],
+        };
+        let (x, y, w, h) = unsafe {
+            (
+                (*rect).left,
+                (*rect).top,
+                (*rect).right - (*rect).left,
+                (*rect).bottom - (*rect).top,
+            )
+        };
+        if w > 0 && h > 0 {
+            return unsafe {
+                StretchDIBits(
+                    hdc,
+                    x,
+                    y,
+                    w,
+                    h,
+                    0,
+                    0,
+                    1,
+                    1,
+                    &pixel as *const u32 as *const core::ffi::c_void,
+                    &bmi as *const BitmapInfo as *const core::ffi::c_void,
+                    0, // DIB_RGB_COLORS
+                    SRCCOPY,
+                )
+            } != 0;
+        }
+    }
     let black = unsafe { GetStockObject(BLACK_BRUSH) as HBrush };
     match tramp::<FillRectFn>("FillRect") {
         Some(f) => unsafe { f(hdc, rect, black) != 0 },
@@ -891,12 +978,10 @@ unsafe extern "system" fn fill_rect_hook(hdc: Hdc, rect: *const Rect, brush: HBr
         let solid_panel =
             is_stock_panel_brush(brush) && unsafe { (*rect).right - (*rect).left > 40 };
         if pseudo || real || solid_panel {
-            // Trampoline — the hooked export would re-enter this hook on
-            // a BLACK_BRUSH (0x00000000 is itself a stock panel color).
-            return match tramp::<FillRectFn>("FillRect") {
-                Some(f) => unsafe { f(hdc, rect, GetStockObject(BLACK_BRUSH) as HBrush) },
-                None => -1,
-            };
+            // `punch_black` picks transparent black or the FEBD tint —
+            // and always goes through the FillRect trampoline, so a
+            // BLACK_BRUSH (itself a stock panel color) can't re-enter.
+            return if punch_black(hdc, rect) { 1 } else { -1 };
         }
     }
     let orig: FillRectFn = match tramp("FillRect") {

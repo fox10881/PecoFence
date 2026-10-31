@@ -166,18 +166,7 @@
     }
    ],
    "styleConstants": [],
-   "themeResourceVariables": [
-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark=#00000000",
-    "SolidBackgroundFillColorBase@Light=#00000000",
-    "SolidBackgroundFillColorSecondary@Dark=#00000000",
-    "SolidBackgroundFillColorSecondary@Light=#00000000",
-    "LayerFillColorDefault@Dark=#00000000",
-    "LayerFillColorDefault@Light=#00000000"
-   ],
+   "themeResourceVariables": [],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kAcrylic"
   },
@@ -1069,18 +1058,7 @@
     "Background2=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"0\" />",
     "MainContentBG=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"0\" />"
    ],
-   "themeResourceVariables": [
-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark=#00000000",
-    "SolidBackgroundFillColorBase@Light=#00000000",
-    "SolidBackgroundFillColorSecondary@Dark=#00000000",
-    "SolidBackgroundFillColorSecondary@Light=#00000000",
-    "LayerFillColorDefault@Dark=#00000000",
-    "LayerFillColorDefault@Light=#00000000"
-   ],
+   "themeResourceVariables": [],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kAcrylic"
   },
@@ -1235,18 +1213,7 @@
    "styleConstants": [
     "CommonBgBrush=<WindhawkBlur BlurAmount=\"18\" TintColor=\"#80000000\"/>"
    ],
-   "themeResourceVariables": [
-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark=#00000000",
-    "SolidBackgroundFillColorBase@Light=#00000000",
-    "SolidBackgroundFillColorSecondary@Dark=#00000000",
-    "SolidBackgroundFillColorSecondary@Light=#00000000",
-    "LayerFillColorDefault@Dark=#00000000",
-    "LayerFillColorDefault@Light=#00000000"
-   ],
+   "themeResourceVariables": [],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kAcrylic"
   },
@@ -1475,12 +1442,6 @@
      ]
     },
     {
-     "target": "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
-     "styles": [
-      "Visibility=1"
-     ]
-    },
-    {
      "target": "FileExplorerExtensions.NavigationBarControl",
      "styles": [
       "Grid.RowSpan=2",
@@ -1539,18 +1500,7 @@
     "CornerRadius=12",
     "ElementCornerRadius=8"
    ],
-   "themeResourceVariables": [
-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark=#00000000",
-    "SolidBackgroundFillColorBase@Light=#00000000",
-    "SolidBackgroundFillColorSecondary@Dark=#00000000",
-    "SolidBackgroundFillColorSecondary@Light=#00000000",
-    "LayerFillColorDefault@Dark=#00000000",
-    "LayerFillColorDefault@Light=#00000000"
-   ],
+   "themeResourceVariables": [],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kDefault"
   },
@@ -1995,18 +1945,7 @@
     }
    ],
    "styleConstants": [],
-   "themeResourceVariables": [
-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark=#00000000",
-    "SolidBackgroundFillColorBase@Light=#00000000",
-    "SolidBackgroundFillColorSecondary@Dark=#00000000",
-    "SolidBackgroundFillColorSecondary@Light=#00000000",
-    "LayerFillColorDefault@Dark=#00000000",
-    "LayerFillColorDefault@Light=#00000000"
-   ],
+   "themeResourceVariables": [],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kDefault"
   },
@@ -2420,18 +2359,7 @@
     }
    ],
    "styleConstants": [],
-   "themeResourceVariables": [
-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark=#00000000",
-    "SolidBackgroundFillColorBase@Light=#00000000",
-    "SolidBackgroundFillColorSecondary@Dark=#00000000",
-    "SolidBackgroundFillColorSecondary@Light=#00000000",
-    "LayerFillColorDefault@Dark=#00000000",
-    "LayerFillColorDefault@Light=#00000000"
-   ],
+   "themeResourceVariables": [],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kDefault"
   },
