@@ -893,7 +893,7 @@ impl App {
             // hand-edited patchSettings — same treatment as a failed write.
             let id = new.start_menu_style.as_str();
             let applied = pecofence_core::start_menu_themes::is_style_id(id)
-                && pecofence_platform::start_menu::apply_start_menu_theme(id);
+                && pecofence_platform::start_menu::apply_start_menu_theme(id, &new.color_tint);
             if !applied {
                 new.start_menu_style.clone_from(&old.start_menu_style);
                 self.settings_error(pecofence_core::i18n::text(
@@ -904,7 +904,7 @@ impl App {
         if new.taskbar_style != old.taskbar_style {
             let id = new.taskbar_style.as_str();
             let applied = pecofence_core::taskbar_themes::is_style_id(id)
-                && pecofence_platform::taskbar_styler::apply(id);
+                && pecofence_platform::taskbar_styler::apply(id, &new.color_tint);
             if !applied {
                 new.taskbar_style.clone_from(&old.taskbar_style);
                 self.settings_error(pecofence_core::i18n::text(
@@ -915,13 +915,31 @@ impl App {
         if new.notification_center_style != old.notification_center_style {
             let id = new.notification_center_style.as_str();
             let applied = pecofence_core::notification_center_themes::is_style_id(id)
-                && pecofence_platform::notification_center::apply(id);
+                && pecofence_platform::notification_center::apply(id, &new.color_tint);
             if !applied {
                 new.notification_center_style
                     .clone_from(&old.notification_center_style);
                 self.settings_error(pecofence_core::i18n::text(
                     "通知中心样式未能更改，请稍后重试。",
                 ));
+            }
+        }
+        if new.color_tint != old.color_tint {
+            // Palette swatch sends #RRGGBB or "" — anything else is a
+            // hand-edited patchSettings and gets reverted. Re-delivers every
+            // surface's armed wire with the new overlay baked in; the
+            // resident applies the wire atomically, so a quick swatch tap
+            // can't stack stale visuals.
+            if pecofence_core::color_tint::argb(&new.color_tint).is_none() {
+                new.color_tint.clone_from(&old.color_tint);
+            } else {
+                let tint = new.color_tint.as_str();
+                pecofence_platform::start_menu::apply_start_menu_theme(&new.start_menu_style, tint);
+                pecofence_platform::taskbar_styler::apply(&new.taskbar_style, tint);
+                pecofence_platform::notification_center::apply(
+                    &new.notification_center_style,
+                    tint,
+                );
             }
         }
         let icons_toggled = new.hide_real_icons != old.hide_real_icons;

@@ -180,6 +180,11 @@ pub struct Settings {
     /// Local device preference — themes never carry it.
     #[serde(default)]
     pub notification_center_style: String,
+    /// Accent color tint overlaid on the styled shell surfaces —
+    /// `#RRGGBB`, `""` = no tint. Layers over the taskbar/Start Menu/
+    /// Notification Center styles; local device preference.
+    #[serde(default)]
+    pub color_tint: String,
     /// Background fit mode for bundled theme assets: `false` = strict Cover (a
     /// uniform scale fills the screen, the overflowing axis crops); `true` =
     /// strict Contain (the whole frame centered and uncropped, the leftover
@@ -306,6 +311,7 @@ impl Default for Settings {
             start_menu_style: String::new(),
             taskbar_style: String::new(),
             notification_center_style: String::new(),
+            color_tint: String::new(),
             contain_background: false,
             stretch_tolerance_pct: 0,
             active_theme_path: None,

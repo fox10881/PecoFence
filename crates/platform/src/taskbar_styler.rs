@@ -150,19 +150,35 @@ fn deliver(hwnd: crate::bindings::HWND, tb: &mut Tb) -> bool {
     }
 }
 
-/// Applies the selected taskbar style. `id` is a catalog id (`""` =
-/// Windows Default → reset). The selection is armed first, then delivered
-/// best-effort: when the resident is missing (explorer restarting, or a
-/// stale pinned build) the periodic `ensure` keeps retrying until a
-/// compatible resident is up — mirroring `start_menu`'s wait-for-host
-/// semantics. Returns `false` only for an unknown id so settings reverts.
-pub fn apply(id: &str) -> bool {
-    if id.is_empty() {
-        return reset();
-    }
+/// Applies the selected taskbar style + color tint. `id` is a catalog id
+/// (`""` = no theme — tint-only when `tint` is set, `Windows Default` →
+/// reset when both are empty). The tint rides the same wire as appended
+/// `controlStyles` rules, so a later theme switch or tint clear restores
+/// cleanly through the normal re-apply path. Returns `false` only for an
+/// unknown id so settings reverts.
+pub fn apply(id: &str, tint: &str) -> bool {
     let use_variant =
         pecofence_core::taskbar_themes::variant_feature(id).is_some_and(feature_enabled);
-    let Some(wire) = pecofence_core::taskbar_themes::theme_wire(id, use_variant) else {
+    let wire = if id.is_empty() {
+        pecofence_core::color_tint::tint_wire(
+            "PECO-TBS1",
+            pecofence_core::color_tint::TASKBAR_TARGETS,
+            tint,
+        )
+    } else {
+        pecofence_core::taskbar_themes::theme_wire(id, use_variant).map(|mut w| {
+            pecofence_core::color_tint::apply_to_wire(
+                &mut w,
+                pecofence_core::color_tint::TASKBAR_TARGETS,
+                tint,
+            );
+            w
+        })
+    };
+    let Some(wire) = wire else {
+        if id.is_empty() {
+            return reset();
+        }
         return false;
     };
     let vertical = taskbar_is_vertical();

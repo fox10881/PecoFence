@@ -1416,31 +1416,35 @@ impl App {
         if let Some(a) = app.anchor.borrow_mut().as_mut() {
             a.reanchor("startup");
         }
-        // A saved Start Menu style injects the styler once SMEH exists —
-        // apply_start_menu_theme stores it either way, and the periodic
-        // ensure() delivers it on the host's next launch.
+        // Saved surface styles + color tint — each apply() stores the
+        // selection either way, and the periodic ensure() delivers it when
+        // the hosts (re)launch. A tint alone still arms the wire.
         let saved_style = app.state.config.settings.start_menu_style.clone();
-        if !saved_style.is_empty() {
+        let saved_tint = app.state.config.settings.color_tint.clone();
+        if !saved_style.is_empty() || !saved_tint.is_empty() {
+            let tint = saved_tint.clone();
             std::thread::spawn(move || {
-                let _ = pecofence_platform::start_menu::apply_start_menu_theme(&saved_style);
+                let _ = pecofence_platform::start_menu::apply_start_menu_theme(&saved_style, &tint);
             });
         }
         // A saved Taskbar style rides the same resident — apply() injects
         // the DLL when explorer is up and the tick's ensure() re-delivers
         // it after restarts.
         let saved_tb_style = app.state.config.settings.taskbar_style.clone();
-        if !saved_tb_style.is_empty() {
+        if !saved_tb_style.is_empty() || !saved_tint.is_empty() {
+            let tint = saved_tint.clone();
             std::thread::spawn(move || {
-                let _ = pecofence_platform::taskbar_styler::apply(&saved_tb_style);
+                let _ = pecofence_platform::taskbar_styler::apply(&saved_tb_style, &tint);
             });
         }
         // A saved Notification Center style injects into the Shell hosts —
         // apply() stores it either way, and the tick's ensure() delivers it
         // to hosts that launch later.
         let saved_nc_style = app.state.config.settings.notification_center_style.clone();
-        if !saved_nc_style.is_empty() {
+        if !saved_nc_style.is_empty() || !saved_tint.is_empty() {
+            let tint = saved_tint.clone();
             std::thread::spawn(move || {
-                let _ = pecofence_platform::notification_center::apply(&saved_nc_style);
+                let _ = pecofence_platform::notification_center::apply(&saved_nc_style, &tint);
             });
         }
         for f in app.fences.values().chain(app.desktop_windows.values()) {

@@ -107,6 +107,11 @@
   .card .actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 100%; }
   /* Controls that wrap under a long description stay on the right, as in Windows Settings. */
   .card:not(.stack) > :not(.l):not(.s) { margin-left: auto; }
+  .swatches { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+  .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; padding: 0; flex: none; position: relative; box-sizing: border-box; }
+  .swatch.on { box-shadow: 0 0 0 2px var(--sheet), 0 0 0 4px var(--accent); }
+  .swatch.clear { background: transparent; border-color: var(--text2); }
+  .swatch.clear::after { content: ''; position: absolute; left: 1px; right: 1px; top: 50%; border-top: 2px solid var(--text2); transform: rotate(-45deg); }
   .card.disabled .t, .card.disabled .s { color: var(--text-disabled); }
   /* A master setting and the rows that only matter while it is on share one surface. */
   .group { display: flex; flex-direction: column; gap: 1px; margin-bottom: 4px; }
@@ -478,6 +483,8 @@
         <select id="startMenuStyleSel" data-bind="startMenuStyle" data-str></select></div>
       <div class="card" id="notificationCenterStyleCard"><div class="l"><span class="ic">&#xE91C;</span><div><div class="t">通知中心样式</div><div class="s">通知中心和操作中心视觉主题；选择后立即生效</div></div></div>
         <select id="notificationCenterStyleSel" data-bind="notificationCenterStyle" data-str></select></div>
+      <div class="card" id="colorTintCard"><div class="l"><span class="ic">&#xE790;</span><div><div class="t">主题色叠加</div><div class="s">给任务栏、开始菜单和通知中心叠加一层所选颜色；斜杠为关闭</div></div></div>
+        <div class="swatches" id="colorTintRow" role="radiogroup" aria-label="color tint"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">重启资源管理器</div><div class="s">出现卡顿或异常时按一下</div></div></div>
         <div class="actions"><button id="restartExplorer">重启</button></div></div>
       <h3>行为</h3>
@@ -937,6 +944,39 @@
         return e;
       }));
     }
+  }
+
+  // Color tint — a Windows-style accent row. Swatches are fixed, built
+  // once; selection writes #RRGGBB ("" = clear) into settings.colorTint and
+  // the backend re-delivers every surface's wire with the overlay baked in.
+  const TINT_SWATCHES = ['#7A7574', '#E3008C', '#744DA9', '#0078D4', '#00B7C3', '#107C10', '#FFB900', '#D83B01', '#E74856', '#000000', '#FFFFFF'];
+  function bindColorTint() {
+    const row = document.getElementById('colorTintRow');
+    if (row.dataset.bound) return;
+    row.dataset.bound = '1';
+    for (const c of TINT_SWATCHES) {
+      const b = document.createElement('button');
+      b.className = 'swatch';
+      b.dataset.tint = c;
+      b.style.background = c;
+      b.setAttribute('role', 'radio');
+      b.onclick = () => { set(state.settings, 'colorTint', c); commit('colorTint'); renderColorTint(); };
+      row.appendChild(b);
+    }
+    const clear = document.createElement('button');
+    clear.className = 'swatch clear';
+    clear.dataset.tint = '';
+    clear.setAttribute('role', 'radio');
+    clear.onclick = () => { set(state.settings, 'colorTint', ''); commit('colorTint'); renderColorTint(); };
+    row.appendChild(clear);
+  }
+  function renderColorTint() {
+    const cur = (state.settings.colorTint || '').toUpperCase();
+    document.querySelectorAll('#colorTintRow .swatch').forEach(b => {
+      const on = (b.dataset.tint || '').toUpperCase() === cur;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+    });
   }
 
   // 速览栅栏 › 快捷键: the box records the next combination, the host checks it, tries
@@ -1665,7 +1705,7 @@
       renderStartMenuStyles(m);
       renderTaskbarStyles(m);
       renderNotificationCenterStyles(m);
-      bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
+      bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); bindColorTint(); renderColorTint(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
       update = m.update; renderUpdate();
       // Transitions come on a frame after this state has been drawn: a single frame would style
       // both changes together and start them after all.

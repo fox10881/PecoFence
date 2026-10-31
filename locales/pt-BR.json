@@ -653,5 +653,7 @@
   "任务栏样式未能更改，请稍后重试。": "Não foi possível alterar o estilo da barra de tarefas — tente novamente.",
   "通知中心样式": "Estilo da Central de Notificações",
   "通知中心和操作中心视觉主题；选择后立即生效": "Temas visuais para a Central de Notificações e a Central de Ações; aplicam-se ao selecionar",
-  "通知中心样式未能更改，请稍后重试。": "Não foi possível alterar o estilo da Central de Notificações — tente novamente."
+  "通知中心样式未能更改，请稍后重试。": "Não foi possível alterar o estilo da Central de Notificações — tente novamente.",
+  "主题色叠加": "Sobreposição de tonalidade",
+  "给任务栏、开始菜单和通知中心叠加一层所选颜色；斜杠为关闭": "Sobrepõe a cor escolhida na barra de tarefas, no menu Iniciar e na central de notificações; o botão riscado desativa"
 }

@@ -89,6 +89,9 @@ struct Smeh {
     pid: u32,
     /// The catalog id last sent ("" = Windows Default).
     style: String,
+    /// The `#RRGGBB` tint baked into `wire` — kept so `ensure`'s reapply
+    /// rebuilds the wire with the same overlay after an SMEH restart.
+    tint: String,
     /// `RegisterWindowMessage` id for the unload command.
     msg_unload: u32,
     /// The theme serialized for transport — cached so a re-inject after an
@@ -328,12 +331,25 @@ fn deliver_locked(smeh: &mut Smeh) -> bool {
 /// a running SMEH rejected the command channel — when SMEH isn't running at
 /// all the selection is stored and applied on its next launch, so the call
 /// still reports success (same UX as the old Windhawk write).
-pub fn apply_start_menu_theme(id: &str) -> bool {
+pub fn apply_start_menu_theme(id: &str, tint: &str) -> bool {
     let wire = if id.is_empty() {
-        String::new()
+        // Tint-only overlay, or nothing at all (empty wire → CDS_RESET).
+        pecofence_core::color_tint::tint_wire(
+            "PECO-SMS1",
+            pecofence_core::color_tint::START_MENU_TARGETS,
+            tint,
+        )
+        .unwrap_or_default()
     } else {
         match pecofence_core::start_menu_themes::theme_wire(id) {
-            Some(w) => w,
+            Some(mut w) => {
+                pecofence_core::color_tint::apply_to_wire(
+                    &mut w,
+                    pecofence_core::color_tint::START_MENU_TARGETS,
+                    tint,
+                );
+                w
+            }
             None => return false,
         }
     };
@@ -342,11 +358,13 @@ pub fn apply_start_menu_theme(id: &str) -> bool {
         cmd_hwnd: HWND(core::ptr::null_mut()),
         pid: 0,
         style: String::new(),
+        tint: String::new(),
         msg_unload: 0,
         wire: String::new(),
         hello_sent: false,
     });
     smeh.style = id.to_string();
+    smeh.tint = tint.to_string();
     smeh.wire = wire;
     let Some(pid) = find_smeh_pid() else {
         return true; // applies when SMEH next launches
@@ -371,10 +389,9 @@ pub fn apply_start_menu_theme(id: &str) -> bool {
 /// Cheap liveness check driven by the app's periodic tick: re-injects and
 /// re-delivers the selected style when SMEH restarted.
 pub fn ensure() {
-    let needs = lock()
-        .as_ref()
-        .map(|s| !s.style.is_empty())
-        .unwrap_or(false);
+    // Anything deliverable counts — a tint-only wire keeps the host armed
+    // even with no style selected.
+    let needs = lock().as_ref().map(|s| !s.wire.is_empty()).unwrap_or(false);
     if !needs {
         return;
     }
@@ -397,8 +414,9 @@ pub fn ensure() {
         }
     }
     let style = smeh.style.clone();
+    let tint = smeh.tint.clone();
     drop(guard);
-    let _ = apply_start_menu_theme(&style);
+    let _ = apply_start_menu_theme(&style, &tint);
 }
 
 /// Call on shutdown: restores the Start Menu and unloads the DLL if injected.
@@ -429,7 +447,7 @@ mod tests {
     #[test]
     #[ignore]
     fn probe_apply() {
-        let ok = apply_start_menu_theme("TranslucentStartMenu");
+        let ok = apply_start_menu_theme("TranslucentStartMenu", "");
         eprintln!("apply -> {ok}");
         let g = lock();
         if let Some(s) = g.as_ref() {

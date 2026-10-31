@@ -680,12 +680,24 @@ fn disarm_wake_hook(pid: u32) {
 /// a running host rejected the command channel — when no host is running
 /// the selection is stored and applied on each host's next launch, so the
 /// call still reports success.
-pub fn apply(id: &str) -> bool {
+pub fn apply(id: &str, tint: &str) -> bool {
     let wire = if id.is_empty() {
-        String::new()
+        pecofence_core::color_tint::tint_wire(
+            "PECO-NCS1",
+            pecofence_core::color_tint::NOTIFICATION_CENTER_TARGETS,
+            tint,
+        )
+        .unwrap_or_default()
     } else {
         match pecofence_core::notification_center_themes::theme_wire(id) {
-            Some(w) => w,
+            Some(mut w) => {
+                pecofence_core::color_tint::apply_to_wire(
+                    &mut w,
+                    pecofence_core::color_tint::NOTIFICATION_CENTER_TARGETS,
+                    tint,
+                );
+                w
+            }
             None => return false,
         }
     };
@@ -695,9 +707,10 @@ pub fn apply(id: &str) -> bool {
         nc.wire = wire;
         nc.wire_gen += 1;
     }
-    // Style cleared — pending wake triggers only ever deliver a RESET,
-    // so disarm them rather than inject a resident that does nothing.
-    if id.is_empty() {
+    // Nothing armed (style cleared and no tint) — pending wake triggers
+    // only ever deliver a RESET, so disarm them rather than inject a
+    // resident that does nothing.
+    if lock().wire.is_empty() {
         let armed: Vec<u32> = lock().wake_hooks.keys().copied().collect();
         for pid in armed {
             disarm_wake_hook(pid);
@@ -739,8 +752,9 @@ pub fn apply(id: &str) -> bool {
 pub fn ensure() {
     {
         let nc = lock();
-        // Idle fast-path — nothing armed, nothing tracked, nothing pending.
-        if nc.style.is_empty() && nc.hosts.is_empty() && nc.wake_hooks.is_empty() {
+        // Idle fast-path — nothing deliverable (style or tint), nothing
+        // tracked, nothing pending.
+        if nc.wire.is_empty() && nc.hosts.is_empty() && nc.wake_hooks.is_empty() {
             return;
         }
     }
