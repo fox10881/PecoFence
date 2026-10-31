@@ -10,6 +10,8 @@ use pecofence_core::updates::{self, Release};
 const URL_VAR: &str = "PECOFENCE_UPDATE_URL";
 const MAX_RELEASE_JSON: usize = 1024 * 1024;
 const MAX_SETUP_BYTES: usize = 64 * 1024 * 1024;
+/// `<hash>  <name>\n` — a few hundred bytes at most.
+const MAX_SHA256_BYTES: usize = 4096;
 
 #[derive(Default)]
 enum Status {
@@ -72,11 +74,36 @@ fn check(test_instance: bool) -> std::result::Result<Done, String> {
     ))
 }
 
-/// No checksum of our own: HTTPS covers the transfer, and setup checks its own data before
-/// installing (a damaged one fails, and the old copy is started again).
+/// The first token of a `<hash>  <name>` sidecar: exactly 64 lowercase-or-uppercase hex
+/// digits, nothing else accepted.
+fn parse_sha256_sidecar(sidecar: &[u8]) -> std::result::Result<String, String> {
+    let text = std::str::from_utf8(sidecar).map_err(|_| "checksum file is not UTF-8")?;
+    let hash = text
+        .split_whitespace()
+        .next()
+        .ok_or("checksum file is empty")?;
+    if hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+        Ok(hash.to_ascii_lowercase())
+    } else {
+        Err(format!("unexpected checksum file contents: {hash:?}"))
+    }
+}
+
+/// Verifies the setup against the release's `.sha256` before it is written to disk, so a
+/// tampered payload never exists as a file. HTTPS covers the transfer; the checksum is the
+/// integrity gate for what runs.
 fn download(release: &Release) -> std::result::Result<Done, String> {
     let setup = release.setup.as_ref().ok_or("the release has no setup")?;
+    let sidecar =
+        pecofence_platform::http::get(&setup.sha256_url, &user_agent(), "", MAX_SHA256_BYTES)?;
+    let expected = parse_sha256_sidecar(&sidecar)?;
     let bytes = pecofence_platform::http::get(&setup.url, &user_agent(), "", MAX_SETUP_BYTES)?;
+    let actual = pecofence_platform::hash::sha256_hex(&bytes)?;
+    if actual != expected {
+        return Err(format!(
+            "update checksum mismatch (expected {expected}, got {actual}); not installing"
+        ));
+    }
     let dir = download_dir();
     let path = dir.join(&setup.name);
     std::fs::create_dir_all(&dir)

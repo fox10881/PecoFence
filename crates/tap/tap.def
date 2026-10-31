@@ -1,0 +1,9 @@
+; All exports are resolved by name (GetProcAddress by the XAML diagnostics framework or
+; the injector's hook arming). DllGetClassObject stays in the export table but is PRIVATE:
+; kept out of the generated import library — nothing may statically link to the COM entry
+; point (LNK4104).
+EXPORTS
+    DllMain
+    CallWndProc
+    WinEventProc
+    DllGetClassObject PRIVATE

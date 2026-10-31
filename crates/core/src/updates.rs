@@ -29,6 +29,9 @@ pub struct Release {
 pub struct SetupAsset {
     pub name: String,
     pub url: String,
+    /// The release's `<name>.sha256` file; setup is only offered when the release ships
+    /// it, and the downloaded bytes must hash to it before they are run.
+    pub sha256_url: String,
 }
 
 #[derive(Deserialize)]
@@ -65,7 +68,16 @@ pub fn parse_release(json: &str, download_base: &str) -> Result<Release, String>
             .any(|a| a.name == wanted && a.browser_download_url == url)
             .then_some(url)
     };
-    let setup = asset(&name).map(|url| SetupAsset { name, url });
+    // The checksum sidecar is required too: without it the bytes cannot be verified
+    // before setup runs, so a release missing it offers no setup at all.
+    let sha_name = format!("{name}.sha256");
+    let setup = asset(&name)
+        .zip(asset(&sha_name))
+        .map(|(url, sha256_url)| SetupAsset {
+            name,
+            url,
+            sha256_url,
+        });
     Ok(Release {
         version: version.to_string(),
         page: format!(
@@ -157,6 +169,10 @@ mod tests {
                     "https://example.invalid/zip",
                 ),
                 ("pecofence-v0.1.4-x64-setup.exe", &exe),
+                (
+                    "pecofence-v0.1.4-x64-setup.exe.sha256",
+                    &format!("{exe}.sha256"),
+                ),
             ],
         );
         let release = parse_release(&json, BASE).unwrap();
@@ -170,9 +186,17 @@ mod tests {
             release.setup,
             Some(SetupAsset {
                 name: "pecofence-v0.1.4-x64-setup.exe".into(),
-                url: exe,
+                url: exe.clone(),
+                sha256_url: format!("{exe}.sha256"),
             })
         );
+    }
+
+    #[test]
+    fn a_setup_without_its_checksum_is_not_offered() {
+        let exe = format!("{BASE}v0.1.4/pecofence-v0.1.4-x64-setup.exe");
+        let json = release_json("v0.1.4", &[("pecofence-v0.1.4-x64-setup.exe", &exe)]);
+        assert_eq!(parse_release(&json, BASE).unwrap().setup, None);
     }
 
     #[test]
