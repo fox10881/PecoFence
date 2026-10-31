@@ -155,11 +155,13 @@ pub mod mux {
 
     /// `StyleVal::Blur` bridge for **WinUI3** — `fxe::make_blur_brush_any`
     /// builds a `Windows.UI.Xaml` compositor brush, which `SetValue` rejects
-    /// on `Microsoft.UI.Xaml` elements. Resolve a native
-    /// `Microsoft.UI.Xaml.Media.AcrylicBrush` through the mux `XamlReader`
-    /// instead (WinUI3 `AcrylicBrush` has no `BackgroundSource` — it is
-    /// always in-app acrylic). Fallback: a translucent `SolidColorBrush`
-    /// whose alpha is clamped to `0x25..=0x40` — never opaque.
+    /// on `Microsoft.UI.Xaml` elements. And WinUI3's own `AcrylicBrush` is
+    /// in-app acrylic: inside a `CabinetWClass` island it blurs nothing
+    /// (no usable in-app backdrop) and degrades to a ~95%-opaque solid.
+    /// The DWM accent policy already blurs the desktop behind the whole
+    /// window, so the elements only need translucency — a plain
+    /// `SolidColorBrush` with a clamped alpha (`0x10..=0x45`, never
+    /// opaque, never fully clear) lets that glass shine through.
     fn blur_brush(
         _ui: &xb::UIElement,
         p: &BlurParams,
@@ -167,25 +169,13 @@ pub mod mux {
         let [r, g, b, a] = p.tint;
         let byte = |v: f32| -> u32 { (v.clamp(0.0, 1.0) * 255.0).round() as u32 };
         let tint_rgb = format!("{:02X}{:02X}{:02X}", byte(r), byte(g), byte(b));
-        let tint_opacity = a.clamp(0.0, 0.95);
-        let alpha = byte(a).clamp(0x25, 0x40);
+        let alpha = byte(a).clamp(0x10, 0x45);
         let xaml = format!(
-            "<AcrylicBrush \
+            "<SolidColorBrush \
              xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" \
-             TintColor=\"#{tint_rgb}\" TintOpacity=\"{tint_opacity:.2}\" \
-             Opacity=\"0.95\" FallbackColor=\"#{alpha:02X}{tint_rgb}\"/>"
+             Color=\"#{alpha:02X}{tint_rgb}\"/>"
         );
-        match xb::XamlReader::Load(&windows_core::HSTRING::from(&xaml)) {
-            ok @ Ok(_) => ok,
-            Err(_) => {
-                let xaml = format!(
-                    "<SolidColorBrush \
-                     xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" \
-                     Color=\"#{alpha:02X}{tint_rgb}\"/>"
-                );
-                xb::XamlReader::Load(&windows_core::HSTRING::from(&xaml))
-            }
-        }
+        xb::XamlReader::Load(&windows_core::HSTRING::from(&xaml))
     }
 
     include!("styler_engine.rs");

@@ -63,12 +63,14 @@ windows_core::link!("user32.dll" "system" fn WindowFromDC(hdc: Hdc) -> Hwnd);
 windows_core::link!("user32.dll" "system" fn GetAncestor(hwnd: Hwnd, gaflags: u32) -> Hwnd);
 windows_core::link!("user32.dll" "system" fn EnumThreadWindows(dwthreadid: u32, lpfn: WndEnumProc, lparam: isize) -> windows_core::BOOL);
 windows_core::link!("user32.dll" "system" fn EnumWindows(lpfn: WndEnumProc, lparam: isize) -> windows_core::BOOL);
+windows_core::link!("user32.dll" "system" fn EnumChildWindows(parent: Hwnd, lpfn: WndEnumProc, lparam: isize) -> windows_core::BOOL);
 windows_core::link!("user32.dll" "system" fn FindWindowExW(parent: Hwnd, childafter: Hwnd, class: PCWSTR, title: PCWSTR) -> Hwnd);
 windows_core::link!("user32.dll" "system" fn FillRect(hdc: Hdc, lprc: *const Rect, hbr: HBrush) -> i32);
 windows_core::link!("user32.dll" "system" fn SendMessageTimeoutW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize, flags: u32, timeout: u32, result: *mut usize) -> usize);
 windows_core::link!("user32.dll" "system" fn RedrawWindow(hwnd: Hwnd, lprcupdate: *const core::ffi::c_void, hrgnupdate: *mut core::ffi::c_void, flags: u32) -> windows_core::BOOL);
 windows_core::link!("user32.dll" "system" fn SetWindowCompositionAttribute(hwnd: Hwnd, data: *const core::ffi::c_void) -> windows_core::BOOL);
 windows_core::link!("gdi32.dll" "system" fn GetStockObject(i: i32) -> *mut core::ffi::c_void);
+windows_core::link!("gdi32.dll" "system" fn GetObjectW(obj: *mut core::ffi::c_void, cb: i32, pv: *mut core::ffi::c_void) -> i32);
 windows_core::link!("gdi32.dll" "system" fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> *mut core::ffi::c_void);
 windows_core::link!("gdi32.dll" "system" fn DeleteObject(obj: *mut core::ffi::c_void) -> windows_core::BOOL);
 windows_core::link!("dwmapi.dll" "system" fn DwmEnableBlurBehindWindow(hwnd: Hwnd, bb: *const DwmBlurBehind) -> HResult);
@@ -154,15 +156,18 @@ static THEME_CLASSES: LazyLock<Mutex<HashMap<usize, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The backdrop mode the platform wants on cabinets — pushed via the
-/// `FEBD` COPYDATA (BUG 2). `-1` = unset (swallow explorer's writes,
-/// don't substitute).
-static DESIRED_BACKDROP: core::sync::atomic::AtomicI32 = core::sync::atomic::AtomicI32::new(-1);
+/// `FEBD` COPYDATA (BUG 2). Defaults to `DWMSBT_NONE` (1) so a
+/// `set_armed` that races ahead of the `FEBD` still applies the accent
+/// path instead of explorer's opaque tabbed backdrop.
+static DESIRED_BACKDROP: core::sync::atomic::AtomicI32 = core::sync::atomic::AtomicI32::new(1);
 /// Accent policy the platform wants — `ACCENT_STATE_*` (0 = disabled,
 /// 4 = acrylic blur behind), flags, and the ABGR `GradientColor`.
-static ACCENT_STATE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+/// Defaults to acrylic with a subtle dark tint (`0x18101010` — alpha
+/// never 0, or Win11 23H2 disables the blur entirely).
+static ACCENT_STATE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(4);
 static ACCENT_FLAGS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 static ACCENT_GRADIENT: core::sync::atomic::AtomicU32 =
-    core::sync::atomic::AtomicU32::new(0x40101010);
+    core::sync::atomic::AtomicU32::new(0x18101010);
 
 /// uxtheme **Ordinal 74** — `GetThemeClass`: resolves a class name for
 /// any `HTHEME`, including handles explorer opened before we armed (the
@@ -274,42 +279,47 @@ fn class_of(htheme: HTheme) -> Option<String> {
     if htheme.is_null() {
         return None;
     }
-    if let Some(c) = THEME_CLASSES
+    // Ordinal 74 (`GetThemeClass`) FIRST — it returns the clean base
+    // class (`TreeView`, `ItemsView`, …) for every handle, even ones
+    // opened before we armed. The `OpenThemeData` detour's recorded
+    // string can carry `DarkMode_Explorer::TreeView`-style prefixes,
+    // which would poison the cache and never match `BG_CLASSES`.
+    let f = GET_THEME_CLASS.load(Ordering::Acquire);
+    if f != 0 {
+        let f: GetThemeClassFn = unsafe { core::mem::transmute(f) };
+        let mut buf = [0u16; 128];
+        if unsafe { f(htheme, buf.as_mut_ptr(), buf.len() as i32) } == 0 {
+            let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+            let cls = String::from_utf16_lossy(&buf[..len]);
+            if !cls.is_empty() {
+                THEME_CLASSES
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .insert(htheme as usize, cls.clone());
+                return Some(cls);
+            }
+        }
+    }
+    // Fallback: whatever the `OpenThemeData` detour recorded.
+    THEME_CLASSES
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .get(&(htheme as usize))
         .cloned()
-    {
-        return Some(c);
-    }
-    // Handles opened before the detour armed aren't in the map — resolve
-    // uxtheme Ordinal 74 (`GetThemeClass`) instead, then cache.
-    let f = GET_THEME_CLASS.load(Ordering::Acquire);
-    if f == 0 {
-        return None;
-    }
-    let f: GetThemeClassFn = unsafe { core::mem::transmute(f) };
-    let mut buf = [0u16; 128];
-    if unsafe { f(htheme, buf.as_mut_ptr(), buf.len() as i32) } != 0 {
-        return None;
-    }
-    let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-    let cls = String::from_utf16_lossy(&buf[..len]);
-    if cls.is_empty() {
-        return None;
-    }
-    THEME_CLASSES
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .insert(htheme as usize, cls.clone());
-    Some(cls)
 }
 
 fn class_in(htheme: HTheme, list: &[&str]) -> bool {
     class_of(htheme)
         .map(|c| {
-            list.iter()
-                .any(|t| c.split(';').any(|p| p.trim().eq_ignore_ascii_case(t)))
+            list.iter().any(|t| {
+                c.split(';').any(|p| {
+                    // Strip `SubApp::` prefixes — explorer asks for e.g.
+                    // `DarkMode_Explorer::TreeView`; the base class after
+                    // the last `::` is what the part list uses.
+                    let base = p.rsplit("::").next().unwrap_or(p).trim();
+                    base.eq_ignore_ascii_case(t)
+                })
+            })
         })
         .unwrap_or(false)
 }
@@ -493,13 +503,65 @@ fn restore_cabinets() {
     }
 }
 
+const TVM_SETBKCOLOR: u32 = 0x111D; // TV_FIRST + 29
+
 /// `WM_THEMECHANGED` + a full redraw — forces DirectUI to repaint through
 /// our (now armed/disarmed) hooks immediately, instead of leaving the
-/// stock/opaque pixels until the next navigation.
+/// stock/opaque pixels until the next navigation. The theme message must
+/// reach EVERY descendant — `SysTreeView32` (the left nav pane) and
+/// `DirectUIHWND` don't repaint on a top-window broadcast alone. The
+/// tree also caches a `COLOR_WINDOW`-colored background: `TVM_SETBKCOLOR`
+/// pushes RGB(0,0,0) while armed, `-1` (system default) on disarm.
 fn refresh_cabinets() {
+    let armed = is_armed();
     for hwnd in cabinet_windows() {
-        let mut result = 0usize;
+        // ---- every descendant: WM_THEMECHANGED + the tree's bk color ----
+        unsafe extern "system" fn child_cb(hwnd: Hwnd, lparam: isize) -> windows_core::BOOL {
+            let armed = lparam != 0;
+            let mut result = 0usize;
+            unsafe {
+                let _ = SendMessageTimeoutW(
+                    hwnd,
+                    WM_THEMECHANGED,
+                    0,
+                    0,
+                    SMTO_ABORTIFHUNG,
+                    200,
+                    &mut result,
+                );
+                // "SysTreeView32" — 13 UTF-16 units.
+                const TREE: [u16; 13] =
+                    [83, 121, 115, 84, 114, 101, 101, 86, 105, 101, 119, 51, 50];
+                let mut cls = [0u16; 32];
+                let n = win32::GetClassNameW(
+                    crate::bindings::HWND(hwnd),
+                    windows_core::PWSTR(cls.as_mut_ptr()),
+                    32,
+                );
+                if n == 13 && cls[..13] == TREE {
+                    let color: isize = if armed { 0 } else { -1 };
+                    let _ = SendMessageTimeoutW(
+                        hwnd,
+                        TVM_SETBKCOLOR,
+                        0,
+                        color,
+                        SMTO_ABORTIFHUNG,
+                        200,
+                        &mut result,
+                    );
+                    let _ = RedrawWindow(
+                        hwnd,
+                        core::ptr::null(),
+                        core::ptr::null_mut(),
+                        RDW_INVALIDATE | RDW_ERASE,
+                    );
+                }
+            }
+            windows_core::BOOL(1)
+        }
         unsafe {
+            let _ = EnumChildWindows(hwnd, Some(child_cb), armed as isize);
+            let mut result = 0usize;
             let _ = SendMessageTimeoutW(
                 hwnd,
                 WM_THEMECHANGED,
@@ -606,9 +668,14 @@ unsafe extern "system" fn get_theme_color_hook(
     pcolor: *mut u32,
 ) -> HResult {
     if is_armed() && !pcolor.is_null() && thread_has_cabinet() {
-        if (prop == TMT_FILLCOLOR || prop == TMT_FILLCOLORHINT) && bg_class(htheme) {
+        // Translucent-Windows lines 920–929: on a cabinet thread EVERY
+        // fill/fill-hint color goes transparent black — the opaque panel
+        // classes open under prefixed names (`DarkMode_*::`) that class
+        // matching can miss, and any fill on this thread is a panel
+        // background hiding the glass.
+        if prop == TMT_FILLCOLOR || prop == TMT_FILLCOLORHINT {
             unsafe {
-                *pcolor = 0; // transparent black under DWM composition
+                *pcolor = 0;
             }
             return 0;
         }
@@ -705,6 +772,44 @@ unsafe extern "system" fn get_sys_color_brush_hook(index: i32) -> HBrush {
     unsafe { orig(index) }
 }
 
+#[repr(C)]
+struct LogBrush {
+    style: u32,
+    color: u32,
+    hatch: usize,
+}
+
+/// Explorer's stock opaque panel colors (BGR, alpha byte ignored) —
+/// `SysTreeView32`/DirectUI cache `CreateSolidBrush` handles for these
+/// rather than asking the system brush table.
+const STOCK_PANEL_COLORS: &[u32] = &[
+    0x00191919, 0x00202020, 0x001F1F1F, 0x002C2C2C, 0x00FFFFFF, 0x00F3F3F3,
+];
+
+/// `true` when `brush` is a `BS_SOLID` brush in one of explorer's stock
+/// opaque panel colors.
+fn is_stock_panel_brush(brush: HBrush) -> bool {
+    if brush.is_null() || (brush as usize) < 0x20 {
+        // Pseudo/system brushes aren't GDI objects — GetObjectW would fail.
+        return false;
+    }
+    let mut lb = LogBrush {
+        style: 0,
+        color: 0,
+        hatch: 0,
+    };
+    let n = unsafe {
+        GetObjectW(
+            brush,
+            core::mem::size_of::<LogBrush>() as i32,
+            &mut lb as *mut LogBrush as *mut core::ffi::c_void,
+        )
+    };
+    n == core::mem::size_of::<LogBrush>() as i32
+        && lb.style == 0 /* BS_SOLID */
+        && STOCK_PANEL_COLORS.contains(&(lb.color & 0x00FFFFFF))
+}
+
 type FillRectFn = unsafe extern "system" fn(Hdc, *const Rect, HBrush) -> i32;
 unsafe extern "system" fn fill_rect_hook(hdc: Hdc, rect: *const Rect, brush: HBrush) -> i32 {
     if is_armed() && !rect.is_null() && cabinet_dc(hdc) {
@@ -717,7 +822,14 @@ unsafe extern "system" fn fill_rect_hook(hdc: Hdc, rect: *const Rect, brush: HBr
         let real = tramp::<GetSysColorBrushFn>("GetSysColorBrush")
             .map(|orig| unsafe { orig(COLOR_WINDOW) } == brush)
             .unwrap_or(false);
-        if pseudo || real {
+        // Dark-mode panels often skip the system-brush table entirely and
+        // cache a `CreateSolidBrush(#191919 / #202020 / #F3F3F3 / …)`.
+        // `GetObjectW` exposes the brush's real color — punch the stock
+        // opaque panel colors on LARGE fills only, so icons, buttons and
+        // selection pills keep their paint.
+        let solid_panel = is_stock_panel_brush(brush)
+            && unsafe { (*rect).right - (*rect).left > 80 && (*rect).bottom - (*rect).top > 80 };
+        if pseudo || real || solid_panel {
             return unsafe { FillRect(hdc, rect, GetStockObject(BLACK_BRUSH) as HBrush) };
         }
     }

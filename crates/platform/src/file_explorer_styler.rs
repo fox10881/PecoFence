@@ -37,9 +37,8 @@ const CDS_FE_BACKDROP: usize = u32::from_be_bytes(*b"FEBD") as usize;
 // DWMWA_SYSTEMBACKDROP_TYPE (38) values — the same DWMSBT_* mapping the mod
 // applies through its DwmSetWindowAttribute hook.
 const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
-const DWMSBT_AUTO: i32 = 0; // let the system decide — used on the accent path
+const DWMSBT_NONE: i32 = 1; // no system backdrop — the accent path's value
 const DWMSBT_MAINWINDOW: i32 = 2; // Mica
-const DWMSBT_TRANSIENTWINDOW: i32 = 3; // Acrylic
 const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt
 
 const ACCENT_DISABLED: u32 = 0;
@@ -50,26 +49,26 @@ const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
 /// (`ACCENT_STATE_ENABLE_ACRYLICBLURBEHIND`) are never both active — an
 /// extended `-1` frame with a conflicting pair renders a solid black void.
 /// Returns `(backdrop, accent_state, accent_flags, gradient_abgr)`.
-/// - Case B (`blur` effect, or a Color Tint swatch selected): backdrop
-///   drops to `DWMSBT_AUTO`, accent acrylic carries the tint.
-/// - Case A (acrylic/mica/micaAlt, no tint): accent off, system backdrop
-///   carries the material.
+///
+/// On Windows 11 23H2 the system backdrops are unusable for our glass:
+/// `DWMSBT_TRANSIENTWINDOW`/`TABBEDWINDOW` render a flat opaque `#585858`
+/// sheet whenever the window loses focus or system transparency effects
+/// are off. Every active style therefore rides the accent acrylic path —
+/// `DWMSBT_NONE` (1, not `DWMSBT_AUTO` = 0, which leaves explorer's own
+/// tabbed-window backdrop active on `CabinetWClass`). The only survivors
+/// are the true Mica presets, and only while no tint overlay is armed.
 fn desired_glass(effect: &str, tint: &str) -> (i32, u32, u32, u32) {
-    if effect == "blur" || !tint.is_empty() {
+    if effect == "mica" && tint.is_empty() {
+        (DWMSBT_MAINWINDOW, ACCENT_DISABLED, 0, 0)
+    } else if effect == "micaAlt" && tint.is_empty() {
+        (DWMSBT_TABBEDWINDOW, ACCENT_DISABLED, 0, 0)
+    } else {
         (
-            DWMSBT_AUTO,
+            DWMSBT_NONE,
             ACCENT_ENABLE_ACRYLICBLURBEHIND,
             0,
             tint_abgr(tint),
         )
-    } else {
-        let backdrop = match effect {
-            "acrylic" => DWMSBT_TRANSIENTWINDOW,
-            "mica" => DWMSBT_MAINWINDOW,
-            "micaAlt" => DWMSBT_TABBEDWINDOW,
-            _ => DWMSBT_TABBEDWINDOW,
-        };
-        (backdrop, ACCENT_DISABLED, 0, 0)
     }
 }
 
@@ -309,8 +308,10 @@ fn extend_frame(hwnd: crate::bindings::HWND, on: bool) {
 }
 
 /// `#RRGGBB` → ABGR `GradientColor` (`alpha<<24 | blue<<16 | green<<8 | red`)
-/// for the accent policy — the selected swatch color, or the prompt's
-/// subtle dark-glass default `0x40101010` when no tint is picked.
+/// for the accent policy — the selected swatch color, or a subtle ~9%
+/// dark-glass `0x18101010` when no tint is picked. Alpha must never be 0:
+/// `ACCENT_ENABLE_ACRYLICBLURBEHIND` with `alpha == 0` disables the blur
+/// entirely on Windows 11 23H2.
 fn tint_abgr(tint: &str) -> u32 {
     let hex = tint.strip_prefix('#').unwrap_or(tint);
     if hex.len() == 6
@@ -321,7 +322,7 @@ fn tint_abgr(tint: &str) -> u32 {
         let b = rgb & 0xFF;
         return 0x80 << 24 | b << 16 | g << 8 | r;
     }
-    0x40101010
+    0x18101010
 }
 
 /// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY` acrylic blur

@@ -1144,8 +1144,7 @@
      "styles": [
       "Background:=$CommonBgBrush",
       "BorderThickness=0,0,0,0",
-      "BorderBrush=$CommonBgBrush",
-      "Background=Transparent"
+      "BorderBrush=$CommonBgBrush"
      ]
     },
     {
@@ -1157,8 +1156,7 @@
     {
      "target": "Grid#NavigationBarControlGrid",
      "styles": [
-      "Background:=$CommonBgBrush",
-      "Background=Transparent"
+      "Background:=$CommonBgBrush"
      ]
     },
     {
@@ -1170,15 +1168,13 @@
     {
      "target": "Grid#HomeViewRootGrid",
      "styles": [
-      "Background:=$CommonBgBrush",
-      "Background=Transparent"
+      "Background:=$CommonBgBrush"
      ]
     },
     {
      "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
      "styles": [
-      "Background:=$CommonBgBrush",
-      "Background=Transparent"
+      "Background:=$CommonBgBrush"
      ]
     },
     {
@@ -1196,15 +1192,13 @@
     {
      "target": "Grid#DetailsViewControlRootGrid",
      "styles": [
-      "Background:=$CommonBgBrush",
-      "Background=Transparent"
+      "Background:=$CommonBgBrush"
      ]
     },
     {
      "target": "StackPanel#DetailsViewThumbnail > Grid",
      "styles": [
-      "Background:=$CommonBgBrush",
-      "Background=Transparent"
+      "Background:=$CommonBgBrush"
      ]
     },
     {
@@ -1711,8 +1705,7 @@
      "styles": [
       "Margin=20,20,20,1",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15",
-      "Background=Transparent"
+      "CornerRadius=15"
      ]
     },
     {
@@ -1726,8 +1719,7 @@
      "styles": [
       "Margin=20,20,20,0",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15",
-      "Background=Transparent"
+      "CornerRadius=15"
      ]
     },
     {
@@ -1735,8 +1727,7 @@
      "styles": [
       "Margin=20,20,20,0",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15",
-      "Background=Transparent"
+      "CornerRadius=15"
      ]
     },
     {
@@ -1898,8 +1889,7 @@
       "CornerRadius=14",
       "BorderThickness=1",
       "Margin=2",
-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
-      "Background=Transparent"
+      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>"
      ]
     },
     {
@@ -2101,8 +2091,7 @@
      "styles": [
       "Margin=20,20,20,1",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15",
-      "Background=Transparent"
+      "CornerRadius=15"
      ]
     },
     {
@@ -2144,8 +2133,7 @@
      "styles": [
       "Margin=20,20,20,0",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15",
-      "Background=Transparent"
+      "CornerRadius=15"
      ]
     },
     {
@@ -2153,8 +2141,7 @@
      "styles": [
       "Margin=20,20,20,0",
       "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
-      "CornerRadius=15",
-      "Background=Transparent"
+      "CornerRadius=15"
      ]
     },
     {
@@ -2298,8 +2285,7 @@
       "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
       "CornerRadius=10",
       "BorderThickness=1",
-      "Margin=2",
-      "Background=Transparent"
+      "Margin=2"
      ]
     },
     {

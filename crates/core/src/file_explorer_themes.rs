@@ -86,10 +86,13 @@ pub fn backdrop(id: &str) -> Option<&'static str> {
 }
 
 /// `WindhawkBlur` is not a real XAML type — the mod injects it. Re-express
-/// it as the stock `AcrylicBrush` so `XamlReader.Load` resolves inside the
-/// WinUI3 session: `TintColor`/`TintOpacity`/`Opacity` carry over, the
-/// blur-specific `BlurAmount`/`TintLuminosityOpacity` have no Acrylic
-/// equivalent and are dropped.
+/// it as a translucent `SolidColorBrush` so `XamlReader.Load` resolves a
+/// plain brush inside the WinUI3 session: WinUI3's `AcrylicBrush` is
+/// in-app acrylic and has no usable backdrop inside a `CabinetWClass`
+/// island (it degrades to a ~95%-opaque block), while the DWM accent
+/// policy already blurs the desktop behind the whole window. Alpha comes
+/// from `TintOpacity` (else the tint color's own alpha), clamped to
+/// `0x10..=0x45` — translucent, never opaque, never fully clear.
 fn normalize_blur(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut rest = value;
@@ -105,24 +108,37 @@ fn normalize_blur(value: &str) -> String {
             let e = attrs[s..].find('"')? + s;
             Some(attrs[s..e].to_string())
         };
-        out.push_str("<AcrylicBrush");
-        let mut wrote_opacity = false;
-        for (src_name, dst_name) in [
-            ("TintColor", "TintColor"),
-            ("TintOpacity", "TintOpacity"),
-            ("Opacity", "Opacity"),
-        ] {
-            if let Some(v) = attr(src_name) {
-                out.push_str(&format!(" {dst_name}=\"{v}\""));
-                wrote_opacity |= src_name != "TintColor";
+        // TintColor: #AARRGGBB / #RRGGBB / {ThemeResource x}.
+        let (mut r, mut g, mut b, mut a) = (0x10u32, 0x10u32, 0x10u32, 0x80u32);
+        if let Some(c) = attr("TintColor")
+            && let Some(n) = c
+                .strip_prefix('#')
+                .and_then(|h| u32::from_str_radix(h, 16).ok())
+        {
+            match c.len() - 1 {
+                8 => {
+                    a = (n >> 24) & 0xFF;
+                    r = (n >> 16) & 0xFF;
+                    g = (n >> 8) & 0xFF;
+                    b = n & 0xFF;
+                }
+                6 => {
+                    r = (n >> 16) & 0xFF;
+                    g = (n >> 8) & 0xFF;
+                    b = n & 0xFF;
+                }
+                _ => {}
             }
         }
-        if !wrote_opacity {
-            // WindhawkBlur defaults to a strong blur; Acrylic with no
-            // opacity arg reads opaque — keep the translucent intent.
-            out.push_str(" TintOpacity=\"0.5\"");
+        if let Some(o) = attr("TintOpacity").or_else(|| attr("Opacity"))
+            && let Ok(o) = o.parse::<f32>()
+        {
+            a = (o.clamp(0.0, 1.0) * 255.0).round() as u32;
         }
-        out.push_str("/>");
+        let a = a.clamp(0x10, 0x45);
+        out.push_str(&format!(
+            "<SolidColorBrush Color=\"#{a:02X}{r:02X}{g:02X}{b:02X}\"/>"
+        ));
         rest = &inner[end..];
     }
     out.push_str(rest);
@@ -292,13 +308,17 @@ mod tests {
     }
 
     #[test]
-    fn windhawk_blur_rewrites_to_acrylic() {
-        let wire = theme_wire("WindowGlass").expect("wire for known theme");
+    fn windhawk_blur_rewrites_to_translucent_solid() {
+        // OS26 themes carry `<WindhawkBlur>` — the wire must emit a
+        // translucent SolidColorBrush (WinUI3 AcrylicBrush is in-app
+        // acrylic and reads opaque inside a CabinetWClass island).
+        let wire = theme_wire("OS26_Liquid_Glass").expect("wire for known theme");
         assert!(
             !wire.contains("WindhawkBlur"),
             "mod-only type must not ship"
         );
-        assert!(wire.contains("<AcrylicBrush"));
+        assert!(!wire.contains("<AcrylicBrush"));
+        assert!(wire.contains("<SolidColorBrush"));
     }
 
     #[test]
