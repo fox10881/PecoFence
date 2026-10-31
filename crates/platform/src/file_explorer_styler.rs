@@ -61,6 +61,12 @@ struct Fe {
     applied_effect: String,
     /// Cabinet hwnds the current `applied_effect` was pushed to.
     seen_hwnds: std::collections::HashSet<isize>,
+    /// Selected `color_tint` (`#RRGGBB`, `""` = off) — drives the accent
+    /// blur's `GradientColor` so the glass takes the overlay color.
+    tint: String,
+    /// Tint currently pushed to cabinets — `apply_backdrop` rewrites
+    /// when it changes, same change-detection as `applied_effect`.
+    applied_tint: String,
 }
 
 static FE: Mutex<Option<Fe>> = Mutex::new(None);
@@ -139,18 +145,20 @@ fn apply_backdrop(effect: &str) {
         _ => DWMSBT_TABBEDWINDOW,
     };
     let hwnds = cabinet_windows();
-    let (changed, mut seen) = {
+    let (changed, mut seen, tint) = {
         let mut guard = lock();
         let Some(fe) = guard.as_mut() else {
             return;
         };
-        let changed = fe.applied_effect != effect;
+        let changed = fe.applied_effect != effect || fe.applied_tint != fe.tint;
         if changed {
             fe.applied_effect = effect.to_string();
+            fe.applied_tint = fe.tint.clone();
             fe.seen_hwnds.clear();
         }
-        (changed, std::mem::take(&mut fe.seen_hwnds))
+        (changed, std::mem::take(&mut fe.seen_hwnds), fe.tint.clone())
     };
+    let glass = !effect.is_empty();
     for hwnd in &hwnds {
         if !changed && seen.contains(&(hwnd.0 as usize as isize)) {
             continue;
@@ -162,8 +170,21 @@ fn apply_backdrop(effect: &str) {
                 &backdrop as *const i32 as *const core::ffi::c_void,
                 core::mem::size_of::<i32>() as u32,
             );
+            // Immersive dark caption while a glass theme is armed.
+            let dark: i32 = glass as i32;
+            let _ = DwmSetWindowAttribute(
+                *hwnd,
+                20, // DWMWA_USE_IMMERSIVE_DARK_MODE
+                &dark as *const i32 as *const core::ffi::c_void,
+                core::mem::size_of::<i32>() as u32,
+            );
         }
-        set_accent_blur(*hwnd, effect == "blur");
+        extend_frame(*hwnd, glass);
+        // Accent policy drives the `blur` path AND the Color Tint Overlay
+        // on any glass effect; mica/acrylic without a tint ride
+        // DWMWA_SYSTEMBACKDROP_TYPE alone (same split as the mod).
+        let accent_on = effect == "blur" || (glass && !tint.is_empty());
+        set_accent_blur(*hwnd, accent_on, &tint);
         trigger_composition_update(*hwnd);
         seen.insert(hwnd.0 as usize as isize);
     }
@@ -175,9 +196,66 @@ fn apply_backdrop(effect: &str) {
     }
 }
 
+/// `DwmExtendFrameIntoClientArea` — the prompt's mandatory Step 3 call:
+/// `{ -1, -1, -1, -1 }` pulls the glass frame over the whole client area
+/// so a `Transparent` XAML/Win32 background actually shows the backdrop;
+/// `{0,0,0,0}` restores. The resident detour keeps explorer from
+/// resetting it while a theme is armed.
+fn extend_frame(hwnd: crate::bindings::HWND, on: bool) {
+    #[repr(C)]
+    struct Margins {
+        left: i32,
+        right: i32,
+        top: i32,
+        bottom: i32,
+    }
+    let dwm = unsafe { GetModuleHandleW(PCWSTR(widestr("dwmapi.dll").as_ptr())) };
+    if dwm.is_null() {
+        return;
+    }
+    let f = unsafe {
+        GetProcAddress(
+            dwm,
+            PCSTR(c"DwmExtendFrameIntoClientArea".as_ptr() as *const u8),
+        )
+    };
+    if f.is_null() {
+        return;
+    }
+    let f: unsafe extern "system" fn(crate::bindings::HWND, *const Margins) -> i32 =
+        unsafe { core::mem::transmute(f) };
+    let m = if on {
+        Margins { left: -1, right: -1, top: -1, bottom: -1 }
+    } else {
+        Margins { left: 0, right: 0, top: 0, bottom: 0 }
+    };
+    unsafe {
+        let _ = f(hwnd, &m);
+    }
+}
+
+/// `#RRGGBB` → ABGR `GradientColor` (`alpha<<24 | blue<<16 | green<<8 | red`)
+/// for the accent policy — the selected swatch color, or the prompt's
+/// subtle dark-glass default `0x40101010` when no tint is picked.
+fn tint_abgr(tint: &str) -> u32 {
+    let hex = tint.strip_prefix('#').unwrap_or(tint);
+    if hex.len() == 6
+        && let Ok(rgb) = u32::from_str_radix(hex, 16)
+    {
+        let r = rgb >> 16 & 0xFF;
+        let g = rgb >> 8 & 0xFF;
+        let b = rgb & 0xFF;
+        return 0x80 << 24 | b << 16 | g << 8 | r;
+    }
+    0x40101010
+}
+
 /// `SetAccentBlurBehind` — `SetWindowCompositionAttribute` ACCENT_POLICY
 /// blur for the `blur` backdrop (the mod's fallback + its blur path).
-fn set_accent_blur(hwnd: crate::bindings::HWND, on: bool) {
+/// `on` arms `ACCENT_STATE_ENABLE_ACRYLICBLURBEHIND` (4) with the
+/// modern-acrylic flag and the tint-derived `GradientColor`; off restores
+/// `ACCENT_DISABLED`.
+fn set_accent_blur(hwnd: crate::bindings::HWND, on: bool, tint: &str) {
     #[repr(C)]
     struct AccentPolicy {
         accent_state: u32,
@@ -191,7 +269,7 @@ fn set_accent_blur(hwnd: crate::bindings::HWND, on: bool) {
         pv_data: *const core::ffi::c_void,
         cb_data: usize,
     }
-    const ACCENT_ENABLE_BLURBEHIND: u32 = 3;
+    const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
     const ACCENT_DISABLED: u32 = 0;
     const WCA_ACCENT_POLICY: u32 = 19;
 
@@ -214,12 +292,12 @@ fn set_accent_blur(hwnd: crate::bindings::HWND, on: bool) {
     ) -> windows_core::BOOL = unsafe { core::mem::transmute(f) };
     let policy = AccentPolicy {
         accent_state: if on {
-            ACCENT_ENABLE_BLURBEHIND
+            ACCENT_ENABLE_ACRYLICBLURBEHIND
         } else {
             ACCENT_DISABLED
         },
-        accent_flags: 2,
-        gradient_color: 0,
+        accent_flags: 2, // ACCENT_FLAG_ENABLE_MODERN_ACRYLIC_RECIPE
+        gradient_color: if on { tint_abgr(tint) } else { 0 },
         animation_id: 0,
     };
     let data = WindowCompositionAttribData {
@@ -317,9 +395,12 @@ pub fn apply(id: &str, tint: &str) -> bool {
         hello_sent: false,
         applied_effect: String::new(),
         seen_hwnds: std::collections::HashSet::new(),
+        tint: String::new(),
+        applied_tint: String::new(),
     });
     fe.style = id.to_string();
     fe.wire = wire;
+    fe.tint = tint.to_string();
     ARMED.store(true, Ordering::Release);
     if let Some((hwnd, _)) = crate::tap::ensure_resident()
         && !deliver(hwnd, fe)

@@ -24,6 +24,7 @@
 )]
 mod bindings;
 mod command;
+mod fe_glass;
 #[allow(
     dead_code,
     non_snake_case,
