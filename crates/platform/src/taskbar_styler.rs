@@ -35,6 +35,12 @@ struct Tb {
     /// Whether `CDS_TB_HELLO` reached the current DLL residency (the death
     /// watch arms once per injection — a fresh resident needs it again).
     hello_sent: bool,
+    /// The armed theme is intentionally withheld while the taskbar is
+    /// vertically docked (left/right). Win11's taskbar has no vertical XAML
+    /// mode; on builds that force one the layout churns without converging,
+    /// and our property writes inside that churn freeze the shell UI thread
+    /// — the taskbar never renders and explorer's input loop starves.
+    suppressed: bool,
 }
 
 static TB: Mutex<Option<Tb>> = Mutex::new(None);
@@ -98,6 +104,31 @@ fn widestr(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(core::iter::once(0)).collect()
 }
 
+/// `true` when any taskbar window is taller than wide — docked left or
+/// right. Measured from the real `Shell_TrayWnd`/`Shell_SecondaryTrayWnd`
+/// rects (not the work area, which side app-bars also deform). While this
+/// holds the styler must not deliver a theme: the vertical XAML layout
+/// never converges, and each property write inside the visual-tree churn
+/// keeps explorer's UI thread saturated.
+fn taskbar_is_vertical() -> bool {
+    use crate::bindings::{FindWindowExW, GetWindowRect};
+    for class in ["Shell_TrayWnd", "Shell_SecondaryTrayWnd"] {
+        let wide = widestr(class);
+        let mut hwnd = unsafe { FindWindowExW(None, None, PCWSTR(wide.as_ptr()), PCWSTR::null()) };
+        while !hwnd.0.is_null() {
+            let mut rc = crate::bindings::RECT::default();
+            if unsafe { GetWindowRect(hwnd, &mut rc) }.as_bool()
+                && rc.bottom - rc.top > rc.right - rc.left
+            {
+                return true;
+            }
+            hwnd =
+                unsafe { FindWindowExW(None, Some(hwnd), PCWSTR(wide.as_ptr()), PCWSTR::null()) };
+        }
+    }
+    false
+}
+
 /// Sends the stored wire to the resident DLL. A resident this session never
 /// delivered to (hwnd differs) gets the hello re-armed first — the wire
 /// itself is (re)sent by the caller's decision.
@@ -134,20 +165,32 @@ pub fn apply(id: &str) -> bool {
     let Some(wire) = pecofence_core::taskbar_themes::theme_wire(id, use_variant) else {
         return false;
     };
+    let vertical = taskbar_is_vertical();
     let mut guard = lock();
     let tb = guard.get_or_insert_with(|| Tb {
         style: String::new(),
         wire: String::new(),
         cmd_hwnd: 0,
         hello_sent: false,
+        suppressed: false,
     });
     tb.style = id.to_string();
     tb.wire = wire;
     ARMED.store(true, Ordering::Release);
-    if let Some((hwnd, _)) = crate::tap::ensure_resident()
-        && !deliver(hwnd, tb)
-    {
-        tb.cmd_hwnd = 0; // delivery pending — `ensure` retries next tick
+    if let Some((hwnd, _)) = crate::tap::ensure_resident() {
+        if vertical {
+            // Keep the theme armed but send the reset: the resident restores
+            // originals and our property writes stay out of the vertical
+            // layout churn until the taskbar goes horizontal again.
+            let _ = crate::tap::send_copydata(hwnd, CDS_TB_RESET, &[]);
+            tb.suppressed = true;
+            tb.cmd_hwnd = 0;
+        } else {
+            tb.suppressed = false;
+            if !deliver(hwnd, tb) {
+                tb.cmd_hwnd = 0; // delivery pending — `ensure` retries next tick
+            }
+        }
     }
     true
 }
@@ -179,10 +222,25 @@ pub fn ensure() {
     let Some((hwnd, _)) = crate::tap::ensure_resident() else {
         return;
     };
+    let vertical = taskbar_is_vertical();
     let mut guard = lock();
     let Some(tb) = guard.as_mut() else {
         return;
     };
+    if vertical {
+        // Once per transition — the reset is idempotent but each send runs
+        // a full restore sweep inside the host.
+        if !tb.suppressed {
+            let _ = crate::tap::send_copydata(hwnd, CDS_TB_RESET, &[]);
+            tb.suppressed = true;
+            tb.cmd_hwnd = 0;
+        }
+        return;
+    }
+    if tb.suppressed {
+        tb.suppressed = false;
+        tb.cmd_hwnd = 0; // force re-delivery of the armed theme
+    }
     // Resident identity decides re-delivery — a same-tick reinjection may
     // have already consumed the `fresh` flag.
     if tb.cmd_hwnd != hwnd.0 as usize {

@@ -111,6 +111,10 @@ struct State {
     /// Handles of styled elements whose diagnostics instances should be
     /// released when the pump is quiet (`g_elementsToRelease` equivalent).
     to_release: Vec<u64>,
+    /// A re-advise replay is in flight — its element burst is legitimate
+    /// work (the whole tree re-reported once), so the vtw storm counter
+    /// ignores traffic until the replay settles.
+    readvising: bool,
 }
 unsafe impl Send for State {}
 
@@ -127,6 +131,7 @@ fn state() -> std::sync::MutexGuard<'static, State> {
         wire_rules: None,
         rules_gen: 0,
         to_release: Vec::new(),
+        readvising: false,
     });
     STATE.lock().unwrap_or_else(|p| p.into_inner())
 }
@@ -142,6 +147,42 @@ fn known() -> std::sync::MutexGuard<'static, BTreeMap<u64, String>> {
 /// `g_elementPropertyModifying` — set while we write a property so the
 /// re-apply callback skips our own writes.
 static MODIFYING: AtomicBool = AtomicBool::new(false);
+
+/// Visual-tree events per second that mean the host is in a layout loop
+/// (a vertically docked taskbar's XAML never converges — every churned
+/// element re-enters `on_element` and our writes feed the cycle). Above
+/// this the styling path pauses; handle bookkeeping still runs.
+const STORM_LIMIT_PER_SEC: u32 = 600;
+/// A settled second below this count clears the guard (hysteresis —
+/// between the two thresholds the last state holds).
+const STORM_QUIET_PER_SEC: u32 = 60;
+
+/// Rate-limit for organic `OnVisualTreeChange` traffic. Re-advise replay
+/// bursts (`eng.readvising`) are exempt — re-reporting the tree once is
+/// the intended apply path, and it is bounded by the tree's size.
+fn storm_limited() -> bool {
+    static S: Mutex<Option<(std::time::Instant, u32, bool)>> = Mutex::new(None);
+    if state().readvising {
+        return false;
+    }
+    let mut g = S.lock().unwrap_or_else(|p| p.into_inner());
+    let now = std::time::Instant::now();
+    let (start, count, storm) = g.get_or_insert((now, 0, false));
+    if now.duration_since(*start).as_secs() >= 1 {
+        let prev = *count;
+        if !*storm && prev > STORM_LIMIT_PER_SEC {
+            *storm = true;
+            crate::tap_log!("styler: vtw storm ({prev}/s) — styling paused");
+        } else if *storm && prev < STORM_QUIET_PER_SEC {
+            *storm = false;
+            crate::tap_log!("styler: vtw storm cleared ({prev}/s)");
+        }
+        *start = now;
+        *count = 0;
+    }
+    *count += 1;
+    *storm
+}
 
 // ============================================================================
 // Wire parsing + target/style-rule grammar (plain data; cmd thread)
@@ -3955,6 +3996,7 @@ fn apply_theme_ui() {
     let pair = mod_service_watcher();
     match pair {
         Some((service, watcher)) => {
+            state().readvising = true;
             // Agile proxies — same justification as `start_advise`'s move.
             struct SendPair(
                 crate::bindings::IVisualTreeService3,
@@ -3979,6 +4021,7 @@ fn apply_theme_ui() {
                     "styler: re-advise done — {} elements styled",
                     state().elements.len()
                 );
+                state().readvising = false;
             });
         }
         None => {
@@ -4023,6 +4066,9 @@ pub fn on_element(
     known().insert(element.Handle.0, reported_type.to_string());
     queue_release(element.Handle.0);
     queue_release(parent);
+    if storm_limited() {
+        return;
+    }
     // Snapshot engine state first — `GetIInspectableFromHandle` and
     // `DependencyObject::DispatcherQueue` may marshal to the element's
     // dispatcher for WinUI3 elements, so they must never run while holding
