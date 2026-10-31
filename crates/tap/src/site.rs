@@ -133,11 +133,114 @@ pub fn install_winui3() {
     crate::tap_log!("winui3 install exited: {result:?}");
 }
 
+/// `WIN32_FIND_DATAW` — only `cFileName` is read; the header fields keep
+/// the real layout so the buffer size is right.
+#[repr(C)]
+struct FindDataW {
+    attrs: u32,
+    _times: [u32; 6],
+    _size: [u32; 2],
+    _reserved: [u32; 2],
+    name: [u16; 260],
+    _alt: [u16; 14],
+}
+
+/// FrameworkUdk ships inside the in-box WindowsAppRuntime CBS package —
+/// `C:\Windows\SystemApps\Microsoft.WindowsAppRuntime.CBS*` — which is
+/// off every DLL search path. Enumerate the versioned package dirs and
+/// `LoadLibraryW` the first copy that resolves.
+fn load_udk_from_systemapps() -> win32::HMODULE {
+    let mut dir = [0u16; 260];
+    let len = unsafe { win32::GetWindowsDirectoryW(windows_core::PWSTR(dir.as_mut_ptr()), 260) };
+    if len == 0 || len as usize >= dir.len() {
+        return core::ptr::null_mut();
+    }
+    // Wildcards match only the LAST path component, so the glob is the
+    // versioned package DIR; the DLL name is appended per match below.
+    let suffix_w = windows_core::w!("\\SystemApps\\Microsoft.WindowsAppRuntime.CBS*");
+    let suffix = unsafe { suffix_w.as_wide() };
+    let mut pat = [0u16; 300];
+    pat[..len as usize].copy_from_slice(&dir[..len as usize]);
+    pat[len as usize..len as usize + suffix.len()].copy_from_slice(suffix);
+    let mut data = FindDataW {
+        attrs: 0,
+        _times: [0; 6],
+        _size: [0; 2],
+        _reserved: [0; 2],
+        name: [0; 260],
+        _alt: [0; 14],
+    };
+    let find = unsafe {
+        win32::FindFirstFileW(
+            windows_core::PCWSTR(pat.as_ptr()),
+            &mut data as *mut FindDataW as *mut core::ffi::c_void,
+        )
+    };
+    // INVALID_HANDLE_VALUE — no in-box runtime package at all.
+    if find.is_null() || find as isize == -1 {
+        return core::ptr::null_mut();
+    }
+    let mut module = core::ptr::null_mut();
+    loop {
+        // The match is the package DIR (the * part); rebuild the full
+        // DLL path from it. `cFileName` is NUL-terminated.
+        let name_len = data.name.iter().position(|&c| c == 0).unwrap_or(260);
+        if name_len > 0 {
+            let mut path = [0u16; 600];
+            let stem = &pat[..len as usize];
+            path[..stem.len()].copy_from_slice(stem);
+            let mut off = stem.len();
+            let mid_w = windows_core::w!("\\SystemApps\\");
+            let mid = unsafe { mid_w.as_wide() };
+            path[off..off + mid.len()].copy_from_slice(mid);
+            off += mid.len();
+            path[off..off + name_len].copy_from_slice(&data.name[..name_len]);
+            off += name_len;
+            let tail_w = windows_core::w!("\\Microsoft.Internal.FrameworkUdk.dll\0");
+            let tail = unsafe { tail_w.as_wide() };
+            path[off..off + tail.len()].copy_from_slice(tail);
+            module = unsafe { win32::LoadLibraryW(windows_core::PCWSTR(path.as_ptr())) };
+            if !module.is_null() {
+                crate::tap_log!("winui3: FrameworkUdk loaded from SystemApps package");
+                break;
+            }
+        }
+        if unsafe {
+            win32::FindNextFileW(find, &mut data as *mut FindDataW as *mut core::ffi::c_void)
+        } == windows_core::BOOL(0)
+        {
+            break;
+        }
+    }
+    unsafe {
+        let _ = win32::FindClose(find);
+    }
+    module
+}
+
 fn install_winui3_inner() {
-    // Attach only once the host loaded the framework itself: `LoadLibraryW`
-    // here would bootstrap WinUI3 on *our* worker thread instead.
-    let udk =
+    // Attach only once the host loaded the framework itself: pulling the
+    // UDK in before `Microsoft.UI.Xaml.dll` exists would bootstrap WinUI3
+    // on *our* worker thread instead.
+    let mut udk =
         unsafe { win32::GetModuleHandleW(windows_core::w!("Microsoft.Internal.FrameworkUdk.dll")) };
+    if udk.is_null() {
+        // Runtime already up, UDK still absent: the in-box
+        // `Microsoft.UI.Xaml.dll` island does NOT auto-load FrameworkUdk
+        // (it's off the DLL search path under SystemApps), so nothing
+        // ever creates `WinUIVisualDiagConnection{N}` for us to attach
+        // to. Loading it now can't bootstrap XAML — the framework is
+        // already running; this only adds the diagnostics surface.
+        let mux = unsafe { win32::GetModuleHandleW(windows_core::w!("Microsoft.UI.Xaml.dll")) };
+        if mux.is_null() {
+            return;
+        }
+        udk =
+            unsafe { win32::LoadLibraryW(windows_core::w!("Microsoft.Internal.FrameworkUdk.dll")) };
+        if udk.is_null() {
+            udk = load_udk_from_systemapps();
+        }
+    }
     if udk.is_null() {
         return;
     }

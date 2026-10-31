@@ -87,6 +87,10 @@ windows_core::link!("kernel32.dll" "system" fn GetModuleFileNameW(hmodule: HMODU
 windows_core::link!("kernel32.dll" "system" fn GetModuleHandleW(lpmodulename: PCWSTR) -> HMODULE);
 windows_core::link!("kernel32.dll" "system" fn GetProcAddress(hmodule: HMODULE, lpprocname: PCSTR) -> FARPROC);
 windows_core::link!("kernel32.dll" "system" fn LoadLibraryW(lplibfilename: PCWSTR) -> HMODULE);
+windows_core::link!("kernel32.dll" "system" fn FindFirstFileW(lpfilename: PCWSTR, lpfindfiledata: *mut core::ffi::c_void) -> HANDLE);
+windows_core::link!("kernel32.dll" "system" fn FindNextFileW(hfindfile: HANDLE, lpfindfiledata: *mut core::ffi::c_void) -> BOOL);
+windows_core::link!("kernel32.dll" "system" fn FindClose(hfindfile: HANDLE) -> BOOL);
+windows_core::link!("kernel32.dll" "system" fn GetWindowsDirectoryW(lpbuffer: PWSTR, usize: u32) -> u32);
 windows_core::link!("kernel32.dll" "system" fn OpenProcess(dwdesiredaccess: u32, binherithandle: BOOL, dwprocessid: u32) -> HANDLE);
 windows_core::link!("kernel32.dll" "system" fn RegisterWaitForSingleObject(phnewwaitobject: *mut HANDLE, hobject: HANDLE, callback: WAITORTIMERCALLBACK, context: *const core::ffi::c_void, dwmilliseconds: u32, dwflags: u32) -> BOOL);
 windows_core::link!("kernel32.dll" "system" fn SetEvent(hevent: HANDLE) -> BOOL);
