@@ -185,6 +185,12 @@ pub struct Settings {
     /// Notification Center styles; local device preference.
     #[serde(default)]
     pub color_tint: String,
+    /// The File Explorer style applied through the native WinUI3 XAML
+    /// styler — a [`crate::file_explorer_themes`] catalog id, `""` =
+    /// Windows Default (stock Explorer chrome + backdrop restored).
+    /// Local device preference — themes never carry it.
+    #[serde(default)]
+    pub file_explorer_style: String,
     /// Background fit mode for bundled theme assets: `false` = strict Cover (a
     /// uniform scale fills the screen, the overflowing axis crops); `true` =
     /// strict Contain (the whole frame centered and uncropped, the leftover
@@ -312,6 +318,7 @@ impl Default for Settings {
             taskbar_style: String::new(),
             notification_center_style: String::new(),
             color_tint: String::new(),
+            file_explorer_style: String::new(),
             contain_background: false,
             stretch_tolerance_pct: 0,
             active_theme_path: None,

@@ -423,8 +423,11 @@ fn unload_foreign_residents(pid: u32, keep: HWND) {
 /// `5` = File Explorer styler removed — a v4 resident still carries the
 /// WinUI3/mux machinery, so it must read as stale and go inert;
 /// `6` = + Notification Center styler — a v5 resident registers no
-/// `PecoFenceTAPNC` class in the Shell hosts, so it must read as stale.
-pub const TAP_PROTOCOL_VERSION: usize = 6;
+/// `PecoFenceTAPNC` class in the Shell hosts, so it must read as stale;
+/// `7` = + File Explorer styler restored (`PECO-FES1` markers + the WinUI3
+/// `FrameworkUdk` diagnostics session — a v6 resident has no FEST handler,
+/// so it must read as stale).
+pub const TAP_PROTOCOL_VERSION: usize = 7;
 
 /// Explorer pid carrying a stale pinned resident that can't serve the
 /// taskbar-styler protocol — remembered so the periodic `ensure` doesn't

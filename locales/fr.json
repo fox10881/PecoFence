@@ -654,6 +654,9 @@
   "通知中心样式": "Style du Centre de notifications",
   "通知中心和操作中心视觉主题；选择后立即生效": "Thèmes visuels pour le Centre de notifications et le Centre d’action ; appliqués dès la sélection",
   "通知中心样式未能更改，请稍后重试。": "Impossible de changer le style du Centre de notifications — réessayez.",
+  "资源管理器样式": "Style de l'Explorateur de fichiers",
+  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Thèmes visuels et arrière-plan de la fenêtre pour l'Explorateur de fichiers ; s'applique dès la sélection",
+  "资源管理器样式未能更改，请稍后重试。": "Impossible de changer le style de l'Explorateur de fichiers — réessayez.",
   "主题色叠加": "Superposition de teinte",
   "给任务栏、开始菜单和通知中心叠加一层所选颜色；斜杠为关闭": "Superpose la couleur choisie sur la barre des tâches, le menu Démarrer et le centre de notifications ; le bouton barré la désactive"
 }

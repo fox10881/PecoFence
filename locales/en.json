@@ -654,6 +654,9 @@
   "通知中心样式": "Notification Center style",
   "通知中心和操作中心视觉主题；选择后立即生效": "Visual themes for the Notification and Action Center; applies on selection",
   "通知中心样式未能更改，请稍后重试。": "Couldn't change the Notification Center style — try again.",
+  "资源管理器样式": "File Explorer style",
+  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Visual themes and window backdrop for File Explorer; applies on selection",
+  "资源管理器样式未能更改，请稍后重试。": "Couldn't change the File Explorer style — try again.",
   "主题色叠加": "Color tint overlay",
   "给任务栏、开始菜单和通知中心叠加一层所选颜色；斜杠为关闭": "Overlays the chosen color onto the taskbar, Start menu and Notification Center; the slash swatch clears it"
 }

@@ -81,9 +81,13 @@ pub(crate) fn is_unloaded() -> bool {
 /// machinery, so it must read as stale and go inert);
 /// `6` = + Notification Center styler (`PECO-NCS1` markers +
 /// `PecoFenceTAPNC` class in `ShellExperienceHost.exe`/`ShellHost.exe` —
-/// a v5 resident can't register there, so it must read as stale).
+/// a v5 resident can't register there, so it must read as stale);
+/// `7` = + File Explorer styler restored (`PECO-FES1` markers + a second
+/// diagnostics session on `Microsoft.Internal.FrameworkUdk.dll` for the
+/// CabinetWClass WinUI3 islands — a v6 resident has no FEST handler, so
+/// it must read as stale).
 /// Keep in sync with `crates/platform/src/tap.rs::TAP_PROTOCOL_VERSION`.
-pub const TAP_PROTOCOL_VERSION: usize = 6;
+pub const TAP_PROTOCOL_VERSION: usize = 7;
 const BUILD_PROP_NAME: &[u16] = &[
     0x50, 0x65, 0x63, 0x6f, 0x46, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x54, 0x41, 0x50, 0x2e, 0x42, 0x75,
     0x69, 0x6c, 0x64, 0x00, // "PecoFence.TAP.Build"
@@ -270,6 +274,12 @@ const CDS_TB_HELLO: usize = u32::from_be_bytes(*b"TBHI") as usize;
 const CDS_NC_THEME: usize = u32::from_be_bytes(*b"NCST") as usize;
 const CDS_NC_RESET: usize = u32::from_be_bytes(*b"NCSR") as usize;
 const CDS_NC_HELLO: usize = u32::from_be_bytes(*b"NCHI") as usize;
+/// File Explorer (`PECO-FES1`) markers — sent to the explorer
+/// `PecoFenceTAP` window; the wire applies inside the WinUI3 diagnostics
+/// session (the mux engine), not the taskbar's WUX one.
+const CDS_FE_THEME: usize = u32::from_be_bytes(*b"FEST") as usize;
+const CDS_FE_RESET: usize = u32::from_be_bytes(*b"FESR") as usize;
+const CDS_FE_HELLO: usize = u32::from_be_bytes(*b"FEHI") as usize;
 
 fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
     if msg == UNLOAD_MSG.load(Ordering::Acquire) && msg != 0 {
@@ -284,6 +294,12 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
     }
     if msg == WM_TIMER {
         crate::site::ensure_watching();
+        // The mux session's endpoint exists only once a WinUI3 island
+        // registers it — an early FEST can land before any File Explorer
+        // window exists, so keep re-trying while the mux engine wants one.
+        if crate::styler::mux::wants_session() {
+            crate::site::ensure_watching_winui3();
+        }
         // Anchor props for late-created frames — a `Shell_TrayWnd` window
         // opened after this resident booted has no `CmdHwnd` prop until a
         // re-stamp, and the host would arm the hook forever.
@@ -319,7 +335,21 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
                 crate::site::ensure_watching();
                 crate::styler::wux::apply_wire(text);
             }
-            CDS_HELLO | CDS_TB_HELLO | CDS_NC_HELLO
+            CDS_FE_THEME if !cds.lp_data.is_null() && cds.cb_data > 0 => {
+                let bytes = unsafe {
+                    core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
+                };
+                let Ok(text) = core::str::from_utf8(bytes) else {
+                    crate::tap_log!("FE styler wire not UTF-8");
+                    return;
+                };
+                // The WinUI3 session may not exist yet (no File Explorer
+                // window open) — the engine holds the theme as pending and
+                // the timer keeps retrying `ensure_watching_winui3`.
+                crate::site::ensure_watching_winui3();
+                crate::styler::mux::apply_wire(text);
+            }
+            CDS_HELLO | CDS_TB_HELLO | CDS_NC_HELLO | CDS_FE_HELLO
                 if !cds.lp_data.is_null() && cds.cb_data == 4 =>
             {
                 // Host announced itself — arm the death watch so styles
@@ -328,6 +358,7 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
                 watch_host_process(pid);
             }
             CDS_RESET | CDS_TB_RESET | CDS_NC_RESET => crate::styler::wux::reset(),
+            CDS_FE_RESET => crate::styler::mux::reset(),
             _ => {}
         }
     }
@@ -379,6 +410,7 @@ fn watch_host_process(pid: u32) {
 unsafe extern "system" fn host_died(_context: *mut core::ffi::c_void, _fired: windows_core::BOOL) {
     let _ = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
         crate::styler::wux::reset();
+        crate::styler::mux::reset();
         let mut shared = shared::lock();
         shared.host_wait = core::ptr::null_mut();
         if !shared.host_process.is_null() {
@@ -411,20 +443,31 @@ fn unload(hwnd: HWND) {
     unstamp_host_props(hwnd);
     crate::tap_log!("unload: inert — timer killed, CmdHwnd unstamped");
     crate::styler::wux::shutdown();
+    crate::styler::mux::shutdown();
     // Snapshot the service/watcher under the lock, then release it — the
     // unadvise call marshals to the UI thread and must not race callbacks
     // that take `shared`. Runs on a worker: a dead island pump parks the
     // unadvise forever, and the command pump must stay responsive.
-    let pair = {
+    let both = {
         let mut shared = shared::lock();
-        shared.tree_service.clone().zip(shared.watcher.take())
+        [
+            shared.tree_service.clone().zip(shared.watcher.take()),
+            shared
+                .tree_service_winui3
+                .clone()
+                .zip(shared.watcher_winui3.take()),
+        ]
     };
     struct SendPair(
         crate::bindings::IVisualTreeService3,
         crate::bindings::IVisualTreeServiceCallback2,
     );
     unsafe impl Send for SendPair {}
-    let pairs: Vec<SendPair> = pair.into_iter().map(|(s, w)| SendPair(s, w)).collect();
+    let pairs: Vec<SendPair> = both
+        .into_iter()
+        .flatten()
+        .map(|(s, w)| SendPair(s, w))
+        .collect();
     std::thread::spawn(move || {
         for pair in &pairs {
             unsafe {

@@ -84,6 +84,8 @@ enum WireKind {
     StartMenu,
     Taskbar,
     NotificationCenter,
+    /// `PECO-FES1` — File Explorer's WinUI3 islands (mux engine only).
+    FileExplorer,
 }
 
 struct State {
@@ -2022,6 +2024,29 @@ fn read_local(
 
 /// `TestElementMatcher` — `fallback` is the reported `element.Type` for the
 /// leaf (a second alias for the type check); `""` for parents.
+/// Type-name equality for matchers. `FileExplorerExtensions.*_Wave1`-style
+/// targets in the guide's themes name the *serialized* wave suffix, while
+/// the runtime reports the *installed* wave (`_Wave3`) or none — strip a
+/// trailing `_Wave\d+` from both sides, then accept exact match or a
+/// last-namespace-segment match (`FileExplorerExtensions.X` vs `X`).
+fn wave_norm(s: &str) -> &str {
+    let s = s.trim();
+    if let Some(pos) = s.rfind("_Wave")
+        && pos > 0
+        && s[pos + 5..].chars().all(|c| c.is_ascii_digit())
+    {
+        return &s[..pos];
+    }
+    s
+}
+
+fn type_eq(rule: &str, actual: &str) -> bool {
+    let (rule, actual) = (wave_norm(rule), wave_norm(actual.trim()));
+    rule == actual
+        || rule.rsplit('.').next() == Some(actual)
+        || Some(rule) == actual.rsplit('.').next()
+}
+
 fn test_matcher(
     el: &FrameworkElement,
     m: &Matcher,
@@ -2032,8 +2057,8 @@ fn test_matcher(
         return false;
     }
     if !m.type_name.is_empty()
-        && m.type_name != class_name_el(el)
-        && (fallback.is_empty() || m.type_name != fallback)
+        && !type_eq(&m.type_name, &class_name_el(el))
+        && (fallback.is_empty() || !type_eq(&m.type_name, fallback))
     {
         return false;
     }
@@ -4178,6 +4203,14 @@ pub fn on_element_removed(handle: u64) {
 /// while this is true.
 pub fn is_armed() -> bool {
     state().applied.is_some()
+}
+
+/// Whether this engine needs a live diagnostics session — a theme is
+/// armed or one is waiting for the session to appear (e.g. `FEST`
+/// delivered before any File Explorer window opened).
+pub fn wants_session() -> bool {
+    let eng = state();
+    eng.pending.is_some() || eng.applied.is_some()
 }
 
 /// Full teardown on unload/host-death.

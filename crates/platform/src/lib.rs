@@ -69,6 +69,7 @@ pub mod dispatcher;
 pub mod dragdrop;
 pub mod dwm;
 pub mod edit;
+pub mod file_explorer_styler;
 pub mod filedialog;
 pub mod fileinfo;
 pub mod fonts;

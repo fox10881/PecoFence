@@ -483,6 +483,8 @@
         <select id="startMenuStyleSel" data-bind="startMenuStyle" data-str></select></div>
       <div class="card" id="notificationCenterStyleCard"><div class="l"><span class="ic">&#xE91C;</span><div><div class="t">通知中心样式</div><div class="s">通知中心和操作中心视觉主题；选择后立即生效</div></div></div>
         <select id="notificationCenterStyleSel" data-bind="notificationCenterStyle" data-str></select></div>
+      <div class="card" id="fileExplorerStyleCard"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">资源管理器样式</div><div class="s">文件资源管理器视觉主题和窗口背景；选择后立即生效</div></div></div>
+        <select id="fileExplorerStyleSel" data-bind="fileExplorerStyle" data-str></select></div>
       <div class="card" id="colorTintCard"><div class="l"><span class="ic">&#xE790;</span><div><div class="t">主题色叠加</div><div class="s">给任务栏、开始菜单和通知中心叠加一层所选颜色；斜杠为关闭</div></div></div>
         <div class="swatches" id="colorTintRow" role="radiogroup" aria-label="color tint"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">重启资源管理器</div><div class="s">出现卡顿或异常时按一下</div></div></div>
@@ -946,6 +948,7 @@
     }
   }
 
+<<<<<<< HEAD
   // Color tint — a Windows-style accent row. Swatches are fixed, built
   // once; selection writes #RRGGBB ("" = clear) into settings.colorTint and
   // the backend re-delivers every surface's wire with the overlay baked in.
@@ -977,6 +980,23 @@
       b.classList.toggle('on', on);
       b.setAttribute('aria-checked', String(on));
     });
+  }
+
+  // File Explorer Style — same contract; the resident applies it inside
+  // explorer.exe's WinUI3 (Microsoft.UI.Xaml) diagnostics session.
+  function renderFileExplorerStyles(m) {
+    const sel = document.getElementById('fileExplorerStyleSel');
+    const opts = m.fileExplorerStyles || [];
+    const sig = opts.map(o => o.id).join('');
+    if (sel.dataset.opts !== sig) {
+      sel.dataset.opts = sig;
+      sel.replaceChildren(...opts.map(o => {
+        const e = document.createElement('option');
+        e.value = o.id;
+        e.textContent = o.label;
+        return e;
+      }));
+    }
   }
 
   // 速览栅栏 › 快捷键: the box records the next combination, the host checks it, tries
@@ -1705,6 +1725,7 @@
       renderStartMenuStyles(m);
       renderTaskbarStyles(m);
       renderNotificationCenterStyles(m);
+      renderFileExplorerStyles(m);
       bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); bindColorTint(); renderColorTint(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
       update = m.update; renderUpdate();
       // Transitions come on a frame after this state has been drawn: a single frame would style
