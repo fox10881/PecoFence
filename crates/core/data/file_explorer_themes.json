@@ -171,12 +171,12 @@
     "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+    "SolidBackgroundFillColorBase@Dark=#00000000",
+    "SolidBackgroundFillColorBase@Light=#00000000",
+    "SolidBackgroundFillColorSecondary@Dark=#00000000",
+    "SolidBackgroundFillColorSecondary@Light=#00000000",
+    "LayerFillColorDefault@Dark=#00000000",
+    "LayerFillColorDefault@Light=#00000000"
    ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kAcrylic"
@@ -1074,12 +1074,12 @@
     "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+    "SolidBackgroundFillColorBase@Dark=#00000000",
+    "SolidBackgroundFillColorBase@Light=#00000000",
+    "SolidBackgroundFillColorSecondary@Dark=#00000000",
+    "SolidBackgroundFillColorSecondary@Light=#00000000",
+    "LayerFillColorDefault@Dark=#00000000",
+    "LayerFillColorDefault@Light=#00000000"
    ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kAcrylic"
@@ -1240,12 +1240,12 @@
     "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+    "SolidBackgroundFillColorBase@Dark=#00000000",
+    "SolidBackgroundFillColorBase@Light=#00000000",
+    "SolidBackgroundFillColorSecondary@Dark=#00000000",
+    "SolidBackgroundFillColorSecondary@Light=#00000000",
+    "LayerFillColorDefault@Dark=#00000000",
+    "LayerFillColorDefault@Light=#00000000"
    ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kAcrylic"
@@ -1544,12 +1544,12 @@
     "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+    "SolidBackgroundFillColorBase@Dark=#00000000",
+    "SolidBackgroundFillColorBase@Light=#00000000",
+    "SolidBackgroundFillColorSecondary@Dark=#00000000",
+    "SolidBackgroundFillColorSecondary@Light=#00000000",
+    "LayerFillColorDefault@Dark=#00000000",
+    "LayerFillColorDefault@Light=#00000000"
    ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kDefault"
@@ -2000,12 +2000,12 @@
     "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+    "SolidBackgroundFillColorBase@Dark=#00000000",
+    "SolidBackgroundFillColorBase@Light=#00000000",
+    "SolidBackgroundFillColorSecondary@Dark=#00000000",
+    "SolidBackgroundFillColorSecondary@Light=#00000000",
+    "LayerFillColorDefault@Dark=#00000000",
+    "LayerFillColorDefault@Light=#00000000"
    ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kDefault"
@@ -2425,12 +2425,12 @@
     "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
     "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+    "SolidBackgroundFillColorBase@Dark=#00000000",
+    "SolidBackgroundFillColorBase@Light=#00000000",
+    "SolidBackgroundFillColorSecondary@Dark=#00000000",
+    "SolidBackgroundFillColorSecondary@Light=#00000000",
+    "LayerFillColorDefault@Dark=#00000000",
+    "LayerFillColorDefault@Light=#00000000"
    ],
    "explorerFrameContainerHeight": 0,
    "backgroundTranslucentEffect": "kDefault"

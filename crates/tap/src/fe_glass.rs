@@ -20,9 +20,10 @@
 //!   `DirectUIHWND` stop painting an opaque panel and reveal the DWM
 //!   backdrop underneath.
 //!
-//! `ExtTextOutW` alpha correction is intentionally NOT hooked yet — the
-//! buffered-paint composition it needs is a larger port, and a wrong
-//! implementation renders text invisible. Stock text color is left alone.
+//! - `ExtTextOutW` detour: `ETO_OPAQUE` background boxes (SysTreeView32
+//!   row fills) are repainted transparent black and re-emitted without
+//!   the opaque flag. Text alpha correction is still not attempted —
+//!   a wrong implementation renders text invisible.
 
 use crate::win32;
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -69,6 +70,7 @@ windows_core::link!("user32.dll" "system" fn FillRect(hdc: Hdc, lprc: *const Rec
 windows_core::link!("user32.dll" "system" fn SendMessageTimeoutW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize, flags: u32, timeout: u32, result: *mut usize) -> usize);
 windows_core::link!("user32.dll" "system" fn RedrawWindow(hwnd: Hwnd, lprcupdate: *const core::ffi::c_void, hrgnupdate: *mut core::ffi::c_void, flags: u32) -> windows_core::BOOL);
 windows_core::link!("user32.dll" "system" fn SetWindowCompositionAttribute(hwnd: Hwnd, data: *const core::ffi::c_void) -> windows_core::BOOL);
+windows_core::link!("user32.dll" "system" fn DefWindowProcW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize);
 windows_core::link!("gdi32.dll" "system" fn GetStockObject(i: i32) -> *mut core::ffi::c_void);
 windows_core::link!("gdi32.dll" "system" fn GetObjectW(obj: *mut core::ffi::c_void, cb: i32, pv: *mut core::ffi::c_void) -> i32);
 windows_core::link!("gdi32.dll" "system" fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> *mut core::ffi::c_void);
@@ -111,6 +113,11 @@ const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
 const DWM_BB_ENABLE: u32 = 1;
 const DWM_BB_BLURREGION: u32 = 2;
 const WCA_ACCENT_POLICY: u32 = 19;
+/// Keeps DWM evaluating the system backdrop as if `CabinetWClass` is
+/// always active — otherwise `DWMSBT_TRANSIENTWINDOW` drops to a flat
+/// `#585858` sheet on focus loss.
+const WCA_FORCE_ACTIVEWINDOW_APPEARANCE: u32 = 15;
+const WM_NCACTIVATE: u32 = 0x0086;
 const WM_THEMECHANGED: u32 = 0x031A;
 const SMTO_ABORTIFHUNG: u32 = 0x0002;
 const RDW_INVALIDATE: u32 = 0x0001;
@@ -156,15 +163,16 @@ static THEME_CLASSES: LazyLock<Mutex<HashMap<usize, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The backdrop mode the platform wants on cabinets — pushed via the
-/// `FEBD` COPYDATA (BUG 2). Defaults to `DWMSBT_NONE` (1) so a
-/// `set_armed` that races ahead of the `FEBD` still applies the accent
-/// path instead of explorer's opaque tabbed backdrop.
-static DESIRED_BACKDROP: core::sync::atomic::AtomicI32 = core::sync::atomic::AtomicI32::new(1);
+/// `FEBD` COPYDATA (BUG 2). Defaults to `DWMSBT_TRANSIENTWINDOW` (3) so a
+/// `set_armed` that races ahead of the `FEBD` still applies the working
+/// 23H2 system acrylic instead of explorer's opaque tabbed backdrop.
+static DESIRED_BACKDROP: core::sync::atomic::AtomicI32 = core::sync::atomic::AtomicI32::new(3);
 /// Accent policy the platform wants — `ACCENT_STATE_*` (0 = disabled,
 /// 4 = acrylic blur behind), flags, and the ABGR `GradientColor`.
-/// Defaults to acrylic with a subtle dark tint (`0x18101010` — alpha
-/// never 0, or Win11 23H2 disables the blur entirely).
-static ACCENT_STATE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(4);
+/// Defaults to DISABLED: `WCA_ACCENT_POLICY` conflicts with the
+/// `DWMSBT_TRANSIENTWINDOW` system backdrop and cannot compose on
+/// `CabinetWClass`.
+static ACCENT_STATE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 static ACCENT_FLAGS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 static ACCENT_GRADIENT: core::sync::atomic::AtomicU32 =
     core::sync::atomic::AtomicU32::new(0x18101010);
@@ -431,6 +439,25 @@ fn apply_glass_to(hwnd: Hwnd) {
     let _ = unsafe {
         SetWindowCompositionAttribute(hwnd, &data as *const WcaData as *const core::ffi::c_void)
     };
+    // WCA_FORCE_ACTIVEWINDOW_APPEARANCE — the TRANSIENTWINDOW backdrop
+    // only blurs while DWM treats the window as active; force the
+    // appearance, then feed a fake activation so DWM re-evaluates now.
+    set_force_active(hwnd, true);
+    let _ = unsafe { DefWindowProcW(hwnd, WM_NCACTIVATE, 1, 0) };
+}
+
+/// `WCA_FORCE_ACTIVEWINDOW_APPEARANCE` (`1` armed / `0` restore) — without
+/// it DWM renders the unfocused window's system backdrop as opaque gray.
+fn set_force_active(hwnd: Hwnd, on: bool) {
+    let value: i32 = on as i32;
+    let data = WcaData {
+        attrib: WCA_FORCE_ACTIVEWINDOW_APPEARANCE,
+        pv: &value as *const i32 as *const core::ffi::c_void,
+        cb: core::mem::size_of::<i32>(),
+    };
+    let _ = unsafe {
+        SetWindowCompositionAttribute(hwnd, &data as *const WcaData as *const core::ffi::c_void)
+    };
 }
 
 /// Raw `DwmSetWindowAttribute` — bypasses our own detour via the
@@ -489,6 +516,7 @@ fn restore_glass_on(hwnd: Hwnd) {
     let _ = unsafe {
         SetWindowCompositionAttribute(hwnd, &data as *const WcaData as *const core::ffi::c_void)
     };
+    set_force_active(hwnd, false);
 }
 
 fn apply_to_cabinets() {
@@ -504,18 +532,35 @@ fn restore_cabinets() {
 }
 
 const TVM_SETBKCOLOR: u32 = 0x111D; // TV_FIRST + 29
+const TVM_SETEXTENDEDSTYLE: u32 = 0x112C; // TV_FIRST + 44
+const TVS_EX_DOUBLEBUFFER: isize = 0x0004;
 
 /// `WM_THEMECHANGED` + a full redraw — forces DirectUI to repaint through
 /// our (now armed/disarmed) hooks immediately, instead of leaving the
-/// stock/opaque pixels until the next navigation. The theme message must
-/// reach EVERY descendant — `SysTreeView32` (the left nav pane) and
-/// `DirectUIHWND` don't repaint on a top-window broadcast alone. The
-/// tree also caches a `COLOR_WINDOW`-colored background: `TVM_SETBKCOLOR`
-/// pushes RGB(0,0,0) while armed, `-1` (system default) on disarm.
+/// stock/opaque pixels until the next navigation. The top window gets the
+/// theme message FIRST — it re-themes descendants itself, so sending it
+/// after `EnumChildWindows` would let explorer overwrite our
+/// `TVM_SETBKCOLOR`/`TVM_SETEXTENDEDSTYLE` pushes on `SysTreeView32`.
+/// The tree also caches a `COLOR_WINDOW`-colored background and paints
+/// through an offscreen `TVS_EX_DOUBLEBUFFER`: both are switched while
+/// armed (`RGB(0,0,0)` / double-buffer off) and restored on disarm.
 fn refresh_cabinets() {
     let armed = is_armed();
     for hwnd in cabinet_windows() {
-        // ---- every descendant: WM_THEMECHANGED + the tree's bk color ----
+        // ---- top window first: it re-themes its own descendants ----
+        unsafe {
+            let mut result = 0usize;
+            let _ = SendMessageTimeoutW(
+                hwnd,
+                WM_THEMECHANGED,
+                0,
+                0,
+                SMTO_ABORTIFHUNG,
+                200,
+                &mut result,
+            );
+        }
+        // ---- every descendant: WM_THEMECHANGED + the tree's settings ----
         unsafe extern "system" fn child_cb(hwnd: Hwnd, lparam: isize) -> windows_core::BOOL {
             let armed = lparam != 0;
             let mut result = 0usize;
@@ -549,6 +594,19 @@ fn refresh_cabinets() {
                         200,
                         &mut result,
                     );
+                    // Kill the offscreen double-buffer while armed — it
+                    // composites the tree opaque before our hooks can see
+                    // the background fill. Restored on disarm.
+                    let style: isize = if armed { 0 } else { TVS_EX_DOUBLEBUFFER };
+                    let _ = SendMessageTimeoutW(
+                        hwnd,
+                        TVM_SETEXTENDEDSTYLE,
+                        TVS_EX_DOUBLEBUFFER as usize,
+                        style,
+                        SMTO_ABORTIFHUNG,
+                        200,
+                        &mut result,
+                    );
                     let _ = RedrawWindow(
                         hwnd,
                         core::ptr::null(),
@@ -561,16 +619,6 @@ fn refresh_cabinets() {
         }
         unsafe {
             let _ = EnumChildWindows(hwnd, Some(child_cb), armed as isize);
-            let mut result = 0usize;
-            let _ = SendMessageTimeoutW(
-                hwnd,
-                WM_THEMECHANGED,
-                0,
-                0,
-                SMTO_ABORTIFHUNG,
-                200,
-                &mut result,
-            );
             let _ = RedrawWindow(
                 hwnd,
                 core::ptr::null(),
@@ -695,8 +743,15 @@ unsafe extern "system" fn get_theme_color_hook(
     unsafe { orig(htheme, part, state, prop, pcolor) }
 }
 
+/// Fill through the FillRect TRAMPOLINE — the hooked export would
+/// re-enter `fill_rect_hook`, and `GetStockObject(BLACK_BRUSH)` itself
+/// resolves to a `BS_SOLID 0x00000000` stock-panel brush → recursion.
 fn punch_black(hdc: Hdc, rect: *const Rect) -> bool {
-    unsafe { FillRect(hdc, rect, GetStockObject(BLACK_BRUSH) as HBrush) != 0 }
+    let black = unsafe { GetStockObject(BLACK_BRUSH) as HBrush };
+    match tramp::<FillRectFn>("FillRect") {
+        Some(f) => unsafe { f(hdc, rect, black) != 0 },
+        None => false,
+    }
 }
 
 /// Background parts the mod punches out: `iPartId == 0` (ItemsView/
@@ -704,6 +759,17 @@ fn punch_black(hdc: Hdc, rect: *const Rect) -> bool {
 /// iStateId == 0` (CommandModule/PreviewPane background).
 fn is_bg_part(part: i32, state: i32) -> bool {
     part == 0 || (part == 1 && state == 0)
+}
+
+/// Part/state punch rule — `TreeView` is special: `TVP_TREEITEM` rows
+/// only punch `TREIS_NORMAL` (1); `TREIS_HOT`/`SELECTED`/
+/// `SELECTEDNOTFOCUS`/`HOTSELECTED` (2/3/5/6) must still draw their
+/// hover/selection highlight, so they fall through to the original.
+fn should_punch_part(htheme: HTheme, part: i32, state: i32) -> bool {
+    if class_in(htheme, &["TreeView"]) {
+        return part == 0 || (part == 1 && state == 1);
+    }
+    bg_class(htheme) && is_bg_part(part, state)
 }
 
 type DrawThemeBgFn =
@@ -716,12 +782,7 @@ unsafe extern "system" fn draw_theme_bg_hook(
     rect: *const Rect,
     clip: *const Rect,
 ) -> HResult {
-    if is_armed()
-        && !rect.is_null()
-        && is_bg_part(part, state)
-        && cabinet_dc(hdc)
-        && bg_class(htheme)
-    {
+    if is_armed() && !rect.is_null() && cabinet_dc(hdc) && should_punch_part(htheme, part, state) {
         if punch_black(hdc, rect) {
             return 0;
         }
@@ -743,12 +804,7 @@ unsafe extern "system" fn draw_theme_bg_ex_hook(
     rect: *const Rect,
     opts: *const DtbgOpts,
 ) -> HResult {
-    if is_armed()
-        && !rect.is_null()
-        && is_bg_part(part, state)
-        && cabinet_dc(hdc)
-        && bg_class(htheme)
-    {
+    if is_armed() && !rect.is_null() && cabinet_dc(hdc) && should_punch_part(htheme, part, state) {
         if punch_black(hdc, rect) {
             return 0;
         }
@@ -781,9 +837,12 @@ struct LogBrush {
 
 /// Explorer's stock opaque panel colors (BGR, alpha byte ignored) —
 /// `SysTreeView32`/DirectUI cache `CreateSolidBrush` handles for these
-/// rather than asking the system brush table.
+/// rather than asking the system brush table. `0x00000000` covers raw
+/// black brushes too — safe because our own punches go through the
+/// trampoline, never re-entering this check.
 const STOCK_PANEL_COLORS: &[u32] = &[
-    0x00191919, 0x00202020, 0x001F1F1F, 0x002C2C2C, 0x00FFFFFF, 0x00F3F3F3,
+    0x00191919, 0x00181818, 0x00141414, 0x00202020, 0x001F1F1F, 0x002C2C2C, 0x00FFFFFF, 0x00F3F3F3,
+    0x00000000,
 ];
 
 /// `true` when `brush` is a `BS_SOLID` brush in one of explorer's stock
@@ -824,13 +883,20 @@ unsafe extern "system" fn fill_rect_hook(hdc: Hdc, rect: *const Rect, brush: HBr
             .unwrap_or(false);
         // Dark-mode panels often skip the system-brush table entirely and
         // cache a `CreateSolidBrush(#191919 / #202020 / #F3F3F3 / …)`.
-        // `GetObjectW` exposes the brush's real color — punch the stock
-        // opaque panel colors on LARGE fills only, so icons, buttons and
-        // selection pills keep their paint.
-        let solid_panel = is_stock_panel_brush(brush)
-            && unsafe { (*rect).right - (*rect).left > 80 && (*rect).bottom - (*rect).top > 80 };
+        // `GetObjectW` exposes the brush's real color. `SysTreeView32`
+        // fills its rows (~28px) one by one, so only the WIDTH gates the
+        // punch: icons/checkmarks stay under 32px, and hover/selection
+        // pills in TreeView/ItemsView draw via DrawThemeBackground or
+        // Direct2D, never `FillRect` with a panel color.
+        let solid_panel =
+            is_stock_panel_brush(brush) && unsafe { (*rect).right - (*rect).left > 40 };
         if pseudo || real || solid_panel {
-            return unsafe { FillRect(hdc, rect, GetStockObject(BLACK_BRUSH) as HBrush) };
+            // Trampoline — the hooked export would re-enter this hook on
+            // a BLACK_BRUSH (0x00000000 is itself a stock panel color).
+            return match tramp::<FillRectFn>("FillRect") {
+                Some(f) => unsafe { f(hdc, rect, GetStockObject(BLACK_BRUSH) as HBrush) },
+                None => -1,
+            };
         }
     }
     let orig: FillRectFn = match tramp("FillRect") {
@@ -838,6 +904,44 @@ unsafe extern "system" fn fill_rect_hook(hdc: Hdc, rect: *const Rect, brush: HBr
         None => return -1,
     };
     unsafe { orig(hdc, rect, brush) }
+}
+
+// ------------------------------------------------------------------ text
+/// `ETO_OPAQUE` — `SysTreeView32`/`DirectUIHWND` also fill their
+/// background rects through `ExtTextOutW`, which `FillRect` never sees.
+const ETO_OPAQUE: u32 = 0x0002;
+
+type ExtTextOutWFn = unsafe extern "system" fn(
+    Hdc,
+    i32,
+    i32,
+    u32,
+    *const Rect,
+    PCWSTR,
+    u32,
+    *const i32,
+) -> windows_core::BOOL;
+unsafe extern "system" fn ext_text_out_hook(
+    hdc: Hdc,
+    x: i32,
+    y: i32,
+    options: u32,
+    lprect: *const Rect,
+    lpstring: PCWSTR,
+    c: u32,
+    lpdx: *const i32,
+) -> windows_core::BOOL {
+    let orig: ExtTextOutWFn = match tramp("ExtTextOutW") {
+        Some(f) => f,
+        None => return windows_core::BOOL(0),
+    };
+    if is_armed() && options & ETO_OPAQUE != 0 && !lprect.is_null() && cabinet_dc(hdc) {
+        // Replace the opaque background fill with transparent black,
+        // then draw the text without its background box.
+        let _ = punch_black(hdc, lprect);
+        return unsafe { orig(hdc, x, y, options & !ETO_OPAQUE, lprect, lpstring, c, lpdx) };
+    }
+    unsafe { orig(hdc, x, y, options, lprect, lpstring, c, lpdx) }
 }
 
 // ------------------------------------------------------------ install ----
@@ -863,7 +967,7 @@ fn install() {
             GET_THEME_CLASS.store(p as usize, Ordering::Release);
         }
     }
-    let specs: [(&'static str, &'static str, *const ()); 8] = [
+    let specs: [(&'static str, &'static str, *const ()); 9] = [
         (
             "dwmapi.dll",
             "DwmExtendFrameIntoClientArea",
@@ -896,6 +1000,7 @@ fn install() {
             get_sys_color_brush_hook as *const (),
         ),
         ("user32.dll", "FillRect", fill_rect_hook as *const ()),
+        ("gdi32.dll", "ExtTextOutW", ext_text_out_hook as *const ()),
     ];
     let mut installed = Vec::new();
     for (dll, name, hook) in specs {

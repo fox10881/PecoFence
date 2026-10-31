@@ -71,17 +71,17 @@ pub fn theme(id: &str) -> Option<&'static serde_json::Value> {
 }
 
 /// The theme's DWM backdrop choice (`BackgroundTranslucentEffect` in the
-/// mod): `""` for kDefault / kNone, or `blur` / `acrylic` / `mica` /
-/// `micaAlt` — applied to `CabinetWClass` windows via
-/// `DWMWA_SYSTEMBACKDROP_TYPE` on the platform side.
+/// mod), applied to `CabinetWClass` windows via
+/// `DWMWA_SYSTEMBACKDROP_TYPE` on the platform side. Every non-default
+/// catalog theme drives the system-acrylic path: on Windows 11 23H2 the
+/// `kDefault`/empty entries still need `DWMSBT_TRANSIENTWINDOW` or the
+/// frame-extension glass never engages — only `kMica` keeps its own
+/// system backdrop. `None` only for `""`/unknown ids.
 pub fn backdrop(id: &str) -> Option<&'static str> {
-    let effect = theme(id)?["backgroundTranslucentEffect"].as_str()?;
-    Some(match effect {
-        "kBlur" => "blur",
-        "kAcrylic" => "acrylic",
-        "kMica" => "mica",
-        "kMicaAlt" => "micaAlt",
-        _ => "",
+    let theme = theme(id)?;
+    Some(match theme["backgroundTranslucentEffect"].as_str() {
+        Some("kMica") => "mica",
+        _ => "acrylic",
     })
 }
 
@@ -322,8 +322,12 @@ mod tests {
     }
 
     #[test]
-    fn backdrop_follows_the_theme_declared_effect() {
+    fn backdrop_defaults_every_theme_to_acrylic() {
         assert_eq!(backdrop("Translucent_Explorer11"), Some("acrylic"));
+        // `kDefault` themes must still select the system-acrylic path —
+        // without it the frame-extension glass never engages on 23H2.
+        assert_eq!(backdrop("LiquidGlass"), Some("acrylic"));
+        assert_eq!(backdrop("Compact_Explorer11"), Some("acrylic"));
         assert_eq!(backdrop(""), None);
         assert_eq!(backdrop("NoSuchTheme"), None);
     }

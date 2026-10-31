@@ -25,6 +25,12 @@ windows_core::link!("gdi32.dll" "system" fn CreateRectRgn(left: i32, top: i32, r
 windows_core::link!("gdi32.dll" "system" fn DeleteObject(obj: *mut core::ffi::c_void) -> windows_core::BOOL);
 windows_core::link!("user32.dll" "system" fn GetClassNameW(hwnd: crate::bindings::HWND, lpclassname: windows_core::PWSTR, nmaxcount: i32) -> i32);
 windows_core::link!("user32.dll" "system" fn RedrawWindow(hwnd: crate::bindings::HWND, lprcupdate: *const core::ffi::c_void, hrgnupdate: *mut core::ffi::c_void, flags: u32) -> windows_core::BOOL);
+windows_core::link!("user32.dll" "system" fn DefWindowProcW(hwnd: crate::bindings::HWND, msg: u32, wparam: usize, lparam: isize) -> isize);
+windows_core::link!("user32.dll" "system" fn SendMessageTimeoutW(hwnd: crate::bindings::HWND, msg: u32, wparam: usize, lparam: isize, flags: u32, timeout: u32, result: *mut usize) -> isize);
+windows_core::link!("advapi32.dll" "system" fn RegOpenKeyExW(hkey: isize, subkey: PCWSTR, options: u32, sam: u32, result: *mut isize) -> i32);
+windows_core::link!("advapi32.dll" "system" fn RegQueryValueExW(hkey: isize, name: PCWSTR, reserved: *const u32, ty: *mut u32, data: *mut u8, cb: *mut u32) -> i32);
+windows_core::link!("advapi32.dll" "system" fn RegSetValueExW(hkey: isize, name: PCWSTR, reserved: u32, ty: u32, data: *const u8, cb: u32) -> i32);
+windows_core::link!("advapi32.dll" "system" fn RegCloseKey(hkey: isize) -> i32);
 
 /// `COPYDATASTRUCT.dwData` values — must match `crates/tap/src/command.rs`.
 const CDS_FE_THEME: usize = u32::from_be_bytes(*b"FEST") as usize;
@@ -37,39 +43,29 @@ const CDS_FE_BACKDROP: usize = u32::from_be_bytes(*b"FEBD") as usize;
 // DWMWA_SYSTEMBACKDROP_TYPE (38) values — the same DWMSBT_* mapping the mod
 // applies through its DwmSetWindowAttribute hook.
 const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
-const DWMSBT_NONE: i32 = 1; // no system backdrop — the accent path's value
 const DWMSBT_MAINWINDOW: i32 = 2; // Mica
-const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt
+const DWMSBT_TRANSIENTWINDOW: i32 = 3; // system Acrylic — the working 23H2 glass
+const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt / explorer's own stock request
 
 const ACCENT_DISABLED: u32 = 0;
-const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
 
-/// Translucent-Windows `HandleEffects` mutual exclusion:
-/// `DWMWA_SYSTEMBACKDROP_TYPE` (2/3/4) and `WCA_ACCENT_POLICY`
-/// (`ACCENT_STATE_ENABLE_ACRYLICBLURBEHIND`) are never both active — an
-/// extended `-1` frame with a conflicting pair renders a solid black void.
+/// Translucent-Windows `HandleEffects`: on Windows 11 23H2 `CabinetWClass`
+/// the working glass is `DWMWA_SYSTEMBACKDROP_TYPE` =
+/// `DWMSBT_TRANSIENTWINDOW` (system acrylic) — or `DWMSBT_MAINWINDOW` for
+/// the Mica presets — with `WCA_ACCENT_POLICY` strictly DISABLED: accent
+/// blur-behind and a system backdrop on the same window conflict, and
+/// `DWMSBT_NONE` + accent does not compose on this window class. The
+/// unfocused `#585858` fallback is killed separately by
+/// `WCA_FORCE_ACTIVEWINDOW_APPEARANCE` + `WM_NCACTIVATE`, and the Color
+/// Tint overlay rides the XAML ruleset instead of the accent gradient.
 /// Returns `(backdrop, accent_state, accent_flags, gradient_abgr)`.
-///
-/// On Windows 11 23H2 the system backdrops are unusable for our glass:
-/// `DWMSBT_TRANSIENTWINDOW`/`TABBEDWINDOW` render a flat opaque `#585858`
-/// sheet whenever the window loses focus or system transparency effects
-/// are off. Every active style therefore rides the accent acrylic path —
-/// `DWMSBT_NONE` (1, not `DWMSBT_AUTO` = 0, which leaves explorer's own
-/// tabbed-window backdrop active on `CabinetWClass`). The only survivors
-/// are the true Mica presets, and only while no tint overlay is armed.
-fn desired_glass(effect: &str, tint: &str) -> (i32, u32, u32, u32) {
-    if effect == "mica" && tint.is_empty() {
-        (DWMSBT_MAINWINDOW, ACCENT_DISABLED, 0, 0)
-    } else if effect == "micaAlt" && tint.is_empty() {
-        (DWMSBT_TABBEDWINDOW, ACCENT_DISABLED, 0, 0)
+fn desired_glass(effect: &str) -> (i32, u32, u32, u32) {
+    let backdrop = if effect == "mica" {
+        DWMSBT_MAINWINDOW
     } else {
-        (
-            DWMSBT_NONE,
-            ACCENT_ENABLE_ACRYLICBLURBEHIND,
-            0,
-            tint_abgr(tint),
-        )
-    }
+        DWMSBT_TRANSIENTWINDOW
+    };
+    (backdrop, ACCENT_DISABLED, 0, 0)
 }
 
 const RDW_INVALIDATE: u32 = 0x0001;
@@ -175,7 +171,7 @@ fn cabinet_windows() -> Vec<crate::bindings::HWND> {
 /// everything unconditionally would be a constant repaint storm.
 fn apply_backdrop(effect: &str) {
     let hwnds = cabinet_windows();
-    let (changed, mut seen, tint) = {
+    let (changed, mut seen) = {
         let mut guard = lock();
         let Some(fe) = guard.as_mut() else {
             return;
@@ -186,24 +182,28 @@ fn apply_backdrop(effect: &str) {
             fe.applied_tint = fe.tint.clone();
             fe.seen_hwnds.clear();
         }
-        (changed, std::mem::take(&mut fe.seen_hwnds), fe.tint.clone())
+        (changed, std::mem::take(&mut fe.seen_hwnds))
     };
-    let (backdrop, accent_state, accent_flags, gradient) = desired_glass(effect, &tint);
-    let accent_on = accent_state == ACCENT_ENABLE_ACRYLICBLURBEHIND;
-    // Any glass path — a named effect OR a tint overlay — needs the
-    // extended frame + dark caption + blur-behind region.
-    let glass = !effect.is_empty() || accent_on;
+    let (backdrop, accent_state, accent_flags, gradient) = if is_armed() {
+        desired_glass(effect)
+    } else {
+        // Disarmed — hand the stock tabbed backdrop explorer asks for
+        // itself back; everything else below restores too.
+        (DWMSBT_TABBEDWINDOW, ACCENT_DISABLED, 0, 0)
+    };
+    // Glass is active for any armed state — a named effect or a
+    // tint-only overlay (the tint rides the XAML ruleset on top of the
+    // same TRANSIENTWINDOW acrylic; the swatch never re-selects the DWM
+    // path).
+    let glass = is_armed();
+    if glass && changed {
+        ensure_transparency_effects();
+    }
     for hwnd in &hwnds {
         if !changed && seen.contains(&(hwnd.0 as usize as isize)) {
             continue;
         }
         unsafe {
-            let _ = DwmSetWindowAttribute(
-                *hwnd,
-                DWMWA_SYSTEMBACKDROP_TYPE,
-                &backdrop as *const i32 as *const core::ffi::c_void,
-                core::mem::size_of::<i32>() as u32,
-            );
             // Immersive dark caption while a glass theme is armed.
             let dark: i32 = glass as i32;
             let _ = DwmSetWindowAttribute(
@@ -214,8 +214,25 @@ fn apply_backdrop(effect: &str) {
             );
         }
         extend_frame(*hwnd, glass);
-        blur_behind(*hwnd, accent_on);
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                *hwnd,
+                DWMWA_SYSTEMBACKDROP_TYPE,
+                &backdrop as *const i32 as *const core::ffi::c_void,
+                core::mem::size_of::<i32>() as u32,
+            );
+        }
+        blur_behind(*hwnd, false);
         set_accent_policy(*hwnd, accent_state, accent_flags, gradient);
+        // Kill the unfocused `#585858` fallback: the system backdrop only
+        // blurs while DWM treats the window as active — force that
+        // appearance, then lie about activation so DWM re-evaluates now.
+        set_force_active(*hwnd, glass);
+        if glass {
+            unsafe {
+                let _ = DefWindowProcW(*hwnd, 0x0086 /* WM_NCACTIVATE */, 1, 0);
+            }
+        }
         trigger_composition_update(*hwnd);
         seen.insert(hwnd.0 as usize as isize);
     }
@@ -307,46 +324,82 @@ fn extend_frame(hwnd: crate::bindings::HWND, on: bool) {
     }
 }
 
-/// `#RRGGBB` → ABGR `GradientColor` (`alpha<<24 | blue<<16 | green<<8 | red`)
-/// for the accent policy — the selected swatch color, or a subtle ~9%
-/// dark-glass `0x18101010` when no tint is picked. Alpha must never be 0:
-/// `ACCENT_ENABLE_ACRYLICBLURBEHIND` with `alpha == 0` disables the blur
-/// entirely on Windows 11 23H2.
-fn tint_abgr(tint: &str) -> u32 {
-    let hex = tint.strip_prefix('#').unwrap_or(tint);
-    if hex.len() == 6
-        && let Ok(rgb) = u32::from_str_radix(hex, 16)
-    {
-        let r = rgb >> 16 & 0xFF;
-        let g = rgb >> 8 & 0xFF;
-        let b = rgb & 0xFF;
-        return 0x80 << 24 | b << 16 | g << 8 | r;
+/// `HKCU\...\Themes\Personalize\EnableTransparency`: DWM silently renders
+/// every system backdrop opaque while this is 0. Arming glass needs it —
+/// set it once and broadcast `WM_SETTINGCHANGE` (`ImmersiveColorSet`) so
+/// DWM re-reads it without a sign-out.
+fn ensure_transparency_effects() {
+    const HKCU: isize = 0x8000_0001;
+    const KEY_READ: u32 = 0x0002_0019;
+    const KEY_SET_VALUE: u32 = 0x0002;
+    const REG_DWORD: u32 = 4;
+    let subkey = widestr("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+    let name = widestr("EnableTransparency");
+    unsafe {
+        let mut key = 0isize;
+        if RegOpenKeyExW(
+            HKCU,
+            PCWSTR(subkey.as_ptr()),
+            0,
+            KEY_READ | KEY_SET_VALUE,
+            &mut key,
+        ) != 0
+        {
+            return;
+        }
+        let mut val = 1u32;
+        let mut ty = 0u32;
+        let mut cb = core::mem::size_of::<u32>() as u32;
+        let read = RegQueryValueExW(
+            key,
+            PCWSTR(name.as_ptr()),
+            core::ptr::null(),
+            &mut ty,
+            &mut val as *mut u32 as *mut u8,
+            &mut cb,
+        );
+        if read != 0 || ty != REG_DWORD || val != 0 {
+            let _ = RegCloseKey(key);
+            return;
+        }
+        let one = 1u32;
+        let _ = RegSetValueExW(
+            key,
+            PCWSTR(name.as_ptr()),
+            0,
+            REG_DWORD,
+            &one as *const u32 as *const u8,
+            4,
+        );
+        let _ = RegCloseKey(key);
+        let param = widestr("ImmersiveColorSet");
+        let mut result = 0usize;
+        let _ = SendMessageTimeoutW(
+            crate::bindings::HWND(0xFFFF as *mut core::ffi::c_void), // HWND_BROADCAST
+            0x001A,                                                  // WM_SETTINGCHANGE
+            0,
+            param.as_ptr() as isize,
+            0x0002, // SMTO_ABORTIFHUNG
+            2000,
+            &mut result,
+        );
     }
-    0x18101010
 }
 
-/// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY` acrylic blur
-/// (the `blur` effect and the Color Tint overlay path). `state` is
-/// `ACCENT_STATE_*` (4 = acrylic blur behind, 0 = disabled); `gradient`
-/// is the ABGR `GradientColor` (`alpha<<24 | blue<<16 | green<<8 | red`).
-/// Never combined with a non-AUTO `DWMWA_SYSTEMBACKDROP_TYPE` — see
-/// `desired_glass`.
-fn set_accent_policy(hwnd: crate::bindings::HWND, state: u32, flags: u32, gradient: u32) {
-    #[repr(C)]
-    struct AccentPolicy {
-        accent_state: u32,
-        accent_flags: u32,
-        gradient_color: u32,
-        animation_id: u32,
-    }
-    #[repr(C)]
-    struct WindowCompositionAttribData {
-        attrib: u32,
-        pv_data: *const core::ffi::c_void,
-        cb_data: usize,
-    }
-    const WCA_ACCENT_POLICY: u32 = 19;
+#[repr(C)]
+struct WindowCompositionAttribData {
+    attrib: u32,
+    pv_data: *const core::ffi::c_void,
+    cb_data: usize,
+}
 
+const WCA_ACCENT_POLICY: u32 = 19;
+/// Keeps DWM evaluating the system backdrop as if `CabinetWClass` is
+/// always the active window — without it `DWMSBT_TRANSIENTWINDOW` drops
+/// to a flat `#585858` sheet the moment focus moves elsewhere.
+const WCA_FORCE_ACTIVEWINDOW_APPEARANCE: u32 = 15;
+
+fn composition_attr(hwnd: crate::bindings::HWND, data: &WindowCompositionAttribData) {
     let user32 = unsafe { GetModuleHandleW(PCWSTR(widestr("user32.dll").as_ptr())) };
     if user32.is_null() {
         return;
@@ -364,20 +417,51 @@ fn set_accent_policy(hwnd: crate::bindings::HWND, state: u32, flags: u32, gradie
         crate::bindings::HWND,
         *const WindowCompositionAttribData,
     ) -> windows_core::BOOL = unsafe { core::mem::transmute(f) };
+    unsafe {
+        let _ = f(hwnd, data);
+    }
+}
+
+/// `WCA_FORCE_ACTIVEWINDOW_APPEARANCE` — `1` while glass is armed, `0` on
+/// restore so DWM's real focus tracking resumes.
+fn set_force_active(hwnd: crate::bindings::HWND, on: bool) {
+    let value: i32 = on as i32;
+    composition_attr(
+        hwnd,
+        &WindowCompositionAttribData {
+            attrib: WCA_FORCE_ACTIVEWINDOW_APPEARANCE,
+            pv_data: &value as *const i32 as *const core::ffi::c_void,
+            cb_data: core::mem::size_of::<i32>(),
+        },
+    );
+}
+
+/// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY`. The system
+/// backdrop path keeps this strictly `ACCENT_DISABLED` (mutual exclusion
+/// with `DWMWA_SYSTEMBACKDROP_TYPE`); it is still written on every apply
+/// so a previously-armed accent can't linger.
+fn set_accent_policy(hwnd: crate::bindings::HWND, state: u32, flags: u32, gradient: u32) {
+    #[repr(C)]
+    struct AccentPolicy {
+        accent_state: u32,
+        accent_flags: u32,
+        gradient_color: u32,
+        animation_id: u32,
+    }
     let policy = AccentPolicy {
         accent_state: state,
         accent_flags: flags,
         gradient_color: gradient,
         animation_id: 0,
     };
-    let data = WindowCompositionAttribData {
-        attrib: WCA_ACCENT_POLICY,
-        pv_data: &policy as *const AccentPolicy as *const core::ffi::c_void,
-        cb_data: core::mem::size_of::<AccentPolicy>(),
-    };
-    unsafe {
-        let _ = f(hwnd, &data);
-    }
+    composition_attr(
+        hwnd,
+        &WindowCompositionAttribData {
+            attrib: WCA_ACCENT_POLICY,
+            pv_data: &policy as *const AccentPolicy as *const core::ffi::c_void,
+            cb_data: core::mem::size_of::<AccentPolicy>(),
+        },
+    );
 }
 
 /// `TriggerWindowCompositionUpdate` — the mod sends `WM_WINDOWPOSCHANGED`
@@ -422,7 +506,7 @@ fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
     // theme wire arms them — send FEBD first so `set_armed`'s in-process
     // apply already pushes the right values.
     let effect = pecofence_core::file_explorer_themes::backdrop(&fe.style).unwrap_or_default();
-    let (bd, st, fl, gr) = desired_glass(effect, &fe.tint);
+    let (bd, st, fl, gr) = desired_glass(effect);
     let mut payload = [0u8; 16];
     payload[0..4].copy_from_slice(&bd.to_le_bytes());
     payload[4..8].copy_from_slice(&st.to_le_bytes());
