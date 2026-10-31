@@ -137,6 +137,44 @@ pub fn normalize(rect: PxRect, work: &WorkArea) -> NormGeometry {
     }
 }
 
+/// The corner anchor a canvas-placed (theme/wallpaper-anchored) fence needs on `work`:
+/// each axis anchors to the edge the work area does NOT reserve, because `denormalize`
+/// re-anchors to whichever edge the anchor names — a gap measured from the taskbar's
+/// edge drifts when that edge resizes, while the wallpaper is monitor-anchored and
+/// moves with nothing. Taskbar bottom → Top; top → Bottom; left → Right; right → Left.
+/// An unreserved axis keeps `g.anchor`'s picked side (nearer-edge fallback for centers),
+/// yielding one of `LeftTop`/`LeftBottom`/`RightTop`/`RightBottom`.
+pub fn canvas_anchor(g: &NormGeometry, work: &WorkArea) -> Anchor {
+    let h_left = if work.left > work.mon_left {
+        false // left edge reserved -> anchor right
+    } else if work.right < work.mon_right {
+        true // right edge reserved -> anchor left
+    } else {
+        match g.anchor {
+            Anchor::LeftTop | Anchor::LeftBottom | Anchor::LeftVCenter => true,
+            Anchor::RightTop | Anchor::RightBottom | Anchor::RightVCenter => false,
+            _ => g.x + g.w / 2.0 <= g.work_w / 2.0,
+        }
+    };
+    let v_top = if work.bottom < work.mon_bottom {
+        true // bottom edge reserved -> anchor top
+    } else if work.top > work.mon_top {
+        false // top edge reserved -> anchor bottom
+    } else {
+        match g.anchor {
+            Anchor::LeftTop | Anchor::RightTop | Anchor::HCenterTop => true,
+            Anchor::LeftBottom | Anchor::RightBottom | Anchor::HCenterBottom => false,
+            _ => g.y + g.h / 2.0 <= g.work_h / 2.0,
+        }
+    };
+    match (h_left, v_top) {
+        (true, true) => Anchor::LeftTop,
+        (true, false) => Anchor::LeftBottom,
+        (false, true) => Anchor::RightTop,
+        (false, false) => Anchor::RightBottom,
+    }
+}
+
 /// Converts saved DIP geometry back into physical pixels on `work`, keeping the anchored edge
 /// distances when the work area changed size, then clamping into the work area.
 pub fn denormalize(geo: &NormGeometry, work: &WorkArea) -> PxRect {

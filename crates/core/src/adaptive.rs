@@ -427,17 +427,21 @@ mod tests {
     /// picked `RightBottom`/`LeftBottom` anchor. When the work area later changes
     /// (taskbar style swap, auto-hide toggle — the wallpaper art never moves), the
     /// edge-gap anchor re-computes the fence off its media pixel.
+    ///
+    /// `canvas_anchor` must therefore pin each axis to the edge the taskbar does NOT
+    /// reserve: the work-area gap against the reserved edge is what resizes.
     #[test]
     fn media_anchor_drifts_when_work_area_changes() {
-        use crate::geometry::{PxRect, WorkArea, denormalize, normalize};
+        use crate::geometry::{PxRect, WorkArea, canvas_anchor, denormalize, normalize};
         use crate::model::Anchor;
-        let work = |bottom: i32| WorkArea {
+        // `mk(l, t, r, b)` reserves px off each monitor edge (taskbar/app-bar).
+        let mk = |l: i32, t: i32, r: i32, b: i32| WorkArea {
             device_path: "m".into(),
             gdi_name: String::new(),
-            left: 0,
-            top: 0,
-            right: 3840,
-            bottom,
+            left: l,
+            top: t,
+            right: 3840 - r,
+            bottom: 2160 - b,
             dpi: 288,
             mon_left: 0,
             mon_top: 0,
@@ -461,23 +465,34 @@ mod tests {
         };
         assert_eq!((saved.left, saved.top), (2803, 590));
 
-        // Apply while the work area is tall (688 dip), then the taskbar style swaps
-        // to a taller one (662 dip): a bottom-edge anchor preserves the gap and the
-        // fence slides off the shelf art it was glued to.
-        let g = normalize(saved, &work(2064));
+        // The picked anchor preserves the gap to the bottom edge: a 78px work-area
+        // delta (the real 2064->1986 taskbar-style swap) slides the fence off the art.
+        let g = normalize(saved, &mk(0, 0, 0, 96));
         assert_eq!(g.anchor, Anchor::RightBottom);
-        let drifted = denormalize(&g, &work(1986));
-        assert_ne!(drifted.top, saved.top);
-        let drift_px = saved.top - drifted.top;
-        assert_eq!(drift_px, (2064 - 1986), "anchor moved it by the work delta");
+        let drifted = denormalize(&g, &mk(0, 0, 0, 174));
+        assert_eq!(saved.top - drifted.top, 78, "edge-gap anchor re-anchored");
 
-        // Canvas-placed fences must hold their absolute monitor position instead:
-        // the media art is monitor-anchored, so the anchor keeps x,y fixed.
-        let mut fixed = g.clone();
-        fixed.anchor = Anchor::LeftTop;
-        let held = denormalize(&fixed, &work(1986));
-        assert_eq!(held.top, saved.top);
-        assert_eq!(held.left, saved.left);
+        // For every docked edge the dynamic anchor picks the opposite edge(s), and
+        // the fence holds its absolute monitor position when that edge resizes.
+        // (right-edge growth is capped at 30px so the fence still fits the work area —
+        // `denormalize` clamps; the drift mechanism is identical.)
+        for (reserved, want, grown) in [
+            (mk(0, 0, 0, 96), Anchor::RightTop, mk(0, 0, 0, 174)), // bottom -> top
+            (mk(0, 96, 0, 0), Anchor::RightBottom, mk(0, 174, 0, 0)), // top -> bottom
+            (mk(96, 0, 0, 0), Anchor::RightBottom, mk(174, 0, 0, 0)), // left -> right
+            (mk(0, 0, 96, 0), Anchor::LeftBottom, mk(0, 0, 30, 0)), // right -> left
+            (mk(0, 0, 0, 0), Anchor::RightBottom, mk(0, 0, 0, 0)), // none -> picked
+        ] {
+            let mut g = normalize(saved, &reserved);
+            g.anchor = canvas_anchor(&g, &reserved);
+            assert_eq!(g.anchor, want);
+            let held = denormalize(&g, &grown);
+            assert_eq!(
+                (held.left, held.top),
+                (saved.left, saved.top),
+                "anchor {want:?} must hold the media pixel"
+            );
+        }
     }
 
     #[test]

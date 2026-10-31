@@ -1756,9 +1756,9 @@ impl App {
                 // Canvas coordinates are anchored to the wallpaper, which is drawn on the
                 // monitor — a work-area change (a taskbar style swap, auto-hide toggling)
                 // moves nothing under it. The picked edge-gap anchor would re-anchor the
-                // fence to the new work area and slide it off the art; holding the absolute
-                // position is what media-anchored mapping means.
-                g.anchor = pecofence_core::model::Anchor::LeftTop;
+                // fence to the new work area and slide it off the art; anchoring each axis
+                // to the edge the taskbar does NOT reserve keeps the absolute position.
+                g.anchor = pecofence_core::geometry::canvas_anchor(&g, work);
                 g.skew_left = fence.geometry.skew_left;
                 g.skew_right = fence.geometry.skew_right;
                 // Spacing compensation is decoupled from the background engine: the
