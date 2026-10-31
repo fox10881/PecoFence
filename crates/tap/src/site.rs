@@ -89,6 +89,119 @@ fn host_warm_enough_ms(warmup_ms: u64) -> bool {
 
 static WARMUP_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Which diagnostics session the in-flight `install_*` call belongs to —
+/// `SetSite` reads this to pick the shared-state slot. `0` = none,
+/// `1` = WUX (Windows.UI.Xaml), `2` = WinUI3 (Microsoft.UI.Xaml via
+/// `Microsoft.Internal.FrameworkUdk.dll` — File Explorer's CabinetWClass
+/// islands). `INSTALLING` serializes installs, so the tag is unambiguous
+/// for the `SetSite` the ixde handshake delivers.
+static PENDING_SESSION: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// `InitializeXamlDiagnosticsEx` on the **WinUI3** framework — File
+/// Explorer's modern chrome is a Microsoft.UI.Xaml island, invisible to the
+/// WUX session the taskbar uses. Same one-shot-per-thread rule applies to
+/// `install()` below; the Windhawk mod calls this `InjectWindhawkTAP`.
+///
+/// Unlike WUX, the connection endpoint must be *guessed*: the framework
+/// registers exactly one `WinUIVisualDiagConnection{N}` per session and the
+/// number isn't discoverable, so we walk candidates until one accepts
+/// (any result other than `ERROR_NOT_FOUND` stops the walk) — the mod does
+/// the same, up to 10000.
+pub fn install_winui3() {
+    if INSTALLING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let result = std::panic::catch_unwind(core::panic::AssertUnwindSafe(install_winui3_inner));
+    INSTALLING.store(false, Ordering::Release);
+    crate::tap_log!("winui3 install exited: {result:?}");
+}
+
+fn install_winui3_inner() {
+    // Attach only once the host loaded the framework itself: `LoadLibraryW`
+    // here would bootstrap WinUI3 on *our* worker thread instead.
+    let udk =
+        unsafe { win32::GetModuleHandleW(windows_core::w!("Microsoft.Internal.FrameworkUdk.dll")) };
+    if udk.is_null() {
+        return;
+    }
+    let ixde = unsafe {
+        win32::GetProcAddress(
+            udk,
+            windows_core::PCSTR(c"InitializeXamlDiagnosticsEx".as_ptr() as *const u8),
+        )
+    };
+    if ixde.is_null() {
+        return;
+    }
+    let ixde: InitializeXamlDiagnosticsEx = unsafe { core::mem::transmute(ixde) };
+    let mut location = [0u16; 512];
+    let len = unsafe {
+        win32::GetModuleFileNameW(
+            crate::dll_instance(),
+            windows_core::PWSTR(location.as_mut_ptr()),
+            location.len() as u32,
+        )
+    };
+    if len == 0 {
+        return;
+    }
+    let pid = unsafe { win32::GetCurrentProcessId() };
+    PENDING_SESSION.store(2, Ordering::Release);
+    // One thread runs the whole endpoint walk: ixde marks its calling
+    // thread, and joining keeps the TEB alive until the framework has
+    // recorded our callback address.
+    std::thread::scope(|s| {
+        s.spawn(|| unsafe {
+            let _ = win32::RoInitialize(0);
+            let mut hr = HRESULT(0x80070490_u32 as _); // ERROR_NOT_FOUND
+            for i in 1..=4096u32 {
+                let mut name = [0u16; 64];
+                let text = format!("WinUIVisualDiagConnection{i}\0");
+                let w: Vec<u16> = text.encode_utf16().collect();
+                name[..w.len()].copy_from_slice(&w);
+                hr = ixde(
+                    windows_core::PCWSTR(name.as_ptr()),
+                    pid,
+                    windows_core::PCWSTR::null(),
+                    windows_core::PCWSTR(location.as_ptr()),
+                    CLSID_PECO_TAP_SITE,
+                    windows_core::PCWSTR::null(),
+                );
+                if hr != HRESULT(0x80070490_u32 as _) {
+                    break;
+                }
+            }
+            PENDING_SESSION.store(0, Ordering::Release);
+            crate::tap_log!("winui3 IXDEx walk done: hr={hr:?}");
+        })
+        .join()
+        .unwrap_or(())
+    });
+}
+
+/// Re-arms the **WinUI3** visual-tree watcher — the mux engine's session.
+/// Mirrors `ensure_watching` against the `*_winui3` shared slots: a missing
+/// diagnostics object means `install_winui3` hasn't landed the session yet
+/// (the endpoint exists only after the first WinUI3 island initializes).
+pub fn ensure_watching_winui3() {
+    if crate::command::is_unloaded() {
+        return;
+    }
+    {
+        let shared = shared::lock();
+        if shared.watcher_winui3.is_none() {
+            let diagnostics = shared.diagnostics_winui3.clone();
+            drop(shared);
+            match diagnostics {
+                Some(diagnostics) => start_advise_winui3(diagnostics),
+                None => {
+                    std::thread::spawn(install_winui3);
+                }
+            }
+        }
+    }
+}
+
 fn install_inner() {
     if !host_warm_enough() {
         if !WARMUP_LOGGED.swap(true, Ordering::Relaxed) {
@@ -125,6 +238,7 @@ fn install_inner() {
     }
     let pid = unsafe { win32::GetCurrentProcessId() };
     let attempt = CONN_ATTEMPT.fetch_add(1, Ordering::Relaxed) + 1;
+    PENDING_SESSION.store(1, Ordering::Release);
     // One call per thread; joining keeps the thread's TEB alive until the
     // framework has recorded our callback address (same trick as TTB).
     let connection: Vec<u16> = format!("VisualDiagConnection{attempt}\0")
@@ -145,6 +259,7 @@ fn install_inner() {
         .join()
         .unwrap_or(HRESULT(0x8000_4005_u32 as _))
     });
+    PENDING_SESSION.store(0, Ordering::Release);
     crate::tap_log!("IXDEx attempt {attempt}: hr={hr:?}");
 }
 
@@ -224,17 +339,38 @@ impl IObjectWithSite_Impl for TapSite_Impl {
             if site.is_none() {
                 return Ok(());
             }
+            // Which session this SetSite belongs to: `PENDING_SESSION` was
+            // stamped by the in-flight install (WUX=1, WinUI3=2). A late
+            // SetSite after the tag cleared picks the unoccupied slot —
+            // the WUX install always runs first at host boot, so an empty
+            // WUX slot belongs to it.
+            let mut winui3 = PENDING_SESSION.load(Ordering::Acquire) == 2;
             {
                 let shared = shared::lock();
-                if shared.watcher.is_some() {
-                    return Ok::<(), windows_core::Error>(()); // only ever one watcher per session
+                if PENDING_SESSION.load(Ordering::Acquire) == 0 {
+                    winui3 = shared.watcher.is_some();
+                }
+                let occupied = if winui3 {
+                    shared.watcher_winui3.is_some()
+                } else {
+                    shared.watcher.is_some()
+                };
+                if occupied {
+                    return Ok::<(), windows_core::Error>(()); // one watcher per session
                 }
             }
             let diagnostics: Option<IXamlDiagnostics> =
                 site.and_then(|s| windows_core::Interface::cast::<IXamlDiagnostics>(&s).ok());
-            crate::tap_log!("SetSite: diagnostics={}", diagnostics.is_some());
+            crate::tap_log!(
+                "SetSite: winui3={winui3} diagnostics={}",
+                diagnostics.is_some()
+            );
             if let Some(diagnostics) = diagnostics {
-                start_advise(diagnostics);
+                if winui3 {
+                    start_advise_winui3(diagnostics);
+                } else {
+                    start_advise(diagnostics);
+                }
             }
             Ok(())
         }));
@@ -286,7 +422,7 @@ fn start_advise(diagnostics: IXamlDiagnostics) {
     std::thread::spawn(move || {
         let _guard = AdvisingGuard;
         let diagnostics = diagnostics.into_inner();
-        let watcher: IVisualTreeServiceCallback2 = VisualTreeWatcher.into();
+        let watcher: IVisualTreeServiceCallback2 = VisualTreeWatcher { session: 1 }.into();
         let Ok(service) = windows_core::Interface::cast::<IVisualTreeService3>(&diagnostics) else {
             crate::tap_log!("advise: IVisualTreeService3 cast failed");
             return;
@@ -307,6 +443,43 @@ fn start_advise(diagnostics: IXamlDiagnostics) {
         if advise_hr.is_err() {
             // Rolled back so a later `ensure_watching` can retry the advise.
             shared::lock().watcher = None;
+        }
+    });
+}
+
+/// `start_advise` for the **WinUI3** session — same ordering contract,
+/// separate slots, watcher tagged `session: 2` so reported elements route
+/// to the mux engine.
+fn start_advise_winui3(diagnostics: IXamlDiagnostics) {
+    if ADVISING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    struct SendDiag(IXamlDiagnostics);
+    unsafe impl Send for SendDiag {}
+    impl SendDiag {
+        fn into_inner(self) -> IXamlDiagnostics {
+            self.0
+        }
+    }
+    let diagnostics = SendDiag(diagnostics);
+    std::thread::spawn(move || {
+        let _guard = AdvisingGuard;
+        let diagnostics = diagnostics.into_inner();
+        let watcher: IVisualTreeServiceCallback2 = VisualTreeWatcher { session: 2 }.into();
+        let Ok(service) = windows_core::Interface::cast::<IVisualTreeService3>(&diagnostics) else {
+            crate::tap_log!("advise(winui3): IVisualTreeService3 cast failed");
+            return;
+        };
+        {
+            let mut shared = shared::lock();
+            shared.diagnostics_winui3 = Some(diagnostics);
+            shared.tree_service_winui3 = Some(service.clone());
+            shared.watcher_winui3 = Some(watcher.clone());
+        }
+        let advise_hr = unsafe { service.AdviseVisualTreeChange(&*watcher) };
+        crate::tap_log!("advise(winui3) hr={advise_hr:?}");
+        if advise_hr.is_err() {
+            shared::lock().watcher_winui3 = None;
         }
     });
 }
@@ -348,7 +521,11 @@ pub fn ensure_watching() {
 }
 
 #[implement(IVisualTreeServiceCallback2)]
-struct VisualTreeWatcher;
+struct VisualTreeWatcher {
+    /// Which diagnostics session delivers this callback: `1` = WUX
+    /// (taskbar/Start Menu hosts), `2` = WinUI3 (File Explorer mux engine).
+    session: u8,
+}
 
 impl IVisualTreeServiceCallback_Impl for VisualTreeWatcher_Impl {
     /// Invoked on the XAML UI thread by the diagnostics service.
@@ -359,7 +536,7 @@ impl IVisualTreeServiceCallback_Impl for VisualTreeWatcher_Impl {
         mutationtype: VisualMutationType,
     ) -> windows_core::Result<()> {
         let _ = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| {
-            on_visual_tree_change(relation, element, mutationtype)
+            on_visual_tree_change(self.session, relation, element, mutationtype)
         }));
         Ok(())
     }
@@ -396,6 +573,7 @@ unsafe fn free_element_strings(element: &VisualElement) {
 }
 
 fn on_visual_tree_change(
+    session: u8,
     relation: &ParentChildRelation,
     element: &VisualElement,
     mutationtype: VisualMutationType,
@@ -407,25 +585,40 @@ fn on_visual_tree_change(
         let n = SEEN.fetch_add(1, Ordering::Relaxed) + 1;
         if n <= 40 || n.is_multiple_of(200) {
             crate::tap_log!(
-                "vtw #{n} {:?} type={:?} handle={}",
+                "vtw s{session} #{n} {:?} type={:?} handle={}",
                 mutationtype,
                 String::from_utf16_lossy(&element.Type[..]),
                 element.Handle.0
             );
         }
     }
-    // Every element feeds the styler — explorer's taskbar and SMEH's Start
-    // Menu alike; the theme's own matchers decide what to touch (no-op when
-    // no theme is armed).
+    // Every element feeds the styler for its own session — WUX (taskbar/
+    // Start Menu hosts) or WinUI3 (File Explorer islands, mux engine);
+    // the theme's own matchers decide what to touch.
     match mutationtype {
         t if t == Remove => {
-            crate::styler::wux::on_element_removed(element.Handle.0);
+            if session == 2 {
+                crate::styler::mux::on_element_removed(element.Handle.0);
+            } else {
+                crate::styler::wux::on_element_removed(element.Handle.0);
+            }
         }
         _ => {
-            let diagnostics = shared::lock().diagnostics.clone();
+            let diagnostics = {
+                let shared = shared::lock();
+                if session == 2 {
+                    shared.diagnostics_winui3.clone()
+                } else {
+                    shared.diagnostics.clone()
+                }
+            };
             if let Some(diagnostics) = diagnostics {
                 let ty = String::from_utf16_lossy(&element.Type[..]);
-                crate::styler::wux::on_element(&diagnostics, element, relation.Parent.0, &ty);
+                if session == 2 {
+                    crate::styler::mux::on_element(&diagnostics, element, relation.Parent.0, &ty);
+                } else {
+                    crate::styler::wux::on_element(&diagnostics, element, relation.Parent.0, &ty);
+                }
             }
         }
     }

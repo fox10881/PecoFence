@@ -653,5 +653,8 @@
   "任务栏样式未能更改，请稍后重试。": "Der Taskleistenstil konnte nicht geändert werden — bitte erneut versuchen.",
   "通知中心样式": "Info-Center-Stil",
   "通知中心和操作中心视觉主题；选择后立即生效": "Visuelle Designs für Info-Center und Aktionscenter; wird sofort übernommen",
-  "通知中心样式未能更改，请稍后重试。": "Info-Center-Stil konnte nicht geändert werden — bitte erneut versuchen."
+  "通知中心样式未能更改，请稍后重试。": "Info-Center-Stil konnte nicht geändert werden — bitte erneut versuchen.",
+  "资源管理器样式": "Explorer-Stil",
+  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Visuelle Designs und Fensterhintergrund für den Datei-Explorer; gilt sofort nach Auswahl",
+  "资源管理器样式未能更改，请稍后重试。": "Der Explorer-Stil konnte nicht geändert werden — bitte erneut versuchen."
 }
