@@ -13,14 +13,6 @@ pub struct Shared {
     pub tree_service: Option<IVisualTreeService3>,
     /// Our registered callback; held so the framework never sees a dangling ref.
     pub watcher: Option<IVisualTreeServiceCallback2>,
-    /// The WinUI3 session's diagnostics (`Microsoft.Internal.FrameworkUdk`
-    /// `InitializeXamlDiagnosticsEx`) — the mux engine's channel into
-    /// File Explorer's CabinetWClass islands.
-    pub diagnostics_winui3: Option<IXamlDiagnostics>,
-    /// `IVisualTreeService3` on the WinUI3 diagnostics object.
-    pub tree_service_winui3: Option<IVisualTreeService3>,
-    /// The mux session's registered callback.
-    pub watcher_winui3: Option<IVisualTreeServiceCallback2>,
     /// Wait handle from `RegisterWaitForSingleObject` watching the host process.
     pub host_wait: HANDLE,
     /// Open handle to the host process — kept alive for the wait's duration.
@@ -37,9 +29,6 @@ static SHARED: Mutex<Shared> = Mutex::new(Shared {
     diagnostics: None,
     tree_service: None,
     watcher: None,
-    diagnostics_winui3: None,
-    tree_service_winui3: None,
-    watcher_winui3: None,
     host_wait: core::ptr::null_mut(),
     host_process: core::ptr::null_mut(),
     command_window: HWND(core::ptr::null_mut()),

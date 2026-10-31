@@ -478,8 +478,6 @@
         <select id="startMenuStyleSel" data-bind="startMenuStyle" data-str></select></div>
       <div class="card" id="notificationCenterStyleCard"><div class="l"><span class="ic">&#xE91C;</span><div><div class="t">通知中心样式</div><div class="s">通知中心和操作中心视觉主题；选择后立即生效</div></div></div>
         <select id="notificationCenterStyleSel" data-bind="notificationCenterStyle" data-str></select></div>
-      <div class="card" id="fileExplorerStyleCard"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">资源管理器样式</div><div class="s">文件资源管理器视觉主题和窗口背景；选择后立即生效</div></div></div>
-        <select id="fileExplorerStyleSel" data-bind="fileExplorerStyle" data-str></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">重启资源管理器</div><div class="s">出现卡顿或异常时按一下</div></div></div>
         <div class="actions"><button id="restartExplorer">重启</button></div></div>
       <h3>行为</h3>
@@ -929,23 +927,6 @@
   function renderNotificationCenterStyles(m) {
     const sel = document.getElementById('notificationCenterStyleSel');
     const opts = m.notificationCenterStyles || [];
-    const sig = opts.map(o => o.id).join('');
-    if (sel.dataset.opts !== sig) {
-      sel.dataset.opts = sig;
-      sel.replaceChildren(...opts.map(o => {
-        const e = document.createElement('option');
-        e.value = o.id;
-        e.textContent = o.label;
-        return e;
-      }));
-    }
-  }
-
-  // File Explorer Style — same contract; the resident applies it inside
-  // explorer.exe's WinUI3 (Microsoft.UI.Xaml) diagnostics session.
-  function renderFileExplorerStyles(m) {
-    const sel = document.getElementById('fileExplorerStyleSel');
-    const opts = m.fileExplorerStyles || [];
     const sig = opts.map(o => o.id).join('');
     if (sel.dataset.opts !== sig) {
       sel.dataset.opts = sig;
@@ -1684,7 +1665,6 @@
       renderStartMenuStyles(m);
       renderTaskbarStyles(m);
       renderNotificationCenterStyles(m);
-      renderFileExplorerStyles(m);
       bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
       update = m.update; renderUpdate();
       // Transitions come on a frame after this state has been drawn: a single frame would style

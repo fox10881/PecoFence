@@ -347,9 +347,6 @@ impl App {
             "taskbarStyles": pecofence_core::taskbar_themes::style_options_json(),
             // Notification Center Style dropdown — same isolation again.
             "notificationCenterStyles": pecofence_core::notification_center_themes::style_options_json(),
-            // File Explorer Style dropdown — same isolation for the
-            // WinUI3/mux catalog.
-            "fileExplorerStyles": pecofence_core::file_explorer_themes::style_options_json(),
         })
         .to_string()
     }
@@ -924,17 +921,6 @@ impl App {
                     .clone_from(&old.notification_center_style);
                 self.settings_error(pecofence_core::i18n::text(
                     "通知中心样式未能更改，请稍后重试。",
-                ));
-            }
-        }
-        if new.file_explorer_style != old.file_explorer_style {
-            let id = new.file_explorer_style.as_str();
-            let applied = pecofence_core::file_explorer_themes::is_style_id(id)
-                && pecofence_platform::file_explorer_styler::apply(id);
-            if !applied {
-                new.file_explorer_style.clone_from(&old.file_explorer_style);
-                self.settings_error(pecofence_core::i18n::text(
-                    "资源管理器样式未能更改，请稍后重试。",
                 ));
             }
         }

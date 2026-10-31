@@ -1149,9 +1149,6 @@ impl DesktopAnchor {
                 pecofence_platform::start_menu::ensure();
                 // Re-delivers an armed taskbar theme after an explorer restart.
                 pecofence_platform::taskbar_styler::ensure();
-                // Re-delivers an armed File Explorer theme + re-asserts the
-                // DWM backdrop on cabinet windows after a restart.
-                pecofence_platform::file_explorer_styler::ensure();
                 // Re-injects the Notification Center styler when a Shell
                 // host restarts or launches after the style was chosen.
                 pecofence_platform::notification_center::ensure();

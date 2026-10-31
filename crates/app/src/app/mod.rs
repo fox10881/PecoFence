@@ -1443,15 +1443,6 @@ impl App {
                 let _ = pecofence_platform::notification_center::apply(&saved_nc_style);
             });
         }
-        // A saved File Explorer style rides the same explorer resident —
-        // apply() arms + delivers it, and the ensure tick re-asserts the
-        // backdrop on cabinet windows.
-        let saved_fe_style = app.state.config.settings.file_explorer_style.clone();
-        if !saved_fe_style.is_empty() {
-            std::thread::spawn(move || {
-                let _ = pecofence_platform::file_explorer_styler::apply(&saved_fe_style);
-            });
-        }
         for f in app.fences.values().chain(app.desktop_windows.values()) {
             f.show(false);
         }
@@ -2134,7 +2125,6 @@ impl App {
         // would have to. The taskbar styler's reset must reach the resident
         // first — `tap::shutdown` unloads the channel it arrives on.
         pecofence_platform::taskbar_styler::shutdown();
-        pecofence_platform::file_explorer_styler::shutdown();
         pecofence_platform::tap::shutdown();
         pecofence_platform::start_menu::shutdown();
         pecofence_platform::notification_center::shutdown();
