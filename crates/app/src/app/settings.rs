@@ -1753,6 +1753,12 @@ impl App {
                     bottom: px[3] + work.mon_top,
                 };
                 let mut g = pecofence_core::geometry::normalize(rect, work);
+                // Canvas coordinates are anchored to the wallpaper, which is drawn on the
+                // monitor — a work-area change (a taskbar style swap, auto-hide toggling)
+                // moves nothing under it. The picked edge-gap anchor would re-anchor the
+                // fence to the new work area and slide it off the art; holding the absolute
+                // position is what media-anchored mapping means.
+                g.anchor = pecofence_core::model::Anchor::LeftTop;
                 g.skew_left = fence.geometry.skew_left;
                 g.skew_right = fence.geometry.skew_right;
                 // Spacing compensation is decoupled from the background engine: the
@@ -2361,8 +2367,24 @@ impl App {
                 .unwrap_or(Path::new("."))
                 .join("imported_wallpapers");
             let _ = std::fs::create_dir_all(&dest_dir);
-            let dest_bg = dest_dir.join(format!("theme-background.{ext}"));
+            // A fresh name per import: a fixed `theme-background.mp4` collides with the
+            // player still holding the previous video open (the copy can fail or rewrite
+            // bytes under a live reader), and `sync_video_wallpaper` keys restarts on the
+            // path — identical paths kept the old video playing under the new theme.
+            let dest_bg =
+                dest_dir.join(format!("theme-background-{}.{}", uuid::Uuid::new_v4(), ext));
             if std::fs::copy(bg_temp, &dest_bg).is_ok() {
+                // Retire the previous theme's media (best effort — a still-playing
+                // file stays until the next import sweeps it).
+                for entry in std::fs::read_dir(&dest_dir).into_iter().flatten().flatten() {
+                    let name = entry.file_name();
+                    let stale = name
+                        .to_str()
+                        .is_some_and(|n| n.starts_with("theme-background-"));
+                    if stale && entry.path() != dest_bg {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
                 persisted_bg = Some(dest_bg);
             }
         }

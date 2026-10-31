@@ -422,6 +422,64 @@ mod tests {
         );
     }
 
+    /// Reproduction for the theme-load drift: a media-anchored fence is placed at an
+    /// absolute monitor px rect, then `normalize` stores it work-area-relative with a
+    /// picked `RightBottom`/`LeftBottom` anchor. When the work area later changes
+    /// (taskbar style swap, auto-hide toggle — the wallpaper art never moves), the
+    /// edge-gap anchor re-computes the fence off its media pixel.
+    #[test]
+    fn media_anchor_drifts_when_work_area_changes() {
+        use crate::geometry::{PxRect, WorkArea, denormalize, normalize};
+        use crate::model::Anchor;
+        let work = |bottom: i32| WorkArea {
+            device_path: "m".into(),
+            gdi_name: String::new(),
+            left: 0,
+            top: 0,
+            right: 3840,
+            bottom,
+            dpi: 288,
+            mon_left: 0,
+            mon_top: 0,
+            mon_right: 3840,
+            mon_bottom: 2160,
+        };
+        // Real saved values (theme 8-50, games fence): canvas -> monitor px.
+        let n = NormRect {
+            x: 0.7299479,
+            y: 0.27314815,
+            w: 0.23281252,
+            h: 0.58009255,
+        };
+        let map = video_map(640, 360, 3840, 2160);
+        let r = from_media_canvas(n, &map, 640, 360);
+        let saved = PxRect {
+            left: r[0],
+            top: r[1],
+            right: r[2],
+            bottom: r[3],
+        };
+        assert_eq!((saved.left, saved.top), (2803, 590));
+
+        // Apply while the work area is tall (688 dip), then the taskbar style swaps
+        // to a taller one (662 dip): a bottom-edge anchor preserves the gap and the
+        // fence slides off the shelf art it was glued to.
+        let g = normalize(saved, &work(2064));
+        assert_eq!(g.anchor, Anchor::RightBottom);
+        let drifted = denormalize(&g, &work(1986));
+        assert_ne!(drifted.top, saved.top);
+        let drift_px = saved.top - drifted.top;
+        assert_eq!(drift_px, (2064 - 1986), "anchor moved it by the work delta");
+
+        // Canvas-placed fences must hold their absolute monitor position instead:
+        // the media art is monitor-anchored, so the anchor keeps x,y fixed.
+        let mut fixed = g.clone();
+        fixed.anchor = Anchor::LeftTop;
+        let held = denormalize(&fixed, &work(1986));
+        assert_eq!(held.top, saved.top);
+        assert_eq!(held.left, saved.left);
+    }
+
     #[test]
     fn canvas_space_defaults_to_screen() {
         // Archives written before media anchoring keep the legacy interpretation.
