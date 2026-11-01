@@ -64,6 +64,7 @@ const ACCENT_ACRYLIC: u32 = 4; // EBM "Acrylic"
 /// wire (must match `fe_glass.rs`).
 const FEOPT_CLEAR_BAR_BG: u32 = 1 << 0;
 const FEOPT_SHOW_LINE: u32 = 1 << 1;
+const FEOPT_CLEAR_ADDRESS: u32 = 1 << 2;
 
 /// The `clearAddress` rule set — the address/search bar containers.
 /// `S Background=Transparent` lets the material show through.
@@ -106,6 +107,17 @@ pub struct FeGlassConfig<'a> {
     pub dark_rgba: &'a str,
 }
 
+/// Per-explorer delivery state — cabinet windows can live in a
+/// separate-process explorer, and each pid runs its own resident with its
+/// own hello/wire handshake.
+#[derive(Default)]
+struct Delivered {
+    /// The resident command window the wire was delivered to.
+    cmd_hwnd: usize,
+    /// Whether `CDS_FE_HELLO` reached this pid's resident.
+    hello_sent: bool,
+}
+
 struct Fe {
     /// The EBM `effect` string currently stored ("" = off).
     effect: String,
@@ -116,10 +128,8 @@ struct Fe {
     /// The FEST wire last built — cached so `ensure` re-delivers after an
     /// explorer restart without re-serializing.
     wire: String,
-    /// The resident command window the wire was delivered to.
-    cmd_hwnd: usize,
-    /// Whether `CDS_FE_HELLO` reached the current DLL residency.
-    hello_sent: bool,
+    /// Per-explorer-pid delivery state.
+    delivered: std::collections::HashMap<u32, Delivered>,
     /// The DWM material values currently pushed to cabinets —
     /// `apply_glass` skips untouched windows unless these change.
     applied: (i32, u32, u32),
@@ -271,6 +281,9 @@ fn options_of(cfg: &FeGlassConfig) -> u32 {
     if cfg.show_line {
         o |= FEOPT_SHOW_LINE;
     }
+    if cfg.clear_address {
+        o |= FEOPT_CLEAR_ADDRESS;
+    }
     o
 }
 
@@ -311,8 +324,7 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
         options: 0,
         gradient: 0,
         wire: String::new(),
-        cmd_hwnd: 0,
-        hello_sent: false,
+        delivered: std::collections::HashMap::new(),
         applied: (0, 0, 0),
         seen_hwnds: std::collections::HashSet::new(),
     });
@@ -320,28 +332,65 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
     fe.options = options_of(cfg);
     fe.gradient = gradient_of(cfg);
     fe.wire = wire;
+    fe.delivered.clear(); // re-deliver to every pid under the new config
     ARMED.store(true, Ordering::Release);
     ensure_transparency_effects();
-    if let Some((hwnd, _)) = crate::tap::ensure_resident()
-        && !deliver(hwnd, fe)
-    {
-        fe.cmd_hwnd = 0; // delivery pending — `ensure` retries next tick
-    }
     drop(guard);
+    deliver_all();
     apply_glass();
     true
+}
+
+/// One anchor `CabinetWClass` per owning explorer pid — inject targets
+/// for `ensure_resident_at` (separate-process explorers need their own
+/// resident; the shell explorer's hook can't reach them).
+fn cabinet_anchors() -> Vec<(u32, crate::bindings::HWND)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for hwnd in cabinet_windows() {
+        let mut pid = 0u32;
+        unsafe {
+            let _ = crate::bindings::GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        }
+        if pid != 0 && seen.insert(pid) {
+            out.push((pid, hwnd));
+        }
+    }
+    out
+}
+
+/// Fans the stored wire out to every cabinet-owning explorer pid — each
+/// runs its own resident that needs the hello + FEBD + FEST handshake.
+/// Called from `apply_effect` and the `ensure` tick (a newly-spawned
+/// explorer shows up here on the next pass).
+fn deliver_all() {
+    let anchors = cabinet_anchors();
+    let mut live_pids = Vec::new();
+    for (pid, anchor) in anchors {
+        live_pids.push(pid);
+        let Some(cmd) = crate::tap::ensure_resident_at(anchor) else {
+            continue;
+        };
+        let mut guard = lock();
+        let Some(fe) = guard.as_mut() else {
+            return;
+        };
+        deliver(pid, cmd, fe);
+    }
+    crate::tap::prune_extra_residents(&live_pids);
 }
 
 /// `Windows Default` — restore originals, return cabinet windows to the
 /// stock backdrop, stop keeping the DLL alive on our account.
 pub fn reset() -> bool {
     let mut guard = lock();
-    if let Some(hwnd) = crate::tap::resident_window() {
+    for hwnd in crate::tap::resident_windows_all() {
         let _ = crate::tap::send_copydata(hwnd, CDS_FE_RESET, &[]);
     }
     if let Some(fe) = guard.as_mut() {
         fe.effect.clear();
         fe.wire.clear();
+        fe.delivered.clear();
     }
     ARMED.store(false, Ordering::Release);
     drop(guard);
@@ -356,17 +405,7 @@ pub fn ensure() {
     if !is_armed() {
         return;
     }
-    let Some((hwnd, _)) = crate::tap::ensure_resident() else {
-        return;
-    };
-    let mut guard = lock();
-    let Some(fe) = guard.as_mut() else {
-        return;
-    };
-    if fe.cmd_hwnd != hwnd.0 as usize {
-        let _ = deliver(hwnd, fe);
-    }
-    drop(guard);
+    deliver_all();
     apply_glass();
 }
 
@@ -376,17 +415,18 @@ pub fn shutdown() {
     let _ = reset();
 }
 
-/// Sends the stored wire to the resident DLL — FEHI hello, then the FEBD
-/// material payload (the detours need the desired values BEFORE the
+/// Sends the stored wire to one pid's resident — FEHI hello, then the
+/// FEBD material payload (the detours need the desired values BEFORE the
 /// theme wire arms them), then the FEST controlStyles wire.
-fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
-    if fe.cmd_hwnd != hwnd.0 as usize {
-        fe.hello_sent = false;
+fn deliver(pid: u32, hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
+    let d = fe.delivered.entry(pid).or_default();
+    if d.cmd_hwnd != hwnd.0 as usize {
+        d.hello_sent = false;
     }
-    if !fe.hello_sent {
-        let pid = std::process::id();
-        if crate::tap::send_copydata(hwnd, CDS_FE_HELLO, &pid.to_ne_bytes()) {
-            fe.hello_sent = true;
+    if !d.hello_sent {
+        let app_pid = std::process::id();
+        if crate::tap::send_copydata(hwnd, CDS_FE_HELLO, &app_pid.to_ne_bytes()) {
+            d.hello_sent = true;
         }
     }
     let (bd, st) = desired_material(&fe.effect);
@@ -397,12 +437,12 @@ fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
     payload[12..16].copy_from_slice(&fe.gradient.to_le_bytes());
     payload[16..20].copy_from_slice(&fe.options.to_le_bytes());
     let _ = crate::tap::send_copydata(hwnd, CDS_FE_BACKDROP, &payload);
-    fe.cmd_hwnd = if crate::tap::send_copydata(hwnd, CDS_FE_THEME, fe.wire.as_bytes()) {
+    d.cmd_hwnd = if crate::tap::send_copydata(hwnd, CDS_FE_THEME, fe.wire.as_bytes()) {
         hwnd.0 as usize
     } else {
         0
     };
-    fe.cmd_hwnd != 0
+    d.cmd_hwnd != 0
 }
 
 /// Pushes the DWM material onto every `CabinetWClass` — direct

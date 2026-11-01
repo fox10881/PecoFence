@@ -237,8 +237,18 @@ const BG_CLASSES: &[&str] = &[
     "Toolbar",
     "Rebar",
     "Status",
+];
+
+/// Win32 address-bar theme classes — punched only under
+/// `FEOPT_CLEAR_ADDRESS` (EBM `clearAddress` on the non-XAML path;
+/// `MyDrawThemeBackground_Address` in EBM's terms).
+const ADDRESS_CLASSES: &[&str] = &[
     "AddressBand",
     "SearchBox",
+    "SearchEditBox",
+    "BreadcrumbBar",
+    "Address Band",
+    "UniversalSearchBand",
 ];
 
 /// Theme classes whose text is forced white while the glass is dark —
@@ -349,6 +359,7 @@ pub fn set_backdrop_params(bytes: &[u8]) {
 /// can't ride the XAML wire (`file_explorer_styler::FEOPT_*`).
 const FEOPT_CLEAR_BAR_BG: u32 = 1 << 0;
 const FEOPT_SHOW_LINE: u32 = 1 << 1;
+const FEOPT_CLEAR_ADDRESS: u32 = 1 << 2;
 static FE_OPTIONS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 fn fe_option(bit: u32) -> bool {
     FE_OPTIONS.load(Ordering::Acquire) & bit != 0
@@ -1002,10 +1013,21 @@ unsafe extern "system" fn get_theme_color_hook(
         // matching can miss, and any fill on this thread is a panel
         // background hiding the glass.
         if prop == TMT_FILLCOLOR || prop == TMT_FILLCOLORHINT {
-            // Only CONTAINER backgrounds go transparent — `part >= 1` on
-            // ItemsView/ListView/TreeView is a row's hover/selection fill,
-            // which must keep its real color or highlights vanish.
-            if part == 0 || (part == 1 && state == 0) {
+            // EBM `clearAddress`: the Win32 address/search/breadcrumb bars
+            // keep their stock fill until the flag is set.
+            if class_in(htheme, ADDRESS_CLASSES) && !fe_option(FEOPT_CLEAR_ADDRESS) {
+                // fall through to the original
+            } else if fe_option(FEOPT_CLEAR_BAR_BG)
+                && class_in(htheme, &["ScrollBar"])
+                && (2..=3).contains(&part)
+            {
+                // EBM draws a custom slim thumb — approximate it with a
+                // flat gray fill on the transparent track.
+                unsafe {
+                    *pcolor = 0x0068_6868;
+                }
+                return 0;
+            } else if part == 0 || (part == 1 && state == 0) {
                 unsafe {
                     *pcolor = 0;
                 }
@@ -1141,10 +1163,15 @@ fn should_punch_part(htheme: HTheme, part: i32, state: i32) -> bool {
         return part == 0;
     }
     // EBM `clearBarBg` — scrollbar TRACK parts (SBP_LOWER/UPPERTRACK*)
-    // go transparent; thumb/grip keep their stock fill so the control
-    // stays usable.
+    // go transparent; the thumb gets a flat gray from
+    // `get_theme_color_hook` instead of the stock themed fill.
     if fe_option(FEOPT_CLEAR_BAR_BG) && class_in(htheme, &["ScrollBar"]) {
         return (4..=7).contains(&part);
+    }
+    // EBM `clearAddress` — address/search/breadcrumb backgrounds punch
+    // only while the flag is set.
+    if class_in(htheme, ADDRESS_CLASSES) {
+        return fe_option(FEOPT_CLEAR_ADDRESS) && is_bg_part(part, state);
     }
     bg_class(htheme) && is_bg_part(part, state)
 }

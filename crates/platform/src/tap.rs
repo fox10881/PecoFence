@@ -376,6 +376,35 @@ fn resident_windows_for_pid(pid: u32) -> Vec<HWND> {
     resident_windows_matching(pid, "PecoFenceTAP")
 }
 
+/// Every `PecoFenceTAP`-family command window in ANY explorer process —
+/// for the FESR broadcast on reset, which must reach cabinet-owning
+/// explorers that aren't the shell host.
+pub fn resident_windows_all() -> Vec<HWND> {
+    let base = "PecoFenceTAP";
+    let prefixed = format!("{base}_");
+    let mut out = Vec::new();
+    let mut after = HWND(core::ptr::null_mut());
+    loop {
+        let h = unsafe {
+            FindWindowExW(
+                Some(HWND_MESSAGE),
+                Some(after),
+                PCWSTR::null(),
+                PCWSTR::null(),
+            )
+        };
+        if h.0.is_null() {
+            break;
+        }
+        let name = resident_class_name(h);
+        if name == base || name.starts_with(&prefixed) {
+            out.push(h);
+        }
+        after = h;
+    }
+    out
+}
+
 /// The resident command window owned by `pid` — the highest protocol build
 /// wins, so a fresh co-loaded resident beats a stale pinned one whose
 /// `CmdHwnd` re-stamp may still be winning the prop race.
@@ -682,6 +711,47 @@ pub fn ensure_resident() -> Option<(HWND, bool)> {
     ensure_resident_locked(&mut guard, taskbar, pid, TAP_PROTOCOL_VERSION)
 }
 
+/// Extra explorer processes — folder windows can run in a separate-process
+/// explorer (`Launch folder windows in a separate process`), so a
+/// `CabinetWClass` may live where the shell-resident can't see it. Each
+/// such pid gets its own resident slot; `anchor` is any window in the
+/// target process (the resident stamps `PecoFence.TAP.CmdHwnd` on it).
+static EXTRA_TAPS: std::sync::LazyLock<Mutex<std::collections::HashMap<u32, Option<Tap>>>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+
+/// Residency inside `anchor`'s process. Shell-pid anchors route through
+/// the main slot; any other explorer pid gets its own injected resident.
+/// Returns that process's command window — the caller must deliver wires
+/// per pid since each process has its own resident state.
+pub fn ensure_resident_at(anchor: HWND) -> Option<HWND> {
+    let mut pid = 0u32;
+    unsafe {
+        let _ = GetWindowThreadProcessId(anchor, Some(&mut pid));
+    }
+    if pid == 0 {
+        return None;
+    }
+    if find_taskbar().is_some_and(|(_, p)| p == pid) {
+        return ensure_resident().map(|(h, _)| h);
+    }
+    let mut map = EXTRA_TAPS.lock().unwrap_or_else(|p| p.into_inner());
+    let slot = map.entry(pid).or_insert(None);
+    let tap = ensure_resident_locked(slot, anchor, pid, TAP_PROTOCOL_VERSION);
+    // Dead-pid hygiene: if the slot never produced a resident, drop it so
+    // the map doesn't accumulate stale entries.
+    if tap.is_none() && slot.is_none() {
+        map.remove(&pid);
+    }
+    tap.map(|(h, _)| h)
+}
+
+/// Drops extra-explorer slots whose pids vanished — `is_none` slots only;
+/// live residents unload with their process or on the next inject attempt.
+pub fn prune_extra_residents(live_pids: &[u32]) {
+    let mut map = EXTRA_TAPS.lock().unwrap_or_else(|p| p.into_inner());
+    map.retain(|pid, slot| slot.is_some() || live_pids.contains(pid));
+}
+
 /// The resident command window when the TAP is live in explorer — does
 /// **not** inject; `reset` paths use this so they can't resurrect a dead
 /// resident.
@@ -745,6 +815,13 @@ pub fn shutdown() {
     let mut guard = lock();
     if let Some(mut tap) = guard.take() {
         unload_locked(&mut tap);
+    }
+    drop(guard);
+    let mut map = EXTRA_TAPS.lock().unwrap_or_else(|p| p.into_inner());
+    for (_, slot) in map.drain() {
+        if let Some(mut tap) = slot {
+            unload_locked(&mut tap);
+        }
     }
 }
 
