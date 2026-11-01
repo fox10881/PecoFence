@@ -76,6 +76,23 @@ windows_core::link!("gdi32.dll" "system" fn GetObjectW(obj: *mut core::ffi::c_vo
 windows_core::link!("gdi32.dll" "system" fn StretchDIBits(hdc: Hdc, x_dest: i32, y_dest: i32, dest_w: i32, dest_h: i32, x_src: i32, y_src: i32, src_w: i32, src_h: i32, bits: *const core::ffi::c_void, bmi: *const core::ffi::c_void, usage: u32, rop: u32) -> i32);
 windows_core::link!("gdi32.dll" "system" fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> *mut core::ffi::c_void);
 windows_core::link!("gdi32.dll" "system" fn DeleteObject(obj: *mut core::ffi::c_void) -> windows_core::BOOL);
+windows_core::link!("gdi32.dll" "system" fn GetTextExtentPoint32W(hdc: Hdc, lpstring: PCWSTR, c: i32, psizl: *mut Size) -> windows_core::BOOL);
+windows_core::link!("gdi32.dll" "system" fn GetTextExtentPointI(hdc: Hdc, pgi_in: *const u16, cgi: i32, psize: *mut Size) -> windows_core::BOOL);
+windows_core::link!("gdi32.dll" "system" fn GetTextAlign(hdc: Hdc) -> u32);
+windows_core::link!("gdi32.dll" "system" fn SetTextAlign(hdc: Hdc, align: u32) -> u32);
+windows_core::link!("gdi32.dll" "system" fn GetLayout(hdc: Hdc) -> u32);
+windows_core::link!("gdi32.dll" "system" fn SetLayout(hdc: Hdc, l: u32) -> u32);
+windows_core::link!("gdi32.dll" "system" fn SetBkMode(hdc: Hdc, mode: i32) -> i32);
+windows_core::link!("gdi32.dll" "system" fn GetTextColor(hdc: Hdc) -> u32);
+windows_core::link!("gdi32.dll" "system" fn SetTextColor(hdc: Hdc, color: u32) -> u32);
+windows_core::link!("gdi32.dll" "system" fn SetBkColor(hdc: Hdc, color: u32) -> u32);
+windows_core::link!("gdi32.dll" "system" fn GetCurrentObject(hdc: Hdc, ty: u32) -> *mut core::ffi::c_void);
+windows_core::link!("gdi32.dll" "system" fn SelectObject(hdc: Hdc, h: *mut core::ffi::c_void) -> *mut core::ffi::c_void);
+windows_core::link!("gdi32.dll" "system" fn GetTextMetricsW(hdc: Hdc, lptm: *mut TextMetricW) -> windows_core::BOOL);
+windows_core::link!("user32.dll" "system" fn DrawTextW(hdc: Hdc, lpchtext: PCWSTR, cchtext: i32, lprc: *mut Rect, format: u32) -> i32);
+windows_core::link!("uxtheme.dll" "system" fn BeginBufferedPaint(hdc_target: Hdc, prc_target: *const Rect, dw_format: i32, p_paint_params: *const BpPaintParams, phdc: *mut Hdc) -> isize);
+windows_core::link!("uxtheme.dll" "system" fn EndBufferedPaint(hbuffered_paint: isize, f_update_target: windows_core::BOOL) -> HResult);
+windows_core::link!("uxtheme.dll" "system" fn GetBufferedPaintBits(hbuffered_paint: isize, ppb_buffer: *mut *mut u32, pcx_row: *mut i32) -> HResult);
 windows_core::link!("dwmapi.dll" "system" fn DwmEnableBlurBehindWindow(hwnd: Hwnd, bb: *const DwmBlurBehind) -> HResult);
 windows_core::link!("kernel32.dll" "system" fn GetCurrentThreadId() -> u32);
 
@@ -100,6 +117,76 @@ struct WcaData {
     attrib: u32,
     pv: *const core::ffi::c_void,
     cb: usize,
+}
+
+#[repr(C)]
+struct Size {
+    cx: i32,
+    cy: i32,
+}
+
+/// `BLENDFUNCTION` — `AC_SRC_OVER`, `0`, `255`, `AC_SRC_ALPHA`.
+#[repr(C)]
+struct BlendFunction {
+    op: u8,
+    flags: u8,
+    alpha: u8,
+    format: u8,
+}
+
+/// `BP_PAINTPARAMS` for `BeginBufferedPaint`.
+#[repr(C)]
+struct BpPaintParams {
+    cb_size: u32,
+    dw_flags: u32,
+    prc_exclude: *const Rect,
+    p_blend_function: *const BlendFunction,
+}
+
+/// `TEXTMETRICW` — only `ascent` is read (TA_BASELINE rect adjustment).
+#[repr(C)]
+struct TextMetricW {
+    height: i32,
+    ascent: i32,
+    descent: i32,
+    internal_leading: i32,
+    external_leading: i32,
+    ave_char_width: i32,
+    max_char_width: i32,
+    weight: i32,
+    overhang: i32,
+    digitized_x: i32,
+    digitized_y: i32,
+    first_char: u16,
+    last_char: u16,
+    default_char: u16,
+    break_char: u16,
+    italic: u8,
+    underlined: u8,
+    struck_out: u8,
+    pitch_and_family: u8,
+    char_set: u8,
+}
+
+/// `DTTOPTS` — `DrawThemeTextEx` options block.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct DttOpts {
+    size: u32,
+    flags: u32,
+    cr_text: u32,
+    cr_border: u32,
+    cr_shadow: u32,
+    shadow_type: i32,
+    shadow_offset: [i32; 2],
+    border_size: i32,
+    font_prop: i32,
+    color_prop: i32,
+    state: i32,
+    apply_overlay: i32,
+    glow_size: i32,
+    pfn_callback: usize,
+    lparam: isize,
 }
 
 const GA_ROOT: u32 = 2;
@@ -175,11 +262,12 @@ static DESIRED_BACKDROP: core::sync::atomic::AtomicI32 = core::sync::atomic::Ato
 /// `CabinetWClass`.
 static ACCENT_STATE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 static ACCENT_FLAGS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
-/// `FEBD` slot 4: `0` = no Color Tint swatch → `punch_black` fills
-/// transparent `BLACK_BRUSH`; `0x24BBGGRR` = swatch `#RRGGBB` → the punch
-/// stretches a 14%-alpha premultiplied BGRA pixel instead, matching the
-/// XAML tint veil on the top bar.
-static ACCENT_GRADIENT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+/// `FEBD` slot 4: `0` = transparent `BLACK_BRUSH` punch; `0xAABBGGRR`
+/// otherwise — the default smoked-glass veil `0x50161210` (~31% dark
+/// charcoal, keeps white file names readable over bright windows) or the
+/// darkened swatch `0x48BBGGRR`.
+static ACCENT_GRADIENT: core::sync::atomic::AtomicU32 =
+    core::sync::atomic::AtomicU32::new(0x50161210);
 
 /// uxtheme **Ordinal 74** — `GetThemeClass`: resolves a class name for
 /// any `HTHEME`, including handles explorer opened before we armed (the
@@ -733,10 +821,15 @@ unsafe extern "system" fn get_theme_color_hook(
         // matching can miss, and any fill on this thread is a panel
         // background hiding the glass.
         if prop == TMT_FILLCOLOR || prop == TMT_FILLCOLORHINT {
-            unsafe {
-                *pcolor = 0;
+            // Only CONTAINER backgrounds go transparent — `part >= 1` on
+            // ItemsView/ListView/TreeView is a row's hover/selection fill,
+            // which must keep its real color or highlights vanish.
+            if part == 0 || (part == 1 && state == 0) {
+                unsafe {
+                    *pcolor = 0;
+                }
+                return 0;
             }
-            return 0;
         }
         // Folder/tree/header text on the dark glass sheet — force white
         // so it stays readable (the light-mode default would vanish).
@@ -855,6 +948,12 @@ fn is_bg_part(part: i32, state: i32) -> bool {
 fn should_punch_part(htheme: HTheme, part: i32, state: i32) -> bool {
     if class_in(htheme, &["TreeView"]) {
         return part == 0 || (part == 1 && state == 1);
+    }
+    // ItemsView/ListView: `part == 0` is the container background — punch
+    // it; `part >= 1` is LVP_LISTITEM hover/selection/rect highlights,
+    // which must draw or rows lose all interactivity cues.
+    if class_in(htheme, &["ItemsView", "ListView"]) {
+        return part == 0;
     }
     bg_class(htheme) && is_bg_part(part, state)
 }
@@ -992,9 +1091,41 @@ unsafe extern "system" fn fill_rect_hook(hdc: Hdc, rect: *const Rect, brush: HBr
 }
 
 // ------------------------------------------------------------------ text
-/// `ETO_OPAQUE` — `SysTreeView32`/`DirectUIHWND` also fill their
-/// background rects through `ExtTextOutW`, which `FillRect` never sees.
+/// `ETO_*`/`TA_*`/`DT_*`/`BPPF_*`/`BPBF_*`/`OBJ_*`/`TRANSPARENT` constants
+/// used by the buffered-paint text path.
 const ETO_OPAQUE: u32 = 0x0002;
+const ETO_CLIPPED: u32 = 0x0004;
+const ETO_GLYPH_INDEX: u32 = 0x0010;
+const ETO_PDY: u32 = 0x2000;
+const TA_UPDATECP: u32 = 0x0001;
+const TA_RIGHT: u32 = 0x0002;
+const TA_CENTER: u32 = 0x0006;
+const TA_BOTTOM: u32 = 0x0008;
+const TA_BASELINE: u32 = 0x0018;
+const DT_CALCRECT: u32 = 0x0400;
+const DT_MODIFYSTRING: u32 = 0x00010000;
+const DTT_TEXTCOLOR: u32 = 0x00000001;
+const DTT_CALCRECT: u32 = 0x00000200;
+const DTT_COMPOSITED: u32 = 0x00002000;
+const BPBF_TOPDOWNDIB: i32 = 2;
+const BPPF_ERASE: u32 = 0x0001;
+const BPPF_NOCLIP: u32 = 0x0004;
+const OBJ_FONT: u32 = 6;
+const BK_TRANSPARENT: i32 = 1;
+
+/// Coverage→alpha gamma curve from Translucent Windows: GDI glyph masks
+/// are 8-bit coverage values; mapping them straight to alpha renders thin
+/// strokes too faint. `a^(1/gamma)` with `gamma = 1.2 + 0.3a` lifts
+/// mid-coverage pixels so anti-aliased edges read sharp on glass.
+static TEXT_ALPHA_GAMMA_LUT: LazyLock<[u8; 256]> = LazyLock::new(|| {
+    let mut lut = [0u8; 256];
+    for (i, slot) in lut.iter_mut().enumerate() {
+        let a = i as f32 / 255.0;
+        let gamma = 1.2 + 0.3 * a;
+        *slot = (a.powf(1.0 / gamma) * 255.0 + 0.5).clamp(0.0, 255.0) as u8;
+    }
+    lut
+});
 
 type ExtTextOutWFn = unsafe extern "system" fn(
     Hdc,
@@ -1006,6 +1137,14 @@ type ExtTextOutWFn = unsafe extern "system" fn(
     u32,
     *const i32,
 ) -> windows_core::BOOL;
+/// Buffered-paint text composition (Translucent Windows `HookedExtTextOutW`
+/// port): a plain `ExtTextOutW` writes glyphs with alpha 0 onto the
+/// `0x00000000` surface — premultiplied alpha 0 renders ADDITIVELY under
+/// DWM, so bright windows behind Explorer bleed straight through the
+/// letters. Instead we draw the string in white into a buffered paint
+/// DIB, turn its coverage map into premultiplied BGRA at the caller's
+/// text color through the gamma LUT, and let `EndBufferedPaint` alpha-
+/// blend the result onto the cabinet DC — razor-sharp opaque text.
 unsafe extern "system" fn ext_text_out_hook(
     hdc: Hdc,
     x: i32,
@@ -1020,13 +1159,301 @@ unsafe extern "system" fn ext_text_out_hook(
         Some(f) => f,
         None => return windows_core::BOOL(0),
     };
-    if is_armed() && options & ETO_OPAQUE != 0 && !lprect.is_null() && cabinet_dc(hdc) {
-        // Replace the opaque background fill with transparent black,
-        // then draw the text without its background box.
+    if !is_armed() || !cabinet_dc(hdc) {
+        return unsafe { orig(hdc, x, y, options, lprect, lpstring, c, lpdx) };
+    }
+    // The opaque background box — punch the veil before any text lands.
+    if options & ETO_OPAQUE != 0 && !lprect.is_null() {
         let _ = punch_black(hdc, lprect);
+    }
+    let no_text =
+        lpstring.is_null() || c == 0 || c > 4096 || unsafe { GetTextAlign(hdc) } & TA_UPDATECP != 0;
+    if no_text {
         return unsafe { orig(hdc, x, y, options & !ETO_OPAQUE, lprect, lpstring, c, lpdx) };
     }
-    unsafe { orig(hdc, x, y, options, lprect, lpstring, c, lpdx) }
+    // Extent → the buffered-paint target rect.
+    let mut size = Size { cx: 0, cy: 0 };
+    let measured = unsafe {
+        if options & ETO_GLYPH_INDEX != 0 {
+            GetTextExtentPointI(hdc, lpstring.0, c as i32, &mut size)
+        } else {
+            GetTextExtentPoint32W(hdc, lpstring, c as i32, &mut size)
+        }
+    };
+    if measured == windows_core::BOOL(0) {
+        return unsafe { orig(hdc, x, y, options & !ETO_OPAQUE, lprect, lpstring, c, lpdx) };
+    }
+    if !lpdx.is_null() {
+        // lpDx holds per-char advances (pairs when ETO_PDY) — sum to the
+        // real run width, it can exceed the measured extent.
+        let stride = if options & ETO_PDY != 0 { 2usize } else { 1 };
+        let mut dx = 0i32;
+        for i in 0..c as usize {
+            dx += unsafe { *lpdx.add(i * stride) };
+        }
+        size.cx = size.cx.max(dx);
+    }
+    let align = unsafe { GetTextAlign(hdc) };
+    let (mut px, mut py) = (x, y);
+    let a_h = align & 6;
+    if a_h == TA_CENTER {
+        px -= size.cx / 2;
+    } else if a_h == TA_RIGHT {
+        px -= size.cx;
+    }
+    let a_v = align & 24;
+    if a_v == TA_BOTTOM {
+        py -= size.cy;
+    } else if a_v == TA_BASELINE {
+        let mut tm: TextMetricW = unsafe { core::mem::zeroed() };
+        if unsafe { GetTextMetricsW(hdc, &mut tm) } == windows_core::BOOL(0) {
+            return unsafe { orig(hdc, x, y, options & !ETO_OPAQUE, lprect, lpstring, c, lpdx) };
+        }
+        py -= tm.ascent;
+    }
+    let mut text_rect = Rect {
+        left: px,
+        top: py,
+        right: px + size.cx,
+        bottom: py + size.cy,
+    };
+    if options & ETO_CLIPPED != 0 && !lprect.is_null() {
+        let r = unsafe { &*lprect };
+        text_rect.left = text_rect.left.max(r.left);
+        text_rect.top = text_rect.top.max(r.top);
+        text_rect.right = text_rect.right.min(r.right);
+        text_rect.bottom = text_rect.bottom.min(r.bottom);
+    }
+    let (tw, th) = (
+        text_rect.right - text_rect.left,
+        text_rect.bottom - text_rect.top,
+    );
+    if tw <= 0 || th <= 0 {
+        return unsafe { orig(hdc, x, y, options & !ETO_OPAQUE, lprect, lpstring, c, lpdx) };
+    }
+    let blend = BlendFunction {
+        op: 0, // AC_SRC_OVER
+        flags: 0,
+        alpha: 255,
+        format: 1, // AC_SRC_ALPHA
+    };
+    let params = BpPaintParams {
+        cb_size: core::mem::size_of::<BpPaintParams>() as u32,
+        dw_flags: BPPF_ERASE | BPPF_NOCLIP,
+        prc_exclude: core::ptr::null(),
+        p_blend_function: &blend,
+    };
+    let mut mem_dc: Hdc = core::ptr::null_mut();
+    let hpb = unsafe { BeginBufferedPaint(hdc, &text_rect, BPBF_TOPDOWNDIB, &params, &mut mem_dc) };
+    if hpb == 0 || mem_dc.is_null() {
+        return unsafe { orig(hdc, x, y, options & !ETO_OPAQUE, lprect, lpstring, c, lpdx) };
+    }
+    unsafe {
+        let font = GetCurrentObject(hdc, OBJ_FONT);
+        if !font.is_null() {
+            SelectObject(mem_dc, font);
+        }
+        SetTextAlign(mem_dc, align);
+        SetLayout(mem_dc, GetLayout(hdc));
+        SetBkMode(mem_dc, BK_TRANSPARENT);
+        // White glyph mask — coverage = luminance of this draw.
+        SetTextColor(mem_dc, 0x00FFFFFF);
+    }
+    let res = unsafe {
+        orig(
+            mem_dc,
+            x,
+            y,
+            options & !ETO_OPAQUE,
+            lprect,
+            lpstring,
+            c,
+            lpdx,
+        )
+    };
+    let mut pixels: *mut u32 = core::ptr::null_mut();
+    let mut row_stride = 0i32;
+    if unsafe { GetBufferedPaintBits(hpb, &mut pixels, &mut row_stride) } < 0
+        || pixels.is_null()
+        || row_stride <= 0
+    {
+        unsafe {
+            let _ = EndBufferedPaint(hpb, windows_core::BOOL(0));
+        }
+        return res;
+    }
+    // Caller color → premultiplied output. Dark/muddy grays (secondary
+    // columns #6D6D6D, disabled state) can't survive over a bright
+    // backdrop — lift them: near-black → pure white, mid-gray →
+    // high-contrast silver-white.
+    let cr = unsafe { GetTextColor(hdc) } & 0x00FFFFFF;
+    let (mut r, mut g, mut b) = (cr & 0xFF, (cr >> 8) & 0xFF, (cr >> 16) & 0xFF);
+    if r < 180 && g < 180 && b < 180 {
+        if r > 90 {
+            (r, g, b) = (230, 230, 235);
+        } else {
+            (r, g, b) = (255, 255, 255);
+        }
+    }
+    let lut = &*TEXT_ALPHA_GAMMA_LUT;
+    for cy in 0..th {
+        for cx in 0..tw {
+            let p = unsafe { pixels.add((cy * row_stride + cx) as usize) };
+            let px = unsafe { *p };
+            if px & 0x00FFFFFF == 0 {
+                continue;
+            }
+            // White-mask luminance → coverage → gamma-corrected alpha.
+            let luma =
+                (((px & 0xFF) + (((px >> 8) & 0xFF) << 1) + ((px >> 16) & 0xFF)) >> 2) as usize;
+            let txt_a = lut[luma.min(255)] as u32;
+            unsafe {
+                *p = (txt_a << 24)
+                    | (((r * txt_a) >> 8) << 16)
+                    | (((g * txt_a) >> 8) << 8)
+                    | ((b * txt_a) >> 8);
+            }
+        }
+    }
+    unsafe {
+        let _ = EndBufferedPaint(hpb, windows_core::BOOL(1));
+    }
+    res
+}
+
+type DrawThemeTextExFn = unsafe extern "system" fn(
+    HTheme,
+    Hdc,
+    i32,
+    i32,
+    PCWSTR,
+    i32,
+    u32,
+    *mut Rect,
+    *const DttOpts,
+) -> HResult;
+/// `ItemsView` paints secondary columns (`Date modified`, `Type`, `Size`)
+/// and group headers via `DrawThemeTextEx`. Force white text and clear
+/// `DTT_COMPOSITED` so uxtheme stops doing its own (broken-alpha) glow
+/// composite and lands the draw in our gamma-corrected `ext_text_out_hook`.
+unsafe extern "system" fn draw_theme_text_ex_hook(
+    htheme: HTheme,
+    hdc: Hdc,
+    part: i32,
+    state: i32,
+    psz: PCWSTR,
+    cch: i32,
+    flags: u32,
+    rect: *mut Rect,
+    opts: *const DttOpts,
+) -> HResult {
+    let orig: DrawThemeTextExFn = match tramp("DrawThemeTextEx") {
+        Some(f) => f,
+        None => return -1,
+    };
+    if is_armed()
+        && cabinet_dc(hdc)
+        && (opts.is_null() || unsafe { (*opts).flags } & DTT_CALCRECT == 0)
+    {
+        let mut o = if opts.is_null() {
+            DttOpts {
+                size: core::mem::size_of::<DttOpts>() as u32,
+                flags: 0,
+                cr_text: 0,
+                cr_border: 0,
+                cr_shadow: 0,
+                shadow_type: 0,
+                shadow_offset: [0; 2],
+                border_size: 0,
+                font_prop: 0,
+                color_prop: 0,
+                state: 0,
+                apply_overlay: 0,
+                glow_size: 0,
+                pfn_callback: 0,
+                lparam: 0,
+            }
+        } else {
+            unsafe { *opts }
+        };
+        o.cr_text = 0x00FFFFFF;
+        o.flags |= DTT_TEXTCOLOR;
+        o.flags &= !DTT_COMPOSITED;
+        return unsafe { orig(htheme, hdc, part, state, psz, cch, flags, rect, &o) };
+    }
+    unsafe { orig(htheme, hdc, part, state, psz, cch, flags, rect, opts) }
+}
+
+/// uxtheme **Ordinal 126** — `DrawTextWithGlow`, the ItemsView label
+/// painter. With `nGlowRadius == 0` it renders plain text; skip the glow
+/// pipeline entirely and draw through `DrawTextW`/the caller's callback
+/// so every glyph goes through `ext_text_out_hook`'s alpha composition.
+type DrawTextWithGlowFn = unsafe extern "system" fn(
+    Hdc,
+    PCWSTR,
+    i32,
+    *mut Rect,
+    u32,
+    u32,
+    u32,
+    i32,
+    i32,
+    i32,
+    usize,
+    isize,
+) -> i32;
+type DrawTextCallback = unsafe extern "system" fn(Hdc, PCWSTR, i32, *mut Rect, u32, isize) -> i32;
+unsafe extern "system" fn draw_text_with_glow_hook(
+    hdc: Hdc,
+    psz: PCWSTR,
+    cch: i32,
+    rect: *mut Rect,
+    flags: u32,
+    cr_text: u32,
+    cr_glow: u32,
+    glow_radius: i32,
+    glow_intensity: i32,
+    premult: i32,
+    callback: usize,
+    lparam: isize,
+) -> i32 {
+    let orig: DrawTextWithGlowFn = match tramp("DrawTextWithGlow") {
+        Some(f) => f,
+        None => return 0,
+    };
+    if is_armed()
+        && glow_radius == 0
+        && cabinet_dc(hdc)
+        && flags & DT_CALCRECT == 0
+        && !rect.is_null()
+    {
+        unsafe {
+            SetTextColor(hdc, 0x00FFFFFF);
+            SetBkColor(hdc, 0);
+        }
+        let f = flags & !DT_MODIFYSTRING;
+        if callback != 0 {
+            let cb: DrawTextCallback = unsafe { core::mem::transmute(callback) };
+            return unsafe { cb(hdc, psz, cch, rect, f, lparam) };
+        }
+        return unsafe { DrawTextW(hdc, psz, cch, rect, f) };
+    }
+    unsafe {
+        orig(
+            hdc,
+            psz,
+            cch,
+            rect,
+            flags,
+            cr_text,
+            cr_glow,
+            glow_radius,
+            glow_intensity,
+            premult,
+            callback,
+            lparam,
+        )
+    }
 }
 
 // ------------------------------------------------------------ install ----
@@ -1052,50 +1479,93 @@ fn install() {
             GET_THEME_CLASS.store(p as usize, Ordering::Release);
         }
     }
-    let specs: [(&'static str, &'static str, *const ()); 9] = [
+    // (dll, proc lookup, TRAMPS key, hook) — lookups starting with `#`
+    // are ORDINALS (`DrawTextWithGlow` is ordinal-only in uxtheme).
+    let specs: [(&'static str, &'static str, &'static str, *const ()); 11] = [
         (
             "dwmapi.dll",
+            "DwmExtendFrameIntoClientArea",
             "DwmExtendFrameIntoClientArea",
             dwm_extend_hook as *const (),
         ),
         (
             "dwmapi.dll",
             "DwmSetWindowAttribute",
+            "DwmSetWindowAttribute",
             dwm_setattr_hook as *const (),
         ),
-        ("uxtheme.dll", "OpenThemeData", open_theme_hook as *const ()),
         (
             "uxtheme.dll",
+            "OpenThemeData",
+            "OpenThemeData",
+            open_theme_hook as *const (),
+        ),
+        (
+            "uxtheme.dll",
+            "GetThemeColor",
             "GetThemeColor",
             get_theme_color_hook as *const (),
         ),
         (
             "uxtheme.dll",
             "DrawThemeBackground",
+            "DrawThemeBackground",
             draw_theme_bg_hook as *const (),
         ),
         (
             "uxtheme.dll",
             "DrawThemeBackgroundEx",
+            "DrawThemeBackgroundEx",
             draw_theme_bg_ex_hook as *const (),
+        ),
+        (
+            "uxtheme.dll",
+            "DrawThemeTextEx",
+            "DrawThemeTextEx",
+            draw_theme_text_ex_hook as *const (),
+        ),
+        (
+            "uxtheme.dll",
+            "#126",
+            "DrawTextWithGlow",
+            draw_text_with_glow_hook as *const (),
         ),
         (
             "user32.dll",
             "GetSysColorBrush",
+            "GetSysColorBrush",
             get_sys_color_brush_hook as *const (),
         ),
-        ("user32.dll", "FillRect", fill_rect_hook as *const ()),
-        ("gdi32.dll", "ExtTextOutW", ext_text_out_hook as *const ()),
+        (
+            "user32.dll",
+            "FillRect",
+            "FillRect",
+            fill_rect_hook as *const (),
+        ),
+        (
+            "gdi32.dll",
+            "ExtTextOutW",
+            "ExtTextOutW",
+            ext_text_out_hook as *const (),
+        ),
     ];
     let mut installed = Vec::new();
-    for (dll, name, hook) in specs {
+    for (dll, lookup, key, hook) in specs {
         let dll_w: Vec<u16> = dll.encode_utf16().chain(core::iter::once(0)).collect();
         let module = unsafe { win32::GetModuleHandleW(PCWSTR(dll_w.as_ptr())) };
         if module.is_null() {
             continue;
         }
-        let name_z: Vec<u8> = name.bytes().chain(core::iter::once(0)).collect();
-        let target = unsafe { win32::GetProcAddress(module, PCSTR(name_z.as_ptr())) };
+        let target = if let Some(ord) = lookup
+            .strip_prefix('#')
+            .and_then(|o| o.parse::<usize>().ok())
+        {
+            // MAKEINTRESOURCEA(ordinal)
+            unsafe { win32::GetProcAddress(module, PCSTR(ord as *const u8)) }
+        } else {
+            let name_z: Vec<u8> = lookup.bytes().chain(core::iter::once(0)).collect();
+            unsafe { win32::GetProcAddress(module, PCSTR(name_z.as_ptr())) }
+        };
         if target.is_null() {
             continue;
         }
@@ -1105,7 +1575,7 @@ fn install() {
         TRAMPS
             .lock()
             .unwrap_or_else(|p| p.into_inner())
-            .insert(name, detour.trampoline() as *const () as usize);
+            .insert(key, detour.trampoline() as *const () as usize);
         if unsafe { detour.enable() }.is_err() {
             continue;
         }

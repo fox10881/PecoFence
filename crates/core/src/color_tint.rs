@@ -48,10 +48,73 @@ pub const FILE_EXPLORER_TARGETS: &[(&str, &str)] = &[
         "Background",
     ),
 ];
-/// File Explorer tint alpha — ~14% so the Win32 punch
+/// File Explorer tint alpha — ~28%; the Win32 punch
 /// (`fe_glass::punch_black` BGRA stretch) and this XAML veil carry the
 /// identical opacity. Taskbar/Start Menu keep `TINT_ALPHA`.
-pub const FE_TINT_ALPHA: u8 = 0x24;
+pub const FE_TINT_ALPHA: u8 = 0x48;
+/// The veil painted when NO swatch is picked: ~31%-opaque dark smoked
+/// charcoal. Bare transparent (`#00000000`) let bright windows behind
+/// Explorer shine straight through white file names — this supplies the
+/// contrast the glyphs need while staying glassy.
+pub const FE_DEFAULT_VEIL_ARGB: &str = "#50101216";
+
+/// `fe_veil_argb` — the File Explorer overlay color in `#AARRGGBB`:
+/// `""` → `FE_DEFAULT_VEIL_ARGB`; `#RRGGBB` → `FE_TINT_ALPHA` alpha over
+/// the swatch darkened to 65% (bright swatches would wash the glass out).
+/// `None` only for malformed input. Identical RGB/alpha to the resident's
+/// `tint_abgr` BGRA value — one color across XAML and Win32.
+pub fn fe_veil_argb(tint: &str) -> Option<String> {
+    let hex = tint.strip_prefix('#').unwrap_or(tint);
+    if hex.is_empty() {
+        return Some(FE_DEFAULT_VEIL_ARGB.to_string());
+    }
+    if hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        let n = u32::from_str_radix(hex, 16).ok()?;
+        let (r, g, b) = ((n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF);
+        return Some(format!(
+            "#{FE_TINT_ALPHA:02X}{:02X}{:02X}{:02X}",
+            r * 65 / 100,
+            g * 65 / 100,
+            b * 65 / 100
+        ));
+    }
+    None
+}
+
+/// Always-on File Explorer veil — appends the three top-bar-root rules
+/// even when `tint` is `""` (default smoked glass). `fe_glass`'s Win32
+/// punch carries the same veil, so XAML only covers the island.
+pub fn apply_fe_tint(wire: &mut String, tint: &str) {
+    let Some(argb) = fe_veil_argb(tint) else {
+        return;
+    };
+    if wire.ends_with("E\n") {
+        wire.truncate(wire.len() - 2);
+    }
+    for (target, prop) in FILE_EXPLORER_TARGETS {
+        wire.push_str("T ");
+        wire.push_str(target);
+        wire.push('\n');
+        wire.push_str("S ");
+        wire.push_str(prop);
+        wire.push_str(":=<SolidColorBrush Color=\"");
+        wire.push_str(&argb);
+        wire.push_str("\"/>\n");
+    }
+    wire.push_str("E\n");
+}
+
+/// A veil-only FE wire (`""` theme): magic + the smoked/darkened tint
+/// rules — File Explorer with no theme still gets readable glass.
+pub fn fe_tint_wire(magic: &str, tint: &str) -> Option<String> {
+    fe_veil_argb(tint)?;
+    let mut wire = String::with_capacity(256);
+    wire.push_str(magic);
+    wire.push('\n');
+    wire.push_str("E\n");
+    apply_fe_tint(&mut wire, tint);
+    Some(wire)
+}
 
 /// `Some(argb)` for `#RRGGBB` / `RRGGBB` palette values, `None` for
 /// `""` (tint off) and malformed input — settings treats `None` on a
@@ -167,12 +230,12 @@ mod tests {
 
     #[test]
     fn tint_only_wire_is_wellformed() {
-        let wire =
-            tint_wire_alpha("PECO-FES1", FILE_EXPLORER_TARGETS, "#0078D4", FE_TINT_ALPHA).unwrap();
+        let wire = fe_tint_wire("PECO-FES1", "#0078D4").unwrap();
         assert!(wire.starts_with("PECO-FES1\n"));
         assert!(wire.ends_with("E\n"));
         assert!(wire.contains("T FileExplorerExtensions.FileExplorerTabControl > Grid\n"));
-        assert!(wire.contains("S Background:=<SolidColorBrush Color=\"#240078D4\"/>"));
+        // #0078D4 darkened to 65% → #004E89 under the 0x48 veil alpha.
+        assert!(wire.contains("S Background:=<SolidColorBrush Color=\"#48004E89\"/>"));
         // One veil per surface — no overlapping child targets.
         assert_eq!(wire.matches("S Background:=").count(), 3);
     }

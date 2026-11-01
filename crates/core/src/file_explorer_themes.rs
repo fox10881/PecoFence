@@ -214,6 +214,21 @@ const TOP_BAR_RULES: &[(&str, &[&str])] = &[
         "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
         &["Background=Transparent"],
     ),
+    // Content grids hosting DirectUIHWND — the Win32 punch already lays
+    // the veil/tint beneath them; an XAML background here would
+    // double-stack the overlay.
+    (
+        "Microsoft.UI.Xaml.Controls.Grid#DetailsViewControlRootGrid",
+        &["Background=Transparent"],
+    ),
+    (
+        "Microsoft.UI.Xaml.Controls.Grid#HomeViewRootGrid",
+        &["Background=Transparent"],
+    ),
+    (
+        "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
+        &["Background=Transparent"],
+    ),
 ];
 
 /// Serializes the theme into the line wire-format the injected

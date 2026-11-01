@@ -74,15 +74,25 @@ fn desired_glass(effect: &str, tint: &str) -> (i32, u32, u32, u32) {
 /// Selected swatch `#RRGGBB` → `0x24BBGGRR` (the ABGR layout
 /// `fe_glass::punch_black` stretches across the Win32 surfaces); `""` or
 /// malformed → `0` (transparent-black punch).
+/// Swatch `#RRGGBB` → `0x48BBGGRR` with channels darkened to 65% (bright
+/// swatches stay glassy dark). `""`/malformed → `0x50161210` — the
+/// default ~31% smoked-charcoal veil (`0x50` alpha over `#101216`), NOT
+/// transparent black: bare `0x00000000` lets bright windows behind
+/// Explorer wash out the white file names. Same color as the XAML veil
+/// (`color_tint::fe_veil_argb`) on the top bar.
 fn tint_abgr(tint: &str) -> u32 {
     let hex = tint.strip_prefix('#').unwrap_or(tint);
     if hex.len() == 6
         && let Ok(rgb) = u32::from_str_radix(hex, 16)
     {
-        let (r, g, b) = (rgb >> 16 & 0xFF, rgb >> 8 & 0xFF, rgb & 0xFF);
+        let (r, g, b) = (
+            (rgb >> 16 & 0xFF) * 65 / 100,
+            (rgb >> 8 & 0xFF) * 65 / 100,
+            (rgb & 0xFF) * 65 / 100,
+        );
         return (pecofence_core::color_tint::FE_TINT_ALPHA as u32) << 24 | b << 16 | g << 8 | r;
     }
-    0
+    0x50161210
 }
 
 const RDW_INVALIDATE: u32 = 0x0001;
@@ -551,12 +561,10 @@ fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
 /// settings reverts.
 pub fn apply(id: &str, tint: &str) -> bool {
     let wire = if id.is_empty() {
-        match pecofence_core::color_tint::tint_wire_alpha(
-            "PECO-FES1",
-            pecofence_core::color_tint::FILE_EXPLORER_TARGETS,
-            tint,
-            pecofence_core::color_tint::FE_TINT_ALPHA,
-        ) {
+        if tint.is_empty() {
+            return reset();
+        }
+        match pecofence_core::color_tint::fe_tint_wire("PECO-FES1", tint) {
             Some(w) => w,
             None => return reset(),
         }
@@ -564,12 +572,9 @@ pub fn apply(id: &str, tint: &str) -> bool {
         let Some(mut w) = pecofence_core::file_explorer_themes::theme_wire(id) else {
             return false;
         };
-        pecofence_core::color_tint::apply_to_wire_alpha(
-            &mut w,
-            pecofence_core::color_tint::FILE_EXPLORER_TARGETS,
-            tint,
-            pecofence_core::color_tint::FE_TINT_ALPHA,
-        );
+        // Always-on veil: `""` tint → the default smoked `#50101216` so
+        // the top bar matches the Win32 punch instead of staying clear.
+        pecofence_core::color_tint::apply_fe_tint(&mut w, tint);
         w
     };
     let effect = pecofence_core::file_explorer_themes::backdrop(id)
