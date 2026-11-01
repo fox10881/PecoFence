@@ -6298,10 +6298,57 @@ index 48e176c..41ad715 100644
  }
  
 diff --git a/crates/app/src/app/mod.rs b/crates/app/src/app/mod.rs
-index b16d68c..344e529 100644
+index b16d68c..ffe42b2 100644
 --- a/crates/app/src/app/mod.rs
 +++ b/crates/app/src/app/mod.rs
-@@ -1416,46 +1416,60 @@ impl App {
+@@ -274,6 +274,13 @@ pub struct App {
+     /// `PECOFENCE_INSTANCE` of this process (reported by `status.get`).
+     instance: Option<String>,
+     settings: Option<SettingsHost>,
++    /// The dedicated ExplorerBlurMica customization window (singleton — the
++    /// settings card's 高级设置 button opens or foregrounds it).
++    fe_glass: Option<crate::fe_glass_host::FeGlassHost>,
++    /// Signature of the last `feState` pushed to the glass editor — repeat
++    /// pushes are skipped so its unsaved draft is never clobbered (empty
++    /// forces a push: fresh page, or after close).
++    fe_glass_pushed: RefCell<String>,
+     /// Fence to select on the settings page once it reports `ready` (opened via 栅栏选项…).
+     settings_focus_fence: Option<FenceId>,
+     /// The 「反馈」 form on 「关于」: pending focus and the crash offer (see `feedback.rs`).
+@@ -287,6 +294,7 @@ pub struct App {
+     settings_ring: Option<FenceId>,
+     web_env: Option<WebEnvironment>,
+     settings_class: WindowClass,
++    fe_glass_class: WindowClass,
+     theme_mode: ThemeMode,
+     /// The user's accent palette at the last visual refresh (None = built-in default look).
+     accent: Option<systheme::AccentPalette>,
+@@ -1172,6 +1180,7 @@ impl App {
+             .ok();
+ 
+         let settings_class = SettingsHost::register_class()?;
++        let fe_glass_class = crate::fe_glass_host::FeGlassHost::register_class()?;
+         let peek_class = PeekOverlay::register_class()?;
+ 
+         // CLI named pipe: requests land in `ipc_pending`, the control window is poked.
+@@ -1231,6 +1240,8 @@ impl App {
+             ipc_event_state: None,
+             instance: args.instance.clone(),
+             settings: None,
++            fe_glass: None,
++            fe_glass_pushed: RefCell::new(String::new()),
+             settings_focus_fence: None,
+             feedback: Default::default(),
+             updates: Default::default(),
+@@ -1239,6 +1250,7 @@ impl App {
+             settings_ring: None,
+             web_env: None,
+             settings_class,
++            fe_glass_class,
+             theme_mode,
+             accent,
+             wallpaper_override: args.wallpaper_override.clone(),
+@@ -1416,46 +1428,60 @@ impl App {
          if let Some(a) = app.anchor.borrow_mut().as_mut() {
              a.reanchor("startup");
          }
@@ -6381,11 +6428,258 @@ index b16d68c..344e529 100644
              });
          }
          for f in app.fences.values().chain(app.desktop_windows.values()) {
+@@ -2076,14 +2102,20 @@ impl App {
+             Command::WindowGone(hwnd) => {
+                 if self.settings.as_ref().is_some_and(|h| h.hwnd() == hwnd) {
+                     self.settings = None;
+-                    // The WebView2 environment only exists for the window: release it with
+-                    // the controller so the browser process manager can shut down too, then
+-                    // hand the pages the page touched back to Windows (reopening costs a
+-                    // cold ~200 ms environment start instead of keeping them resident).
+-                    self.web_env = None;
+                     self.set_settings_ring(None);
+                     self.resume_peek_hotkey();
+-                    pecofence_platform::memstats::trim_working_set();
++                }
++                if self.fe_glass.as_ref().is_some_and(|h| h.hwnd() == hwnd) {
++                    self.fe_glass = None;
++                }
++                if self.settings.is_none() && self.fe_glass.is_none() {
++                    // The WebView2 environment only exists for the windows: release it
++                    // with the last controller so the browser process manager can shut
++                    // down too (reopening costs a cold ~200 ms environment start).
++                    if self.web_env.is_some() {
++                        self.web_env = None;
++                        pecofence_platform::memstats::trim_working_set();
++                    }
+                 }
+             }
+             Command::FadeOutDone(hwnd) => {
 diff --git a/crates/app/src/app/settings.rs b/crates/app/src/app/settings.rs
-index be7e0a3..2f88ccc 100644
+index be7e0a3..127f2a6 100644
 --- a/crates/app/src/app/settings.rs
 +++ b/crates/app/src/app/settings.rs
-@@ -347,9 +347,6 @@ impl App {
+@@ -213,6 +213,39 @@ impl App {
+         self.settings_toast(source.done());
+     }
+ 
++    /// Lazily creates the shared WebView2 environment both hosts use;
++    /// `false` means the caller should abandon the open (error reported).
++    fn ensure_web_env(&mut self) -> bool {
++        if self.web_env.is_some() {
++            return true;
++        }
++        match WebEnvironment::create() {
++            Ok(env) => {
++                self.web_env = Some(env);
++                true
++            }
++            // WebView2's wait for its callback pumps messages and ends with an error when
++            // it takes a WM_QUIT (the session ends): quit after all.
++            Err(_) if window::quit_posted() => {
++                window::post_quit(0);
++                false
++            }
++            Err(e) => {
++                tracing::error!(error = %e, "WebView2 environment failed");
++                if let Some(t) = &self.tray {
++                    t.show_info(
++                        "PecoFence",
++                        pecofence_core::i18n::text(
++                            "无法创建 WebView2 环境，请确认已安装 Microsoft Edge WebView2 运行时。",
++                        ),
++                        true,
++                    );
++                }
++                false
++            }
++        }
++    }
++
+     pub(super) fn open_settings(&mut self) {
+         self.query_store_startup();
+         if let Some(h) = &self.settings {
+@@ -220,27 +253,8 @@ impl App {
+             window::bring_to_front(h.hwnd());
+             return;
+         }
+-        if self.web_env.is_none() {
+-            match WebEnvironment::create() {
+-                Ok(env) => self.web_env = Some(env),
+-                // WebView2's wait for its callback pumps messages and ends with an error when
+-                // it takes a WM_QUIT (the session ends): quit after all.
+-                Err(_) if window::quit_posted() => {
+-                    window::post_quit(0);
+-                    return;
+-                }
+-                Err(e) => {
+-                    tracing::error!(error = %e, "WebView2 environment failed");
+-                    if let Some(t) = &self.tray {
+-                        t.show_info(
+-                            "PecoFence",
+-                            pecofence_core::i18n::text("无法创建 WebView2 环境，请确认已安装 Microsoft Edge WebView2 运行时。"),
+-                            true,
+-                        );
+-                    }
+-                    return;
+-                }
+-            }
++        if !self.ensure_web_env() {
++            return;
+         }
+         match SettingsHost::open(
+             &self.settings_class,
+@@ -276,6 +290,149 @@ impl App {
+         }
+     }
+ 
++    /// The dedicated ExplorerBlurMica editor (settings card's 高级设置 button):
++    /// a singleton — a second click foregrounds the open window, maximized or not.
++    pub(super) fn open_fe_glass(&mut self) {
++        if let Some(h) = &self.fe_glass {
++            window::show_normal(h.hwnd());
++            window::bring_to_front(h.hwnd());
++            return;
++        }
++        if !self.ensure_web_env() {
++            return;
++        }
++        match crate::fe_glass_host::FeGlassHost::open(
++            &self.fe_glass_class,
++            self.web_env.as_ref().unwrap(),
++            self.theme_mode,
++            self.queue.clone(),
++        ) {
++            Ok(mut host) => {
++                // Same drawn fence glyph as the settings caption, at 16/32 DIP.
++                let scale = monitors::dpi_for_window(host.hwnd()).max(96) as f32 / 96.0;
++                let accent = self.ctx.theme.borrow().accent_rgb8();
++                let dark = self.theme_mode == ThemeMode::Dark;
++                let small = (16.0 * scale).round() as i32;
++                let big = (32.0 * scale).round() as i32;
++                host.set_icons(
++                    (small, tray_icon_image(small, accent, dark)),
++                    (big, tray_icon_image(big, accent, dark)),
++                );
++                self.fe_glass = Some(host);
++            }
++            Err(_) if window::quit_posted() => window::post_quit(0),
++            Err(e) => {
++                tracing::error!(error = %e, "fe glass window failed");
++                self.settings_error(pecofence_core::i18n::text(
++                    "无法打开设置窗口（WebView2 初始化失败），请检查 Microsoft Edge WebView2 运行时。",
++                ));
++            }
++        }
++    }
++
++    /// The `feState` payload the glass editor renders from — the seven `fe_*`
++    /// fields plus `systemLight` (`AppsUseLightTheme`), which decides which
++    /// RGBA row is editable and which palette the preview tints with.
++    pub(super) fn fe_glass_state_json(&self) -> String {
++        let localization = pecofence_core::i18n::ui_payload();
++        let s = &self.state.config.settings;
++        serde_json::json!({
++            "type": "feState",
++            "locale": localization["locale"],
++            "translations": localization["translations"],
++            "systemLight": systheme::apps_use_light_theme(),
++            "fe": {
++                "effect": s.fe_effect,
++                "clearAddress": s.fe_clear_address,
++                "clearBarBg": s.fe_clear_bar_bg,
++                "clearWinuiBg": s.fe_clear_winui_bg,
++                "showLine": s.fe_show_line,
++                "lightRgba": s.fe_light_rgba,
++                "darkRgba": s.fe_dark_rgba,
++            },
++        })
++        .to_string()
++    }
++
++    /// Signature of the `feState` payload — everything the page renders from
++    /// that can change beneath it: the fields, the active-theme flag, and the
++    /// language (the document localizes itself from `translations`).
++    fn fe_glass_sig(&self) -> String {
++        let s = &self.state.config.settings;
++        format!(
++            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
++            s.fe_effect,
++            s.fe_clear_address,
++            s.fe_clear_bar_bg,
++            s.fe_clear_winui_bg,
++            s.fe_show_line,
++            s.fe_light_rgba,
++            s.fe_dark_rgba,
++            systheme::apps_use_light_theme(),
++            pecofence_core::i18n::ui_payload()["locale"],
++        )
++    }
++
++    /// Pushes `feState` to the open glass editor — but only when what it would
++    /// show changed since the last push. Otherwise an unrelated settings
++    /// commit would keep resetting the page's unsaved draft mid-edit.
++    pub(super) fn push_fe_glass_state(&self) {
++        let Some(h) = &self.fe_glass else {
++            return;
++        };
++        let sig = self.fe_glass_sig();
++        if *self.fe_glass_pushed.borrow() == sig {
++            return;
++        }
++        *self.fe_glass_pushed.borrow_mut() = sig;
++        h.post_json(&self.fe_glass_state_json());
++    }
++
++    /// The page's Apply: adopt the seven `fe_*` fields, run the normal
++    /// settings diff (`apply_effect` writes `config.ini` and reloads EBM in
++    /// each cabinet pid), then restart Explorer so every surface re-reads the
++    /// new material — the same refresh upstream's `register.cmd` performs.
++    /// On a no-change apply nothing is restarted.
++    fn apply_fe_glass(&mut self, v: &serde_json::Value) {
++        let old = self.state.config.settings.clone();
++        let mut new = old.clone();
++        let str_of = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("");
++        let bool_of = |k: &str, d: bool| v.get(k).and_then(|x| x.as_bool()).unwrap_or(d);
++        new.fe_effect = str_of("effect").to_string();
++        new.fe_clear_address = bool_of("clearAddress", old.fe_clear_address);
++        new.fe_clear_bar_bg = bool_of("clearBarBg", old.fe_clear_bar_bg);
++        new.fe_clear_winui_bg = bool_of("clearWinuiBg", old.fe_clear_winui_bg);
++        new.fe_show_line = bool_of("showLine", old.fe_show_line);
++        new.fe_light_rgba = str_of("lightRgba").to_string();
++        new.fe_dark_rgba = str_of("darkRgba").to_string();
++        let wanted = new.fe_effect.clone();
++        let changed = new != old;
++        self.apply_settings(new);
++        let applied = self.state.config.settings.fe_effect == wanted;
++        if let Some(h) = &self.fe_glass {
++            let (text, error) = if !applied {
++                (
++                    pecofence_core::i18n::text("资源管理器背景效果未能更改，请稍后重试。")
++                        .to_string(),
++                    true,
++                )
++            } else if changed {
++                (
++                    pecofence_core::i18n::text("正在重启资源管理器…").to_string(),
++                    false,
++                )
++            } else {
++                (pecofence_core::i18n::text("已应用").to_string(), false)
++            };
++            h.post_json(
++                &serde_json::json!({ "type": "feToast", "text": text, "error": error }).to_string(),
++            );
++        }
++        if applied && changed {
++            std::thread::spawn(pecofence_platform::tap::restart_explorer);
++        }
++    }
++
+     pub(super) fn settings_state_json(&self) -> String {
+         let localization = pecofence_core::i18n::ui_payload();
+         let fences: Vec<serde_json::Value> = self
+@@ -347,9 +504,6 @@ impl App {
              "taskbarStyles": pecofence_core::taskbar_themes::style_options_json(),
              // Notification Center Style dropdown — same isolation again.
              "notificationCenterStyles": pecofence_core::notification_center_themes::style_options_json(),
@@ -6395,7 +6689,49 @@ index be7e0a3..2f88ccc 100644
          })
          .to_string()
      }
-@@ -896,7 +893,7 @@ impl App {
+@@ -358,6 +512,7 @@ impl App {
+         if let Some(h) = &self.settings {
+             h.post_json(&self.settings_state_json());
+         }
++        self.push_fe_glass_state();
+     }
+ 
+     /// File watcher/navigation updates must not rebuild controls while the user is
+@@ -468,6 +623,25 @@ impl App {
+                 }
+                 self.show_pending_feedback();
+             }
++            // The glass editor's own protocol — fe_glass.html is the only page
++            // that speaks it, so routing by type stays unambiguous.
++            Some("feReady") => {
++                // Fresh page: force the state push (the sig guard would skip a
++                // repeated payload), then reveal the window maximized.
++                self.fe_glass_pushed.borrow_mut().clear();
++                self.push_fe_glass_state();
++                if let Some(h) = &self.fe_glass {
++                    window::show_maximized(h.hwnd());
++                    window::bring_to_front(h.hwnd());
++                }
++            }
++            Some("feApply") => self.apply_fe_glass(&v),
++            Some("feCancel") => {
++                if let Some(h) = self.fe_glass.take() {
++                    self.fe_glass_pushed.borrow_mut().clear();
++                    h.close();
++                }
++            }
+             Some("setFence") => self.on_set_fence(&v),
+             Some("ringFence") => {
+                 let host = v
+@@ -765,6 +939,7 @@ impl App {
+                         self.resume_peek_hotkey();
+                     }
+                 }
++                Some("openFeGlass") => self.open_fe_glass(),
+                 Some("restartExplorer") => {
+                     // Failsafe for a stuck taskbar/desktop: kill the shell and
+                     // let Windows' own respawn (or our detached spawn) bring it
+@@ -896,7 +1071,7 @@ impl App {
              // hand-edited patchSettings — same treatment as a failed write.
              let id = new.start_menu_style.as_str();
              let applied = pecofence_core::start_menu_themes::is_style_id(id)
@@ -6404,7 +6740,7 @@ index be7e0a3..2f88ccc 100644
              if !applied {
                  new.start_menu_style.clone_from(&old.start_menu_style);
                  self.settings_error(pecofence_core::i18n::text(
-@@ -907,7 +904,7 @@ impl App {
+@@ -907,7 +1082,7 @@ impl App {
          if new.taskbar_style != old.taskbar_style {
              let id = new.taskbar_style.as_str();
              let applied = pecofence_core::taskbar_themes::is_style_id(id)
@@ -6413,7 +6749,7 @@ index be7e0a3..2f88ccc 100644
              if !applied {
                  new.taskbar_style.clone_from(&old.taskbar_style);
                  self.settings_error(pecofence_core::i18n::text(
-@@ -927,32 +924,32 @@ impl App {
+@@ -927,32 +1102,32 @@ impl App {
                  ));
              }
          }
@@ -6467,6 +6803,324 @@ index be7e0a3..2f88ccc 100644
          let icons_toggled = new.hide_real_icons != old.hide_real_icons;
          if new.quick_hide.enabled != old.quick_hide.enabled
              && let Some(a) = self.anchor.borrow_mut().as_mut()
+@@ -2485,6 +2660,9 @@ impl App {
+         if let Some(host) = &self.settings {
+             host.update_language();
+         }
++        if let Some(host) = &self.fe_glass {
++            host.update_language();
++        }
+         for window in self.fences.values() {
+             window.redraw();
+         }
+diff --git a/crates/app/src/app/visuals.rs b/crates/app/src/app/visuals.rs
+index 7133b51..0cec489 100644
+--- a/crates/app/src/app/visuals.rs
++++ b/crates/app/src/app/visuals.rs
+@@ -1267,6 +1267,10 @@ impl App {
+             }
+             self.push_settings_state();
+         }
++        if theme_changed && let Some(h) = &self.fe_glass {
++            h.set_theme(mode);
++            self.push_fe_glass_state();
++        }
+         for w in self.fences.values().chain(self.desktop_windows.values()) {
+             w.set_theme(theme, backdrops.clone(), shadow);
+         }
+diff --git a/crates/app/src/fe_glass_host.rs b/crates/app/src/fe_glass_host.rs
+new file mode 100644
+index 0000000..988192b
+--- /dev/null
++++ b/crates/app/src/fe_glass_host.rs
+@@ -0,0 +1,258 @@
++//! Dedicated File Explorer glass (ExplorerBlurMica) customization window:
++//! a second, single-instance WebView2 host — maximized, standard caption —
++//! split into a settings pane and a live preview pane (ui/fe_glass.html).
++//!
++//! IPC: the page posts JSON (`{"type": "feReady" | "feApply" | "feCancel"}`)
++//! forwarded as `Command::SettingsMessage`; the host pushes `feState` /
++//! `feToast` with `post_json`.
++
++use crate::commands::{Command, CommandQueue};
++use crate::settings_host::WebEnvironment;
++use pecofence_platform::window::{
++    self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
++};
++use pecofence_platform::{HWND, RECT, dwm, monitors, msg};
++use pecofence_render::ThemeMode;
++use std::cell::RefCell;
++use std::rc::Rc;
++use windows_core::Result;
++use windows_webview::{Controller, WebView};
++
++pub const FE_GLASS_CLASS: &str = "PecoFence.FeGlass";
++const FE_GLASS_HTML: &str = include_str!("../../../ui/fe_glass.html");
++const I18N_JS: &str = include_str!("../../../ui/i18n.js");
++
++struct HostState {
++    controller: Option<Controller>,
++    webview: Option<WebView>,
++}
++
++pub struct FeGlassHost {
++    window: Window,
++    state: Rc<RefCell<HostState>>,
++    /// Caption icons (small/big); destroyed with the host.
++    icons: Vec<pecofence_platform::tray::OwnedIcon>,
++    _registrations: Vec<windows_webview::EventRegistration>,
++}
++
++impl FeGlassHost {
++    pub fn register_class() -> Result<WindowClass> {
++        WindowClass::register(FE_GLASS_CLASS, ClassOptions::default())
++    }
++
++    /// Creates the window (hidden until the page reports `feReady`, when it is
++    /// shown maximized) and loads the customization page. Page messages are
++    /// forwarded to the command queue as `Command::SettingsMessage`.
++    pub fn open(
++        class: &WindowClass,
++        env: &WebEnvironment,
++        mode: ThemeMode,
++        queue: CommandQueue,
++    ) -> Result<Self> {
++        let state = Rc::new(RefCell::new(HostState {
++            controller: None,
++            webview: None,
++        }));
++
++        let mons = monitors::enumerate();
++        let primary = mons.iter().find(|m| m.primary).or(mons.first());
++        let scale = primary.map(|m| m.scale()).unwrap_or(1.0);
++        let place = primary.map(|m| m.work_area);
++
++        let handler: MessageHandler = {
++            let state = state.clone();
++            let queue = queue.clone();
++            Box::new(
++                move |hwnd: HWND, message: u32, _wparam: usize, lparam: isize| -> Option<isize> {
++                    match message {
++                        msg::WM_SIZE => {
++                            let w = msg::lo_i16(lparam);
++                            let h = msg::hi_i16(lparam);
++                            if let Some(c) = state.borrow().controller.as_ref() {
++                                let _ = c.set_bounds(0, 0, w, h);
++                                let _ = c.set_visible(w > 0 && h > 0);
++                            }
++                            Some(0)
++                        }
++                        msg::WM_MOVE => {
++                            if let Some(c) = state.borrow().controller.as_ref() {
++                                let _ = c.notify_parent_window_position_changed();
++                            }
++                            Some(0)
++                        }
++                        msg::WM_ERASEBKGND => Some(1),
++                        msg::WM_DPICHANGED => {
++                            // SAFETY: lParam points to the suggested RECT for
++                            // the duration of the message.
++                            let r = unsafe { *(lparam as *const RECT) };
++                            let _ = window::set_window_bounds(
++                                hwnd,
++                                r.left,
++                                r.top,
++                                r.right - r.left,
++                                r.bottom - r.top,
++                            );
++                            Some(0)
++                        }
++                        msg::WM_SETFOCUS => {
++                            if let Some(c) = state.borrow().controller.as_ref() {
++                                let _ =
++                                    c.move_focus(windows_webview::MoveFocusReason::Programmatic);
++                            }
++                            Some(0)
++                        }
++                        msg::WM_DESTROY => {
++                            let mut s = state.borrow_mut();
++                            s.webview = None;
++                            if let Some(c) = s.controller.take() {
++                                let _ = c.close();
++                            }
++                            queue.push(Command::WindowGone(hwnd));
++                            Some(0)
++                        }
++                        _ => None,
++                    }
++                },
++            )
++        };
++
++        // Opens maximized; the work-area bounds are what the window restores to.
++        let r = place.unwrap_or(RECT {
++            left: 100,
++            top: 100,
++            right: (960.0 * scale) as i32 + 100,
++            bottom: (660.0 * scale) as i32 + 100,
++        });
++        let window = WindowBuilder::new(class)
++            .title(pecofence_core::i18n::text("资源管理器背景效果"))
++            .style(style::OVERLAPPEDWINDOW | style::CLIPCHILDREN)
++            .bounds(r.left, r.top, r.right - r.left, r.bottom - r.top)
++            .create(handler)?;
++        let hwnd = window.hwnd();
++        let _ = dwm::set_immersive_dark_mode(hwnd, matches!(mode, ThemeMode::Dark));
++        apply_caption(hwnd, mode);
++
++        // SAFETY: `hwnd` is a live window owned by this thread and outlives the
++        // controller (closed in WM_DESTROY).
++        let controller = unsafe {
++            env.inner()
++                .create_controller_for_hwnd(pecofence_platform::hwnd_ptr(hwnd))?
++        };
++        let webview = controller.webview()?;
++        let (cw, ch) = window.client_size();
++        controller.set_bounds(0, 0, cw, ch)?;
++        controller.set_default_background_color(page_background(mode))?;
++        if let Ok(settings) = webview.settings() {
++            let _ = settings.set_default_context_menus_enabled(false);
++            let _ = settings.set_status_bar_enabled(false);
++            let _ = settings.set_zoom_control_enabled(false);
++        }
++
++        let mut registrations = Vec::new();
++        {
++            let queue = queue.clone();
++            registrations.push(webview.on_web_message_received(move |args| {
++                queue.push(Command::SettingsMessage(args.web_message_as_json()));
++            })?);
++        }
++
++        let payload = pecofence_core::i18n::ui_payload()
++            .to_string()
++            .replace('<', "\\u003c");
++        let document = FE_GLASS_HTML
++            .replace(
++                "<!-- PECOFENCE_LOCALE -->",
++                &format!("<script>window.PECOFENCE_LOCALE={payload};</script>"),
++            )
++            .replace(
++                "<script src=\"i18n.js\"></script>",
++                &format!("<script>{I18N_JS}</script>"),
++            );
++        webview.navigate_to_string(&document)?;
++        tracing::debug!("fe_glass: page navigation submitted");
++
++        {
++            let mut s = state.borrow_mut();
++            s.controller = Some(controller);
++            s.webview = Some(webview);
++        }
++        if let Some(c) = state.borrow().controller.as_ref() {
++            let _ = c.set_visible(true);
++        }
++        Ok(Self {
++            window,
++            state,
++            icons: Vec::new(),
++            _registrations: registrations,
++        })
++    }
++
++    pub fn hwnd(&self) -> HWND {
++        self.window.hwnd()
++    }
++
++    pub fn update_language(&self) {
++        window::set_title(
++            self.window.hwnd(),
++            pecofence_core::i18n::text("资源管理器背景效果"),
++        );
++    }
++
++    /// Sets the window's caption icons (`WM_SETICON` small + big) from premultiplied BGRA.
++    pub fn set_icons(&mut self, small: (i32, Vec<u8>), big: (i32, Vec<u8>)) {
++        const WM_SETICON: u32 = 0x0080;
++        let mut icons = Vec::new();
++        for (which, (px, bgra)) in [(0usize, small), (1usize, big)] {
++            if let Ok(icon) = pecofence_platform::tray::OwnedIcon::from_bgra(px, &bgra) {
++                window::send_message(self.window.hwnd(), WM_SETICON, which, icon.raw());
++                icons.push(icon);
++            }
++        }
++        self.icons = icons;
++    }
++
++    /// Re-themes the caption and the page background after a light/dark switch.
++    pub fn set_theme(&self, mode: ThemeMode) {
++        let _ = dwm::set_immersive_dark_mode(self.window.hwnd(), matches!(mode, ThemeMode::Dark));
++        apply_caption(self.window.hwnd(), mode);
++        if let Some(c) = self.state.borrow().controller.as_ref() {
++            let _ = c.set_default_background_color(page_background(mode));
++        }
++    }
++
++    pub fn post_json(&self, json: &str) {
++        if let Some(w) = self.state.borrow().webview.as_ref() {
++            let _ = w.post_web_message_as_json(json);
++        }
++    }
++
++    /// Closes the browser and destroys the window.
++    pub fn close(self) {
++        {
++            let mut s = self.state.borrow_mut();
++            s.webview = None;
++            if let Some(c) = s.controller.take() {
++                let _ = c.close();
++            }
++        }
++        drop(self.window);
++    }
++}
++
++/// Page background: the theme's solid base colour (the preview paints its own
++/// artboard; Mica behind a maximized editor would only fight it).
++fn page_background(mode: ThemeMode) -> windows_webview::Color {
++    let (r, g, b) = match mode {
++        ThemeMode::Dark => (0x20, 0x20, 0x20),
++        ThemeMode::Light => (0xF3, 0xF3, 0xF3),
++    };
++    windows_webview::Color { a: 255, r, g, b }
++}
++
++/// Match the page sheet so the native caption belongs to the same surface.
++fn apply_caption(hwnd: HWND, mode: ThemeMode) {
++    let bg = page_background(mode);
++    // DWM takes COLORREF (0x00BBGGRR).
++    let c = u32::from(bg.r) | (u32::from(bg.g) << 8) | (u32::from(bg.b) << 16);
++    let _ = dwm::set_caption_color(hwnd, c);
++}
+diff --git a/crates/app/src/main.rs b/crates/app/src/main.rs
+index 3d480c4..6bbef23 100644
+--- a/crates/app/src/main.rs
++++ b/crates/app/src/main.rs
+@@ -8,6 +8,7 @@ mod app;
+ mod commands;
+ mod drag_guides;
+ mod drop_preview;
++mod fe_glass_host;
+ mod fence_window;
+ mod icons;
+ mod ipc_server;
+diff --git a/crates/app/src/settings_host.rs b/crates/app/src/settings_host.rs
+index 9ad34b6..70c7acf 100644
+--- a/crates/app/src/settings_host.rs
++++ b/crates/app/src/settings_host.rs
+@@ -67,6 +67,12 @@ impl WebEnvironment {
+         tracing::debug!("settings: WebView2 environment ready");
+         Ok(Self { env })
+     }
++
++    /// Shared with secondary hosts (the FE-glass editor) so one environment
++    /// serves every WebView2 window the app opens.
++    pub(crate) fn inner(&self) -> &Environment {
++        &self.env
++    }
+ }
+ 
+ struct HostState {
 diff --git a/crates/app/src/share_log.rs b/crates/app/src/share_log.rs
 index 605ec72..365d52a 100644
 --- a/crates/app/src/share_log.rs
@@ -11460,6 +12114,27 @@ index ca0b1a2..1b0de70 100644
          return false;
      };
      let vertical = taskbar_is_vertical();
+diff --git a/crates/platform/src/window.rs b/crates/platform/src/window.rs
+index 2b1d4dd..4e791f3 100644
+--- a/crates/platform/src/window.rs
++++ b/crates/platform/src/window.rs
+@@ -664,6 +664,16 @@ impl Drop for SingleInstance {
+     }
+ }
+ 
++/// Shows an interactive window maximized and brings it to the foreground.
++pub fn show_maximized(hwnd: HWND) {
++    const SW_MAXIMIZE: i32 = 3;
++    // SAFETY: plain FFI calls.
++    unsafe {
++        let _ = ShowWindow(hwnd, SW_MAXIMIZE);
++        let _ = SetForegroundWindow(hwnd);
++    }
++}
++
+ /// Explicitly shows an interactive window, restoring it only if minimized.
+ /// SetWindowPos is intentional: a process started hidden must still be able to open
+ /// settings later, and reopening an already maximized window must preserve its size.
 diff --git a/crates/tap/src/command.rs b/crates/tap/src/command.rs
 index 7d797cb..31b5763 100644
 --- a/crates/tap/src/command.rs
@@ -13504,10 +14179,10 @@ index 01ec2c2..becc545 100644
  windows_core::link!("kernel32.dll" "system" fn FindNextFileW(hfindfile: HANDLE, lpfindfiledata: *mut core::ffi::c_void) -> BOOL);
  windows_core::link!("kernel32.dll" "system" fn FindClose(hfindfile: HANDLE) -> BOOL);
 diff --git a/locales/ar.json b/locales/ar.json
-index 654edbd..4a84d6b 100644
+index 654edbd..bcd6b46 100644
 --- a/locales/ar.json
 +++ b/locales/ar.json
-@@ -654,9 +654,22 @@
+@@ -654,9 +654,36 @@
    "通知中心样式": "نمط مركز الإشعارات",
    "通知中心和操作中心视觉主题；选择后立即生效": "سمات مرئية لمركز الإشعارات ومركز الإجراءات؛ تُطبَّق فور الاختيار",
    "通知中心样式未能更改，请稍后重试。": "تعذّر تغيير نمط مركز الإشعارات — حاول مرة أخرى.",
@@ -13533,13 +14208,27 @@ index 654edbd..4a84d6b 100644
 +  "Windows 默认": "افتراضي Windows",
 +  "资源管理器背景效果未能更改，请稍后重试。": "تعذّر تغيير تأثير خلفية مستكشف الملفات؛ حاول مرة أخرى.",
 +  "选择颜色": "اختيار اللون",
-+  "恢复默认": "استعادة الافتراضي"
++  "恢复默认": "استعادة الافتراضي",
++  "高级设置": "الإعدادات المتقدمة",
++  "设置": "الإعدادات",
++  "实时预览": "معاينة مباشرة",
++  "效果类型": "نوع التأثير",
++  "文件资源管理器": "مستكشف الملفات",
++  "主页": "الرئيسية",
++  "快速访问": "الوصول السريع",
++  "下载": "التنزيلات",
++  "搜索": "بحث",
++  "个项目": "عناصر",
++  "混合色": "لون المزج",
++  "当前": "الحالي",
++  "已应用": "تم التطبيق",
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "تمويه وأكريليك وميكا من ExplorerBlurMica — عاين وخصّص في نافذة مخصصة"
  }
 diff --git a/locales/de.json b/locales/de.json
-index a6b2f5b..bc0a3cd 100644
+index a6b2f5b..fa1596d 100644
 --- a/locales/de.json
 +++ b/locales/de.json
-@@ -654,9 +654,22 @@
+@@ -654,9 +654,36 @@
    "通知中心样式": "Info-Center-Stil",
    "通知中心和操作中心视觉主题；选择后立即生效": "Visuelle Designs für Info-Center und Aktionscenter; wird sofort übernommen",
    "通知中心样式未能更改，请稍后重试。": "Info-Center-Stil konnte nicht geändert werden — bitte erneut versuchen.",
@@ -13565,13 +14254,27 @@ index a6b2f5b..bc0a3cd 100644
 +  "Windows 默认": "Windows-Standard",
 +  "资源管理器背景效果未能更改，请稍后重试。": "Der Explorer-Hintergrundeffekt konnte nicht geändert werden; bitte erneut versuchen.",
 +  "选择颜色": "Farbe wählen",
-+  "恢复默认": "Standard wiederherstellen"
++  "恢复默认": "Standard wiederherstellen",
++  "高级设置": "Erweiterte Einstellungen",
++  "设置": "Einstellungen",
++  "实时预览": "Live-Vorschau",
++  "效果类型": "Effekttyp",
++  "文件资源管理器": "Datei-Explorer",
++  "主页": "Startseite",
++  "快速访问": "Schnellzugriff",
++  "下载": "Downloads",
++  "搜索": "Suchen",
++  "个项目": "Elemente",
++  "混合色": "Mischfarbe",
++  "当前": "Aktuell",
++  "已应用": "Angewendet",
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica-Unschärfe, -Acryl und -Mica – Vorschau und Anpassung in einem eigenen Fenster"
  }
 diff --git a/locales/en.json b/locales/en.json
-index 4298a37..93df506 100644
+index 4298a37..78de129 100644
 --- a/locales/en.json
 +++ b/locales/en.json
-@@ -654,9 +654,22 @@
+@@ -654,9 +654,36 @@
    "通知中心样式": "Notification Center style",
    "通知中心和操作中心视觉主题；选择后立即生效": "Visual themes for the Notification and Action Center; applies on selection",
    "通知中心样式未能更改，请稍后重试。": "Couldn't change the Notification Center style — try again.",
@@ -13597,13 +14300,27 @@ index 4298a37..93df506 100644
 +  "Windows 默认": "Windows default",
 +  "资源管理器背景效果未能更改，请稍后重试。": "Couldn't change the File Explorer background effect; try again.",
 +  "选择颜色": "Choose color",
-+  "恢复默认": "Restore default"
++  "恢复默认": "Restore default",
++  "高级设置": "Advanced settings",
++  "设置": "Settings",
++  "实时预览": "Live preview",
++  "效果类型": "Effect type",
++  "文件资源管理器": "File Explorer",
++  "主页": "Home",
++  "快速访问": "Quick access",
++  "下载": "Downloads",
++  "搜索": "Search",
++  "个项目": "items",
++  "混合色": "Blend color",
++  "当前": "Current",
++  "已应用": "Applied",
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica blur, acrylic and mica — preview and customize in a dedicated window"
  }
 diff --git a/locales/es.json b/locales/es.json
-index e8f5851..3519d4c 100644
+index e8f5851..2c959cb 100644
 --- a/locales/es.json
 +++ b/locales/es.json
-@@ -654,9 +654,22 @@
+@@ -654,9 +654,36 @@
    "通知中心样式": "Estilo del Centro de notificaciones",
    "通知中心和操作中心视觉主题；选择后立即生效": "Temas visuales para el Centro de notificaciones y de actividades; se aplican al seleccionar",
    "通知中心样式未能更改，请稍后重试。": "No se pudo cambiar el estilo del Centro de notificaciones — inténtalo de nuevo.",
@@ -13629,13 +14346,27 @@ index e8f5851..3519d4c 100644
 +  "Windows 默认": "Predeterminado de Windows",
 +  "资源管理器背景效果未能更改，请稍后重试。": "No se pudo cambiar el efecto de fondo del Explorador; inténtelo de nuevo.",
 +  "选择颜色": "Elegir color",
-+  "恢复默认": "Restaurar valores predeterminados"
++  "恢复默认": "Restaurar valores predeterminados",
++  "高级设置": "Configuración avanzada",
++  "设置": "Configuración",
++  "实时预览": "Vista previa",
++  "效果类型": "Tipo de efecto",
++  "文件资源管理器": "Explorador de archivos",
++  "主页": "Inicio",
++  "快速访问": "Acceso rápido",
++  "下载": "Descargas",
++  "搜索": "Buscar",
++  "个项目": "elementos",
++  "混合色": "Color de mezcla",
++  "当前": "Actual",
++  "已应用": "Aplicado",
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Desenfoque, acrílico y mica de ExplorerBlurMica: vista previa y personalización en una ventana dedicada"
  }
 diff --git a/locales/fr.json b/locales/fr.json
-index 4e57230..2e8d1bb 100644
+index 4e57230..fcc91d9 100644
 --- a/locales/fr.json
 +++ b/locales/fr.json
-@@ -654,9 +654,22 @@
+@@ -654,9 +654,36 @@
    "通知中心样式": "Style du Centre de notifications",
    "通知中心和操作中心视觉主题；选择后立即生效": "Thèmes visuels pour le Centre de notifications et le Centre d’action ; appliqués dès la sélection",
    "通知中心样式未能更改，请稍后重试。": "Impossible de changer le style du Centre de notifications — réessayez.",
@@ -13661,13 +14392,27 @@ index 4e57230..2e8d1bb 100644
 +  "Windows 默认": "Par défaut Windows",
 +  "资源管理器背景效果未能更改，请稍后重试。": "Impossible de modifier l'effet d'arrière-plan de l'Explorateur ; réessayez.",
 +  "选择颜色": "Choisir une couleur",
-+  "恢复默认": "Restaurer les valeurs par défaut"
++  "恢复默认": "Restaurer les valeurs par défaut",
++  "高级设置": "Paramètres avancés",
++  "设置": "Paramètres",
++  "实时预览": "Aperçu en direct",
++  "效果类型": "Type d'effet",
++  "文件资源管理器": "Explorateur de fichiers",
++  "主页": "Accueil",
++  "快速访问": "Accès rapide",
++  "下载": "Téléchargements",
++  "搜索": "Rechercher",
++  "个项目": "éléments",
++  "混合色": "Couleur de fusion",
++  "当前": "Actuel",
++  "已应用": "Appliqué",
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Flou, acrylique et mica d'ExplorerBlurMica — aperçu et personnalisation dans une fenêtre dédiée"
  }
 diff --git a/locales/it.json b/locales/it.json
-index 82fa7f7..405b177 100644
+index 82fa7f7..3f63bfe 100644
 --- a/locales/it.json
 +++ b/locales/it.json
-@@ -654,9 +654,22 @@
+@@ -654,9 +654,36 @@
    "通知中心样式": "Stile del Centro notifiche",
    "通知中心和操作中心视觉主题；选择后立即生效": "Temi visivi per il Centro notifiche e il Centro operativo; si applicano alla selezione",
    "通知中心样式未能更改，请稍后重试。": "Impossibile cambiare lo stile del Centro notifiche — riprova.",
@@ -13693,13 +14438,27 @@ index 82fa7f7..405b177 100644
 +  "Windows 默认": "Predefinito di Windows",
 +  "资源管理器背景效果未能更改，请稍后重试。": "Impossibile modificare l'effetto sfondo di Esplora file; riprova.",
 +  "选择颜色": "Scegli colore",
-+  "恢复默认": "Ripristina predefinito"
++  "恢复默认": "Ripristina predefinito",
++  "高级设置": "Impostazioni avanzate",
++  "设置": "Impostazioni",
++  "实时预览": "Anteprima live",
++  "效果类型": "Tipo di effetto",
++  "文件资源管理器": "Esplora file",
++  "主页": "Home",
++  "快速访问": "Accesso rapido",
++  "下载": "Download",
++  "搜索": "Cerca",
++  "个项目": "elementi",
++  "混合色": "Colore blend",
++  "当前": "Corrente",
++  "已应用": "Applicato",
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Sfocatura, acrilico e mica di ExplorerBlurMica — anteprima e personalizzazione in una finestra dedicata"
  }
 diff --git a/locales/ja.json b/locales/ja.json
-index 93126c2..a5496ab 100644
+index 93126c2..07a5d31 100644
 --- a/locales/ja.json
 +++ b/locales/ja.json
-@@ -654,9 +654,22 @@
+@@ -654,9 +654,36 @@
    "通知中心样式": "通知センターのスタイル",
    "通知中心和操作中心视觉主题；选择后立即生效": "通知センターとアクションセンターのビジュアルテーマ。選択するとすぐに適用されます",
    "通知中心样式未能更改，请稍后重试。": "通知センターのスタイルを変更できませんでした — もう一度お試しください。",
@@ -13725,13 +14484,27 @@ index 93126c2..a5496ab 100644
 +  "Windows 默认": "Windows 既定",
 +  "资源管理器背景效果未能更改，请稍后重试。": "エクスプローラーの背景効果を変更できませんでした。後でもう一度お試しください。",
 +  "选择颜色": "色を選択",
-+  "恢复默认": "既定値に戻す"
++  "恢复默认": "既定値に戻す",
++  "高级设置": "詳細設定",
++  "设置": "設定",
++  "实时预览": "ライブプレビュー",
++  "效果类型": "効果の種類",
++  "文件资源管理器": "エクスプローラー",
++  "主页": "ホーム",
++  "快速访问": "クイック アクセス",
++  "下载": "ダウンロード",
++  "搜索": "検索",
++  "个项目": "個の項目",
++  "混合色": "ブレンド色",
++  "当前": "現在",
++  "已应用": "適用しました",
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica のぼかし・アクリル・マイカ — 専用ウィンドウでプレビューとカスタマイズ"
  }
 diff --git a/locales/ko.json b/locales/ko.json
-index b901674..d82c427 100644
+index b901674..c3b759e 100644
 --- a/locales/ko.json
 +++ b/locales/ko.json
-@@ -654,9 +654,22 @@
+@@ -654,9 +654,36 @@
    "通知中心样式": "알림 센터 스타일",
    "通知中心和操作中心视觉主题；选择后立即生效": "알림 센터 및 작업 센터의 시각적 테마; 선택하면 바로 적용됩니다",
    "通知中心样式未能更改，请稍后重试。": "알림 센터 스타일을 변경할 수 없습니다 — 다시 시도하세요.",
@@ -13757,13 +14530,27 @@ index b901674..d82c427 100644
 +  "Windows 默认": "Windows 기본값",
 +  "资源管理器背景效果未能更改，请稍后重试。": "파일 탐색기 배경 효과를 변경하지 못했습니다. 잠시 후 다시 시도하세요.",
 +  "选择颜色": "색 선택",
-+  "恢复默认": "기본값 복원"
++  "恢复默认": "기본값 복원",
++  "高级设置": "고급 설정",
++  "设置": "설정",
++  "实时预览": "실시간 미리 보기",
++  "效果类型": "효과 유형",
++  "文件资源管理器": "파일 탐색기",
++  "主页": "홈",
++  "快速访问": "빠른 액세스",
++  "下载": "다운로드",
++  "搜索": "검색",
++  "个项目": "개 항목",
++  "混合色": "혼합색",
++  "当前": "현재",
++  "已应用": "적용됨",
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica 블러, 아크릴, 마이카 — 전용 창에서 미리 보기 및 사용자 지정"
  }
 diff --git a/locales/pt-BR.json b/locales/pt-BR.json
-index bfee5a7..969c01d 100644
+index bfee5a7..7d7ef1a 100644
 --- a/locales/pt-BR.json
 +++ b/locales/pt-BR.json
-@@ -654,9 +654,22 @@
+@@ -654,9 +654,36 @@
    "通知中心样式": "Estilo da Central de Notificações",
    "通知中心和操作中心视觉主题；选择后立即生效": "Temas visuais para a Central de Notificações e a Central de Ações; aplicam-se ao selecionar",
    "通知中心样式未能更改，请稍后重试。": "Não foi possível alterar o estilo da Central de Notificações — tente novamente.",
@@ -13789,13 +14576,27 @@ index bfee5a7..969c01d 100644
 +  "Windows 默认": "Padrão do Windows",
 +  "资源管理器背景效果未能更改，请稍后重试。": "Não foi possível alterar o efeito de fundo do Explorador; tente novamente.",
 +  "选择颜色": "Escolher cor",
-+  "恢复默认": "Restaurar padrão"
++  "恢复默认": "Restaurar padrão",
++  "高级设置": "Configurações avançadas",
++  "设置": "Configurações",
++  "实时预览": "Visualização ao vivo",
++  "效果类型": "Tipo de efeito",
++  "文件资源管理器": "Explorador de Arquivos",
++  "主页": "Início",
++  "快速访问": "Acesso rápido",
++  "下载": "Downloads",
++  "搜索": "Pesquisar",
++  "个项目": "itens",
++  "混合色": "Cor de mesclagem",
++  "当前": "Atual",
++  "已应用": "Aplicado",
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Desfoque, acrílico e mica do ExplorerBlurMica — visualize e personalize em uma janela dedicada"
  }
 diff --git a/locales/ru.json b/locales/ru.json
-index 55d1894..1b2f6dd 100644
+index 55d1894..91357c9 100644
 --- a/locales/ru.json
 +++ b/locales/ru.json
-@@ -654,9 +654,22 @@
+@@ -654,9 +654,36 @@
    "通知中心样式": "Стиль центра уведомлений",
    "通知中心和操作中心视觉主题；选择后立即生效": "Визуальные темы для центра уведомлений и центра действий; применяются при выборе",
    "通知中心样式未能更改，请稍后重试。": "Не удалось изменить стиль центра уведомлений — повторите попытку.",
@@ -13821,13 +14622,27 @@ index 55d1894..1b2f6dd 100644
 +  "Windows 默认": "По умолчанию (Windows)",
 +  "资源管理器背景效果未能更改，请稍后重试。": "Не удалось изменить эффект фона Проводника; повторите попытку.",
 +  "选择颜色": "Выбрать цвет",
-+  "恢复默认": "Восстановить по умолчанию"
++  "恢复默认": "Восстановить по умолчанию",
++  "高级设置": "Дополнительно",
++  "设置": "Параметры",
++  "实时预览": "Просмотр",
++  "效果类型": "Тип эффекта",
++  "文件资源管理器": "Проводник",
++  "主页": "Главная",
++  "快速访问": "Быстрый доступ",
++  "下载": "Загрузки",
++  "搜索": "Поиск",
++  "个项目": "элементов",
++  "混合色": "Цвет подложки",
++  "当前": "Текущая",
++  "已应用": "Применено",
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Размытие, акрил и слюда ExplorerBlurMica — предпросмотр и настройка в отдельном окне"
  }
 diff --git a/locales/zh-TW.json b/locales/zh-TW.json
-index c80e811..c703f75 100644
+index c80e811..45c4dce 100644
 --- a/locales/zh-TW.json
 +++ b/locales/zh-TW.json
-@@ -654,9 +654,22 @@
+@@ -654,9 +654,36 @@
    "通知中心样式": "通知中心樣式",
    "通知中心和操作中心视觉主题；选择后立即生效": "通知中心和操作中心視覺主題；選擇後立即生效",
    "通知中心样式未能更改，请稍后重试。": "通知中心樣式未能更改，請稍後重試。",
@@ -13853,7 +14668,21 @@ index c80e811..c703f75 100644
 +  "Windows 默认": "Windows 預設",
 +  "资源管理器背景效果未能更改，请稍后重试。": "檔案總管背景效果未能更改，請稍後重試。",
 +  "选择颜色": "選擇顏色",
-+  "恢复默认": "恢復預設"
++  "恢复默认": "恢復預設",
++  "高级设置": "進階設定",
++  "设置": "設定",
++  "实时预览": "即時預覽",
++  "效果类型": "效果類型",
++  "文件资源管理器": "檔案總管",
++  "主页": "常用",
++  "快速访问": "快速存取",
++  "下载": "下載",
++  "搜索": "搜尋",
++  "个项目": "個項目",
++  "混合色": "混合色",
++  "当前": "目前",
++  "已应用": "已套用",
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica 模糊、壓克力與雲母 — 在專屬視窗中即時預覽並自訂"
  }
 diff --git a/scripts/make-windows.ps1 b/scripts/make-windows.ps1
 index a50def5..f2c453d 100644
@@ -20636,11 +21465,579 @@ index 0000000..c5ba7ac
 +You may replace this file with any compatible build of
 +ExplorerBlurMica — PecoFence deploys and registers whatever is at
 +this path (or already deployed to the residents directory).
+diff --git a/ui/fe_glass.html b/ui/fe_glass.html
+new file mode 100644
+index 0000000..7b1a431
+--- /dev/null
++++ b/ui/fe_glass.html
+@@ -0,0 +1,562 @@
++<!doctype html>
++<html lang="zh-CN">
++<head>
++<meta charset="utf-8">
++<meta name="viewport" content="width=device-width, initial-scale=1">
++<title>资源管理器背景效果</title>
++<!-- PECOFENCE_LOCALE -->
++<script src="i18n.js"></script>
++<style>
++  :root {
++    --accent: #0078D4;
++    --sheet: #202020;
++    --card: #2b2b2b;
++    --line: #3c3c3c;
++    --text: #f0f0f0;
++    --text2: #a8a8a8;
++    --control: #333333;
++    --control-strong: #4a4a4a;
++    --ex-bg: #191919;
++    --ex-surface: #242424;
++    --ex-text: #ececec;
++  }
++  html.light {
++    --sheet: #f3f3f3;
++    --card: #ffffff;
++    --line: #dcdcdc;
++    --text: #1b1b1b;
++    --text2: #6a6a6a;
++    --control: #e8e8e8;
++    --control-strong: #cfcfcf;
++    --ex-bg: #f7f7f7;
++    --ex-surface: #ffffff;
++    --ex-text: #1b1b1b;
++  }
++  * { box-sizing: border-box; }
++  html, body { height: 100%; margin: 0; }
++  body {
++    background: var(--sheet); color: var(--text);
++    font: 13px/1.45 "Segoe UI", "Microsoft YaHei", sans-serif;
++    display: flex; flex-direction: column; overflow: hidden;
++    -webkit-user-select: none; user-select: none;
++  }
++  .ic { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-weight: 400; font-style: normal; }
++
++  .wrap { flex: 1; display: flex; min-height: 0; }
++
++  /* ------------------------------------------------ left: settings panel */
++  aside.panel {
++    width: 400px; flex: none; padding: 22px 26px; overflow-y: auto;
++    border-inline-end: 1px solid var(--line); background: var(--card);
++  }
++  h1 { font-size: 22px; font-weight: 600; margin: 0 0 18px; }
++  h2 { font-size: 13px; font-weight: 600; margin: 22px 0 8px; color: var(--text2); text-transform: none; }
++  .row {
++    display: flex; align-items: center; justify-content: space-between; gap: 12px;
++    padding: 10px 0;
++  }
++  .row .lbl { min-width: 0; }
++  .row .lbl .t { font-size: 13px; }
++  .row .lbl .s { font-size: 12px; color: var(--text2); margin-top: 2px; }
++  select, input[type=text] {
++    background: var(--control); color: var(--text); border: 1px solid var(--line);
++    border-radius: 6px; padding: 6px 10px; font: inherit; min-width: 0;
++  }
++  select { width: 170px; }
++  input[type=text] { width: 110px; font-family: Consolas, monospace; }
++  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
++
++  .toggle {
++    width: 40px; height: 20px; flex: none; border-radius: 10px; background: var(--control-strong);
++    position: relative; cursor: pointer; transition: background .15s; border: 1px solid var(--line);
++  }
++  .toggle::after {
++    content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
++    border-radius: 50%; background: var(--text2); transition: left .15s, background .15s;
++  }
++  .toggle.on { background: var(--accent); border-color: var(--accent); }
++  .toggle.on::after { left: 22px; background: #fff; }
++  html.light .toggle.on::after { background: #fff; }
++
++  .rgbaRow { display: flex; gap: 8px; align-items: center; }
++  .rgbaRow .dot {
++    width: 22px; height: 22px; border-radius: 5px; border: 1px solid var(--line);
++    flex: none; background: transparent; cursor: pointer; padding: 0;
++  }
++  .row.off { opacity: .45; }
++  .row.off .toggle, .row.off input, .row.off .dot { pointer-events: none; }
++  .row.off .tag { display: inline; }
++  .tag { display: none; font-size: 11px; color: var(--text2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; margin-inline-start: 6px; }
++  .row.on .tag.active { display: inline; border-color: var(--accent); color: var(--accent); }
++
++  /* --------------------------------------------- right: live preview pane */
++  section.preview { flex: 1; display: flex; flex-direction: column; min-width: 0; }
++  .preview-head { padding: 22px 28px 10px; }
++  .preview-head h1 { margin: 0; }
++  .stage { flex: 1; position: relative; overflow: hidden; margin: 8px 28px 24px; border-radius: 12px; border: 1px solid var(--line); }
++
++  /* Desktop wallpaper stand-in: layered blobs like the default Win11 bloom. */
++  .artboard {
++    position: absolute; inset: 0;
++    background:
++      radial-gradient(38% 55% at 22% 30%, rgba(0,90,190,.85), transparent 70%),
++      radial-gradient(34% 48% at 72% 22%, rgba(30,60,160,.8), transparent 70%),
++      radial-gradient(45% 60% at 60% 78%, rgba(0,120,215,.55), transparent 70%),
++      radial-gradient(30% 40% at 88% 62%, rgba(90,40,160,.5), transparent 70%),
++      linear-gradient(160deg, #0a1e38, #04101f 55%, #020a14);
++  }
++  html.light .artboard {
++    background:
++      radial-gradient(38% 55% at 22% 30%, rgba(120,190,255,.9), transparent 70%),
++      radial-gradient(34% 48% at 72% 22%, rgba(160,200,255,.85), transparent 70%),
++      radial-gradient(45% 60% at 60% 78%, rgba(90,160,240,.7), transparent 70%),
++      linear-gradient(160deg, #cfe4fa, #9ec7ef 55%, #74aae2);
++  }
++  .taskbar {
++    position: absolute; left: 0; right: 0; bottom: 0; height: 40px;
++    background: rgba(20,20,24,.72); backdrop-filter: blur(12px);
++    display: flex; align-items: center; justify-content: center; gap: 14px;
++  }
++  html.light .taskbar { background: rgba(240,244,250,.78); }
++  .taskbar i { width: 18px; height: 18px; border-radius: 4px; background: #4aa3ff; display: block; }
++  .taskbar i:nth-child(2) { background: #f2c94c; border-radius: 2px 6px 6px 2px; }
++  .taskbar i:nth-child(3) { background: #e0609a; border-radius: 50%; }
++
++  /* Mock File Explorer window. Its own bg is nearly invisible — the material
++     layer (backdrop-filter) + the EBM tint overlay do the work, like the real
++     pipeline where DWM supplies the material under a cleared window. */
++  .explorer {
++    position: absolute; inset: 7% 12% 10% 12%; min-width: 560px;
++    border-radius: 9px; overflow: hidden; display: flex; flex-direction: column;
++    color: var(--ex-text); font-size: 12px;
++    box-shadow: 0 12px 48px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.08);
++    background: var(--ex-bg);          /* fx-none falls back to opaque */
++    transition: background .2s;
++  }
++  .explorer.glass { background: transparent; }
++  .tint { position: absolute; inset: 0; pointer-events: none; transition: background .2s; }
++  .mat { position: absolute; inset: 0; pointer-events: none; }
++  .explorer:not(.glass) .mat, .explorer:not(.glass) .tint { display: none; }
++  .fx-blur .mat      { backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); }
++  .fx-acrylic .mat   { backdrop-filter: blur(34px) saturate(150%); -webkit-backdrop-filter: blur(34px) saturate(150%); }
++  .fx-mica .mat      { backdrop-filter: blur(60px) saturate(120%); -webkit-backdrop-filter: blur(60px) saturate(120%); }
++  .fx-blurclear .mat { backdrop-filter: blur(22px) saturate(110%); -webkit-backdrop-filter: blur(22px) saturate(110%); }
++  .fx-micaalt .mat   { backdrop-filter: blur(60px) saturate(135%); -webkit-backdrop-filter: blur(60px) saturate(135%); }
++
++  .ex-titlebar {
++    position: relative; z-index: 2; height: 34px; flex: none;
++    display: flex; align-items: center; gap: 8px; padding: 0 10px 0 12px;
++    background: var(--ex-surface); transition: background .2s;
++  }
++  .ex-titlebar .name { font-size: 12px; font-weight: 600; flex: 1; }
++  .ex-titlebar .folder { width: 16px; height: 12px; border-radius: 2px 5px 4px 4px; background: #f2c94c; position: relative; }
++  .ex-titlebar .folder::before { content: ""; position: absolute; left: 0; top: -3px; width: 8px; height: 3px; border-radius: 2px 2px 0 0; background: #f2c94c; }
++  .cap { width: 30px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--ex-text); opacity: .8; }
++  .ex-tabs { position: relative; z-index: 2; height: 32px; flex: none; display: flex; align-items: flex-end; gap: 4px; padding: 0 10px; background: var(--ex-surface); transition: background .2s; }
++  .ex-tab {
++    display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px;
++    border-radius: 6px 6px 0 0; background: rgba(255,255,255,.1); font-size: 12px;
++  }
++  html.light .ex-tab { background: rgba(0,0,0,.06); }
++  .ex-tabs .plus { padding: 0 8px 4px; font-size: 14px; opacity: .7; }
++  .ex-toolbar {
++    position: relative; z-index: 2; height: 44px; flex: none;
++    display: flex; align-items: center; gap: 12px; padding: 0 14px;
++    background: var(--ex-surface); border-bottom: 1px solid rgba(128,128,128,.18);
++    transition: background .2s; font-size: 15px;
++  }
++  .ex-toolbar .new { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
++  .ex-toolbar .sep { width: 1px; height: 20px; background: rgba(128,128,128,.3); }
++  .ex-toolbar .glyph { opacity: .85; }
++  .ex-toolbar .spring { flex: 1; }
++  .ex-addr {
++    position: relative; z-index: 2; height: 36px; flex: none;
++    display: flex; align-items: center; gap: 8px; padding: 0 12px;
++    background: var(--ex-surface); transition: background .2s;
++  }
++  .ex-addr .navbtn { width: 26px; height: 24px; display: flex; align-items: center; justify-content: center; opacity: .6; }
++  .ex-addr .bar {
++    flex: 1; height: 24px; border-radius: 5px; display: flex; align-items: center; gap: 6px;
++    padding: 0 10px; font-size: 12px;
++    background: rgba(128,128,128,.16); border: 1px solid rgba(128,128,128,.25);
++    transition: background .2s, border-color .2s;
++  }
++  .ex-addr .bar.search { max-width: 190px; opacity: .8; }
++  .glass.cw .ex-titlebar, .glass.cw .ex-tabs, .glass.cw .ex-toolbar { background: transparent; }
++  .glass.ca .ex-addr { background: transparent; }
++  .glass.ca .ex-addr .bar { background: rgba(128,128,128,.10); }
++
++  .ex-body { position: relative; z-index: 2; flex: 1; display: flex; min-height: 0; }
++  .ex-nav {
++    width: 168px; flex: none; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px;
++    font-size: 12px;
++  }
++  .ex-nav .nhead { display: flex; align-items: center; gap: 7px; padding: 5px 8px; font-weight: 600; }
++  .ex-nav .ni { display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px 22px; border-radius: 5px; opacity: .92; }
++  .ex-nav .ni.sel { background: rgba(128,128,128,.22); }
++  .ex-nav .ni .mini { width: 13px; height: 10px; border-radius: 1px 3px 3px 3px; background: #f2c94c; flex: none; }
++  .ex-nav .ni .mini.blue { background: #4aa3ff; }
++  .ex-nav .ngrp { margin-top: 10px; opacity: .8; }
++  .ex-divider { width: 1px; background: rgba(128,128,128,.3); flex: none; display: none; }
++  .explorer.sl .ex-divider { display: block; }
++  .ex-content { flex: 1; position: relative; padding: 14px 16px; overflow: hidden; }
++  .ex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
++  .ex-item { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px; border-radius: 6px; font-size: 11px; text-align: center; }
++  .ex-item .big { width: 40px; height: 30px; border-radius: 3px 8px 7px 7px; background: #f2c94c; position: relative; }
++  .ex-item .big::before { content: ""; position: absolute; left: 0; top: -5px; width: 16px; height: 6px; border-radius: 3px 3px 0 0; background: #f2c94c; }
++  .ex-item .big.dl { background: #27ae60; } .ex-item .big.vid { background: #9b51e0; }
++  .ex-item .big.pic { background: #2d9cdb; } .ex-item .big.mus { background: #eb5757; }
++  .ex-scroll {
++    position: absolute; top: 12px; right: 6px; bottom: 12px; width: 12px; border-radius: 6px;
++    background: rgba(128,128,128,.14); transition: background .2s;
++  }
++  .ex-scroll .thumb { position: absolute; top: 6px; left: 3px; right: 3px; height: 34%; border-radius: 4px; background: rgba(160,160,160,.75); }
++  .glass.cb .ex-scroll { background: transparent; }
++  .ex-status {
++    position: relative; z-index: 2; height: 24px; flex: none;
++    display: flex; align-items: center; padding: 0 14px; font-size: 11px; opacity: .75;
++    background: var(--ex-surface); transition: background .2s;
++  }
++  .glass.cw .ex-status { background: transparent; }
++
++  /* --------------------------------------------------------- footer bar */
++  footer {
++    flex: none; display: flex; justify-content: flex-end; gap: 10px;
++    padding: 12px 22px; border-top: 1px solid var(--line); background: var(--card);
++  }
++  footer button {
++    min-width: 96px; padding: 7px 18px; border-radius: 6px; font: inherit; cursor: pointer;
++    border: 1px solid var(--control-strong); background: var(--control); color: var(--text);
++  }
++  footer button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
++  footer button:hover { filter: brightness(1.12); }
++
++  /* ------------------------------------------------------------- toast */
++  #toast {
++    position: fixed; left: 50%; bottom: 74px; transform: translateX(-50%);
++    padding: 8px 18px; border-radius: 8px; background: #111; color: #fff;
++    border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,.4);
++    opacity: 0; transition: opacity .18s; pointer-events: none; z-index: 40;
++  }
++  #toast.on { opacity: 1; }
++
++  /* ------------------------------------------------------ color picker */
++  #rgbaPicker {
++    position: fixed; z-index: 50; width: 236px; padding: 12px;
++    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
++    box-shadow: 0 8px 28px rgba(0,0,0,.35);
++  }
++  #rgbaPicker .swatchGrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
++  #rgbaPicker .sw { aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
++  #rgbaPicker .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
++  #rgbaPicker .alphaRow { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--text2); }
++  #rgbaPicker .alphaRow input[type=range] { flex: 1; accent-color: var(--accent); }
++  #rgbaPicker .foot { display: flex; justify-content: flex-end; margin-top: 10px; }
++  #rgbaPicker .foot button {
++    font-size: 12px; padding: 4px 10px; border-radius: 6px;
++    border: 1px solid var(--line); background: var(--control); color: var(--text); cursor: pointer;
++  }
++</style>
++</head>
++<body>
++<div class="wrap">
++  <aside class="panel">
++    <h1>设置</h1>
++
++    <div class="row">
++      <div class="lbl"><div class="t">效果类型</div><div class="s">ExplorerBlurMica effect</div></div>
++      <select id="effectSel">
++        <option value="">Windows 默认</option>
++        <option value="blur">Blur</option>
++        <option value="acrylic">Acrylic</option>
++        <option value="mica">Mica</option>
++        <option value="blurclear">Blur (Clear)</option>
++        <option value="micaalt">Mica Alt</option>
++      </select>
++    </div>
++
++    <h2>ExplorerBlurMica</h2>
++    <div class="row" id="rowAddress">
++      <div class="lbl"><div class="t">清除地址栏背景</div><div class="s">EBM clearAddress</div></div>
++      <div class="toggle" id="tAddress" role="switch" tabindex="0"></div>
++    </div>
++    <div class="row" id="rowBarBg">
++      <div class="lbl"><div class="t">清除滚动条背景</div><div class="s">EBM clearBarBg</div></div>
++      <div class="toggle" id="tBarBg" role="switch" tabindex="0"></div>
++    </div>
++    <div class="row" id="rowWinUI">
++      <div class="lbl"><div class="t">清除 WinUI 工具栏背景</div><div class="s">EBM clearWinUIBg</div></div>
++      <div class="toggle" id="tWinUI" role="switch" tabindex="0"></div>
++    </div>
++    <div class="row" id="rowLine">
++      <div class="lbl"><div class="t">显示导航窗格分隔线</div><div class="s">EBM showLine</div></div>
++      <div class="toggle" id="tLine" role="switch" tabindex="0"></div>
++    </div>
++
++    <h2>混合色</h2>
++    <div class="row" id="rowDark">
++      <div class="lbl"><div class="t">深色模式叠加色 <span class="tag" data-i18n="当前">当前</span></div><div class="s">#AARRGGBB — EBM [dark]</div></div>
++      <div class="rgbaRow">
++        <button class="dot" id="darkDot" type="button" data-rgba="darkRgba" data-rgba-default="#78000000" data-i18n-title="选择颜色" title="选择颜色"></button>
++        <input type="text" id="darkRgbaIn" dir="ltr" spellcheck="false" autocomplete="off" maxlength="9">
++      </div>
++    </div>
++    <div class="row" id="rowLight">
++      <div class="lbl"><div class="t">浅色模式叠加色 <span class="tag" data-i18n="当前">当前</span></div><div class="s">#AARRGGBB — EBM [light]</div></div>
++      <div class="rgbaRow">
++        <button class="dot" id="lightDot" type="button" data-rgba="lightRgba" data-rgba-default="#A0DCDCDC" data-i18n-title="选择颜色" title="选择颜色"></button>
++        <input type="text" id="lightRgbaIn" dir="ltr" spellcheck="false" autocomplete="off" maxlength="9">
++      </div>
++    </div>
++  </aside>
++
++  <section class="preview">
++    <div class="preview-head"><h1>实时预览</h1></div>
++    <div class="stage">
++      <div class="artboard"></div>
++      <div class="explorer" id="mock">
++        <div class="mat"></div>
++        <div class="tint" id="tint"></div>
++        <div class="ex-titlebar">
++          <span class="folder"></span><span class="name">文件资源管理器</span>
++          <span class="cap ic">&#xE921;</span><span class="cap ic">&#xE738;</span><span class="cap ic">&#xE8BB;</span>
++        </div>
++        <div class="ex-tabs">
++          <div class="ex-tab"><span class="ic">&#xE80F;</span><span>主页</span></div>
++          <span class="plus">+</span>
++        </div>
++        <div class="ex-toolbar">
++          <span class="new"><span class="ic">&#xE710;</span><span data-i18n="新建">新建</span><span class="ic" style="font-size:9px">&#xE70D;</span></span>
++          <span class="sep"></span>
++          <span class="glyph ic">&#xE8C8;</span><span class="glyph ic">&#xE74D;</span><span class="glyph ic">&#xE8CB;</span>
++          <span class="glyph ic">&#xE8AC;</span><span class="glyph ic">&#xE895;</span><span class="glyph ic">&#xE74E;</span>
++          <span class="spring"></span>
++          <span class="glyph ic">&#xE8CB;</span><span class="glyph ic">&#xE8A7;</span><span class="glyph ic">&#xE712;</span>
++        </div>
++        <div class="ex-addr">
++          <span class="navbtn ic">&#xE72B;</span><span class="navbtn ic">&#xE72A;</span><span class="navbtn ic">&#xE74A;</span>
++          <div class="bar"><span class="ic" style="font-size:11px">&#xE8B7;</span><span data-i18n="桌面">桌面</span></div>
++          <div class="bar search"><span class="ic" style="font-size:11px">&#xE721;</span><span data-i18n="搜索">搜索</span></div>
++        </div>
++        <div class="ex-body">
++          <div class="ex-nav">
++            <div class="nhead"><span class="ic" style="color:#f2a33c">&#xE80F;</span><span data-i18n="快速访问">快速访问</span></div>
++            <div class="ni sel"><span class="mini"></span><span data-i18n="桌面">桌面</span></div>
++            <div class="ni"><span class="mini blue"></span><span data-i18n="下载">下载</span></div>
++            <div class="ni"><span class="mini"></span><span data-i18n="文档">文档</span></div>
++            <div class="ni"><span class="mini"></span><span data-i18n="图片">图片</span></div>
++            <div class="ngrp ni"><span class="ic" style="color:#4aa3ff">&#xE753;</span><span>OneDrive</span></div>
++          </div>
++          <div class="ex-divider"></div>
++          <div class="ex-content">
++            <div class="ex-grid">
++              <div class="ex-item"><span class="big"></span><span data-i18n="桌面">桌面</span></div>
++              <div class="ex-item"><span class="big dl"></span><span data-i18n="下载">下载</span></div>
++              <div class="ex-item"><span class="big"></span><span data-i18n="文档">文档</span></div>
++              <div class="ex-item"><span class="big vid"></span><span data-i18n="视频">视频</span></div>
++              <div class="ex-item"><span class="big pic"></span><span data-i18n="图片">图片</span></div>
++              <div class="ex-item"><span class="big mus"></span><span data-i18n="音乐">音乐</span></div>
++            </div>
++            <div class="ex-scroll"><div class="thumb"></div></div>
++          </div>
++        </div>
++        <div class="ex-status"><span>6&nbsp;</span><span data-i18n="个项目">个项目</span></div>
++      </div>
++      <div class="taskbar"><i></i><i></i><i></i></div>
++    </div>
++  </section>
++</div>
++
++<footer>
++  <button id="cancelBtn" type="button">取消</button>
++  <button id="applyBtn" type="button" class="primary">应用</button>
++</footer>
++<div id="toast" role="status" aria-live="polite"></div>
++
++<script>
++(() => {
++  'use strict';
++  const t = (s) => (window.PecoFenceI18n ? PecoFenceI18n.text(s) : s);
++  // capture() snapshots the DOM — rebuilt (and re-applied) after every
++  // dynamic append so later-injected Chinese text still localizes.
++  let applyCapture = () => {};
++  const i18nSet = (loc, tr) => { if (window.PecoFenceI18n) { PecoFenceI18n.set(loc, tr); applyCapture(); } };
++
++  const wv = window.chrome && window.chrome.webview;
++  const send = (m) => wv && wv.postMessage(m);
++
++  // Draft state — edits stay local until Apply; Cancel discards them.
++  const s = {
++    effect: '', clearAddress: false, clearBarBg: false, clearWinuiBg: false,
++    showLine: false, lightRgba: '', darkRgba: '',
++  };
++  let systemLight = true;
++
++  const $ = (id) => document.getElementById(id);
++  const mock = $('mock'), tint = $('tint'), toast = $('toast');
++  let toastTimer = 0;
++  function showToast(text) {
++    toast.textContent = text; toast.classList.add('on');
++    clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('on'), 2600);
++  }
++
++  const parseRgba = (hex) => {
++    const m = /^#?(?:([0-9a-fA-F]{2}))?([0-9a-fA-F]{6})$/.exec(hex || '');
++    return m ? { a: m[1] === undefined ? 255 : parseInt(m[1], 16), rgb: m[2].toUpperCase() } : null;
++  };
++  const rgbaCss = (hex, scale) => {
++    const p = parseRgba(hex);
++    if (!p) return 'transparent';
++    const a = Math.max(0, Math.min(1, (p.a / 255) * (scale ?? 1)));
++    return `rgba(${parseInt(p.rgb.slice(0, 2), 16)},${parseInt(p.rgb.slice(2, 4), 16)},${parseInt(p.rgb.slice(4, 6), 16)},${a.toFixed(3)})`;
++  };
++  const dotCss = (hex) => rgbaCss(hex) === 'transparent' ? 'transparent' : rgbaCss(hex);
++
++  // Mica samples the desktop heavily (denser, more opaque); Blur (Clear) is the
++  // lightest tint. The tint color itself is always the active theme's RGBA —
++  // matching EBM, where [light]/[dark] apply to every effect.
++  const TINT_SCALE = { blur: 0.85, acrylic: 1.0, mica: 1.0, blurclear: 0.55, micaalt: 1.0 };
++
++  function render() {
++    document.documentElement.classList.toggle('light', systemLight);
++    $('effectSel').value = s.effect;
++    [['tAddress', s.clearAddress], ['tBarBg', s.clearBarBg], ['tWinUI', s.clearWinuiBg], ['tLine', s.showLine]]
++      .forEach(([id, on]) => { const el = $(id); el.classList.toggle('on', !!on); el.setAttribute('aria-checked', String(!!on)); });
++
++    // Active-theme row editable, inactive row greyed + disabled.
++    $('rowLight').classList.toggle('off', !systemLight);
++    $('rowLight').classList.toggle('on', systemLight);
++    $('rowDark').classList.toggle('off', systemLight);
++    $('rowDark').classList.toggle('on', !systemLight);
++    $('lightRgbaIn').disabled = !systemLight;
++    $('darkRgbaIn').disabled = systemLight;
++    $('lightDot').disabled = !systemLight;
++    $('darkDot').disabled = systemLight;
++    if (document.activeElement !== $('lightRgbaIn')) $('lightRgbaIn').value = s.lightRgba || '';
++    if (document.activeElement !== $('darkRgbaIn')) $('darkRgbaIn').value = s.darkRgba || '';
++    $('lightDot').style.background = dotCss(s.lightRgba);
++    $('darkDot').style.background = dotCss(s.darkRgba);
++
++    // Preview: effect material + tint + the four clearing flags.
++    mock.className = 'explorer' + (s.effect ? ' glass fx-' + s.effect : '') +
++      (s.clearAddress ? ' ca' : '') + (s.clearBarBg ? ' cb' : '') +
++      (s.clearWinuiBg ? ' cw' : '') + (s.showLine ? ' sl' : '');
++    const active = systemLight ? s.lightRgba : s.darkRgba;
++    tint.style.background = s.effect ? rgbaCss(active, TINT_SCALE[s.effect] ?? 1) : 'transparent';
++    const optsOn = !!s.effect;
++    ['rowAddress', 'rowBarBg', 'rowWinUI', 'rowLine', 'rowDark', 'rowLight'].forEach(id => {
++      $(id).style.opacity = optsOn ? '' : '.45';
++      $(id).style.pointerEvents = optsOn ? '' : 'none';
++    });
++    $('effectSel').disabled = false;
++  }
++
++  // ------------------------------------------------------------ controls
++  $('effectSel').onchange = () => { s.effect = $('effectSel').value; render(); };
++  const bindToggle = (id, key) => {
++    const el = $(id);
++    el.onclick = () => { s[key] = !s[key]; render(); };
++    el.onkeydown = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); el.click(); } };
++  };
++  bindToggle('tAddress', 'clearAddress');
++  bindToggle('tBarBg', 'clearBarBg');
++  bindToggle('tWinUI', 'clearWinuiBg');
++  bindToggle('tLine', 'showLine');
++  $('lightRgbaIn').oninput = () => { s.lightRgba = $('lightRgbaIn').value.trim(); render(); };
++  $('darkRgbaIn').oninput = () => { s.darkRgba = $('darkRgbaIn').value.trim(); render(); };
++
++  // ------------------------------------------------- RGBA picker popup
++  const RP_PRESETS = ['#78000000', '#A0000000', '#50101216', '#80404040', '#A0DCDCDC', '#C8FFFFFF',
++    '#80FFFFFF', '#96C8C8C8', '#780078D4', '#78E74856', '#78107C10', '#78FFB900'];
++  const rpEl = document.createElement('div');
++  rpEl.id = 'rgbaPicker'; rpEl.hidden = true;
++  rpEl.innerHTML = `<div class="swatchGrid"></div>
++    <div class="alphaRow"><span data-i18n="不透明度">不透明度</span><input type="range" min="0" max="255"><span class="aval"></span></div>
++    <div class="foot"><button type="button" data-i18n="恢复默认">恢复默认</button></div>`;
++  document.body.appendChild(rpEl);
++  const rpGrid = rpEl.querySelector('.swatchGrid'), rpAlpha = rpEl.querySelector('input[type=range]'),
++    rpAval = rpEl.querySelector('.aval'), rpReset = rpEl.querySelector('.foot button');
++  for (const c of RP_PRESETS) {
++    const b = document.createElement('button');
++    b.type = 'button'; b.className = 'sw'; b.dataset.c = c; b.style.background = rgbaCss(c);
++    rpGrid.appendChild(b);
++  }
++  let rpField = null;
++  const rpCommit = (v) => {
++    if (!rpField) return;
++    s[rpField] = v;
++    const inp = rpField === 'lightRgba' ? $('lightRgbaIn') : $('darkRgbaIn');
++    inp.value = v; render();
++  };
++  function rpOpen(btn) {
++    const field = btn.dataset.rgba;
++    if (rpField === field && !rpEl.hidden) { rpEl.hidden = true; rpField = null; return; }
++    rpField = field;
++    const cur = parseRgba(s[field]);
++    rpAlpha.value = cur ? cur.a : 255; rpAval.textContent = rpAlpha.value;
++    rpGrid.querySelectorAll('.sw').forEach(sw => sw.classList.toggle('on', sw.dataset.c.toUpperCase() === (s[field] || '').toUpperCase()));
++    rpEl.hidden = false;
++    const r = btn.getBoundingClientRect();
++    rpEl.style.left = Math.max(8, Math.min(window.innerWidth - rpEl.offsetWidth - 8, r.left + r.width / 2 - rpEl.offsetWidth / 2)) + 'px';
++    rpEl.style.top = (r.bottom + 8 + rpEl.offsetHeight > window.innerHeight ? r.top - rpEl.offsetHeight - 8 : r.bottom + 8) + 'px';
++    rpReset.onclick = () => rpCommit(btn.dataset.rgbaDefault);
++  }
++  rpGrid.onclick = (e) => { const sw = e.target.closest('.sw'); if (sw) rpCommit(sw.dataset.c); };
++  rpAlpha.oninput = () => {
++    rpAval.textContent = rpAlpha.value;
++    const cur = parseRgba(s[rpField]) || { rgb: '000000' };
++    s[rpField] = '#' + Number(rpAlpha.value).toString(16).padStart(2, '0').toUpperCase() + cur.rgb;
++    render();
++  };
++  rpAlpha.onchange = () => rpCommit(s[rpField]);
++  document.addEventListener('click', (e) => {
++    if (!rpEl.hidden && !rpEl.contains(e.target) && !e.target.closest('.rgbaRow .dot')) { rpEl.hidden = true; rpField = null; }
++  });
++  $('lightDot').onclick = () => rpOpen($('lightDot'));
++  $('darkDot').onclick = () => rpOpen($('darkDot'));
++
++  // All static + dynamic text is in the DOM now — snapshot it for localization.
++  applyCapture = window.PecoFenceI18n ? PecoFenceI18n.capture(document.body) : () => {};
++  applyCapture();
++
++  // ------------------------------------------------------------- actions
++  $('applyBtn').onclick = () => {
++    send({
++      type: 'feApply',
++      effect: s.effect, clearAddress: !!s.clearAddress, clearBarBg: !!s.clearBarBg,
++      clearWinuiBg: !!s.clearWinuiBg, showLine: !!s.showLine,
++      lightRgba: s.lightRgba || '', darkRgba: s.darkRgba || '',
++    });
++  };
++  $('cancelBtn').onclick = () => send({ type: 'feCancel' });
++  document.addEventListener('keydown', (e) => {
++    if (e.key === 'Escape') {
++      if (!rpEl.hidden) { rpEl.hidden = true; rpField = null; }
++      else send({ type: 'feCancel' });
++    }
++  });
++
++  if (wv) {
++    wv.addEventListener('message', (e) => {
++      const m = e.data || {};
++      if (m.type === 'feState') {
++        i18nSet(m.locale, m.translations);
++        systemLight = m.systemLight !== false;
++        const fe = m.fe || {};
++        s.effect = fe.effect || '';
++        s.clearAddress = !!fe.clearAddress; s.clearBarBg = !!fe.clearBarBg;
++        s.clearWinuiBg = !!fe.clearWinuiBg; s.showLine = !!fe.showLine;
++        s.lightRgba = fe.lightRgba || ''; s.darkRgba = fe.darkRgba || '';
++        render();
++      } else if (m.type === 'feToast') {
++        showToast(m.text || '');
++      }
++    });
++    send({ type: 'feReady' });
++  } else {
++    render();
++  }
++})();
++</script>
++</body>
++</html>
 diff --git a/ui/settings.html b/ui/settings.html
-index 0216771..47bc0ed 100644
+index 0216771..08f9119 100644
 --- a/ui/settings.html
 +++ b/ui/settings.html
-@@ -107,11 +107,17 @@
+@@ -107,11 +107,6 @@
    .card .actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 100%; }
    /* Controls that wrap under a long description stay on the right, as in Windows Settings. */
    .card:not(.stack) > :not(.l):not(.s) { margin-left: auto; }
@@ -20649,21 +22046,10 @@ index 0216771..47bc0ed 100644
 -  #colorTintRow .swatch.on { box-shadow: 0 0 0 2px var(--sheet), 0 0 0 4px var(--accent); }
 -  #colorTintRow .swatch.clear { background: transparent; border-color: var(--text2); }
 -  #colorTintRow .swatch.clear::after { content: ''; position: absolute; left: 1px; right: 1px; top: 50%; border-top: 2px solid var(--text2); transform: rotate(-45deg); }
-+  .rgbaRow { display: flex; gap: 8px; align-items: center; }
-+  .rgbaRow .dot { width: 20px; height: 20px; border-radius: 5px; border: 1px solid var(--line); flex: none; background: transparent; cursor: pointer; padding: 0; }
-+  .rgbaRow input[type=text] { width: 96px; font-family: monospace; }
-+  #rgbaPicker { position: fixed; z-index: 50; width: 232px; padding: 12px; background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.35); }
-+  #rgbaPicker .swatchGrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-+  #rgbaPicker .sw { aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
-+  #rgbaPicker .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
-+  #rgbaPicker .alphaRow { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--text2); }
-+  #rgbaPicker .alphaRow input[type=range] { flex: 1; accent-color: var(--accent); }
-+  #rgbaPicker .foot { display: flex; justify-content: flex-end; margin-top: 10px; }
-+  #rgbaPicker .foot button { font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
    .card.disabled .t, .card.disabled .s { color: var(--text-disabled); }
    /* A master setting and the rows that only matter while it is on share one surface. */
    .group { display: flex; flex-direction: column; gap: 1px; margin-bottom: 4px; }
-@@ -483,10 +489,27 @@
+@@ -483,10 +478,8 @@
          <select id="startMenuStyleSel" data-bind="startMenuStyle" data-str></select></div>
        <div class="card" id="notificationCenterStyleCard"><div class="l"><span class="ic">&#xE91C;</span><div><div class="t">通知中心样式</div><div class="s">通知中心和操作中心视觉主题；选择后立即生效</div></div></div>
          <select id="notificationCenterStyleSel" data-bind="notificationCenterStyle" data-str></select></div>
@@ -20671,31 +22057,12 @@ index 0216771..47bc0ed 100644
 -        <select id="fileExplorerStyleSel" data-bind="fileExplorerStyle" data-str></select></div>
 -      <div class="card" id="colorTintCard"><div class="l"><span class="ic">&#xE790;</span><div><div class="t">主题色叠加</div><div class="s">给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭</div></div></div>
 -        <div class="swatches" id="colorTintRow" role="radiogroup" aria-label="color tint"></div></div>
-+      <div class="card" id="feEffectCard"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">资源管理器背景效果</div><div class="s">ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效</div></div></div>
-+        <select id="feEffectSel" data-bind="feEffect" data-str>
-+          <option value="">Windows 默认</option>
-+          <option value="blur">Blur</option>
-+          <option value="acrylic">Acrylic</option>
-+          <option value="mica">Mica</option>
-+          <option value="blurclear">Blur (Clear)</option>
-+          <option value="micaalt">Mica Alt</option>
-+        </select></div>
-+      <div class="card child" data-fe-opt><div class="l"><div><div class="t">清除地址栏背景</div><div class="s">地址栏与搜索框透出背景效果（EBM clearAddress）</div></div></div>
-+        <div class="toggle" role="switch" tabindex="0" data-bind="feClearAddress"></div></div>
-+      <div class="card child" data-fe-opt><div class="l"><div><div class="t">清除滚动条背景</div><div class="s">滚动条轨道透出背景效果（EBM clearBarBg）</div></div></div>
-+        <div class="toggle" role="switch" tabindex="0" data-bind="feClearBarBg"></div></div>
-+      <div class="card child" data-fe-opt><div class="l"><div><div class="t">清除 WinUI 工具栏背景</div><div class="s">选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）</div></div></div>
-+        <div class="toggle" role="switch" tabindex="0" data-bind="feClearWinuiBg"></div></div>
-+      <div class="card child" data-fe-opt><div class="l"><div><div class="t">显示导航窗格分隔线</div><div class="s">在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）</div></div></div>
-+        <div class="toggle" role="switch" tabindex="0" data-bind="feShowLine"></div></div>
-+      <div class="card child" data-fe-opt><div class="l"><div><div class="t">浅色模式叠加色</div><div class="s">#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）</div></div></div>
-+        <div class="rgbaRow"><button class="dot" id="feLightDot" type="button" data-rgba="feLightRgba" data-rgba-default="#A0DCDCDC" data-i18n-title="选择颜色" title="选择颜色"></button><input type="text" id="feLightRgbaIn" data-bind="feLightRgba" data-str spellcheck="false" autocomplete="off" maxlength="9"></div></div>
-+      <div class="card child" data-fe-opt><div class="l"><div><div class="t">深色模式叠加色</div><div class="s">#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）</div></div></div>
-+        <div class="rgbaRow"><button class="dot" id="feDarkDot" type="button" data-rgba="feDarkRgba" data-rgba-default="#78000000" data-i18n-title="选择颜色" title="选择颜色"></button><input type="text" id="feDarkRgbaIn" data-bind="feDarkRgba" data-str spellcheck="false" autocomplete="off" maxlength="9"></div></div>
++      <div class="card" id="feEffectCard"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">资源管理器背景效果</div><div class="s">ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义</div></div></div>
++        <div class="actions"><button id="feGlassAdvanced">高级设置</button></div></div>
        <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">重启资源管理器</div><div class="s">出现卡顿或异常时按一下</div></div></div>
          <div class="actions"><button id="restartExplorer">重启</button></div></div>
        <h3>行为</h3>
-@@ -868,6 +891,9 @@
+@@ -868,6 +861,9 @@
            const v = el.value.trim();
            if (v !== '') { set(root, p, Number(v)); commit(path); }
          };
@@ -20705,37 +22072,7 @@ index 0216771..47bc0ed 100644
        }
      });
    }
-@@ -891,10 +917,29 @@
-     au.closest('.card').classList.toggle('disabled', !hasTheme);
-     au.tabIndex = hasTheme ? 0 : -1;
-     au.setAttribute('aria-disabled', String(!hasTheme));
-+    renderFeDependents();
-     renderChameleonDependent();
-     renderPeekHotkey();
-   }
- 
-+  // ExplorerBlurMica section: the option rows and RGBA colors only mean
-+  // something while an effect is armed ('' = Windows Default disables them).
-+  function renderFeDependents() {
-+    const on = !!state.settings.feEffect;
-+    document.querySelectorAll('[data-fe-opt]').forEach(card => {
-+      card.classList.toggle('disabled', !on);
-+      const el = card.querySelector('[data-bind]');
-+      if (el) { el.tabIndex = on ? 0 : -1; el.setAttribute('aria-disabled', String(!on)); if (el.tagName === 'INPUT') el.disabled = !on; }
-+    });
-+    const dot = (id, hex) => {
-+      const m = /^#?([0-9a-fA-F]{2})([0-9a-fA-F]{6})$/.exec(hex || '');
-+      const el = document.getElementById(id);
-+      if (el) el.style.background = m ? `rgba(${parseInt(m[2].slice(0,2),16)},${parseInt(m[2].slice(2,4),16)},${parseInt(m[2].slice(4,6),16)},${(parseInt(m[1],16)/255).toFixed(2)})` : 'transparent';
-+    };
-+    dot('feLightDot', state.settings.feLightRgba);
-+    dot('feDarkDot', state.settings.feDarkRgba);
-+  }
-+
-   // Start Menu Style options arrive with each state push ({id, label} only -
-   // the converted theme payload never leaves the backend). Rebuilt only when
-   // the id list changes so an in-progress pick isn't clobbered; the native
-@@ -948,55 +993,8 @@
+@@ -948,55 +944,8 @@
      }
    }
  
@@ -20793,7 +22130,7 @@ index 0216771..47bc0ed 100644
  
    // 速览栅栏 › 快捷键: the box records the next combination, the host checks it, tries
    // RegisterHotKey and answers with peekHotkeyResult (plus a fresh state once saved). Windows
-@@ -1724,8 +1722,7 @@
+@@ -1724,8 +1673,7 @@
        renderStartMenuStyles(m);
        renderTaskbarStyles(m);
        renderNotificationCenterStyles(m);
@@ -20803,47 +22140,13 @@ index 0216771..47bc0ed 100644
        update = m.update; renderUpdate();
        // Transitions come on a frame after this state has been drawn: a single frame would style
        // both changes together and start them after all.
-@@ -1769,6 +1766,43 @@
+@@ -1769,6 +1717,9 @@
    document.getElementById('tswCancel').onclick = () => tswDecide('cancel');
    tswVeil.addEventListener('keydown', e => { if (e.key === 'Escape') tswDecide('cancel'); });
    send({ type: 'ready' });
-+  // RGBA color picker — opened from the dot beside each #AARRGGBB field:
-+  // preset swatches (EBM-style glass blends), an alpha slider that keeps
-+  // the RGB channels, and a restore-default button.
-+  const RP_PRESETS = ['#78000000','#A0000000','#50101216','#80404040','#A0DCDCDC','#C8FFFFFF','#80FFFFFF','#96C8C8C8','#780078D4','#78E74856','#78107C10','#78FFB900'];
-+  const rpEl = document.createElement('div');
-+  rpEl.id = 'rgbaPicker'; rpEl.hidden = true;
-+  rpEl.innerHTML = `<div class="swatchGrid"></div>
-+    <div class="alphaRow"><span data-i18n="不透明度">不透明度</span><input type="range" min="0" max="255"><span class="aval"></span></div>
-+    <div class="foot"><button type="button" data-i18n="恢复默认">恢复默认</button></div>`;
-+  document.body.appendChild(rpEl);
-+  const rpGrid = rpEl.querySelector('.swatchGrid'), rpAlpha = rpEl.querySelector('input[type=range]'), rpAval = rpEl.querySelector('.aval'), rpReset = rpEl.querySelector('.foot button');
-+  const rpParse = s => { const m = /^#?([0-9a-fA-F]{2})([0-9a-fA-F]{6})$/.exec(s || ''); return m ? { a: parseInt(m[1],16), rgb: m[2].toUpperCase() } : null; };
-+  const rpCss = s => { const p = rpParse(s); return p ? `rgba(${parseInt(p.rgb.slice(0,2),16)},${parseInt(p.rgb.slice(2,4),16)},${parseInt(p.rgb.slice(4,6),16)},${(p.a/255).toFixed(2)})` : 'transparent'; };
-+  for (const c of RP_PRESETS) { const b = document.createElement('button'); b.type='button'; b.className='sw'; b.dataset.c=c; b.style.background=rpCss(c); rpGrid.appendChild(b); }
-+  let rpField = null;
-+  const rpCur = () => rpField ? (state.settings[rpField] || '') : '';
-+  const rpCommit = v => { if (!rpField) return; set(state.settings, rpField, v); commit(rpField); const inp = document.querySelector(`[data-bind="${rpField}"]`); if (inp) inp.value = v; renderFeDependents(); };
-+  function rpOpen(btn) {
-+    const field = btn.dataset.rgba;
-+    if (rpField === field && !rpEl.hidden) { rpEl.hidden = true; rpField = null; return; }
-+    rpField = field;
-+    const cur = rpParse(rpCur());
-+    rpAlpha.value = cur ? cur.a : 255;
-+    rpAval.textContent = rpAlpha.value;
-+    rpGrid.querySelectorAll('.sw').forEach(s => s.classList.toggle('on', s.dataset.c.toUpperCase() === (rpCur()||'').toUpperCase()));
-+    rpEl.hidden = false;
-+    const r = btn.getBoundingClientRect();
-+    rpEl.style.left = Math.max(8, Math.min(window.innerWidth - rpEl.offsetWidth - 8, r.left + r.width/2 - rpEl.offsetWidth/2)) + 'px';
-+    rpEl.style.top = (r.bottom + 8 + rpEl.offsetHeight > window.innerHeight ? r.top - rpEl.offsetHeight - 8 : r.bottom + 8) + 'px';
-+    rpReset.onclick = () => rpCommit(btn.dataset.rgbaDefault);
-+  }
-+  rpGrid.onclick = e => { const s = e.target.closest('.sw'); if (s) rpCommit(s.dataset.c); };
-+  rpAlpha.oninput = () => { rpAval.textContent = rpAlpha.value; const cur = rpParse(rpCur()) || { rgb: '000000' }; const hex = Number(rpAlpha.value).toString(16).padStart(2,'0').toUpperCase(); set(state.settings, rpField, '#' + hex + cur.rgb); renderFeDependents(); };
-+  rpAlpha.onchange = () => rpCommit(state.settings[rpField]);
-+  document.addEventListener('click', e => { if (!rpEl.hidden && !rpEl.contains(e.target) && !e.target.closest('.rgbaRow .dot')) { rpEl.hidden = true; rpField = null; } });
-+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !rpEl.hidden) { rpEl.hidden = true; rpField = null; } });
-+  document.querySelectorAll('.rgbaRow .dot').forEach(b => b.onclick = () => rpOpen(b));
++  // The File Explorer glass section collapsed to a launcher: the dedicated
++  // maximized editor (its own window, its own page) owns the EBM controls.
++  document.getElementById('feGlassAdvanced').onclick = () => send({ type: 'action', name: 'openFeGlass' });
  })();
  </script>
  </body>
