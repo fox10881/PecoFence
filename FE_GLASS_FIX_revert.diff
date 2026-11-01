@@ -1,8 +1,48 @@
 diff --git a/crates/core/data/file_explorer_themes.json b/crates/core/data/file_explorer_themes.json
-index 93d1091..55ffd4b 100644
+index 93d1091..2ca8974 100644
 --- a/crates/core/data/file_explorer_themes.json
 +++ b/crates/core/data/file_explorer_themes.json
-@@ -1144,8 +1144,7 @@
+@@ -166,18 +166,7 @@
+     }
+    ],
+    "styleConstants": [],
+-   "themeResourceVariables": [
+-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+-   ],
++   "themeResourceVariables": [],
+    "explorerFrameContainerHeight": 0,
+    "backgroundTranslucentEffect": "kAcrylic"
+   },
+@@ -1069,18 +1058,7 @@
+     "Background2=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"0\" />",
+     "MainContentBG=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"0\" />"
+    ],
+-   "themeResourceVariables": [
+-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+-   ],
++   "themeResourceVariables": [],
+    "explorerFrameContainerHeight": 0,
+    "backgroundTranslucentEffect": "kAcrylic"
+   },
+@@ -1144,8 +1122,7 @@
       "styles": [
        "Background:=$CommonBgBrush",
        "BorderThickness=0,0,0,0",
@@ -12,7 +52,7 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
-@@ -1157,8 +1156,7 @@
+@@ -1157,8 +1134,7 @@
      {
       "target": "Grid#NavigationBarControlGrid",
       "styles": [
@@ -22,7 +62,7 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
-@@ -1170,15 +1168,13 @@
+@@ -1170,15 +1146,13 @@
      {
       "target": "Grid#HomeViewRootGrid",
       "styles": [
@@ -40,7 +80,7 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
-@@ -1196,15 +1192,13 @@
+@@ -1196,15 +1170,13 @@
      {
       "target": "Grid#DetailsViewControlRootGrid",
       "styles": [
@@ -58,7 +98,60 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
-@@ -1711,8 +1705,7 @@
+@@ -1241,18 +1213,7 @@
+    "styleConstants": [
+     "CommonBgBrush=<WindhawkBlur BlurAmount=\"18\" TintColor=\"#80000000\"/>"
+    ],
+-   "themeResourceVariables": [
+-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+-   ],
++   "themeResourceVariables": [],
+    "explorerFrameContainerHeight": 0,
+    "backgroundTranslucentEffect": "kAcrylic"
+   },
+@@ -1480,12 +1441,6 @@
+       "Visibility=1"
+      ]
+     },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+     {
+      "target": "FileExplorerExtensions.NavigationBarControl",
+      "styles": [
+@@ -1545,18 +1500,7 @@
+     "CornerRadius=12",
+     "ElementCornerRadius=8"
+    ],
+-   "themeResourceVariables": [
+-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+-   ],
++   "themeResourceVariables": [],
+    "explorerFrameContainerHeight": 0,
+    "backgroundTranslucentEffect": "kDefault"
+   },
+@@ -1711,8 +1655,7 @@
       "styles": [
        "Margin=20,20,20,1",
        "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
@@ -68,7 +161,7 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
-@@ -1726,8 +1719,7 @@
+@@ -1726,8 +1669,7 @@
       "styles": [
        "Margin=20,20,20,0",
        "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
@@ -78,7 +171,7 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
-@@ -1735,8 +1727,7 @@
+@@ -1735,8 +1677,7 @@
       "styles": [
        "Margin=20,20,20,0",
        "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
@@ -88,7 +181,7 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
-@@ -1898,8 +1889,7 @@
+@@ -1898,8 +1839,7 @@
        "CornerRadius=14",
        "BorderThickness=1",
        "Margin=2",
@@ -98,7 +191,27 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
-@@ -2101,8 +2091,7 @@
+@@ -2005,18 +1945,7 @@
+     }
+    ],
+    "styleConstants": [],
+-   "themeResourceVariables": [
+-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+-   ],
++   "themeResourceVariables": [],
+    "explorerFrameContainerHeight": 0,
+    "backgroundTranslucentEffect": "kDefault"
+   },
+@@ -2101,8 +2030,7 @@
       "styles": [
        "Margin=20,20,20,1",
        "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
@@ -108,7 +221,7 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
-@@ -2144,8 +2133,7 @@
+@@ -2144,8 +2072,7 @@
       "styles": [
        "Margin=20,20,20,0",
        "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
@@ -118,7 +231,7 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
-@@ -2153,8 +2141,7 @@
+@@ -2153,8 +2080,7 @@
       "styles": [
        "Margin=20,20,20,0",
        "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
@@ -128,7 +241,7 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
-@@ -2298,8 +2285,7 @@
+@@ -2298,8 +2224,7 @@
        "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
        "CornerRadius=10",
        "BorderThickness=1",
@@ -138,11 +251,238 @@ index 93d1091..55ffd4b 100644
       ]
      },
      {
+@@ -2434,18 +2359,7 @@
+     }
+    ],
+    "styleConstants": [],
+-   "themeResourceVariables": [
+-    "WindowCaptionBackground@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "WindowCaptionBackground@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Dark:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "ApplicationPageBackgroundThemeBrush@Light:=<SolidColorBrush Color=\"#00000000\"/>",
+-    "SolidBackgroundFillColorBase@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorBase@Light:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Dark:=<Color>#00000000</Color>",
+-    "SolidBackgroundFillColorSecondary@Light:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Dark:=<Color>#00000000</Color>",
+-    "LayerFillColorDefault@Light:=<Color>#00000000</Color>"
+-   ],
++   "themeResourceVariables": [],
+    "explorerFrameContainerHeight": 0,
+    "backgroundTranslucentEffect": "kDefault"
+   },
+diff --git a/crates/core/src/color_tint.rs b/crates/core/src/color_tint.rs
+index 8d5d369..fd9f8d1 100644
+--- a/crates/core/src/color_tint.rs
++++ b/crates/core/src/color_tint.rs
+@@ -29,27 +29,109 @@ pub const START_MENU_TARGETS: &[(&str, &str)] = &[
+     ("Border#AcrylicBorder", "Background"),
+     ("Border#AcrylicOverlay", "Background"),
+ ];
+-/// File Explorer's WinUI3 chrome — command bar, tab strip + tabs, and the
+-/// navigation bar grid. These are the names the theme catalog restyles
+-/// most, so the overlay lands on the same elements the FE themes recolor
+-/// (appended last, the tint wins the background property).
++/// File Explorer's WinUI3 chrome — the three NON-overlapping top-bar
++/// root containers only. Nested targets (`TabViewItem > Grid#LayoutRoot`)
++/// stacked the veil 2-3 layers deep, and content grids must stay clear:
++/// the Win32 side already lays the identical 0x24-alpha BGRA tint on
++/// `SysTreeView32`/`DirectUIHWND` via `fe_glass::punch_black`.
+ pub const FILE_EXPLORER_TARGETS: &[(&str, &str)] = &[
+-    ("CommandBar#FileExplorerCommandBar", "Background"),
+-    ("Grid#NavigationBarControlGrid", "Background"),
+-    ("Grid#TabContainerGrid", "Background"),
+-    ("TabViewItem > Grid#LayoutRoot", "Background"),
++    (
++        "FileExplorerExtensions.FileExplorerTabControl > Grid",
++        "Background",
++    ),
++    (
++        "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
++        "Background",
++    ),
++    (
++        "FileExplorerExtensions.CommandBarControl_Wave1 > Grid",
++        "Background",
++    ),
+ ];
++/// File Explorer tint alpha — ~28%; the Win32 punch
++/// (`fe_glass::punch_black` BGRA stretch) and this XAML veil carry the
++/// identical opacity. Taskbar/Start Menu keep `TINT_ALPHA`.
++pub const FE_TINT_ALPHA: u8 = 0x48;
++/// The veil painted when NO swatch is picked: ~31%-opaque dark smoked
++/// charcoal. Bare transparent (`#00000000`) let bright windows behind
++/// Explorer shine straight through white file names — this supplies the
++/// contrast the glyphs need while staying glassy.
++pub const FE_DEFAULT_VEIL_ARGB: &str = "#50101216";
++
++/// `fe_veil_argb` — the File Explorer overlay color in `#AARRGGBB`:
++/// `""` → `FE_DEFAULT_VEIL_ARGB`; `#RRGGBB` → `FE_TINT_ALPHA` alpha over
++/// the swatch darkened to 65% (bright swatches would wash the glass out).
++/// `None` only for malformed input. Identical RGB/alpha to the resident's
++/// `tint_abgr` BGRA value — one color across XAML and Win32.
++pub fn fe_veil_argb(tint: &str) -> Option<String> {
++    let hex = tint.strip_prefix('#').unwrap_or(tint);
++    if hex.is_empty() {
++        return Some(FE_DEFAULT_VEIL_ARGB.to_string());
++    }
++    if hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
++        let n = u32::from_str_radix(hex, 16).ok()?;
++        let (r, g, b) = ((n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF);
++        return Some(format!(
++            "#{FE_TINT_ALPHA:02X}{:02X}{:02X}{:02X}",
++            r * 65 / 100,
++            g * 65 / 100,
++            b * 65 / 100
++        ));
++    }
++    None
++}
++
++/// Always-on File Explorer veil — appends the three top-bar-root rules
++/// even when `tint` is `""` (default smoked glass). `fe_glass`'s Win32
++/// punch carries the same veil, so XAML only covers the island.
++pub fn apply_fe_tint(wire: &mut String, tint: &str) {
++    let Some(argb) = fe_veil_argb(tint) else {
++        return;
++    };
++    if wire.ends_with("E\n") {
++        wire.truncate(wire.len() - 2);
++    }
++    for (target, prop) in FILE_EXPLORER_TARGETS {
++        wire.push_str("T ");
++        wire.push_str(target);
++        wire.push('\n');
++        wire.push_str("S ");
++        wire.push_str(prop);
++        wire.push_str(":=<SolidColorBrush Color=\"");
++        wire.push_str(&argb);
++        wire.push_str("\"/>\n");
++    }
++    wire.push_str("E\n");
++}
++
++/// A veil-only FE wire (`""` theme): magic + the smoked/darkened tint
++/// rules — File Explorer with no theme still gets readable glass.
++pub fn fe_tint_wire(magic: &str, tint: &str) -> Option<String> {
++    fe_veil_argb(tint)?;
++    let mut wire = String::with_capacity(256);
++    wire.push_str(magic);
++    wire.push('\n');
++    wire.push_str("E\n");
++    apply_fe_tint(&mut wire, tint);
++    Some(wire)
++}
+ 
+ /// `Some(argb)` for `#RRGGBB` / `RRGGBB` palette values, `None` for
+ /// `""` (tint off) and malformed input — settings treats `None` on a
+ /// non-empty value as invalid and reverts.
+ pub fn argb(tint: &str) -> Option<String> {
++    argb_with_alpha(tint, TINT_ALPHA)
++}
++
++/// `argb` with a caller-chosen alpha — File Explorer uses the lighter
++/// `FE_TINT_ALPHA` so its XAML veil matches the Win32 punch.
++pub fn argb_with_alpha(tint: &str, alpha: u8) -> Option<String> {
+     let hex = tint.strip_prefix('#').unwrap_or(tint);
+     if hex.is_empty() {
+         return Some(String::new());
+     }
+     if hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+-        return Some(format!("#{TINT_ALPHA:02X}{}", hex.to_uppercase()));
++        return Some(format!("#{alpha:02X}{}", hex.to_uppercase()));
+     }
+     None
+ }
+@@ -59,7 +141,12 @@ pub fn argb(tint: &str) -> Option<String> {
+ /// writer wins on the background property), restores `E\n`. No-op when
+ /// `tint` is `""`.
+ pub fn apply_to_wire(wire: &mut String, targets: &[(&str, &str)], tint: &str) {
+-    let Some(argb) = argb(tint) else {
++    apply_to_wire_alpha(wire, targets, tint, TINT_ALPHA);
++}
++
++/// `apply_to_wire` with a caller-chosen alpha (File Explorer's `FE_TINT_ALPHA`).
++pub fn apply_to_wire_alpha(wire: &mut String, targets: &[(&str, &str)], tint: &str, alpha: u8) {
++    let Some(argb) = argb_with_alpha(tint, alpha) else {
+         return;
+     };
+     if argb.is_empty() {
+@@ -84,7 +171,17 @@ pub fn apply_to_wire(wire: &mut String, targets: &[(&str, &str)], tint: &str) {
+ /// A tint-only wire (`""` theme) — just the magic header + tint rules,
+ /// so a surface with no selected style still gets the color overlay.
+ pub fn tint_wire(magic: &str, targets: &[(&str, &str)], tint: &str) -> Option<String> {
+-    let argb = argb(tint)?;
++    tint_wire_alpha(magic, targets, tint, TINT_ALPHA)
++}
++
++/// `tint_wire` with a caller-chosen alpha (File Explorer's `FE_TINT_ALPHA`).
++pub fn tint_wire_alpha(
++    magic: &str,
++    targets: &[(&str, &str)],
++    tint: &str,
++    alpha: u8,
++) -> Option<String> {
++    let argb = argb_with_alpha(tint, alpha)?;
+     if argb.is_empty() {
+         return None;
+     }
+@@ -92,7 +189,7 @@ pub fn tint_wire(magic: &str, targets: &[(&str, &str)], tint: &str) -> Option<St
+     wire.push_str(magic);
+     wire.push('\n');
+     wire.push_str("E\n"); // apply_to_wire strips it again — keeps one code path
+-    apply_to_wire(&mut wire, targets, tint);
++    apply_to_wire_alpha(&mut wire, targets, tint, alpha);
+     Some(wire)
+ }
+ 
+@@ -133,10 +230,13 @@ mod tests {
+ 
+     #[test]
+     fn tint_only_wire_is_wellformed() {
+-        let wire = tint_wire("PECO-FES1", FILE_EXPLORER_TARGETS, "#0078D4").unwrap();
++        let wire = fe_tint_wire("PECO-FES1", "#0078D4").unwrap();
+         assert!(wire.starts_with("PECO-FES1\n"));
+         assert!(wire.ends_with("E\n"));
+-        assert!(wire.contains("T CommandBar#FileExplorerCommandBar\n"));
+-        assert!(wire.contains("S Background:=<SolidColorBrush Color=\"#800078D4\"/>"));
++        assert!(wire.contains("T FileExplorerExtensions.FileExplorerTabControl > Grid\n"));
++        // #0078D4 darkened to 65% → #004E89 under the 0x48 veil alpha.
++        assert!(wire.contains("S Background:=<SolidColorBrush Color=\"#48004E89\"/>"));
++        // One veil per surface — no overlapping child targets.
++        assert_eq!(wire.matches("S Background:=").count(), 3);
+     }
+ }
 diff --git a/crates/core/src/file_explorer_themes.rs b/crates/core/src/file_explorer_themes.rs
-index 2234a7a..7a259fe 100644
+index 2234a7a..94fb26f 100644
 --- a/crates/core/src/file_explorer_themes.rs
 +++ b/crates/core/src/file_explorer_themes.rs
-@@ -86,10 +86,13 @@ pub fn backdrop(id: &str) -> Option<&'static str> {
+@@ -71,32 +71,40 @@ pub fn theme(id: &str) -> Option<&'static serde_json::Value> {
+ }
+ 
+ /// The theme's DWM backdrop choice (`BackgroundTranslucentEffect` in the
+-/// mod): `""` for kDefault / kNone, or `blur` / `acrylic` / `mica` /
+-/// `micaAlt` — applied to `CabinetWClass` windows via
+-/// `DWMWA_SYSTEMBACKDROP_TYPE` on the platform side.
++/// mod), applied to `CabinetWClass` windows via
++/// `DWMWA_SYSTEMBACKDROP_TYPE` on the platform side. Every non-default
++/// catalog theme drives the system-acrylic path: on Windows 11 23H2 the
++/// `kDefault`/empty entries still need `DWMSBT_TRANSIENTWINDOW` or the
++/// frame-extension glass never engages — only `kMica` keeps its own
++/// system backdrop. `None` only for `""`/unknown ids.
+ pub fn backdrop(id: &str) -> Option<&'static str> {
+-    let effect = theme(id)?["backgroundTranslucentEffect"].as_str()?;
+-    Some(match effect {
+-        "kBlur" => "blur",
+-        "kAcrylic" => "acrylic",
+-        "kMica" => "mica",
+-        "kMicaAlt" => "micaAlt",
+-        _ => "",
++    let theme = theme(id)?;
++    Some(match theme["backgroundTranslucentEffect"].as_str() {
++        Some("kMica") => "mica",
++        _ => "acrylic",
+     })
  }
  
  /// `WindhawkBlur` is not a real XAML type — the mod injects it. Re-express
@@ -158,9 +498,24 @@ index 2234a7a..7a259fe 100644
 +/// from `TintOpacity` (else the tint color's own alpha), clamped to
 +/// `0x10..=0x45` — translucent, never opaque, never fully clear.
  fn normalize_blur(value: &str) -> String {
++    const TAGS: [&str; 2] = ["<WindhawkBlur", "<AcrylicBrush"];
      let mut out = String::with_capacity(value.len());
      let mut rest = value;
-@@ -105,24 +108,37 @@ fn normalize_blur(value: &str) -> String {
+-    while let Some(pos) = rest.find("<WindhawkBlur") {
++    // Earliest occurrence of either blur-brush tag wins each rewrite.
++    while let Some((pos, tag)) = TAGS
++        .iter()
++        .filter_map(|t| rest.find(t).map(|p| (p, *t)))
++        .min_by_key(|(p, _)| *p)
++    {
+         out.push_str(&rest[..pos]);
+-        let tag_start = pos;
+-        let inner = &rest[tag_start + "<WindhawkBlur".len()..];
++        let inner = &rest[pos + tag.len()..];
+         let end = inner.find('>').map(|e| e + 1).unwrap_or(inner.len());
+         let attrs = &inner[..end.min(inner.len())];
+         let attr = |name: &str| -> Option<String> {
+@@ -105,30 +113,124 @@ fn normalize_blur(value: &str) -> String {
              let e = attrs[s..].find('"')? + s;
              Some(attrs[s..e].to_string())
          };
@@ -174,46 +529,155 @@ index 2234a7a..7a259fe 100644
 -            if let Some(v) = attr(src_name) {
 -                out.push_str(&format!(" {dst_name}=\"{v}\""));
 -                wrote_opacity |= src_name != "TintColor";
-+        // TintColor: #AARRGGBB / #RRGGBB / {ThemeResource x}.
-+        let (mut r, mut g, mut b, mut a) = (0x10u32, 0x10u32, 0x10u32, 0x80u32);
-+        if let Some(c) = attr("TintColor")
-+            && let Some(n) = c
-+                .strip_prefix('#')
-+                .and_then(|h| u32::from_str_radix(h, 16).ok())
-+        {
-+            match c.len() - 1 {
-+                8 => {
-+                    a = (n >> 24) & 0xFF;
-+                    r = (n >> 16) & 0xFF;
-+                    g = (n >> 8) & 0xFF;
-+                    b = n & 0xFF;
-+                }
-+                6 => {
-+                    r = (n >> 16) & 0xFF;
-+                    g = (n >> 8) & 0xFF;
-+                    b = n & 0xFF;
-+                }
-+                _ => {}
++        let opacity = attr("TintOpacity")
++            .or_else(|| attr("Opacity"))
++            .and_then(|o| o.parse::<f32>().ok())
++            .map(|o| (o.clamp(0.0, 1.0) * 255.0).round() as u32);
++        let tint = attr("TintColor").or_else(|| attr("FallbackColor"));
++        let (r, g, b, a) = match tint.as_deref().map(str::trim) {
++            // `Transparent` (hover/rest states): near-clear white veil so
++            // DWM glass stays visible; alpha rides the brush's opacity.
++            Some(c) if c.eq_ignore_ascii_case("transparent") => {
++                (0xFF, 0xFF, 0xFF, opacity.unwrap_or(0x14).clamp(0x08, 0x24))
              }
-         }
+-        }
 -        if !wrote_opacity {
 -            // WindhawkBlur defaults to a strong blur; Acrylic with no
 -            // opacity arg reads opaque — keep the translucent intent.
 -            out.push_str(" TintOpacity=\"0.5\"");
-+        if let Some(o) = attr("TintOpacity").or_else(|| attr("Opacity"))
-+            && let Ok(o) = o.parse::<f32>()
-+        {
-+            a = (o.clamp(0.0, 1.0) * 255.0).round() as u32;
-         }
+-        }
 -        out.push_str("/>");
-+        let a = a.clamp(0x10, 0x45);
+-        rest = &inner[end..];
++            // Literal #AARRGGBB / #RRGGBB: keep the author's RGB; alpha
++            // from the color (TintOpacity wins), clamped translucent.
++            Some(c) if c.starts_with('#') => {
++                let n = u32::from_str_radix(&c[1..], 16).unwrap_or(0);
++                match c.len() - 1 {
++                    8 => (
++                        (n >> 16) & 0xFF,
++                        (n >> 8) & 0xFF,
++                        n & 0xFF,
++                        opacity.unwrap_or((n >> 24) & 0xFF).clamp(0x10, 0x28),
++                    ),
++                    6 => (
++                        (n >> 16) & 0xFF,
++                        (n >> 8) & 0xFF,
++                        n & 0xFF,
++                        opacity.unwrap_or(0x80).clamp(0x10, 0x28),
++                    ),
++                    _ => (0x20, 0x20, 0x20, opacity.unwrap_or(0x1A).clamp(0x12, 0x24)),
++                }
++            }
++            // `{ThemeResource x}`, missing, or anything unparseable:
++            // neutral frosted-gray — never the old opaque #45101010 mud.
++            _ => (0x20, 0x20, 0x20, opacity.unwrap_or(0x1A).clamp(0x12, 0x24)),
++        };
 +        out.push_str(&format!(
 +            "<SolidColorBrush Color=\"#{a:02X}{r:02X}{g:02X}{b:02X}\"/>"
 +        ));
-         rest = &inner[end..];
++        rest = &inner[end.min(inner.len())..];
      }
      out.push_str(rest);
-@@ -292,13 +308,17 @@ mod tests {
+     out
+ }
+ 
++/// Top-bar (WinUI 3 island) transparency guaranteed for every theme: the
++/// island's root containers default to opaque theme resources, so these
++/// rules are appended after each theme's own styles — last write wins —
++/// to keep the DWM `DWMSBT_TRANSIENTWINDOW` blur visible end to end.
++const TOP_BAR_RULES: &[(&str, &[&str])] = &[
++    (
++        "FileExplorerExtensions.FileExplorerTabControl",
++        &["Background=Transparent"],
++    ),
++    (
++        "FileExplorerExtensions.FileExplorerTabControl > Grid",
++        &["Background=Transparent"],
++    ),
++    (
++        "Microsoft.UI.Xaml.Controls.TabView",
++        &["Background=Transparent"],
++    ),
++    (
++        "Microsoft.UI.Xaml.Controls.Grid#TabContainerGrid",
++        &["Background=Transparent"],
++    ),
++    (
++        "FileExplorerExtensions.NavigationBarControl",
++        &["Background=Transparent"],
++    ),
++    (
++        "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
++        &["Background=Transparent", "BorderBrush=Transparent"],
++    ),
++    (
++        "FileExplorerExtensions.CommandBarControl_Wave1",
++        &["Background=Transparent"],
++    ),
++    (
++        "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
++        &["Background=Transparent", "BorderBrush=Transparent"],
++    ),
++    (
++        "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
++        &["Background=Transparent"],
++    ),
++    (
++        "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot",
++        &["Background=Transparent", "BorderBrush=Transparent"],
++    ),
++    (
++        "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
++        &["Background=Transparent"],
++    ),
++    (
++        "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
++        &["Background=Transparent"],
++    ),
++    (
++        "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
++        &["Background=Transparent"],
++    ),
++    // Content grids hosting DirectUIHWND — the Win32 punch already lays
++    // the veil/tint beneath them; an XAML background here would
++    // double-stack the overlay.
++    (
++        "Microsoft.UI.Xaml.Controls.Grid#DetailsViewControlRootGrid",
++        &["Background=Transparent"],
++    ),
++    (
++        "Microsoft.UI.Xaml.Controls.Grid#HomeViewRootGrid",
++        &["Background=Transparent"],
++    ),
++    (
++        "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
++        &["Background=Transparent"],
++    ),
++];
++
+ /// Serializes the theme into the line wire-format the injected
+ /// `pecofence_tap.dll` parses inside `explorer.exe`'s WinUI3 diagnostics
+ /// session (the host transports it with `WM_COPYDATA`):
+@@ -200,6 +302,18 @@ pub fn theme_wire(id: &str) -> Option<String> {
+             }
+         }
+     }
++    // Top-bar transparency floor — appended last so it overrides any
++    // opaque island background a theme left behind.
++    for (target, styles) in TOP_BAR_RULES {
++        out.push_str("T ");
++        out.push_str(target);
++        out.push('\n');
++        for style in *styles {
++            out.push_str("S ");
++            out.push_str(style);
++            out.push('\n');
++        }
++    }
+     if let Some(vars) = theme["themeResourceVariables"].as_array() {
+         for var in vars.iter().filter_map(|v| v.as_str()) {
+             if var.starts_with("//") {
+@@ -292,18 +406,26 @@ mod tests {
      }
  
      #[test]
@@ -234,52 +698,80 @@ index 2234a7a..7a259fe 100644
      }
  
      #[test]
+-    fn backdrop_follows_the_theme_declared_effect() {
++    fn backdrop_defaults_every_theme_to_acrylic() {
+         assert_eq!(backdrop("Translucent_Explorer11"), Some("acrylic"));
++        // `kDefault` themes must still select the system-acrylic path —
++        // without it the frame-extension glass never engages on 23H2.
++        assert_eq!(backdrop("LiquidGlass"), Some("acrylic"));
++        assert_eq!(backdrop("Compact_Explorer11"), Some("acrylic"));
+         assert_eq!(backdrop(""), None);
+         assert_eq!(backdrop("NoSuchTheme"), None);
+     }
 diff --git a/crates/platform/src/file_explorer_styler.rs b/crates/platform/src/file_explorer_styler.rs
-index d505453..342ec88 100644
+index d505453..f472573 100644
 --- a/crates/platform/src/file_explorer_styler.rs
 +++ b/crates/platform/src/file_explorer_styler.rs
-@@ -37,9 +37,8 @@ const CDS_FE_BACKDROP: usize = u32::from_be_bytes(*b"FEBD") as usize;
+@@ -25,6 +25,12 @@ windows_core::link!("gdi32.dll" "system" fn CreateRectRgn(left: i32, top: i32, r
+ windows_core::link!("gdi32.dll" "system" fn DeleteObject(obj: *mut core::ffi::c_void) -> windows_core::BOOL);
+ windows_core::link!("user32.dll" "system" fn GetClassNameW(hwnd: crate::bindings::HWND, lpclassname: windows_core::PWSTR, nmaxcount: i32) -> i32);
+ windows_core::link!("user32.dll" "system" fn RedrawWindow(hwnd: crate::bindings::HWND, lprcupdate: *const core::ffi::c_void, hrgnupdate: *mut core::ffi::c_void, flags: u32) -> windows_core::BOOL);
++windows_core::link!("user32.dll" "system" fn DefWindowProcW(hwnd: crate::bindings::HWND, msg: u32, wparam: usize, lparam: isize) -> isize);
++windows_core::link!("user32.dll" "system" fn SendMessageTimeoutW(hwnd: crate::bindings::HWND, msg: u32, wparam: usize, lparam: isize, flags: u32, timeout: u32, result: *mut usize) -> isize);
++windows_core::link!("advapi32.dll" "system" fn RegOpenKeyExW(hkey: isize, subkey: PCWSTR, options: u32, sam: u32, result: *mut isize) -> i32);
++windows_core::link!("advapi32.dll" "system" fn RegQueryValueExW(hkey: isize, name: PCWSTR, reserved: *const u32, ty: *mut u32, data: *mut u8, cb: *mut u32) -> i32);
++windows_core::link!("advapi32.dll" "system" fn RegSetValueExW(hkey: isize, name: PCWSTR, reserved: u32, ty: u32, data: *const u8, cb: u32) -> i32);
++windows_core::link!("advapi32.dll" "system" fn RegCloseKey(hkey: isize) -> i32);
+ 
+ /// `COPYDATASTRUCT.dwData` values — must match `crates/tap/src/command.rs`.
+ const CDS_FE_THEME: usize = u32::from_be_bytes(*b"FEST") as usize;
+@@ -37,40 +43,56 @@ const CDS_FE_BACKDROP: usize = u32::from_be_bytes(*b"FEBD") as usize;
  // DWMWA_SYSTEMBACKDROP_TYPE (38) values — the same DWMSBT_* mapping the mod
  // applies through its DwmSetWindowAttribute hook.
  const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
 -const DWMSBT_AUTO: i32 = 0; // let the system decide — used on the accent path
-+const DWMSBT_NONE: i32 = 1; // no system backdrop — the accent path's value
  const DWMSBT_MAINWINDOW: i32 = 2; // Mica
 -const DWMSBT_TRANSIENTWINDOW: i32 = 3; // Acrylic
- const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt
+-const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt
++const DWMSBT_TRANSIENTWINDOW: i32 = 3; // system Acrylic — the working 23H2 glass
++const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt / explorer's own stock request
  
  const ACCENT_DISABLED: u32 = 0;
-@@ -50,26 +49,26 @@ const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
- /// (`ACCENT_STATE_ENABLE_ACRYLICBLURBEHIND`) are never both active — an
- /// extended `-1` frame with a conflicting pair renders a solid black void.
- /// Returns `(backdrop, accent_state, accent_flags, gradient_abgr)`.
+-const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
+ 
+-/// Translucent-Windows `HandleEffects` mutual exclusion:
+-/// `DWMWA_SYSTEMBACKDROP_TYPE` (2/3/4) and `WCA_ACCENT_POLICY`
+-/// (`ACCENT_STATE_ENABLE_ACRYLICBLURBEHIND`) are never both active — an
+-/// extended `-1` frame with a conflicting pair renders a solid black void.
+-/// Returns `(backdrop, accent_state, accent_flags, gradient_abgr)`.
 -/// - Case B (`blur` effect, or a Color Tint swatch selected): backdrop
 -///   drops to `DWMSBT_AUTO`, accent acrylic carries the tint.
 -/// - Case A (acrylic/mica/micaAlt, no tint): accent off, system backdrop
 -///   carries the material.
-+///
-+/// On Windows 11 23H2 the system backdrops are unusable for our glass:
-+/// `DWMSBT_TRANSIENTWINDOW`/`TABBEDWINDOW` render a flat opaque `#585858`
-+/// sheet whenever the window loses focus or system transparency effects
-+/// are off. Every active style therefore rides the accent acrylic path —
-+/// `DWMSBT_NONE` (1, not `DWMSBT_AUTO` = 0, which leaves explorer's own
-+/// tabbed-window backdrop active on `CabinetWClass`). The only survivors
-+/// are the true Mica presets, and only while no tint overlay is armed.
++/// Translucent-Windows `HandleEffects`: on Windows 11 23H2 `CabinetWClass`
++/// the working glass is `DWMWA_SYSTEMBACKDROP_TYPE` =
++/// `DWMSBT_TRANSIENTWINDOW` (system acrylic) — or `DWMSBT_MAINWINDOW` for
++/// the Mica presets — with `WCA_ACCENT_POLICY` strictly DISABLED: accent
++/// blur-behind and a system backdrop on the same window conflict, and
++/// `DWMSBT_NONE` + accent does not compose on this window class. The
++/// unfocused `#585858` fallback is killed separately by
++/// `WCA_FORCE_ACTIVEWINDOW_APPEARANCE` + `WM_NCACTIVATE`. The Color Tint
++/// swatch rides BOTH layers of the same 14% veil: `tint_abgr` in the
++/// `FEBD` payload feeds `fe_glass::punch_black` on `SysTreeView32`/
++/// `DirectUIHWND`, while the XAML ruleset carries `#24RRGGBB` on the
++/// three top-bar roots. Returns
++/// `(backdrop, accent_state, accent_flags, gradient_abgr)`.
  fn desired_glass(effect: &str, tint: &str) -> (i32, u32, u32, u32) {
 -    if effect == "blur" || !tint.is_empty() {
-+    if effect == "mica" && tint.is_empty() {
-+        (DWMSBT_MAINWINDOW, ACCENT_DISABLED, 0, 0)
-+    } else if effect == "micaAlt" && tint.is_empty() {
-+        (DWMSBT_TABBEDWINDOW, ACCENT_DISABLED, 0, 0)
-+    } else {
-         (
+-        (
 -            DWMSBT_AUTO,
-+            DWMSBT_NONE,
-             ACCENT_ENABLE_ACRYLICBLURBEHIND,
-             0,
-             tint_abgr(tint),
-         )
--    } else {
+-            ACCENT_ENABLE_ACRYLICBLURBEHIND,
+-            0,
+-            tint_abgr(tint),
+-        )
++    let backdrop = if effect == "mica" {
++        DWMSBT_MAINWINDOW
+     } else {
 -        let backdrop = match effect {
 -            "acrylic" => DWMSBT_TRANSIENTWINDOW,
 -            "mica" => DWMSBT_MAINWINDOW,
@@ -287,36 +779,344 @@ index d505453..342ec88 100644
 -            _ => DWMSBT_TABBEDWINDOW,
 -        };
 -        (backdrop, ACCENT_DISABLED, 0, 0)
++        DWMSBT_TRANSIENTWINDOW
++    };
++    (backdrop, ACCENT_DISABLED, 0, tint_abgr(tint))
++}
++
++/// Selected swatch `#RRGGBB` → `0x24BBGGRR` (the ABGR layout
++/// `fe_glass::punch_black` stretches across the Win32 surfaces); `""` or
++/// malformed → `0` (transparent-black punch).
++/// Swatch `#RRGGBB` → `0x48BBGGRR` with channels darkened to 65% (bright
++/// swatches stay glassy dark). `""`/malformed → `0x50161210` — the
++/// default ~31% smoked-charcoal veil (`0x50` alpha over `#101216`), NOT
++/// transparent black: bare `0x00000000` lets bright windows behind
++/// Explorer wash out the white file names. Same color as the XAML veil
++/// (`color_tint::fe_veil_argb`) on the top bar.
++fn tint_abgr(tint: &str) -> u32 {
++    let hex = tint.strip_prefix('#').unwrap_or(tint);
++    if hex.len() == 6
++        && let Ok(rgb) = u32::from_str_radix(hex, 16)
++    {
++        let (r, g, b) = (
++            (rgb >> 16 & 0xFF) * 65 / 100,
++            (rgb >> 8 & 0xFF) * 65 / 100,
++            (rgb & 0xFF) * 65 / 100,
++        );
++        return (pecofence_core::color_tint::FE_TINT_ALPHA as u32) << 24 | b << 16 | g << 8 | r;
+     }
++    0x50161210
+ }
+ 
+ const RDW_INVALIDATE: u32 = 0x0001;
+@@ -176,7 +198,7 @@ fn cabinet_windows() -> Vec<crate::bindings::HWND> {
+ /// everything unconditionally would be a constant repaint storm.
+ fn apply_backdrop(effect: &str) {
+     let hwnds = cabinet_windows();
+-    let (changed, mut seen, tint) = {
++    let (changed, mut seen) = {
+         let mut guard = lock();
+         let Some(fe) = guard.as_mut() else {
+             return;
+@@ -187,24 +209,32 @@ fn apply_backdrop(effect: &str) {
+             fe.applied_tint = fe.tint.clone();
+             fe.seen_hwnds.clear();
+         }
+-        (changed, std::mem::take(&mut fe.seen_hwnds), fe.tint.clone())
++        (changed, std::mem::take(&mut fe.seen_hwnds))
+     };
+-    let (backdrop, accent_state, accent_flags, gradient) = desired_glass(effect, &tint);
+-    let accent_on = accent_state == ACCENT_ENABLE_ACRYLICBLURBEHIND;
+-    // Any glass path — a named effect OR a tint overlay — needs the
+-    // extended frame + dark caption + blur-behind region.
+-    let glass = !effect.is_empty() || accent_on;
++    let (backdrop, accent_state, accent_flags, gradient) = if is_armed() {
++        let tint = {
++            let guard = lock();
++            guard.as_ref().map(|fe| fe.tint.clone()).unwrap_or_default()
++        };
++        desired_glass(effect, &tint)
++    } else {
++        // Disarmed — hand the stock tabbed backdrop explorer asks for
++        // itself back; everything else below restores too.
++        (DWMSBT_TABBEDWINDOW, ACCENT_DISABLED, 0, 0)
++    };
++    // Glass is active for any armed state — a named effect or a
++    // tint-only overlay (the tint rides the XAML ruleset on top of the
++    // same TRANSIENTWINDOW acrylic; the swatch never re-selects the DWM
++    // path).
++    let glass = is_armed();
++    if glass && changed {
++        ensure_transparency_effects();
++    }
+     for hwnd in &hwnds {
+         if !changed && seen.contains(&(hwnd.0 as usize as isize)) {
+             continue;
+         }
+         unsafe {
+-            let _ = DwmSetWindowAttribute(
+-                *hwnd,
+-                DWMWA_SYSTEMBACKDROP_TYPE,
+-                &backdrop as *const i32 as *const core::ffi::c_void,
+-                core::mem::size_of::<i32>() as u32,
+-            );
+             // Immersive dark caption while a glass theme is armed.
+             let dark: i32 = glass as i32;
+             let _ = DwmSetWindowAttribute(
+@@ -215,8 +245,25 @@ fn apply_backdrop(effect: &str) {
+             );
+         }
+         extend_frame(*hwnd, glass);
+-        blur_behind(*hwnd, accent_on);
++        unsafe {
++            let _ = DwmSetWindowAttribute(
++                *hwnd,
++                DWMWA_SYSTEMBACKDROP_TYPE,
++                &backdrop as *const i32 as *const core::ffi::c_void,
++                core::mem::size_of::<i32>() as u32,
++            );
++        }
++        blur_behind(*hwnd, false);
+         set_accent_policy(*hwnd, accent_state, accent_flags, gradient);
++        // Kill the unfocused `#585858` fallback: the system backdrop only
++        // blurs while DWM treats the window as active — force that
++        // appearance, then lie about activation so DWM re-evaluates now.
++        set_force_active(*hwnd, glass);
++        if glass {
++            unsafe {
++                let _ = DefWindowProcW(*hwnd, 0x0086 /* WM_NCACTIVATE */, 1, 0);
++            }
++        }
+         trigger_composition_update(*hwnd);
+         seen.insert(hwnd.0 as usize as isize);
+     }
+@@ -308,44 +355,82 @@ fn extend_frame(hwnd: crate::bindings::HWND, on: bool) {
      }
  }
  
-@@ -309,8 +308,10 @@ fn extend_frame(hwnd: crate::bindings::HWND, on: bool) {
- }
- 
- /// `#RRGGBB` → ABGR `GradientColor` (`alpha<<24 | blue<<16 | green<<8 | red`)
+-/// `#RRGGBB` → ABGR `GradientColor` (`alpha<<24 | blue<<16 | green<<8 | red`)
 -/// for the accent policy — the selected swatch color, or the prompt's
 -/// subtle dark-glass default `0x40101010` when no tint is picked.
-+/// for the accent policy — the selected swatch color, or a subtle ~9%
-+/// dark-glass `0x18101010` when no tint is picked. Alpha must never be 0:
-+/// `ACCENT_ENABLE_ACRYLICBLURBEHIND` with `alpha == 0` disables the blur
-+/// entirely on Windows 11 23H2.
- fn tint_abgr(tint: &str) -> u32 {
-     let hex = tint.strip_prefix('#').unwrap_or(tint);
-     if hex.len() == 6
-@@ -321,7 +322,7 @@ fn tint_abgr(tint: &str) -> u32 {
-         let b = rgb & 0xFF;
-         return 0x80 << 24 | b << 16 | g << 8 | r;
+-fn tint_abgr(tint: &str) -> u32 {
+-    let hex = tint.strip_prefix('#').unwrap_or(tint);
+-    if hex.len() == 6
+-        && let Ok(rgb) = u32::from_str_radix(hex, 16)
+-    {
+-        let r = rgb >> 16 & 0xFF;
+-        let g = rgb >> 8 & 0xFF;
+-        let b = rgb & 0xFF;
+-        return 0x80 << 24 | b << 16 | g << 8 | r;
++/// `HKCU\...\Themes\Personalize\EnableTransparency`: DWM silently renders
++/// every system backdrop opaque while this is 0. Arming glass needs it —
++/// set it once and broadcast `WM_SETTINGCHANGE` (`ImmersiveColorSet`) so
++/// DWM re-reads it without a sign-out.
++fn ensure_transparency_effects() {
++    const HKCU: isize = 0x8000_0001;
++    const KEY_READ: u32 = 0x0002_0019;
++    const KEY_SET_VALUE: u32 = 0x0002;
++    const REG_DWORD: u32 = 4;
++    let subkey = widestr("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
++    let name = widestr("EnableTransparency");
++    unsafe {
++        let mut key = 0isize;
++        if RegOpenKeyExW(
++            HKCU,
++            PCWSTR(subkey.as_ptr()),
++            0,
++            KEY_READ | KEY_SET_VALUE,
++            &mut key,
++        ) != 0
++        {
++            return;
++        }
++        let mut val = 1u32;
++        let mut ty = 0u32;
++        let mut cb = core::mem::size_of::<u32>() as u32;
++        let read = RegQueryValueExW(
++            key,
++            PCWSTR(name.as_ptr()),
++            core::ptr::null(),
++            &mut ty,
++            &mut val as *mut u32 as *mut u8,
++            &mut cb,
++        );
++        if read != 0 || ty != REG_DWORD || val != 0 {
++            let _ = RegCloseKey(key);
++            return;
++        }
++        let one = 1u32;
++        let _ = RegSetValueExW(
++            key,
++            PCWSTR(name.as_ptr()),
++            0,
++            REG_DWORD,
++            &one as *const u32 as *const u8,
++            4,
++        );
++        let _ = RegCloseKey(key);
++        let param = widestr("ImmersiveColorSet");
++        let mut result = 0usize;
++        let _ = SendMessageTimeoutW(
++            crate::bindings::HWND(0xFFFF as *mut core::ffi::c_void), // HWND_BROADCAST
++            0x001A,                                                  // WM_SETTINGCHANGE
++            0,
++            param.as_ptr() as isize,
++            0x0002, // SMTO_ABORTIFHUNG
++            2000,
++            &mut result,
++        );
      }
 -    0x40101010
-+    0x18101010
  }
  
- /// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY` acrylic blur
+-/// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY` acrylic blur
+-/// (the `blur` effect and the Color Tint overlay path). `state` is
+-/// `ACCENT_STATE_*` (4 = acrylic blur behind, 0 = disabled); `gradient`
+-/// is the ABGR `GradientColor` (`alpha<<24 | blue<<16 | green<<8 | red`).
+-/// Never combined with a non-AUTO `DWMWA_SYSTEMBACKDROP_TYPE` — see
+-/// `desired_glass`.
+-fn set_accent_policy(hwnd: crate::bindings::HWND, state: u32, flags: u32, gradient: u32) {
+-    #[repr(C)]
+-    struct AccentPolicy {
+-        accent_state: u32,
+-        accent_flags: u32,
+-        gradient_color: u32,
+-        animation_id: u32,
+-    }
+-    #[repr(C)]
+-    struct WindowCompositionAttribData {
+-        attrib: u32,
+-        pv_data: *const core::ffi::c_void,
+-        cb_data: usize,
+-    }
+-    const WCA_ACCENT_POLICY: u32 = 19;
++#[repr(C)]
++struct WindowCompositionAttribData {
++    attrib: u32,
++    pv_data: *const core::ffi::c_void,
++    cb_data: usize,
++}
+ 
++const WCA_ACCENT_POLICY: u32 = 19;
++/// Keeps DWM evaluating the system backdrop as if `CabinetWClass` is
++/// always the active window — without it `DWMSBT_TRANSIENTWINDOW` drops
++/// to a flat `#585858` sheet the moment focus moves elsewhere.
++const WCA_FORCE_ACTIVEWINDOW_APPEARANCE: u32 = 15;
++
++fn composition_attr(hwnd: crate::bindings::HWND, data: &WindowCompositionAttribData) {
+     let user32 = unsafe { GetModuleHandleW(PCWSTR(widestr("user32.dll").as_ptr())) };
+     if user32.is_null() {
+         return;
+@@ -363,20 +448,51 @@ fn set_accent_policy(hwnd: crate::bindings::HWND, state: u32, flags: u32, gradie
+         crate::bindings::HWND,
+         *const WindowCompositionAttribData,
+     ) -> windows_core::BOOL = unsafe { core::mem::transmute(f) };
++    unsafe {
++        let _ = f(hwnd, data);
++    }
++}
++
++/// `WCA_FORCE_ACTIVEWINDOW_APPEARANCE` — `1` while glass is armed, `0` on
++/// restore so DWM's real focus tracking resumes.
++fn set_force_active(hwnd: crate::bindings::HWND, on: bool) {
++    let value: i32 = on as i32;
++    composition_attr(
++        hwnd,
++        &WindowCompositionAttribData {
++            attrib: WCA_FORCE_ACTIVEWINDOW_APPEARANCE,
++            pv_data: &value as *const i32 as *const core::ffi::c_void,
++            cb_data: core::mem::size_of::<i32>(),
++        },
++    );
++}
++
++/// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY`. The system
++/// backdrop path keeps this strictly `ACCENT_DISABLED` (mutual exclusion
++/// with `DWMWA_SYSTEMBACKDROP_TYPE`); it is still written on every apply
++/// so a previously-armed accent can't linger.
++fn set_accent_policy(hwnd: crate::bindings::HWND, state: u32, flags: u32, gradient: u32) {
++    #[repr(C)]
++    struct AccentPolicy {
++        accent_state: u32,
++        accent_flags: u32,
++        gradient_color: u32,
++        animation_id: u32,
++    }
+     let policy = AccentPolicy {
+         accent_state: state,
+         accent_flags: flags,
+         gradient_color: gradient,
+         animation_id: 0,
+     };
+-    let data = WindowCompositionAttribData {
+-        attrib: WCA_ACCENT_POLICY,
+-        pv_data: &policy as *const AccentPolicy as *const core::ffi::c_void,
+-        cb_data: core::mem::size_of::<AccentPolicy>(),
+-    };
+-    unsafe {
+-        let _ = f(hwnd, &data);
+-    }
++    composition_attr(
++        hwnd,
++        &WindowCompositionAttribData {
++            attrib: WCA_ACCENT_POLICY,
++            pv_data: &policy as *const AccentPolicy as *const core::ffi::c_void,
++            cb_data: core::mem::size_of::<AccentPolicy>(),
++        },
++    );
+ }
+ 
+ /// `TriggerWindowCompositionUpdate` — the mod sends `WM_WINDOWPOSCHANGED`
+@@ -445,11 +561,10 @@ fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
+ /// settings reverts.
+ pub fn apply(id: &str, tint: &str) -> bool {
+     let wire = if id.is_empty() {
+-        match pecofence_core::color_tint::tint_wire(
+-            "PECO-FES1",
+-            pecofence_core::color_tint::FILE_EXPLORER_TARGETS,
+-            tint,
+-        ) {
++        if tint.is_empty() {
++            return reset();
++        }
++        match pecofence_core::color_tint::fe_tint_wire("PECO-FES1", tint) {
+             Some(w) => w,
+             None => return reset(),
+         }
+@@ -457,11 +572,9 @@ pub fn apply(id: &str, tint: &str) -> bool {
+         let Some(mut w) = pecofence_core::file_explorer_themes::theme_wire(id) else {
+             return false;
+         };
+-        pecofence_core::color_tint::apply_to_wire(
+-            &mut w,
+-            pecofence_core::color_tint::FILE_EXPLORER_TARGETS,
+-            tint,
+-        );
++        // Always-on veil: `""` tint → the default smoked `#50101216` so
++        // the top bar matches the Win32 punch instead of staying clear.
++        pecofence_core::color_tint::apply_fe_tint(&mut w, tint);
+         w
+     };
+     let effect = pecofence_core::file_explorer_themes::backdrop(id)
 diff --git a/crates/tap/src/fe_glass.rs b/crates/tap/src/fe_glass.rs
-index 9599be7..daa2f4b 100644
+index 9599be7..fd0b4e7 100644
 --- a/crates/tap/src/fe_glass.rs
 +++ b/crates/tap/src/fe_glass.rs
-@@ -63,12 +63,14 @@ windows_core::link!("user32.dll" "system" fn WindowFromDC(hdc: Hdc) -> Hwnd);
+@@ -20,9 +20,10 @@
+ //!   `DirectUIHWND` stop painting an opaque panel and reveal the DWM
+ //!   backdrop underneath.
+ //!
+-//! `ExtTextOutW` alpha correction is intentionally NOT hooked yet — the
+-//! buffered-paint composition it needs is a larger port, and a wrong
+-//! implementation renders text invisible. Stock text color is left alone.
++//! - `ExtTextOutW` detour: `ETO_OPAQUE` background boxes (SysTreeView32
++//!   row fills) are repainted transparent black and re-emitted without
++//!   the opaque flag. Text alpha correction is still not attempted —
++//!   a wrong implementation renders text invisible.
+ 
+ use crate::win32;
+ use core::sync::atomic::{AtomicBool, Ordering};
+@@ -63,14 +64,35 @@ windows_core::link!("user32.dll" "system" fn WindowFromDC(hdc: Hdc) -> Hwnd);
  windows_core::link!("user32.dll" "system" fn GetAncestor(hwnd: Hwnd, gaflags: u32) -> Hwnd);
  windows_core::link!("user32.dll" "system" fn EnumThreadWindows(dwthreadid: u32, lpfn: WndEnumProc, lparam: isize) -> windows_core::BOOL);
  windows_core::link!("user32.dll" "system" fn EnumWindows(lpfn: WndEnumProc, lparam: isize) -> windows_core::BOOL);
@@ -326,36 +1126,150 @@ index 9599be7..daa2f4b 100644
  windows_core::link!("user32.dll" "system" fn SendMessageTimeoutW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize, flags: u32, timeout: u32, result: *mut usize) -> usize);
  windows_core::link!("user32.dll" "system" fn RedrawWindow(hwnd: Hwnd, lprcupdate: *const core::ffi::c_void, hrgnupdate: *mut core::ffi::c_void, flags: u32) -> windows_core::BOOL);
  windows_core::link!("user32.dll" "system" fn SetWindowCompositionAttribute(hwnd: Hwnd, data: *const core::ffi::c_void) -> windows_core::BOOL);
++windows_core::link!("user32.dll" "system" fn DefWindowProcW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize);
  windows_core::link!("gdi32.dll" "system" fn GetStockObject(i: i32) -> *mut core::ffi::c_void);
 +windows_core::link!("gdi32.dll" "system" fn GetObjectW(obj: *mut core::ffi::c_void, cb: i32, pv: *mut core::ffi::c_void) -> i32);
++windows_core::link!("gdi32.dll" "system" fn StretchDIBits(hdc: Hdc, x_dest: i32, y_dest: i32, dest_w: i32, dest_h: i32, x_src: i32, y_src: i32, src_w: i32, src_h: i32, bits: *const core::ffi::c_void, bmi: *const core::ffi::c_void, usage: u32, rop: u32) -> i32);
  windows_core::link!("gdi32.dll" "system" fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> *mut core::ffi::c_void);
  windows_core::link!("gdi32.dll" "system" fn DeleteObject(obj: *mut core::ffi::c_void) -> windows_core::BOOL);
++windows_core::link!("gdi32.dll" "system" fn GetTextExtentPoint32W(hdc: Hdc, lpstring: PCWSTR, c: i32, psizl: *mut Size) -> windows_core::BOOL);
++windows_core::link!("gdi32.dll" "system" fn GetTextExtentPointI(hdc: Hdc, pgi_in: *const u16, cgi: i32, psize: *mut Size) -> windows_core::BOOL);
++windows_core::link!("gdi32.dll" "system" fn GetTextAlign(hdc: Hdc) -> u32);
++windows_core::link!("gdi32.dll" "system" fn SetTextAlign(hdc: Hdc, align: u32) -> u32);
++windows_core::link!("gdi32.dll" "system" fn GetLayout(hdc: Hdc) -> u32);
++windows_core::link!("gdi32.dll" "system" fn SetLayout(hdc: Hdc, l: u32) -> u32);
++windows_core::link!("gdi32.dll" "system" fn SetBkMode(hdc: Hdc, mode: i32) -> i32);
++windows_core::link!("gdi32.dll" "system" fn GetTextColor(hdc: Hdc) -> u32);
++windows_core::link!("gdi32.dll" "system" fn SetTextColor(hdc: Hdc, color: u32) -> u32);
++windows_core::link!("gdi32.dll" "system" fn SetBkColor(hdc: Hdc, color: u32) -> u32);
++windows_core::link!("gdi32.dll" "system" fn GetCurrentObject(hdc: Hdc, ty: u32) -> *mut core::ffi::c_void);
++windows_core::link!("gdi32.dll" "system" fn SelectObject(hdc: Hdc, h: *mut core::ffi::c_void) -> *mut core::ffi::c_void);
++windows_core::link!("gdi32.dll" "system" fn GetTextMetricsW(hdc: Hdc, lptm: *mut TextMetricW) -> windows_core::BOOL);
++windows_core::link!("user32.dll" "system" fn DrawTextW(hdc: Hdc, lpchtext: PCWSTR, cchtext: i32, lprc: *mut Rect, format: u32) -> i32);
++windows_core::link!("uxtheme.dll" "system" fn BeginBufferedPaint(hdc_target: Hdc, prc_target: *const Rect, dw_format: i32, p_paint_params: *const BpPaintParams, phdc: *mut Hdc) -> isize);
++windows_core::link!("uxtheme.dll" "system" fn EndBufferedPaint(hbuffered_paint: isize, f_update_target: windows_core::BOOL) -> HResult);
++windows_core::link!("uxtheme.dll" "system" fn GetBufferedPaintBits(hbuffered_paint: isize, ppb_buffer: *mut *mut u32, pcx_row: *mut i32) -> HResult);
  windows_core::link!("dwmapi.dll" "system" fn DwmEnableBlurBehindWindow(hwnd: Hwnd, bb: *const DwmBlurBehind) -> HResult);
-@@ -154,15 +156,18 @@ static THEME_CLASSES: LazyLock<Mutex<HashMap<usize, String>>> =
+ windows_core::link!("kernel32.dll" "system" fn GetCurrentThreadId() -> u32);
+ 
+@@ -97,6 +119,76 @@ struct WcaData {
+     cb: usize,
+ }
+ 
++#[repr(C)]
++struct Size {
++    cx: i32,
++    cy: i32,
++}
++
++/// `BLENDFUNCTION` — `AC_SRC_OVER`, `0`, `255`, `AC_SRC_ALPHA`.
++#[repr(C)]
++struct BlendFunction {
++    op: u8,
++    flags: u8,
++    alpha: u8,
++    format: u8,
++}
++
++/// `BP_PAINTPARAMS` for `BeginBufferedPaint`.
++#[repr(C)]
++struct BpPaintParams {
++    cb_size: u32,
++    dw_flags: u32,
++    prc_exclude: *const Rect,
++    p_blend_function: *const BlendFunction,
++}
++
++/// `TEXTMETRICW` — only `ascent` is read (TA_BASELINE rect adjustment).
++#[repr(C)]
++struct TextMetricW {
++    height: i32,
++    ascent: i32,
++    descent: i32,
++    internal_leading: i32,
++    external_leading: i32,
++    ave_char_width: i32,
++    max_char_width: i32,
++    weight: i32,
++    overhang: i32,
++    digitized_x: i32,
++    digitized_y: i32,
++    first_char: u16,
++    last_char: u16,
++    default_char: u16,
++    break_char: u16,
++    italic: u8,
++    underlined: u8,
++    struck_out: u8,
++    pitch_and_family: u8,
++    char_set: u8,
++}
++
++/// `DTTOPTS` — `DrawThemeTextEx` options block.
++#[repr(C)]
++#[derive(Clone, Copy)]
++struct DttOpts {
++    size: u32,
++    flags: u32,
++    cr_text: u32,
++    cr_border: u32,
++    cr_shadow: u32,
++    shadow_type: i32,
++    shadow_offset: [i32; 2],
++    border_size: i32,
++    font_prop: i32,
++    color_prop: i32,
++    state: i32,
++    apply_overlay: i32,
++    glow_size: i32,
++    pfn_callback: usize,
++    lparam: isize,
++}
++
+ const GA_ROOT: u32 = 2;
+ const BLACK_BRUSH: i32 = 4;
+ const COLOR_WINDOW: i32 = 5;
+@@ -109,6 +201,11 @@ const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
+ const DWM_BB_ENABLE: u32 = 1;
+ const DWM_BB_BLURREGION: u32 = 2;
+ const WCA_ACCENT_POLICY: u32 = 19;
++/// Keeps DWM evaluating the system backdrop as if `CabinetWClass` is
++/// always active — otherwise `DWMSBT_TRANSIENTWINDOW` drops to a flat
++/// `#585858` sheet on focus loss.
++const WCA_FORCE_ACTIVEWINDOW_APPEARANCE: u32 = 15;
++const WM_NCACTIVATE: u32 = 0x0086;
+ const WM_THEMECHANGED: u32 = 0x031A;
+ const SMTO_ABORTIFHUNG: u32 = 0x0002;
+ const RDW_INVALIDATE: u32 = 0x0001;
+@@ -154,15 +251,23 @@ static THEME_CLASSES: LazyLock<Mutex<HashMap<usize, String>>> =
      LazyLock::new(|| Mutex::new(HashMap::new()));
  
  /// The backdrop mode the platform wants on cabinets — pushed via the
 -/// `FEBD` COPYDATA (BUG 2). `-1` = unset (swallow explorer's writes,
 -/// don't substitute).
 -static DESIRED_BACKDROP: core::sync::atomic::AtomicI32 = core::sync::atomic::AtomicI32::new(-1);
-+/// `FEBD` COPYDATA (BUG 2). Defaults to `DWMSBT_NONE` (1) so a
-+/// `set_armed` that races ahead of the `FEBD` still applies the accent
-+/// path instead of explorer's opaque tabbed backdrop.
-+static DESIRED_BACKDROP: core::sync::atomic::AtomicI32 = core::sync::atomic::AtomicI32::new(1);
++/// `FEBD` COPYDATA (BUG 2). Defaults to `DWMSBT_TRANSIENTWINDOW` (3) so a
++/// `set_armed` that races ahead of the `FEBD` still applies the working
++/// 23H2 system acrylic instead of explorer's opaque tabbed backdrop.
++static DESIRED_BACKDROP: core::sync::atomic::AtomicI32 = core::sync::atomic::AtomicI32::new(3);
  /// Accent policy the platform wants — `ACCENT_STATE_*` (0 = disabled,
  /// 4 = acrylic blur behind), flags, and the ABGR `GradientColor`.
--static ACCENT_STATE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
-+/// Defaults to acrylic with a subtle dark tint (`0x18101010` — alpha
-+/// never 0, or Win11 23H2 disables the blur entirely).
-+static ACCENT_STATE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(4);
++/// Defaults to DISABLED: `WCA_ACCENT_POLICY` conflicts with the
++/// `DWMSBT_TRANSIENTWINDOW` system backdrop and cannot compose on
++/// `CabinetWClass`.
+ static ACCENT_STATE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
  static ACCENT_FLAGS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
++/// `FEBD` slot 4: `0` = transparent `BLACK_BRUSH` punch; `0xAABBGGRR`
++/// otherwise — the default smoked-glass veil `0x50161210` (~31% dark
++/// charcoal, keeps white file names readable over bright windows) or the
++/// darkened swatch `0x48BBGGRR`.
  static ACCENT_GRADIENT: core::sync::atomic::AtomicU32 =
 -    core::sync::atomic::AtomicU32::new(0x40101010);
-+    core::sync::atomic::AtomicU32::new(0x18101010);
++    core::sync::atomic::AtomicU32::new(0x50161210);
  
  /// uxtheme **Ordinal 74** — `GetThemeClass`: resolves a class name for
  /// any `HTHEME`, including handles explorer opened before we armed (the
-@@ -274,42 +279,47 @@ fn class_of(htheme: HTheme) -> Option<String> {
+@@ -274,42 +379,47 @@ fn class_of(htheme: HTheme) -> Option<String> {
      if htheme.is_null() {
          return None;
      }
@@ -429,25 +1343,88 @@ index 9599be7..daa2f4b 100644
          })
          .unwrap_or(false)
  }
-@@ -493,13 +503,65 @@ fn restore_cabinets() {
+@@ -319,6 +429,13 @@ fn bg_class(htheme: HTheme) -> bool {
+ }
+ 
+ // ------------------------------------------------- in-process cabinet push
++/// Live `CabinetWClass` count — `site::ensure_watching_winui3` watches
++/// this to detect NEW islands (each new File Explorer window registers
++/// the next `WinUIVisualDiagConnection{N}` endpoint).
++pub fn cabinet_count() -> usize {
++    cabinet_windows().len()
++}
++
+ /// Every live `CabinetWClass` top window (the platform's `WorkerW`-child
+ /// exclusion: legacy Control Panel frames are skipped).
+ fn cabinet_windows() -> Vec<Hwnd> {
+@@ -421,6 +538,25 @@ fn apply_glass_to(hwnd: Hwnd) {
+     let _ = unsafe {
+         SetWindowCompositionAttribute(hwnd, &data as *const WcaData as *const core::ffi::c_void)
+     };
++    // WCA_FORCE_ACTIVEWINDOW_APPEARANCE — the TRANSIENTWINDOW backdrop
++    // only blurs while DWM treats the window as active; force the
++    // appearance, then feed a fake activation so DWM re-evaluates now.
++    set_force_active(hwnd, true);
++    let _ = unsafe { DefWindowProcW(hwnd, WM_NCACTIVATE, 1, 0) };
++}
++
++/// `WCA_FORCE_ACTIVEWINDOW_APPEARANCE` (`1` armed / `0` restore) — without
++/// it DWM renders the unfocused window's system backdrop as opaque gray.
++fn set_force_active(hwnd: Hwnd, on: bool) {
++    let value: i32 = on as i32;
++    let data = WcaData {
++        attrib: WCA_FORCE_ACTIVEWINDOW_APPEARANCE,
++        pv: &value as *const i32 as *const core::ffi::c_void,
++        cb: core::mem::size_of::<i32>(),
++    };
++    let _ = unsafe {
++        SetWindowCompositionAttribute(hwnd, &data as *const WcaData as *const core::ffi::c_void)
++    };
+ }
+ 
+ /// Raw `DwmSetWindowAttribute` — bypasses our own detour via the
+@@ -479,6 +615,7 @@ fn restore_glass_on(hwnd: Hwnd) {
+     let _ = unsafe {
+         SetWindowCompositionAttribute(hwnd, &data as *const WcaData as *const core::ffi::c_void)
+     };
++    set_force_active(hwnd, false);
+ }
+ 
+ fn apply_to_cabinets() {
+@@ -493,13 +630,25 @@ fn restore_cabinets() {
      }
  }
  
 +const TVM_SETBKCOLOR: u32 = 0x111D; // TV_FIRST + 29
++const TVM_SETEXTENDEDSTYLE: u32 = 0x112C; // TV_FIRST + 44
++const TVS_EX_DOUBLEBUFFER: isize = 0x0004;
 +
  /// `WM_THEMECHANGED` + a full redraw — forces DirectUI to repaint through
  /// our (now armed/disarmed) hooks immediately, instead of leaving the
 -/// stock/opaque pixels until the next navigation.
-+/// stock/opaque pixels until the next navigation. The theme message must
-+/// reach EVERY descendant — `SysTreeView32` (the left nav pane) and
-+/// `DirectUIHWND` don't repaint on a top-window broadcast alone. The
-+/// tree also caches a `COLOR_WINDOW`-colored background: `TVM_SETBKCOLOR`
-+/// pushes RGB(0,0,0) while armed, `-1` (system default) on disarm.
++/// stock/opaque pixels until the next navigation. The top window gets the
++/// theme message FIRST — it re-themes descendants itself, so sending it
++/// after `EnumChildWindows` would let explorer overwrite our
++/// `TVM_SETBKCOLOR`/`TVM_SETEXTENDEDSTYLE` pushes on `SysTreeView32`.
++/// The tree also caches a `COLOR_WINDOW`-colored background and paints
++/// through an offscreen `TVS_EX_DOUBLEBUFFER`: both are switched while
++/// armed (`RGB(0,0,0)` / double-buffer off) and restored on disarm.
  fn refresh_cabinets() {
 +    let armed = is_armed();
      for hwnd in cabinet_windows() {
 -        let mut result = 0usize;
-+        // ---- every descendant: WM_THEMECHANGED + the tree's bk color ----
++        // ---- top window first: it re-themes its own descendants ----
+         unsafe {
++            let mut result = 0usize;
+             let _ = SendMessageTimeoutW(
+                 hwnd,
+                 WM_THEMECHANGED,
+@@ -509,6 +658,66 @@ fn refresh_cabinets() {
+                 200,
+                 &mut result,
+             );
++        }
++        // ---- every descendant: WM_THEMECHANGED + the tree's settings ----
 +        unsafe extern "system" fn child_cb(hwnd: Hwnd, lparam: isize) -> windows_core::BOOL {
 +            let armed = lparam != 0;
 +            let mut result = 0usize;
@@ -481,6 +1458,19 @@ index 9599be7..daa2f4b 100644
 +                        200,
 +                        &mut result,
 +                    );
++                    // Kill the offscreen double-buffer while armed — it
++                    // composites the tree opaque before our hooks can see
++                    // the background fill. Restored on disarm.
++                    let style: isize = if armed { 0 } else { TVS_EX_DOUBLEBUFFER };
++                    let _ = SendMessageTimeoutW(
++                        hwnd,
++                        TVM_SETEXTENDEDSTYLE,
++                        TVS_EX_DOUBLEBUFFER as usize,
++                        style,
++                        SMTO_ABORTIFHUNG,
++                        200,
++                        &mut result,
++                    );
 +                    let _ = RedrawWindow(
 +                        hwnd,
 +                        core::ptr::null(),
@@ -491,30 +1481,183 @@ index 9599be7..daa2f4b 100644
 +            }
 +            windows_core::BOOL(1)
 +        }
-         unsafe {
++        unsafe {
 +            let _ = EnumChildWindows(hwnd, Some(child_cb), armed as isize);
-+            let mut result = 0usize;
-             let _ = SendMessageTimeoutW(
+             let _ = RedrawWindow(
                  hwnd,
-                 WM_THEMECHANGED,
-@@ -606,9 +668,14 @@ unsafe extern "system" fn get_theme_color_hook(
+                 core::ptr::null(),
+@@ -606,11 +815,21 @@ unsafe extern "system" fn get_theme_color_hook(
      pcolor: *mut u32,
  ) -> HResult {
      if is_armed() && !pcolor.is_null() && thread_has_cabinet() {
 -        if (prop == TMT_FILLCOLOR || prop == TMT_FILLCOLORHINT) && bg_class(htheme) {
+-            unsafe {
+-                *pcolor = 0; // transparent black under DWM composition
 +        // Translucent-Windows lines 920–929: on a cabinet thread EVERY
 +        // fill/fill-hint color goes transparent black — the opaque panel
 +        // classes open under prefixed names (`DarkMode_*::`) that class
 +        // matching can miss, and any fill on this thread is a panel
 +        // background hiding the glass.
 +        if prop == TMT_FILLCOLOR || prop == TMT_FILLCOLORHINT {
-             unsafe {
--                *pcolor = 0; // transparent black under DWM composition
-+                *pcolor = 0;
++            // Only CONTAINER backgrounds go transparent — `part >= 1` on
++            // ItemsView/ListView/TreeView is a row's hover/selection fill,
++            // which must keep its real color or highlights vanish.
++            if part == 0 || (part == 1 && state == 0) {
++                unsafe {
++                    *pcolor = 0;
++                }
++                return 0;
              }
+-            return 0;
+         }
+         // Folder/tree/header text on the dark glass sheet — force white
+         // so it stays readable (the light-mode default would vanish).
+@@ -628,8 +847,91 @@ unsafe extern "system" fn get_theme_color_hook(
+     unsafe { orig(htheme, part, state, prop, pcolor) }
+ }
+ 
++/// `StretchDIBits` raster op — plain source overwrite (no alpha blending,
++/// so repeated punches never stack).
++const SRCCOPY: u32 = 0x00CC0020;
++
++/// `BITMAPINFO` for a 1×1 32-bpp top-down DIB — `biHeight < 0` makes row 0
++/// the TOP of the image.
++#[repr(C)]
++struct BitmapInfo {
++    size: u32,
++    width: i32,
++    height: i32,
++    planes: u16,
++    bpp: u16,
++    compression: u32,
++    image_size: u32,
++    xppm: i32,
++    yppm: i32,
++    used: u32,
++    important: u32,
++    colors: [u32; 1],
++}
++
++/// Fill a punched background rect. With no Color Tint swatch
++/// (`ACCENT_GRADIENT == 0`) this is transparent `BLACK_BRUSH` through the
++/// FillRect TRAMPOLINE — the hooked export would re-enter
++/// `fill_rect_hook`, and `GetStockObject(BLACK_BRUSH)` itself resolves to
++/// a `BS_SOLID 0x00000000` stock-panel brush → recursion. With a swatch
++/// (`0x24BBGGRR`) it stretches one premultiplied BGRA pixel over the rect:
++/// `SRCCOPY` overwrites in a single pass, so the same ~14% veil lands on
++/// `SysTreeView32`/`DirectUIHWND` that the XAML ruleset puts on the top
++/// bar, and `DWMSBT_TRANSIENTWINDOW` keeps blurring through.
+ fn punch_black(hdc: Hdc, rect: *const Rect) -> bool {
+-    unsafe { FillRect(hdc, rect, GetStockObject(BLACK_BRUSH) as HBrush) != 0 }
++    let grad = ACCENT_GRADIENT.load(Ordering::Acquire);
++    if grad != 0 {
++        let a = (grad >> 24) & 0xFF;
++        let (r, g, b) = (grad & 0xFF, (grad >> 8) & 0xFF, (grad >> 16) & 0xFF);
++        let pixel: u32 =
++            a << 24 | (((r * a) / 255) << 16) | (((g * a) / 255) << 8) | ((b * a) / 255);
++        let bmi = BitmapInfo {
++            size: 40,
++            width: 1,
++            height: -1,
++            planes: 1,
++            bpp: 32,
++            compression: 0, // BI_RGB
++            image_size: 0,
++            xppm: 0,
++            yppm: 0,
++            used: 0,
++            important: 0,
++            colors: [0],
++        };
++        let (x, y, w, h) = unsafe {
++            (
++                (*rect).left,
++                (*rect).top,
++                (*rect).right - (*rect).left,
++                (*rect).bottom - (*rect).top,
++            )
++        };
++        if w > 0 && h > 0 {
++            return unsafe {
++                StretchDIBits(
++                    hdc,
++                    x,
++                    y,
++                    w,
++                    h,
++                    0,
++                    0,
++                    1,
++                    1,
++                    &pixel as *const u32 as *const core::ffi::c_void,
++                    &bmi as *const BitmapInfo as *const core::ffi::c_void,
++                    0, // DIB_RGB_COLORS
++                    SRCCOPY,
++                )
++            } != 0;
++        }
++    }
++    let black = unsafe { GetStockObject(BLACK_BRUSH) as HBrush };
++    match tramp::<FillRectFn>("FillRect") {
++        Some(f) => unsafe { f(hdc, rect, black) != 0 },
++        None => false,
++    }
+ }
+ 
+ /// Background parts the mod punches out: `iPartId == 0` (ItemsView/
+@@ -639,6 +941,23 @@ fn is_bg_part(part: i32, state: i32) -> bool {
+     part == 0 || (part == 1 && state == 0)
+ }
+ 
++/// Part/state punch rule — `TreeView` is special: `TVP_TREEITEM` rows
++/// only punch `TREIS_NORMAL` (1); `TREIS_HOT`/`SELECTED`/
++/// `SELECTEDNOTFOCUS`/`HOTSELECTED` (2/3/5/6) must still draw their
++/// hover/selection highlight, so they fall through to the original.
++fn should_punch_part(htheme: HTheme, part: i32, state: i32) -> bool {
++    if class_in(htheme, &["TreeView"]) {
++        return part == 0 || (part == 1 && state == 1);
++    }
++    // ItemsView/ListView: `part == 0` is the container background — punch
++    // it; `part >= 1` is LVP_LISTITEM hover/selection/rect highlights,
++    // which must draw or rows lose all interactivity cues.
++    if class_in(htheme, &["ItemsView", "ListView"]) {
++        return part == 0;
++    }
++    bg_class(htheme) && is_bg_part(part, state)
++}
++
+ type DrawThemeBgFn =
+     unsafe extern "system" fn(HTheme, Hdc, i32, i32, *const Rect, *const Rect) -> HResult;
+ unsafe extern "system" fn draw_theme_bg_hook(
+@@ -649,12 +968,7 @@ unsafe extern "system" fn draw_theme_bg_hook(
+     rect: *const Rect,
+     clip: *const Rect,
+ ) -> HResult {
+-    if is_armed()
+-        && !rect.is_null()
+-        && is_bg_part(part, state)
+-        && cabinet_dc(hdc)
+-        && bg_class(htheme)
+-    {
++    if is_armed() && !rect.is_null() && cabinet_dc(hdc) && should_punch_part(htheme, part, state) {
+         if punch_black(hdc, rect) {
              return 0;
          }
-@@ -705,6 +772,44 @@ unsafe extern "system" fn get_sys_color_brush_hook(index: i32) -> HBrush {
+@@ -676,12 +990,7 @@ unsafe extern "system" fn draw_theme_bg_ex_hook(
+     rect: *const Rect,
+     opts: *const DtbgOpts,
+ ) -> HResult {
+-    if is_armed()
+-        && !rect.is_null()
+-        && is_bg_part(part, state)
+-        && cabinet_dc(hdc)
+-        && bg_class(htheme)
+-    {
++    if is_armed() && !rect.is_null() && cabinet_dc(hdc) && should_punch_part(htheme, part, state) {
+         if punch_black(hdc, rect) {
+             return 0;
+         }
+@@ -705,6 +1014,47 @@ unsafe extern "system" fn get_sys_color_brush_hook(index: i32) -> HBrush {
      unsafe { orig(index) }
  }
  
@@ -527,9 +1670,12 @@ index 9599be7..daa2f4b 100644
 +
 +/// Explorer's stock opaque panel colors (BGR, alpha byte ignored) —
 +/// `SysTreeView32`/DirectUI cache `CreateSolidBrush` handles for these
-+/// rather than asking the system brush table.
++/// rather than asking the system brush table. `0x00000000` covers raw
++/// black brushes too — safe because our own punches go through the
++/// trampoline, never re-entering this check.
 +const STOCK_PANEL_COLORS: &[u32] = &[
-+    0x00191919, 0x00202020, 0x001F1F1F, 0x002C2C2C, 0x00FFFFFF, 0x00F3F3F3,
++    0x00191919, 0x00181818, 0x00141414, 0x00202020, 0x001F1F1F, 0x002C2C2C, 0x00FFFFFF, 0x00F3F3F3,
++    0x00000000,
 +];
 +
 +/// `true` when `brush` is a `BS_SOLID` brush in one of explorer's stock
@@ -559,24 +1705,813 @@ index 9599be7..daa2f4b 100644
  type FillRectFn = unsafe extern "system" fn(Hdc, *const Rect, HBrush) -> i32;
  unsafe extern "system" fn fill_rect_hook(hdc: Hdc, rect: *const Rect, brush: HBrush) -> i32 {
      if is_armed() && !rect.is_null() && cabinet_dc(hdc) {
-@@ -717,7 +822,14 @@ unsafe extern "system" fn fill_rect_hook(hdc: Hdc, rect: *const Rect, brush: HBr
+@@ -717,8 +1067,20 @@ unsafe extern "system" fn fill_rect_hook(hdc: Hdc, rect: *const Rect, brush: HBr
          let real = tramp::<GetSysColorBrushFn>("GetSysColorBrush")
              .map(|orig| unsafe { orig(COLOR_WINDOW) } == brush)
              .unwrap_or(false);
 -        if pseudo || real {
+-            return unsafe { FillRect(hdc, rect, GetStockObject(BLACK_BRUSH) as HBrush) };
 +        // Dark-mode panels often skip the system-brush table entirely and
 +        // cache a `CreateSolidBrush(#191919 / #202020 / #F3F3F3 / …)`.
-+        // `GetObjectW` exposes the brush's real color — punch the stock
-+        // opaque panel colors on LARGE fills only, so icons, buttons and
-+        // selection pills keep their paint.
-+        let solid_panel = is_stock_panel_brush(brush)
-+            && unsafe { (*rect).right - (*rect).left > 80 && (*rect).bottom - (*rect).top > 80 };
++        // `GetObjectW` exposes the brush's real color. `SysTreeView32`
++        // fills its rows (~28px) one by one, so only the WIDTH gates the
++        // punch: icons/checkmarks stay under 32px, and hover/selection
++        // pills in TreeView/ItemsView draw via DrawThemeBackground or
++        // Direct2D, never `FillRect` with a panel color.
++        let solid_panel =
++            is_stock_panel_brush(brush) && unsafe { (*rect).right - (*rect).left > 40 };
 +        if pseudo || real || solid_panel {
-             return unsafe { FillRect(hdc, rect, GetStockObject(BLACK_BRUSH) as HBrush) };
++            // `punch_black` picks transparent black or the FEBD tint —
++            // and always goes through the FillRect trampoline, so a
++            // BLACK_BRUSH (itself a stock panel color) can't re-enter.
++            return if punch_black(hdc, rect) { 1 } else { -1 };
          }
      }
+     let orig: FillRectFn = match tramp("FillRect") {
+@@ -728,6 +1090,372 @@ unsafe extern "system" fn fill_rect_hook(hdc: Hdc, rect: *const Rect, brush: HBr
+     unsafe { orig(hdc, rect, brush) }
+ }
+ 
++// ------------------------------------------------------------------ text
++/// `ETO_*`/`TA_*`/`DT_*`/`BPPF_*`/`BPBF_*`/`OBJ_*`/`TRANSPARENT` constants
++/// used by the buffered-paint text path.
++const ETO_OPAQUE: u32 = 0x0002;
++const ETO_CLIPPED: u32 = 0x0004;
++const ETO_GLYPH_INDEX: u32 = 0x0010;
++const ETO_PDY: u32 = 0x2000;
++const TA_UPDATECP: u32 = 0x0001;
++const TA_RIGHT: u32 = 0x0002;
++const TA_CENTER: u32 = 0x0006;
++const TA_BOTTOM: u32 = 0x0008;
++const TA_BASELINE: u32 = 0x0018;
++const DT_CALCRECT: u32 = 0x0400;
++const DT_MODIFYSTRING: u32 = 0x00010000;
++const DTT_TEXTCOLOR: u32 = 0x00000001;
++const DTT_CALCRECT: u32 = 0x00000200;
++const DTT_COMPOSITED: u32 = 0x00002000;
++const BPBF_TOPDOWNDIB: i32 = 2;
++const BPPF_ERASE: u32 = 0x0001;
++const BPPF_NOCLIP: u32 = 0x0004;
++const OBJ_FONT: u32 = 6;
++const BK_TRANSPARENT: i32 = 1;
++
++/// Coverage→alpha gamma curve from Translucent Windows: GDI glyph masks
++/// are 8-bit coverage values; mapping them straight to alpha renders thin
++/// strokes too faint. `a^(1/gamma)` with `gamma = 1.2 + 0.3a` lifts
++/// mid-coverage pixels so anti-aliased edges read sharp on glass.
++static TEXT_ALPHA_GAMMA_LUT: LazyLock<[u8; 256]> = LazyLock::new(|| {
++    let mut lut = [0u8; 256];
++    for (i, slot) in lut.iter_mut().enumerate() {
++        let a = i as f32 / 255.0;
++        let gamma = 1.2 + 0.3 * a;
++        *slot = (a.powf(1.0 / gamma) * 255.0 + 0.5).clamp(0.0, 255.0) as u8;
++    }
++    lut
++});
++
++type ExtTextOutWFn = unsafe extern "system" fn(
++    Hdc,
++    i32,
++    i32,
++    u32,
++    *const Rect,
++    PCWSTR,
++    u32,
++    *const i32,
++) -> windows_core::BOOL;
++/// Buffered-paint text composition (Translucent Windows `HookedExtTextOutW`
++/// port): a plain `ExtTextOutW` writes glyphs with alpha 0 onto the
++/// `0x00000000` surface — premultiplied alpha 0 renders ADDITIVELY under
++/// DWM, so bright windows behind Explorer bleed straight through the
++/// letters. Instead we draw the string in white into a buffered paint
++/// DIB, turn its coverage map into premultiplied BGRA at the caller's
++/// text color through the gamma LUT, and let `EndBufferedPaint` alpha-
++/// blend the result onto the cabinet DC — razor-sharp opaque text.
++unsafe extern "system" fn ext_text_out_hook(
++    hdc: Hdc,
++    x: i32,
++    y: i32,
++    options: u32,
++    lprect: *const Rect,
++    lpstring: PCWSTR,
++    c: u32,
++    lpdx: *const i32,
++) -> windows_core::BOOL {
++    let orig: ExtTextOutWFn = match tramp("ExtTextOutW") {
++        Some(f) => f,
++        None => return windows_core::BOOL(0),
++    };
++    if !is_armed() || !cabinet_dc(hdc) {
++        return unsafe { orig(hdc, x, y, options, lprect, lpstring, c, lpdx) };
++    }
++    // The opaque background box — punch the veil before any text lands.
++    if options & ETO_OPAQUE != 0 && !lprect.is_null() {
++        let _ = punch_black(hdc, lprect);
++    }
++    let no_text =
++        lpstring.is_null() || c == 0 || c > 4096 || unsafe { GetTextAlign(hdc) } & TA_UPDATECP != 0;
++    if no_text {
++        return unsafe { orig(hdc, x, y, options & !ETO_OPAQUE, lprect, lpstring, c, lpdx) };
++    }
++    // Extent → the buffered-paint target rect.
++    let mut size = Size { cx: 0, cy: 0 };
++    let measured = unsafe {
++        if options & ETO_GLYPH_INDEX != 0 {
++            GetTextExtentPointI(hdc, lpstring.0, c as i32, &mut size)
++        } else {
++            GetTextExtentPoint32W(hdc, lpstring, c as i32, &mut size)
++        }
++    };
++    if measured == windows_core::BOOL(0) {
++        return unsafe { orig(hdc, x, y, options & !ETO_OPAQUE, lprect, lpstring, c, lpdx) };
++    }
++    if !lpdx.is_null() {
++        // lpDx holds per-char advances (pairs when ETO_PDY) — sum to the
++        // real run width, it can exceed the measured extent.
++        let stride = if options & ETO_PDY != 0 { 2usize } else { 1 };
++        let mut dx = 0i32;
++        for i in 0..c as usize {
++            dx += unsafe { *lpdx.add(i * stride) };
++        }
++        size.cx = size.cx.max(dx);
++    }
++    let align = unsafe { GetTextAlign(hdc) };
++    let (mut px, mut py) = (x, y);
++    let a_h = align & 6;
++    if a_h == TA_CENTER {
++        px -= size.cx / 2;
++    } else if a_h == TA_RIGHT {
++        px -= size.cx;
++    }
++    let a_v = align & 24;
++    if a_v == TA_BOTTOM {
++        py -= size.cy;
++    } else if a_v == TA_BASELINE {
++        let mut tm: TextMetricW = unsafe { core::mem::zeroed() };
++        if unsafe { GetTextMetricsW(hdc, &mut tm) } == windows_core::BOOL(0) {
++            return unsafe { orig(hdc, x, y, options & !ETO_OPAQUE, lprect, lpstring, c, lpdx) };
++        }
++        py -= tm.ascent;
++    }
++    let mut text_rect = Rect {
++        left: px,
++        top: py,
++        right: px + size.cx,
++        bottom: py + size.cy,
++    };
++    if options & ETO_CLIPPED != 0 && !lprect.is_null() {
++        let r = unsafe { &*lprect };
++        text_rect.left = text_rect.left.max(r.left);
++        text_rect.top = text_rect.top.max(r.top);
++        text_rect.right = text_rect.right.min(r.right);
++        text_rect.bottom = text_rect.bottom.min(r.bottom);
++    }
++    let (tw, th) = (
++        text_rect.right - text_rect.left,
++        text_rect.bottom - text_rect.top,
++    );
++    if tw <= 0 || th <= 0 {
++        return unsafe { orig(hdc, x, y, options & !ETO_OPAQUE, lprect, lpstring, c, lpdx) };
++    }
++    let blend = BlendFunction {
++        op: 0, // AC_SRC_OVER
++        flags: 0,
++        alpha: 255,
++        format: 1, // AC_SRC_ALPHA
++    };
++    let params = BpPaintParams {
++        cb_size: core::mem::size_of::<BpPaintParams>() as u32,
++        dw_flags: BPPF_ERASE | BPPF_NOCLIP,
++        prc_exclude: core::ptr::null(),
++        p_blend_function: &blend,
++    };
++    let mut mem_dc: Hdc = core::ptr::null_mut();
++    let hpb = unsafe { BeginBufferedPaint(hdc, &text_rect, BPBF_TOPDOWNDIB, &params, &mut mem_dc) };
++    if hpb == 0 || mem_dc.is_null() {
++        return unsafe { orig(hdc, x, y, options & !ETO_OPAQUE, lprect, lpstring, c, lpdx) };
++    }
++    unsafe {
++        let font = GetCurrentObject(hdc, OBJ_FONT);
++        if !font.is_null() {
++            SelectObject(mem_dc, font);
++        }
++        SetTextAlign(mem_dc, align);
++        SetLayout(mem_dc, GetLayout(hdc));
++        SetBkMode(mem_dc, BK_TRANSPARENT);
++        // White glyph mask — coverage = luminance of this draw.
++        SetTextColor(mem_dc, 0x00FFFFFF);
++    }
++    let res = unsafe {
++        orig(
++            mem_dc,
++            x,
++            y,
++            options & !ETO_OPAQUE,
++            lprect,
++            lpstring,
++            c,
++            lpdx,
++        )
++    };
++    let mut pixels: *mut u32 = core::ptr::null_mut();
++    let mut row_stride = 0i32;
++    if unsafe { GetBufferedPaintBits(hpb, &mut pixels, &mut row_stride) } < 0
++        || pixels.is_null()
++        || row_stride <= 0
++    {
++        unsafe {
++            let _ = EndBufferedPaint(hpb, windows_core::BOOL(0));
++        }
++        return res;
++    }
++    // Caller color → premultiplied output. Dark/muddy grays (secondary
++    // columns #6D6D6D, disabled state) can't survive over a bright
++    // backdrop — lift them: near-black → pure white, mid-gray →
++    // high-contrast silver-white.
++    let cr = unsafe { GetTextColor(hdc) } & 0x00FFFFFF;
++    let (mut r, mut g, mut b) = (cr & 0xFF, (cr >> 8) & 0xFF, (cr >> 16) & 0xFF);
++    if r < 180 && g < 180 && b < 180 {
++        if r > 90 {
++            (r, g, b) = (230, 230, 235);
++        } else {
++            (r, g, b) = (255, 255, 255);
++        }
++    }
++    let lut = &*TEXT_ALPHA_GAMMA_LUT;
++    for cy in 0..th {
++        for cx in 0..tw {
++            let p = unsafe { pixels.add((cy * row_stride + cx) as usize) };
++            let px = unsafe { *p };
++            if px & 0x00FFFFFF == 0 {
++                continue;
++            }
++            // White-mask luminance → coverage → gamma-corrected alpha.
++            let luma =
++                (((px & 0xFF) + (((px >> 8) & 0xFF) << 1) + ((px >> 16) & 0xFF)) >> 2) as usize;
++            let txt_a = lut[luma.min(255)] as u32;
++            unsafe {
++                *p = (txt_a << 24)
++                    | (((r * txt_a) >> 8) << 16)
++                    | (((g * txt_a) >> 8) << 8)
++                    | ((b * txt_a) >> 8);
++            }
++        }
++    }
++    unsafe {
++        let _ = EndBufferedPaint(hpb, windows_core::BOOL(1));
++    }
++    res
++}
++
++type DrawThemeTextExFn = unsafe extern "system" fn(
++    HTheme,
++    Hdc,
++    i32,
++    i32,
++    PCWSTR,
++    i32,
++    u32,
++    *mut Rect,
++    *const DttOpts,
++) -> HResult;
++/// `ItemsView` paints secondary columns (`Date modified`, `Type`, `Size`)
++/// and group headers via `DrawThemeTextEx`. Force white text and clear
++/// `DTT_COMPOSITED` so uxtheme stops doing its own (broken-alpha) glow
++/// composite and lands the draw in our gamma-corrected `ext_text_out_hook`.
++unsafe extern "system" fn draw_theme_text_ex_hook(
++    htheme: HTheme,
++    hdc: Hdc,
++    part: i32,
++    state: i32,
++    psz: PCWSTR,
++    cch: i32,
++    flags: u32,
++    rect: *mut Rect,
++    opts: *const DttOpts,
++) -> HResult {
++    let orig: DrawThemeTextExFn = match tramp("DrawThemeTextEx") {
++        Some(f) => f,
++        None => return -1,
++    };
++    if is_armed()
++        && cabinet_dc(hdc)
++        && (opts.is_null() || unsafe { (*opts).flags } & DTT_CALCRECT == 0)
++    {
++        let mut o = if opts.is_null() {
++            DttOpts {
++                size: core::mem::size_of::<DttOpts>() as u32,
++                flags: 0,
++                cr_text: 0,
++                cr_border: 0,
++                cr_shadow: 0,
++                shadow_type: 0,
++                shadow_offset: [0; 2],
++                border_size: 0,
++                font_prop: 0,
++                color_prop: 0,
++                state: 0,
++                apply_overlay: 0,
++                glow_size: 0,
++                pfn_callback: 0,
++                lparam: 0,
++            }
++        } else {
++            unsafe { *opts }
++        };
++        o.cr_text = 0x00FFFFFF;
++        o.flags |= DTT_TEXTCOLOR;
++        o.flags &= !DTT_COMPOSITED;
++        return unsafe { orig(htheme, hdc, part, state, psz, cch, flags, rect, &o) };
++    }
++    unsafe { orig(htheme, hdc, part, state, psz, cch, flags, rect, opts) }
++}
++
++/// uxtheme **Ordinal 126** — `DrawTextWithGlow`, the ItemsView label
++/// painter. With `nGlowRadius == 0` it renders plain text; skip the glow
++/// pipeline entirely and draw through `DrawTextW`/the caller's callback
++/// so every glyph goes through `ext_text_out_hook`'s alpha composition.
++type DrawTextWithGlowFn = unsafe extern "system" fn(
++    Hdc,
++    PCWSTR,
++    i32,
++    *mut Rect,
++    u32,
++    u32,
++    u32,
++    i32,
++    i32,
++    i32,
++    usize,
++    isize,
++) -> i32;
++type DrawTextCallback = unsafe extern "system" fn(Hdc, PCWSTR, i32, *mut Rect, u32, isize) -> i32;
++unsafe extern "system" fn draw_text_with_glow_hook(
++    hdc: Hdc,
++    psz: PCWSTR,
++    cch: i32,
++    rect: *mut Rect,
++    flags: u32,
++    cr_text: u32,
++    cr_glow: u32,
++    glow_radius: i32,
++    glow_intensity: i32,
++    premult: i32,
++    callback: usize,
++    lparam: isize,
++) -> i32 {
++    let orig: DrawTextWithGlowFn = match tramp("DrawTextWithGlow") {
++        Some(f) => f,
++        None => return 0,
++    };
++    if is_armed()
++        && glow_radius == 0
++        && cabinet_dc(hdc)
++        && flags & DT_CALCRECT == 0
++        && !rect.is_null()
++    {
++        unsafe {
++            SetTextColor(hdc, 0x00FFFFFF);
++            SetBkColor(hdc, 0);
++        }
++        let f = flags & !DT_MODIFYSTRING;
++        if callback != 0 {
++            let cb: DrawTextCallback = unsafe { core::mem::transmute(callback) };
++            return unsafe { cb(hdc, psz, cch, rect, f, lparam) };
++        }
++        return unsafe { DrawTextW(hdc, psz, cch, rect, f) };
++    }
++    unsafe {
++        orig(
++            hdc,
++            psz,
++            cch,
++            rect,
++            flags,
++            cr_text,
++            cr_glow,
++            glow_radius,
++            glow_intensity,
++            premult,
++            callback,
++            lparam,
++        )
++    }
++}
++
+ // ------------------------------------------------------------ install ----
+ fn install() {
+     let mut guard = DETOURS.lock().unwrap_or_else(|p| p.into_inner());
+@@ -751,49 +1479,93 @@ fn install() {
+             GET_THEME_CLASS.store(p as usize, Ordering::Release);
+         }
+     }
+-    let specs: [(&'static str, &'static str, *const ()); 8] = [
++    // (dll, proc lookup, TRAMPS key, hook) — lookups starting with `#`
++    // are ORDINALS (`DrawTextWithGlow` is ordinal-only in uxtheme).
++    let specs: [(&'static str, &'static str, &'static str, *const ()); 11] = [
+         (
+             "dwmapi.dll",
+             "DwmExtendFrameIntoClientArea",
++            "DwmExtendFrameIntoClientArea",
+             dwm_extend_hook as *const (),
+         ),
+         (
+             "dwmapi.dll",
+             "DwmSetWindowAttribute",
++            "DwmSetWindowAttribute",
+             dwm_setattr_hook as *const (),
+         ),
+-        ("uxtheme.dll", "OpenThemeData", open_theme_hook as *const ()),
+         (
+             "uxtheme.dll",
++            "OpenThemeData",
++            "OpenThemeData",
++            open_theme_hook as *const (),
++        ),
++        (
++            "uxtheme.dll",
++            "GetThemeColor",
+             "GetThemeColor",
+             get_theme_color_hook as *const (),
+         ),
+         (
+             "uxtheme.dll",
+             "DrawThemeBackground",
++            "DrawThemeBackground",
+             draw_theme_bg_hook as *const (),
+         ),
+         (
+             "uxtheme.dll",
+             "DrawThemeBackgroundEx",
++            "DrawThemeBackgroundEx",
+             draw_theme_bg_ex_hook as *const (),
+         ),
++        (
++            "uxtheme.dll",
++            "DrawThemeTextEx",
++            "DrawThemeTextEx",
++            draw_theme_text_ex_hook as *const (),
++        ),
++        (
++            "uxtheme.dll",
++            "#126",
++            "DrawTextWithGlow",
++            draw_text_with_glow_hook as *const (),
++        ),
+         (
+             "user32.dll",
+             "GetSysColorBrush",
++            "GetSysColorBrush",
+             get_sys_color_brush_hook as *const (),
+         ),
+-        ("user32.dll", "FillRect", fill_rect_hook as *const ()),
++        (
++            "user32.dll",
++            "FillRect",
++            "FillRect",
++            fill_rect_hook as *const (),
++        ),
++        (
++            "gdi32.dll",
++            "ExtTextOutW",
++            "ExtTextOutW",
++            ext_text_out_hook as *const (),
++        ),
+     ];
+     let mut installed = Vec::new();
+-    for (dll, name, hook) in specs {
++    for (dll, lookup, key, hook) in specs {
+         let dll_w: Vec<u16> = dll.encode_utf16().chain(core::iter::once(0)).collect();
+         let module = unsafe { win32::GetModuleHandleW(PCWSTR(dll_w.as_ptr())) };
+         if module.is_null() {
+             continue;
+         }
+-        let name_z: Vec<u8> = name.bytes().chain(core::iter::once(0)).collect();
+-        let target = unsafe { win32::GetProcAddress(module, PCSTR(name_z.as_ptr())) };
++        let target = if let Some(ord) = lookup
++            .strip_prefix('#')
++            .and_then(|o| o.parse::<usize>().ok())
++        {
++            // MAKEINTRESOURCEA(ordinal)
++            unsafe { win32::GetProcAddress(module, PCSTR(ord as *const u8)) }
++        } else {
++            let name_z: Vec<u8> = lookup.bytes().chain(core::iter::once(0)).collect();
++            unsafe { win32::GetProcAddress(module, PCSTR(name_z.as_ptr())) }
++        };
+         if target.is_null() {
+             continue;
+         }
+@@ -803,7 +1575,7 @@ fn install() {
+         TRAMPS
+             .lock()
+             .unwrap_or_else(|p| p.into_inner())
+-            .insert(name, detour.trampoline() as *const () as usize);
++            .insert(key, detour.trampoline() as *const () as usize);
+         if unsafe { detour.enable() }.is_err() {
+             continue;
+         }
+diff --git a/crates/tap/src/site.rs b/crates/tap/src/site.rs
+index e762dfc..247f8bf 100644
+--- a/crates/tap/src/site.rs
++++ b/crates/tap/src/site.rs
+@@ -37,6 +37,23 @@ static CONN_ATTEMPT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32
+ /// landing while `watcher` is still `None` would each advise — registering
+ /// duplicate callbacks for the same tree.
+ static ADVISING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++/// Separate in-flight guard for the WinUI3 advise — sharing `ADVISING`
++/// would let a WUX advise permanently block File Explorer's session.
++static ADVISING_WINUI3: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++/// `WinUIVisualDiagConnection{i}` indices that already produced a
++/// `SetSite` — re-calling `ixde` on an occupied endpoint returns a
++/// non-`ERROR_NOT_FOUND` HRESULT *without* a fresh `SetSite`, which
++/// stopped the walk at `i = 1` forever and never attached the second
++/// island (new File Explorer windows).
++static CONNECTED_WINUI3: std::sync::LazyLock<Mutex<std::collections::HashSet<u32>>> =
++    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
++/// Bumped inside `SetSite`'s WinUI3 branch — the endpoint walk attributes
++/// the accepting index to the `ixde` call whose return followed a bump.
++static WINUI3_SETSITE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
++/// Last `CabinetWClass` top-window count seen by `ensure_watching_winui3` —
++/// a new File Explorer window hosts a NEW WinUI3 island on a NEW
++/// `WinUIVisualDiagConnection{N}` endpoint, so growth re-arms the walk.
++static LAST_CABINET_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+ 
+ /// One install pass. Retries are *not* done in a loop here: after a failed
+ /// `ixde` the calling thread can never execute a blocking wait again (sleep,
+@@ -116,11 +133,114 @@ pub fn install_winui3() {
+     crate::tap_log!("winui3 install exited: {result:?}");
+ }
+ 
++/// `WIN32_FIND_DATAW` — only `cFileName` is read; the header fields keep
++/// the real layout so the buffer size is right.
++#[repr(C)]
++struct FindDataW {
++    attrs: u32,
++    _times: [u32; 6],
++    _size: [u32; 2],
++    _reserved: [u32; 2],
++    name: [u16; 260],
++    _alt: [u16; 14],
++}
++
++/// FrameworkUdk ships inside the in-box WindowsAppRuntime CBS package —
++/// `C:\Windows\SystemApps\Microsoft.WindowsAppRuntime.CBS*` — which is
++/// off every DLL search path. Enumerate the versioned package dirs and
++/// `LoadLibraryW` the first copy that resolves.
++fn load_udk_from_systemapps() -> win32::HMODULE {
++    let mut dir = [0u16; 260];
++    let len = unsafe { win32::GetWindowsDirectoryW(windows_core::PWSTR(dir.as_mut_ptr()), 260) };
++    if len == 0 || len as usize >= dir.len() {
++        return core::ptr::null_mut();
++    }
++    // Wildcards match only the LAST path component, so the glob is the
++    // versioned package DIR; the DLL name is appended per match below.
++    let suffix_w = windows_core::w!("\\SystemApps\\Microsoft.WindowsAppRuntime.CBS*");
++    let suffix = unsafe { suffix_w.as_wide() };
++    let mut pat = [0u16; 300];
++    pat[..len as usize].copy_from_slice(&dir[..len as usize]);
++    pat[len as usize..len as usize + suffix.len()].copy_from_slice(suffix);
++    let mut data = FindDataW {
++        attrs: 0,
++        _times: [0; 6],
++        _size: [0; 2],
++        _reserved: [0; 2],
++        name: [0; 260],
++        _alt: [0; 14],
++    };
++    let find = unsafe {
++        win32::FindFirstFileW(
++            windows_core::PCWSTR(pat.as_ptr()),
++            &mut data as *mut FindDataW as *mut core::ffi::c_void,
++        )
++    };
++    // INVALID_HANDLE_VALUE — no in-box runtime package at all.
++    if find.is_null() || find as isize == -1 {
++        return core::ptr::null_mut();
++    }
++    let mut module = core::ptr::null_mut();
++    loop {
++        // The match is the package DIR (the * part); rebuild the full
++        // DLL path from it. `cFileName` is NUL-terminated.
++        let name_len = data.name.iter().position(|&c| c == 0).unwrap_or(260);
++        if name_len > 0 {
++            let mut path = [0u16; 600];
++            let stem = &pat[..len as usize];
++            path[..stem.len()].copy_from_slice(stem);
++            let mut off = stem.len();
++            let mid_w = windows_core::w!("\\SystemApps\\");
++            let mid = unsafe { mid_w.as_wide() };
++            path[off..off + mid.len()].copy_from_slice(mid);
++            off += mid.len();
++            path[off..off + name_len].copy_from_slice(&data.name[..name_len]);
++            off += name_len;
++            let tail_w = windows_core::w!("\\Microsoft.Internal.FrameworkUdk.dll\0");
++            let tail = unsafe { tail_w.as_wide() };
++            path[off..off + tail.len()].copy_from_slice(tail);
++            module = unsafe { win32::LoadLibraryW(windows_core::PCWSTR(path.as_ptr())) };
++            if !module.is_null() {
++                crate::tap_log!("winui3: FrameworkUdk loaded from SystemApps package");
++                break;
++            }
++        }
++        if unsafe {
++            win32::FindNextFileW(find, &mut data as *mut FindDataW as *mut core::ffi::c_void)
++        } == windows_core::BOOL(0)
++        {
++            break;
++        }
++    }
++    unsafe {
++        let _ = win32::FindClose(find);
++    }
++    module
++}
++
+ fn install_winui3_inner() {
+-    // Attach only once the host loaded the framework itself: `LoadLibraryW`
+-    // here would bootstrap WinUI3 on *our* worker thread instead.
+-    let udk =
++    // Attach only once the host loaded the framework itself: pulling the
++    // UDK in before `Microsoft.UI.Xaml.dll` exists would bootstrap WinUI3
++    // on *our* worker thread instead.
++    let mut udk =
+         unsafe { win32::GetModuleHandleW(windows_core::w!("Microsoft.Internal.FrameworkUdk.dll")) };
++    if udk.is_null() {
++        // Runtime already up, UDK still absent: the in-box
++        // `Microsoft.UI.Xaml.dll` island does NOT auto-load FrameworkUdk
++        // (it's off the DLL search path under SystemApps), so nothing
++        // ever creates `WinUIVisualDiagConnection{N}` for us to attach
++        // to. Loading it now can't bootstrap XAML — the framework is
++        // already running; this only adds the diagnostics surface.
++        let mux = unsafe { win32::GetModuleHandleW(windows_core::w!("Microsoft.UI.Xaml.dll")) };
++        if mux.is_null() {
++            return;
++        }
++        udk =
++            unsafe { win32::LoadLibraryW(windows_core::w!("Microsoft.Internal.FrameworkUdk.dll")) };
++        if udk.is_null() {
++            udk = load_udk_from_systemapps();
++        }
++    }
+     if udk.is_null() {
+         return;
+     }
+@@ -154,11 +274,23 @@ fn install_winui3_inner() {
+         s.spawn(|| unsafe {
+             let _ = win32::RoInitialize(0);
+             let mut hr = HRESULT(0x80070490_u32 as _); // ERROR_NOT_FOUND
+-            for i in 1..=4096u32 {
++            for i in 1..=256u32 {
++                // Occupied endpoints answer without a SetSite — skip the
++                // ones we already connected; for the rest, keep walking
++                // until an `ixde` actually delivers one (a new island's
++                // endpoint is always a higher unused index).
++                if CONNECTED_WINUI3
++                    .lock()
++                    .unwrap_or_else(|p| p.into_inner())
++                    .contains(&i)
++                {
++                    continue;
++                }
+                 let mut name = [0u16; 64];
+                 let text = format!("WinUIVisualDiagConnection{i}\0");
+                 let w: Vec<u16> = text.encode_utf16().collect();
+                 name[..w.len()].copy_from_slice(&w);
++                let before = WINUI3_SETSITE.load(Ordering::Acquire);
+                 hr = ixde(
+                     windows_core::PCWSTR(name.as_ptr()),
+                     pid,
+@@ -167,7 +299,11 @@ fn install_winui3_inner() {
+                     CLSID_PECO_TAP_SITE,
+                     windows_core::PCWSTR::null(),
+                 );
+-                if hr != HRESULT(0x80070490_u32 as _) {
++                if WINUI3_SETSITE.load(Ordering::Acquire) != before {
++                    CONNECTED_WINUI3
++                        .lock()
++                        .unwrap_or_else(|p| p.into_inner())
++                        .insert(i);
+                     break;
+                 }
+             }
+@@ -200,6 +336,15 @@ pub fn ensure_watching_winui3() {
+             }
+         }
+     }
++    // A new `CabinetWClass` hosts a NEW WinUI3 island on the NEXT free
++    // `WinUIVisualDiagConnection{N}` — the existing watcher only sees the
++    // first island's tree. `watcher_winui3` being Some must not suppress
++    // the re-probe: growth means the walk has another endpoint to find.
++    let count = crate::fe_glass::cabinet_count();
++    if count > LAST_CABINET_COUNT.swap(count, Ordering::AcqRel) {
++        crate::tap_log!("winui3: cabinet count {count} — re-probing endpoints");
++        std::thread::spawn(install_winui3);
++    }
+ }
+ 
+ fn install_inner() {
+@@ -351,7 +496,7 @@ impl IObjectWithSite_Impl for TapSite_Impl {
+                     winui3 = shared.watcher.is_some();
+                 }
+                 let occupied = if winui3 {
+-                    shared.watcher_winui3.is_some()
++                    false // WinUI3 SetSite replaces — see below
+                 } else {
+                     shared.watcher.is_some()
+                 };
+@@ -367,6 +512,28 @@ impl IObjectWithSite_Impl for TapSite_Impl {
+             );
+             if let Some(diagnostics) = diagnostics {
+                 if winui3 {
++                    WINUI3_SETSITE.fetch_add(1, Ordering::AcqRel);
++                    // WindhawkTAP::SetSite semantics — a NEW island session
++                    // (new File Explorer window's endpoint) REPLACES the
++                    // previous watcher: the old island may belong to a
++                    // closed window, and refusing left the top bar
++                    // unstyled. Unadvise the dead pair, then advise fresh.
++                    let previous = {
++                        let mut shared = shared::lock();
++                        let pair = shared
++                            .tree_service_winui3
++                            .clone()
++                            .zip(shared.watcher_winui3.clone());
++                        shared.watcher_winui3 = None;
++                        shared.tree_service_winui3 = None;
++                        shared.diagnostics_winui3 = None;
++                        pair
++                    };
++                    if let Some((service, watcher)) = previous {
++                        unsafe {
++                            let _ = service.UnadviseVisualTreeChange(&*watcher);
++                        }
++                    }
+                     start_advise_winui3(diagnostics);
+                 } else {
+                     start_advise(diagnostics);
+@@ -420,7 +587,7 @@ fn start_advise(diagnostics: IXamlDiagnostics) {
+     }
+     let diagnostics = SendDiag(diagnostics);
+     std::thread::spawn(move || {
+-        let _guard = AdvisingGuard;
++        let _guard = AdvisingGuard(&ADVISING);
+         let diagnostics = diagnostics.into_inner();
+         let watcher: IVisualTreeServiceCallback2 = VisualTreeWatcher { session: 1 }.into();
+         let Ok(service) = windows_core::Interface::cast::<IVisualTreeService3>(&diagnostics) else {
+@@ -451,7 +618,7 @@ fn start_advise(diagnostics: IXamlDiagnostics) {
+ /// separate slots, watcher tagged `session: 2` so reported elements route
+ /// to the mux engine.
+ fn start_advise_winui3(diagnostics: IXamlDiagnostics) {
+-    if ADVISING.swap(true, Ordering::AcqRel) {
++    if ADVISING_WINUI3.swap(true, Ordering::AcqRel) {
+         return;
+     }
+     struct SendDiag(IXamlDiagnostics);
+@@ -463,7 +630,7 @@ fn start_advise_winui3(diagnostics: IXamlDiagnostics) {
+     }
+     let diagnostics = SendDiag(diagnostics);
+     std::thread::spawn(move || {
+-        let _guard = AdvisingGuard;
++        let _guard = AdvisingGuard(&ADVISING_WINUI3);
+         let diagnostics = diagnostics.into_inner();
+         let watcher: IVisualTreeServiceCallback2 = VisualTreeWatcher { session: 2 }.into();
+         let Ok(service) = windows_core::Interface::cast::<IVisualTreeService3>(&diagnostics) else {
+@@ -476,20 +643,30 @@ fn start_advise_winui3(diagnostics: IXamlDiagnostics) {
+             shared.tree_service_winui3 = Some(service.clone());
+             shared.watcher_winui3 = Some(watcher.clone());
+         }
++        // A new island's session: the mux engine's element handles and
++        // captured dispatcher belong to the OLD island — drop them so the
++        // advise replay re-captures; the armed theme (`wire_rules`) is
++        // kept so every re-reported element restyles immediately.
++        crate::styler::mux::session_reset();
+         let advise_hr = unsafe { service.AdviseVisualTreeChange(&*watcher) };
+         crate::tap_log!("advise(winui3) hr={advise_hr:?}");
+         if advise_hr.is_err() {
+             shared::lock().watcher_winui3 = None;
++        } else {
++            // Push a pending/late theme onto the fresh tree right away —
++            // the replay alone only styles what it re-reports.
++            crate::styler::mux::dispatch_apply();
+         }
+     });
+ }
+ 
+-/// Clears `ADVISING` when the advise thread exits — including on panic, so a
+-/// failed advise never wedges `ensure_watching` permanently.
+-struct AdvisingGuard;
++/// Clears the in-flight advise flag when the advise thread exits —
++/// including on panic, so a failed advise never wedges `ensure_watching`
++/// permanently.
++struct AdvisingGuard(&'static std::sync::atomic::AtomicBool);
+ impl Drop for AdvisingGuard {
+     fn drop(&mut self) {
+-        ADVISING.store(false, Ordering::Release);
++        self.0.store(false, Ordering::Release);
+     }
+ }
+ 
 diff --git a/crates/tap/src/styler.rs b/crates/tap/src/styler.rs
-index 0b28054..f955793 100644
+index 0b28054..775d868 100644
 --- a/crates/tap/src/styler.rs
 +++ b/crates/tap/src/styler.rs
 @@ -155,11 +155,13 @@ pub mod mux {
@@ -604,7 +2539,7 @@ index 0b28054..f955793 100644
          let tint_rgb = format!("{:02X}{:02X}{:02X}", byte(r), byte(g), byte(b));
 -        let tint_opacity = a.clamp(0.0, 0.95);
 -        let alpha = byte(a).clamp(0x25, 0x40);
-+        let alpha = byte(a).clamp(0x10, 0x45);
++        let alpha = byte(a).clamp(0x10, 0x28);
          let xaml = format!(
 -            "<AcrylicBrush \
 +            "<SolidColorBrush \
@@ -628,3 +2563,51 @@ index 0b28054..f955793 100644
      }
  
      include!("styler_engine.rs");
+diff --git a/crates/tap/src/styler_engine.rs b/crates/tap/src/styler_engine.rs
+index 108d667..cc440bf 100644
+--- a/crates/tap/src/styler_engine.rs
++++ b/crates/tap/src/styler_engine.rs
+@@ -3985,8 +3985,27 @@ pub fn reset() {
+ }
+ 
+ /// `dispatch_apply` for the styler — posts `apply_theme_ui` to the captured
++/// A NEW diagnostics session attached (a second WinUI3 island — a new
++/// File Explorer window): every styled-element handle and the captured
++/// dispatcher belong to the OLD island. Drop session-affine state while
++/// keeping the armed theme (`wire_rules`, `applied`, `pending`) — the
++/// fresh `AdviseVisualTreeChange` replay re-reports the new tree and
++/// `on_element` restyles each element against the live rules.
++pub fn session_reset() {
++    {
++        let mut eng = state();
++        eng.elements.clear();
++        eng.to_release.clear();
++        eng.variables.clear();
++        eng.consumers.clear();
++        eng.dispatcher = None;
++        eng.readvising = false;
++    }
++    known().clear();
++}
++
+ /// dispatcher; without one the pending theme sits until the first element.
+-fn dispatch_apply() {
++pub(crate) fn dispatch_apply() {
+     let Some(dispatcher) = state().dispatcher.clone() else {
+         crate::tap_log!("styler: no dispatcher yet — apply deferred");
+         return;
+diff --git a/crates/tap/src/win32.rs b/crates/tap/src/win32.rs
+index 153f4e3..01ec2c2 100644
+--- a/crates/tap/src/win32.rs
++++ b/crates/tap/src/win32.rs
+@@ -87,6 +87,10 @@ windows_core::link!("kernel32.dll" "system" fn GetModuleFileNameW(hmodule: HMODU
+ windows_core::link!("kernel32.dll" "system" fn GetModuleHandleW(lpmodulename: PCWSTR) -> HMODULE);
+ windows_core::link!("kernel32.dll" "system" fn GetProcAddress(hmodule: HMODULE, lpprocname: PCSTR) -> FARPROC);
+ windows_core::link!("kernel32.dll" "system" fn LoadLibraryW(lplibfilename: PCWSTR) -> HMODULE);
++windows_core::link!("kernel32.dll" "system" fn FindFirstFileW(lpfilename: PCWSTR, lpfindfiledata: *mut core::ffi::c_void) -> HANDLE);
++windows_core::link!("kernel32.dll" "system" fn FindNextFileW(hfindfile: HANDLE, lpfindfiledata: *mut core::ffi::c_void) -> BOOL);
++windows_core::link!("kernel32.dll" "system" fn FindClose(hfindfile: HANDLE) -> BOOL);
++windows_core::link!("kernel32.dll" "system" fn GetWindowsDirectoryW(lpbuffer: PWSTR, usize: u32) -> u32);
+ windows_core::link!("kernel32.dll" "system" fn OpenProcess(dwdesiredaccess: u32, binherithandle: BOOL, dwprocessid: u32) -> HANDLE);
+ windows_core::link!("kernel32.dll" "system" fn RegisterWaitForSingleObject(phnewwaitobject: *mut HANDLE, hobject: HANDLE, callback: WAITORTIMERCALLBACK, context: *const core::ffi::c_void, dwmilliseconds: u32, dwflags: u32) -> BOOL);
+ windows_core::link!("kernel32.dll" "system" fn SetEvent(hevent: HANDLE) -> BOOL);

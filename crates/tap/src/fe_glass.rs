@@ -26,8 +26,9 @@
 //!   a wrong implementation renders text invisible.
 
 use crate::win32;
+use core::cell::Cell;
 use core::sync::atomic::{AtomicBool, Ordering};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
 use windows_core::{PCSTR, PCWSTR};
 
@@ -94,6 +95,9 @@ windows_core::link!("uxtheme.dll" "system" fn BeginBufferedPaint(hdc_target: Hdc
 windows_core::link!("uxtheme.dll" "system" fn EndBufferedPaint(hbuffered_paint: isize, f_update_target: windows_core::BOOL) -> HResult);
 windows_core::link!("uxtheme.dll" "system" fn GetBufferedPaintBits(hbuffered_paint: isize, ppb_buffer: *mut *mut u32, pcx_row: *mut i32) -> HResult);
 windows_core::link!("dwmapi.dll" "system" fn DwmEnableBlurBehindWindow(hwnd: Hwnd, bb: *const DwmBlurBehind) -> HResult);
+windows_core::link!("comctl32.dll" "system" fn SetWindowSubclass(hwnd: Hwnd, pfnsubclass: usize, uidsubclass: usize, dwrefdata: usize) -> windows_core::BOOL);
+windows_core::link!("comctl32.dll" "system" fn DefSubclassProc(hwnd: Hwnd, umsg: u32, wparam: usize, lparam: isize) -> isize);
+windows_core::link!("comctl32.dll" "system" fn RemoveWindowSubclass(hwnd: Hwnd, pfnsubclass: usize, uidsubclass: usize) -> windows_core::BOOL);
 windows_core::link!("kernel32.dll" "system" fn GetCurrentThreadId() -> u32);
 
 #[repr(C)]
@@ -200,13 +204,21 @@ const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
 const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
 const DWM_BB_ENABLE: u32 = 1;
 const DWM_BB_BLURREGION: u32 = 2;
+const DWM_BB_TRANSITIONONMAXIMIZED: u32 = 4;
 const WCA_ACCENT_POLICY: u32 = 19;
 /// Keeps DWM evaluating the system backdrop as if `CabinetWClass` is
 /// always active — otherwise `DWMSBT_TRANSIENTWINDOW` drops to a flat
 /// `#585858` sheet on focus loss.
 const WCA_FORCE_ACTIVEWINDOW_APPEARANCE: u32 = 15;
 const WM_NCACTIVATE: u32 = 0x0086;
+const WM_NCDESTROY: u32 = 0x0082;
 const WM_THEMECHANGED: u32 = 0x031A;
+const WM_ERASEBKGND: u32 = 0x0014;
+const WM_SIZE: u32 = 0x0005;
+const WM_WINDOWPOSCHANGED: u32 = 0x0047;
+const WM_SETTINGCHANGE: u32 = 0x001A;
+const WM_DWMCOLORIZATIONCOLORCHANGED: u32 = 0x0320;
+const WM_DWMCOMPOSITIONCHANGED: u32 = 0x031E;
 const SMTO_ABORTIFHUNG: u32 = 0x0002;
 const RDW_INVALIDATE: u32 = 0x0001;
 const RDW_ERASE: u32 = 0x0004;
@@ -251,23 +263,41 @@ static THEME_CLASSES: LazyLock<Mutex<HashMap<usize, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The backdrop mode the platform wants on cabinets — pushed via the
-/// `FEBD` COPYDATA (BUG 2). Defaults to `DWMSBT_TRANSIENTWINDOW` (3) so a
-/// `set_armed` that races ahead of the `FEBD` still applies the working
-/// 23H2 system acrylic instead of explorer's opaque tabbed backdrop.
+/// `FEBD` COPYDATA (BUG 2). ExplorerBlurMica/Translucent Windows recipe:
+/// the accent-acrylic path sends `DWMSBT_AUTO` (0) — explorer's own
+/// `SYSTEMBACKDROP` rewrites get substituted to AUTO too, so no system
+/// backdrop material ever fights `WCA_ACCENT_POLICY` for the window.
+/// Defaults to TRANSIENTWINDOW (3) so a `set_armed` racing ahead of the
+/// `FEBD` still lands a working material instead of nothing.
 static DESIRED_BACKDROP: core::sync::atomic::AtomicI32 = core::sync::atomic::AtomicI32::new(3);
 /// Accent policy the platform wants — `ACCENT_STATE_*` (0 = disabled,
 /// 4 = acrylic blur behind), flags, and the ABGR `GradientColor`.
-/// Defaults to DISABLED: `WCA_ACCENT_POLICY` conflicts with the
-/// `DWMSBT_TRANSIENTWINDOW` system backdrop and cannot compose on
-/// `CabinetWClass`.
+/// ACCENT_STATE == 4 is the EBM material: DWM bakes `GradientColor`'s
+/// tint into the acrylic sheet for the WHOLE window — one tint source,
+/// zero per-surface divergence.
 static ACCENT_STATE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 static ACCENT_FLAGS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
-/// `FEBD` slot 4: `0` = transparent `BLACK_BRUSH` punch; `0xAABBGGRR`
-/// otherwise — the default smoked-glass veil `0x50161210` (~31% dark
-/// charcoal, keeps white file names readable over bright windows) or the
-/// darkened swatch `0x48BBGGRR`.
+/// `FEBD` slot 4, ABGR `GradientColor` — with `ACCENT_STATE == 4` it IS
+/// the window's tint (the `0x50161210` smoked-charcoal default or the
+/// darkened `0x48BBGGRR` swatch), applied by DWM inside the acrylic
+/// material. With the accent disabled (DWMSBT fallback) it feeds
+/// `punch_black`'s surface veil instead.
 static ACCENT_GRADIENT: core::sync::atomic::AtomicU32 =
     core::sync::atomic::AtomicU32::new(0x50161210);
+
+/// Subclass stamps — `hwnd` values we've attached our procs to
+/// (`CabinetWClass` re-apply listener + `DesktopChildSiteBridge`/
+/// `DirectUIHWND` blink erasers). hwnds recycle, so `WM_NCDESTROY`
+/// removes entries.
+static SUBCLASSED: LazyLock<Mutex<HashSet<usize>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+thread_local! {
+    /// Re-entrancy guard for `apply_glass_to` — window-message driven
+    /// re-apply (the `CabinetWClass` subclass) must not recurse if a
+    /// DWM write triggers further window messages on the same thread.
+    static APPLYING: Cell<bool> = const { Cell::new(false) };
+}
+const SUBCABINET_ID: usize = 0x50EC;
+const SUBBLINK_ID: usize = 0x50EB;
 
 /// uxtheme **Ordinal 74** — `GetThemeClass`: resolves a class name for
 /// any `HTHEME`, including handles explorer opened before we armed (the
@@ -477,6 +507,17 @@ fn cabinet_windows() -> Vec<Hwnd> {
 /// Explorer's own later rewrites are intercepted by `dwm_setattr_hook`,
 /// which substitutes `DESIRED_BACKDROP`.
 fn apply_glass_to(hwnd: Hwnd) {
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            APPLYING.with(|a| a.set(false));
+        }
+    }
+    if APPLYING.with(|a| a.replace(true)) {
+        return;
+    }
+    let _guard = Guard;
+
     let backdrop = DESIRED_BACKDROP.load(Ordering::Acquire).max(0);
     let accent_state = ACCENT_STATE.load(Ordering::Acquire);
     // Immersive dark caption while glass is armed.
@@ -508,22 +549,35 @@ fn apply_glass_to(hwnd: Hwnd) {
             4,
         )
     };
-    // DwmEnableBlurBehindWindow: acrylic-blur path wants the whole client
-    // region blurred; the SYSTEMBACKDROP path wants it off.
-    let rgn = unsafe { CreateRectRgn(0, 0, -1, -1) };
-    let bb = DwmBlurBehind {
-        flags: DWM_BB_ENABLE | DWM_BB_BLURREGION,
-        enable: windows_core::BOOL((accent_state == 4) as i32),
-        rgn,
-        transition_on_max: windows_core::BOOL(0),
-    };
-    let _ = unsafe { DwmEnableBlurBehindWindow(hwnd, &bb) };
-    if !rgn.is_null() {
-        let _ = unsafe { DeleteObject(rgn) };
+    // EBM/TW `EnableBlurBehind` verbatim: the accent-acrylic path blurs
+    // the whole client region (`DwmEnableBlurBehindWindow` TRUE + full
+    // rgn + TRANSITIONONMAXIMIZED); the SYSTEMBACKDROP path wants it off —
+    // blur-behind plus a DWMSBT material renders black, not glass.
+    if accent_state == 4 {
+        let rgn = unsafe { CreateRectRgn(0, 0, -1, -1) };
+        let bb = DwmBlurBehind {
+            flags: DWM_BB_ENABLE | DWM_BB_BLURREGION | DWM_BB_TRANSITIONONMAXIMIZED,
+            enable: windows_core::BOOL(1),
+            rgn,
+            transition_on_max: windows_core::BOOL(1),
+        };
+        let _ = unsafe { DwmEnableBlurBehindWindow(hwnd, &bb) };
+        if !rgn.is_null() {
+            let _ = unsafe { DeleteObject(rgn) };
+        }
+    } else {
+        let bb = DwmBlurBehind {
+            flags: DWM_BB_ENABLE,
+            enable: windows_core::BOOL(0),
+            rgn: core::ptr::null_mut(),
+            transition_on_max: windows_core::BOOL(0),
+        };
+        let _ = unsafe { DwmEnableBlurBehindWindow(hwnd, &bb) };
     }
-    // Accent policy — mutually exclusive with SYSTEMBACKDROP (BUG 2):
-    // acrylic blur rides ACCENT_STATE=4 with the tint GradientColor,
-    // otherwise ACCENT_DISABLED.
+    // Accent policy — with ACCENT_STATE=4 DWM bakes `GradientColor` into
+    // the acrylic material: ONE tint source for the whole window (the
+    // EBM recipe — no XAML veil, no punched veil, nothing can double-
+    // stack). ACCENT_DISABLED on the DWMSBT fallback path.
     let policy = AccentPolicy {
         state: accent_state,
         flags: ACCENT_FLAGS.load(Ordering::Acquire),
@@ -543,6 +597,10 @@ fn apply_glass_to(hwnd: Hwnd) {
     // appearance, then feed a fake activation so DWM re-evaluates now.
     set_force_active(hwnd, true);
     let _ = unsafe { DefWindowProcW(hwnd, WM_NCACTIVATE, 1, 0) };
+    // EBM's `CabinetWClassListener` + `BlinkEraser`: keep the material
+    // applied as explorer mutates the window, and kill the white/black
+    // navigation flash on the island bridge.
+    ensure_subclasses(hwnd);
 }
 
 /// `WCA_FORCE_ACTIVEWINDOW_APPEARANCE` (`1` armed / `0` restore) — without
@@ -557,6 +615,124 @@ fn set_force_active(hwnd: Hwnd, on: bool) {
     let _ = unsafe {
         SetWindowCompositionAttribute(hwnd, &data as *const WcaData as *const core::ffi::c_void)
     };
+}
+
+// ------------------------------------------- EBM window listeners ----
+/// `CabinetWClassListener` + `BlinkEraserListener`/
+/// `BlackDesktopChildSiteBridgeListener` — the EBM window listeners,
+/// ported as `SetWindowSubclass` procs:
+/// - cabinet: re-runs `apply_glass_to` AFTER explorer finishes handling
+///   window-mutation messages (pos/size/theme/DWM events) — the mod's
+///   per-window re-apply that keeps the material from being stomped.
+/// - bridge/`DirectUIHWND`: eats `WM_ERASEBKGND` — the white/black flash
+///   ExplorerBlurMica's blink eraser exists to kill during navigation.
+fn ensure_subclasses(hwnd: Hwnd) {
+    {
+        let mut set = SUBCLASSED.lock().unwrap_or_else(|p| p.into_inner());
+        if set.insert(hwnd as usize) {
+            unsafe {
+                let _ =
+                    SetWindowSubclass(hwnd, cabinet_proc as *const () as usize, SUBCABINET_ID, 0);
+            }
+        }
+    }
+    // Island bridges spawn late (async island attach) — re-enumerate on
+    // every apply so a freshly-created `DesktopChildSiteBridge` gets the
+    // blink eraser too. `SUBCLASSED` dedups.
+    unsafe extern "system" fn bridge_cb(hwnd: Hwnd, _lparam: isize) -> windows_core::BOOL {
+        let mut cls = [0u16; 40];
+        let n = unsafe {
+            win32::GetClassNameW(
+                crate::bindings::HWND(hwnd),
+                windows_core::PWSTR(cls.as_mut_ptr()),
+                40,
+            )
+        } as usize;
+        // "DesktopChildSiteBridge" (22) | "DirectUIHWND" (12)
+        const BRIDGE: [u16; 22] = [
+            68, 101, 115, 107, 116, 111, 112, 67, 104, 105, 108, 100, 83, 105, 116, 101, 66, 114,
+            105, 100, 103, 101,
+        ];
+        const DUI: [u16; 12] = [68, 105, 114, 101, 99, 116, 85, 73, 72, 87, 78, 68];
+        let is_target = (n == 22 && cls[..22] == BRIDGE) || (n == 12 && cls[..12] == DUI);
+        if is_target {
+            let mut set = SUBCLASSED.lock().unwrap_or_else(|p| p.into_inner());
+            if set.insert(hwnd as usize) {
+                unsafe {
+                    let _ =
+                        SetWindowSubclass(hwnd, blink_proc as *const () as usize, SUBBLINK_ID, 0);
+                }
+            }
+        }
+        windows_core::BOOL(1)
+    }
+    unsafe {
+        let _ = EnumChildWindows(hwnd, Some(bridge_cb), 0);
+    }
+}
+
+unsafe extern "system" fn cabinet_proc(
+    hwnd: Hwnd,
+    msg: u32,
+    wparam: usize,
+    lparam: isize,
+    _uid: usize,
+    _refdata: usize,
+) -> isize {
+    if msg == WM_NCDESTROY {
+        let _ = unsafe {
+            RemoveWindowSubclass(hwnd, cabinet_proc as *const () as usize, SUBCABINET_ID)
+        };
+        SUBCLASSED
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&(hwnd as usize));
+        return unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+    }
+    let r = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+    // Post-handle re-apply — the material must survive whatever explorer
+    // just did to its window (EBM `CabinetWClassListener` behavior).
+    if is_armed()
+        && matches!(
+            msg,
+            WM_WINDOWPOSCHANGED
+                | WM_SIZE
+                | WM_SETTINGCHANGE
+                | WM_DWMCOLORIZATIONCOLORCHANGED
+                | WM_DWMCOMPOSITIONCHANGED
+                | WM_THEMECHANGED
+        )
+    {
+        apply_glass_to(hwnd);
+    }
+    r
+}
+
+unsafe extern "system" fn blink_proc(
+    hwnd: Hwnd,
+    msg: u32,
+    wparam: usize,
+    lparam: isize,
+    _uid: usize,
+    _refdata: usize,
+) -> isize {
+    match msg {
+        // EBM `BlinkEraser`/`BlackDesktopChildSiteBridgeListener` — the
+        // bridge repaints white/black for a frame during folder
+        // navigation; claiming the erase leaves the material showing.
+        WM_ERASEBKGND => 1,
+        WM_NCDESTROY => {
+            let _ = unsafe {
+                RemoveWindowSubclass(hwnd, blink_proc as *const () as usize, SUBBLINK_ID)
+            };
+            SUBCLASSED
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .remove(&(hwnd as usize));
+            unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+        }
+        _ => unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) },
+    }
 }
 
 /// Raw `DwmSetWindowAttribute` — bypasses our own detour via the
@@ -754,31 +930,21 @@ unsafe extern "system" fn dwm_setattr_hook(
     pv: *const core::ffi::c_void,
     cb: u32,
 ) -> HResult {
-    // Explorer re-asserts its own backdrop/hostbrush on navigation —
-    // substitute our desired backdrop instead of swallowing silently:
-    // SYSTEMBACKDROP and accent are mutually exclusive, so a dropped
-    // rewrite would leave a solid-black extended frame. `FEBD` sets the
-    // desired value; unset means just swallow.
+    // Explorer re-asserts its own backdrop/hostbrush on navigation AND a
+    // freshly-created CabinetWClass writes `SYSTEMBACKDROP_TYPE` during
+    // setup — this hook is our `NtUserCreateWindowEx` intercept (EBM/
+    // TW's `NewWindowShown` → `HandleEffects`): run the full apply on
+    // every cabinet backdrop write. The desired value lands inside
+    // `apply_glass_to`; negative means swallow only.
     if is_armed()
         && is_cabinet(hwnd)
         && (attr == DWMWA_SYSTEMBACKDROP_TYPE || attr == DWMWA_USE_HOSTBACKDROPBRUSH)
     {
-        let desired = DESIRED_BACKDROP.load(Ordering::Acquire);
-        if desired < 0 {
+        if DESIRED_BACKDROP.load(Ordering::Acquire) < 0 {
             return 0;
         }
-        let orig: DwmSetAttrFn = match tramp("DwmSetWindowAttribute") {
-            Some(f) => f,
-            None => return -1,
-        };
-        return unsafe {
-            orig(
-                hwnd,
-                DWMWA_SYSTEMBACKDROP_TYPE,
-                &desired as *const i32 as *const core::ffi::c_void,
-                4,
-            )
-        };
+        apply_glass_to(hwnd);
+        return 0;
     }
     let orig: DwmSetAttrFn = match tramp("DwmSetWindowAttribute") {
         Some(f) => f,
@@ -869,17 +1035,21 @@ struct BitmapInfo {
     colors: [u32; 1],
 }
 
-/// Fill a punched background rect. With no Color Tint swatch
-/// (`ACCENT_GRADIENT == 0`) this is transparent `BLACK_BRUSH` through the
-/// FillRect TRAMPOLINE — the hooked export would re-enter
-/// `fill_rect_hook`, and `GetStockObject(BLACK_BRUSH)` itself resolves to
-/// a `BS_SOLID 0x00000000` stock-panel brush → recursion. With a swatch
-/// (`0x24BBGGRR`) it stretches one premultiplied BGRA pixel over the rect:
-/// `SRCCOPY` overwrites in a single pass, so the same ~14% veil lands on
-/// `SysTreeView32`/`DirectUIHWND` that the XAML ruleset puts on the top
-/// bar, and `DWMSBT_TRANSIENTWINDOW` keeps blurring through.
+/// Fill a punched background rect. On the EBM accent path
+/// (`ACCENT_STATE == 4`) the tint lives in the DWM material
+/// (`GradientColor`), so surfaces punch pure alpha-0 `BLACK_BRUSH` —
+/// one tint source, nothing can double-stack. Only on the DWMSBT
+/// fallback (`ACCENT_STATE == 0`) does the nonzero `ACCENT_GRADIENT`
+/// stretch a premultiplied BGRA veil here via `SRCCOPY`.
+/// `BLACK_BRUSH` goes through the FillRect TRAMPOLINE — the hooked
+/// export would re-enter `fill_rect_hook`, and `GetStockObject` itself
+/// resolves to a stock-panel brush → recursion.
 fn punch_black(hdc: Hdc, rect: *const Rect) -> bool {
-    let grad = ACCENT_GRADIENT.load(Ordering::Acquire);
+    let grad = if ACCENT_STATE.load(Ordering::Acquire) == 0 {
+        ACCENT_GRADIENT.load(Ordering::Acquire)
+    } else {
+        0
+    };
     if grad != 0 {
         let a = (grad >> 24) & 0xFF;
         let (r, g, b) = (grad & 0xFF, (grad >> 8) & 0xFF, (grad >> 16) & 0xFF);
@@ -1426,6 +1596,7 @@ unsafe extern "system" fn draw_text_with_glow_hook(
         && cabinet_dc(hdc)
         && flags & DT_CALCRECT == 0
         && !rect.is_null()
+        && unsafe { (*rect).right != (*rect).left && (*rect).bottom != (*rect).top }
     {
         unsafe {
             SetTextColor(hdc, 0x00FFFFFF);
@@ -1456,6 +1627,45 @@ unsafe extern "system" fn draw_text_with_glow_hook(
     }
 }
 
+/// `DrawThemeText` — EBM's `My_DrawThemeText`: legacy path header/tab
+/// text still walks. Route cabinet calls through our
+/// `draw_theme_text_ex_hook` (its null-`DTTOPTS` branch builds the
+/// white-text options block); foreign DCs pass through.
+type DrawThemeTextFn =
+    unsafe extern "system" fn(HTheme, Hdc, i32, i32, PCWSTR, i32, u32, u32, *const Rect) -> HResult;
+unsafe extern "system" fn draw_theme_text_hook(
+    htheme: HTheme,
+    hdc: Hdc,
+    part: i32,
+    state: i32,
+    psz: PCWSTR,
+    cch: i32,
+    flags: u32,
+    flags2: u32,
+    rect: *const Rect,
+) -> HResult {
+    let orig: DrawThemeTextFn = match tramp("DrawThemeText") {
+        Some(f) => f,
+        None => return -1,
+    };
+    if is_armed() && cabinet_dc(hdc) {
+        return unsafe {
+            draw_theme_text_ex_hook(
+                htheme,
+                hdc,
+                part,
+                state,
+                psz,
+                cch,
+                flags,
+                rect as *mut Rect,
+                core::ptr::null(),
+            )
+        };
+    }
+    unsafe { orig(htheme, hdc, part, state, psz, cch, flags, flags2, rect) }
+}
+
 // ------------------------------------------------------------ install ----
 fn install() {
     let mut guard = DETOURS.lock().unwrap_or_else(|p| p.into_inner());
@@ -1481,7 +1691,7 @@ fn install() {
     }
     // (dll, proc lookup, TRAMPS key, hook) — lookups starting with `#`
     // are ORDINALS (`DrawTextWithGlow` is ordinal-only in uxtheme).
-    let specs: [(&'static str, &'static str, &'static str, *const ()); 11] = [
+    let specs: [(&'static str, &'static str, &'static str, *const ()); 12] = [
         (
             "dwmapi.dll",
             "DwmExtendFrameIntoClientArea",
@@ -1523,6 +1733,12 @@ fn install() {
             "DrawThemeTextEx",
             "DrawThemeTextEx",
             draw_theme_text_ex_hook as *const (),
+        ),
+        (
+            "uxtheme.dll",
+            "DrawThemeText",
+            "DrawThemeText",
+            draw_theme_text_hook as *const (),
         ),
         (
             "uxtheme.dll",

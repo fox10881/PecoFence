@@ -44,31 +44,34 @@ const CDS_FE_BACKDROP: usize = u32::from_be_bytes(*b"FEBD") as usize;
 // applies through its DwmSetWindowAttribute hook.
 const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
 const DWMSBT_MAINWINDOW: i32 = 2; // Mica
-const DWMSBT_TRANSIENTWINDOW: i32 = 3; // system Acrylic — the working 23H2 glass
 const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt / explorer's own stock request
 
 const ACCENT_DISABLED: u32 = 0;
+/// `ACCENT_STATE_ENABLE_ACRYLICBLURBEHIND` — the ExplorerBlurMica/
+/// Translucent-Windows `AccentBlurBehind` recipe: the acrylic material
+/// belongs to `WCA_ACCENT_POLICY`, `GradientColor` IS the window's tint,
+/// and `SYSTEMBACKDROP` stays `DWMSBT_AUTO` so no DWMSBT material fights
+/// it. Verified working on this machine — EBM runs it natively.
+const ACCENT_ACRYLIC: u32 = 4;
+const DWMSBT_AUTO: i32 = 0;
 
-/// Translucent-Windows `HandleEffects`: on Windows 11 23H2 `CabinetWClass`
-/// the working glass is `DWMWA_SYSTEMBACKDROP_TYPE` =
-/// `DWMSBT_TRANSIENTWINDOW` (system acrylic) — or `DWMSBT_MAINWINDOW` for
-/// the Mica presets — with `WCA_ACCENT_POLICY` strictly DISABLED: accent
-/// blur-behind and a system backdrop on the same window conflict, and
-/// `DWMSBT_NONE` + accent does not compose on this window class. The
-/// unfocused `#585858` fallback is killed separately by
-/// `WCA_FORCE_ACTIVEWINDOW_APPEARANCE` + `WM_NCACTIVATE`. The Color Tint
-/// swatch rides BOTH layers of the same 14% veil: `tint_abgr` in the
-/// `FEBD` payload feeds `fe_glass::punch_black` on `SysTreeView32`/
-/// `DirectUIHWND`, while the XAML ruleset carries `#24RRGGBB` on the
-/// three top-bar roots. Returns
+/// ExplorerBlurMica/Translucent-Windows `HandleEffects` port. The accent
+/// path (`AccentBlurBehind`) is the proven-working recipe on 23H2+
+/// `CabinetWClass`: `DwmEnableBlurBehindWindow` TRUE over the whole
+/// client region + `WCA_ACCENT_POLICY` `{ACRYLIC, GradientColor=tint}` +
+/// frame margins `-1`, and EVERY `SYSTEMBACKDROP` write resolves to
+/// `DWMSBT_AUTO` (the resident's `dwm_setattr_hook` substitutes it) —
+/// DWM bakes the tint into the material once, top bar through content,
+/// so nothing else may paint a veil (double-stack). `mica` stays on the
+/// `DWMSBT_MAINWINDOW` system-backdrop path (accent off — the punch
+/// keeps its own veil). Returns
 /// `(backdrop, accent_state, accent_flags, gradient_abgr)`.
 fn desired_glass(effect: &str, tint: &str) -> (i32, u32, u32, u32) {
-    let backdrop = if effect == "mica" {
-        DWMSBT_MAINWINDOW
+    if effect == "mica" {
+        (DWMSBT_MAINWINDOW, ACCENT_DISABLED, 0, tint_abgr(tint))
     } else {
-        DWMSBT_TRANSIENTWINDOW
-    };
-    (backdrop, ACCENT_DISABLED, 0, tint_abgr(tint))
+        (DWMSBT_AUTO, ACCENT_ACRYLIC, 0, tint_abgr(tint))
+    }
 }
 
 /// Selected swatch `#RRGGBB` → `0x24BBGGRR` (the ABGR layout
@@ -253,7 +256,10 @@ fn apply_backdrop(effect: &str) {
                 core::mem::size_of::<i32>() as u32,
             );
         }
-        blur_behind(*hwnd, false);
+        // EBM/TW `EnableBlurBehind` — the accent path blurs the whole
+        // client region; the SYSTEMBACKDROP path disables blur-behind
+        // (mutually exclusive pairings render black).
+        blur_behind(*hwnd, glass && accent_state == ACCENT_ACRYLIC);
         set_accent_policy(*hwnd, accent_state, accent_flags, gradient);
         // Kill the unfocused `#585858` fallback: the system backdrop only
         // blurs while DWM treats the window as active — force that
@@ -283,10 +289,11 @@ struct DwmBlurBehind {
     transition_on_max: windows_core::BOOL,
 }
 
-/// `DwmEnableBlurBehindWindow` — the accent path blurs the whole client
-/// region (`CreateRectRgn(0,0,-1,-1)`), the SYSTEMBACKDROP path disables
-/// it: blur-behind plus a system backdrop is another mutually-exclusive
-/// pairing that renders black instead of glass.
+/// `DwmEnableBlurBehindWindow` — Translucent Windows `EnableBlurBehind`
+/// verbatim: the accent-acrylic path wants `fEnable=TRUE` over a
+/// whole-client blur region plus `TRANSITIONONMAXIMIZED`; the
+/// SYSTEMBACKDROP path disables it — blur-behind plus a DWMSBT material
+/// is a mutually-exclusive pairing that renders black instead of glass.
 fn blur_behind(hwnd: crate::bindings::HWND, on: bool) {
     let rgn = if on {
         unsafe { CreateRectRgn(0, 0, -1, -1) }
@@ -294,10 +301,11 @@ fn blur_behind(hwnd: crate::bindings::HWND, on: bool) {
         core::ptr::null_mut()
     };
     let bb = DwmBlurBehind {
-        flags: 1 | if on { 2 } else { 0 }, // DWM_BB_ENABLE | DWM_BB_BLURREGION
+        // DWM_BB_ENABLE | DWM_BB_BLURREGION | DWM_BB_TRANSITIONONMAXIMIZED
+        flags: 1 | if on { 2 | 4 } else { 0 },
         enable: windows_core::BOOL(on as i32),
         rgn,
-        transition_on_max: windows_core::BOOL(0),
+        transition_on_max: windows_core::BOOL(on as i32),
     };
     unsafe {
         let _ = DwmEnableBlurBehindWindow(hwnd, &bb);
@@ -560,26 +568,30 @@ fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
 /// stale layer can stack. Returns `false` only for an unknown id so
 /// settings reverts.
 pub fn apply(id: &str, tint: &str) -> bool {
+    let effect = pecofence_core::file_explorer_themes::backdrop(id)
+        .unwrap_or_default()
+        .to_string();
     let wire = if id.is_empty() {
         if tint.is_empty() {
             return reset();
         }
-        match pecofence_core::color_tint::fe_tint_wire("PECO-FES1", tint) {
-            Some(w) => w,
-            None => return reset(),
-        }
+        pecofence_core::color_tint::fe_clear_wire("PECO-FES1")
     } else {
         let Some(mut w) = pecofence_core::file_explorer_themes::theme_wire(id) else {
             return false;
         };
-        // Always-on veil: `""` tint → the default smoked `#50101216` so
-        // the top bar matches the Win32 punch instead of staying clear.
-        pecofence_core::color_tint::apply_fe_tint(&mut w, tint);
+        // Accent path (everything but mica): the tint lives in the DWM
+        // acrylic material — XAML stays Transparent so the top bar shows
+        // the SAME tint instead of double-stacking a second veil. The
+        // mica path has no accent material, so its top bar keeps the
+        // smoked/darkened XAML veil.
+        if effect == "mica" {
+            pecofence_core::color_tint::apply_fe_tint(&mut w, tint);
+        } else {
+            pecofence_core::color_tint::apply_fe_clear(&mut w);
+        }
         w
     };
-    let effect = pecofence_core::file_explorer_themes::backdrop(id)
-        .unwrap_or_default()
-        .to_string();
     let mut guard = lock();
     let fe = guard.get_or_insert_with(|| Fe {
         style: String::new(),

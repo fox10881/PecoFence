@@ -106,6 +106,7 @@ pub fn apply_fe_tint(wire: &mut String, tint: &str) {
 
 /// A veil-only FE wire (`""` theme): magic + the smoked/darkened tint
 /// rules — File Explorer with no theme still gets readable glass.
+/// (DWMSBT/mica path only — the accent path uses `fe_clear_wire`.)
 pub fn fe_tint_wire(magic: &str, tint: &str) -> Option<String> {
     fe_veil_argb(tint)?;
     let mut wire = String::with_capacity(256);
@@ -114,6 +115,37 @@ pub fn fe_tint_wire(magic: &str, tint: &str) -> Option<String> {
     wire.push_str("E\n");
     apply_fe_tint(&mut wire, tint);
     Some(wire)
+}
+
+/// The ExplorerBlurMica/accent path counterpart of `apply_fe_tint`: with
+/// `ACCENT_ENABLE_ACRYLICBLURBEHIND` the `GradientColor` tint lives in the
+/// DWM material itself — the top-bar roots go `Transparent` so the SAME
+/// material shows through instead of stacking a second XAML veil.
+pub fn apply_fe_clear(wire: &mut String) {
+    if wire.ends_with("E\n") {
+        wire.truncate(wire.len() - 2);
+    }
+    for (target, prop) in FILE_EXPLORER_TARGETS {
+        wire.push_str("T ");
+        wire.push_str(target);
+        wire.push('\n');
+        wire.push_str("S ");
+        wire.push_str(prop);
+        wire.push_str("=Transparent\n");
+    }
+    wire.push_str("E\n");
+}
+
+/// Clear-only FE wire (`""` theme) for the accent path — the tint rides
+/// the FEBD `GradientColor`, so the wire just keeps the island
+/// transparent (an always-armed wire also anchors the FE styler).
+pub fn fe_clear_wire(magic: &str) -> String {
+    let mut wire = String::with_capacity(256);
+    wire.push_str(magic);
+    wire.push('\n');
+    wire.push_str("E\n");
+    apply_fe_clear(&mut wire);
+    wire
 }
 
 /// `Some(argb)` for `#RRGGBB` / `RRGGBB` palette values, `None` for
