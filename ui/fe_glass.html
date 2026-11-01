@@ -98,6 +98,7 @@
   /* Desktop wallpaper stand-in: layered blobs like the default Win11 bloom. */
   .artboard {
     position: absolute; inset: 0;
+    transition: filter .18s;
     background:
       radial-gradient(38% 55% at 22% 30%, rgba(0,90,190,.85), transparent 70%),
       radial-gradient(34% 48% at 72% 22%, rgba(30,60,160,.8), transparent 70%),
@@ -113,14 +114,19 @@
       linear-gradient(160deg, #cfe4fa, #9ec7ef 55%, #74aae2);
   }
   .taskbar {
-    position: absolute; left: 0; right: 0; bottom: 0; height: 40px;
+    position: absolute; left: 0; right: 0; bottom: 0; height: 44px;
     background: rgba(20,20,24,.72); backdrop-filter: blur(12px);
-    display: flex; align-items: center; justify-content: center; gap: 14px;
+    display: flex; align-items: center; justify-content: center; gap: 12px;
   }
   html.light .taskbar { background: rgba(240,244,250,.78); }
-  .taskbar i { width: 18px; height: 18px; border-radius: 4px; background: #4aa3ff; display: block; }
-  .taskbar i:nth-child(2) { background: #f2c94c; border-radius: 2px 6px 6px 2px; }
-  .taskbar i:nth-child(3) { background: #e0609a; border-radius: 50%; }
+  .taskbar .tlabel { font-size: 11px; opacity: .8; }
+  .bgbar { display: flex; align-items: center; gap: 7px; }
+  .bgbar .bg {
+    width: 20px; height: 20px; border-radius: 5px; padding: 0; cursor: pointer;
+    border: 1px solid rgba(128,128,128,.45); background-size: cover; background-position: center;
+  }
+  .bgbar .bg:hover { filter: brightness(1.15); }
+  .bgbar .bg.on { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   /* Mock File Explorer window. Its own bg is nearly invisible — the material
      layer (backdrop-filter) + the EBM tint overlay do the work, like the real
@@ -240,19 +246,20 @@
   }
   #toast.on { opacity: 1; }
 
-  /* ------------------------------------------------------ color picker */
-  #rgbaPicker {
-    position: fixed; z-index: 50; width: 236px; padding: 12px;
-    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    box-shadow: 0 8px 28px rgba(0,0,0,.35);
+  /* -------------------------------------- color picker (inline in panel) */
+  .rgbaPick {
+    margin-top: 8px; padding: 12px;
+    background: var(--sheet); border: 1px solid var(--line); border-radius: 10px;
   }
-  #rgbaPicker .swatchGrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-  #rgbaPicker .sw { aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
-  #rgbaPicker .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
-  #rgbaPicker .alphaRow { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--text2); }
-  #rgbaPicker .alphaRow input[type=range] { flex: 1; accent-color: var(--accent); }
-  #rgbaPicker .foot { display: flex; justify-content: flex-end; margin-top: 10px; }
-  #rgbaPicker .foot button {
+  .rgbaPick .pcap { font-size: 12px; color: var(--text2); margin-bottom: 10px; }
+  .rgbaPick .swatchGrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .rgbaPick .sw { aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
+  .rgbaPick .sw:hover { filter: brightness(1.15); }
+  .rgbaPick .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .rgbaPick .alphaRow { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 12px; color: var(--text2); }
+  .rgbaPick .alphaRow input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+  .rgbaPick .foot { display: flex; justify-content: flex-end; margin-top: 10px; }
+  .rgbaPick .foot button {
     font-size: 12px; padding: 4px 10px; border-radius: 6px;
     border: 1px solid var(--line); background: var(--control); color: var(--text); cursor: pointer;
   }
@@ -362,7 +369,7 @@
         </div>
         <div class="ex-status"><span>6&nbsp;</span><span data-i18n="个项目">个项目</span></div>
       </div>
-      <div class="taskbar"><i></i><i></i><i></i></div>
+      <div class="taskbar"><span class="tlabel" data-i18n="预览背景">预览背景</span><div class="bgbar" id="bgbar"></div></div>
     </div>
   </section>
 </div>
@@ -465,23 +472,86 @@
   $('lightRgbaIn').oninput = () => { s.lightRgba = $('lightRgbaIn').value.trim(); render(); };
   $('darkRgbaIn').oninput = () => { s.darkRgba = $('darkRgbaIn').value.trim(); render(); };
 
-  // ------------------------------------------------- RGBA picker popup
-  const RP_PRESETS = ['#78000000', '#A0000000', '#50101216', '#80404040', '#A0DCDCDC', '#C8FFFFFF',
-    '#80FFFFFF', '#96C8C8C8', '#780078D4', '#78E74856', '#78107C10', '#78FFB900'];
+  // -------------------------------------- preview background switcher bar
+  // The artboard is what .mat's backdrop-filter samples — swapping its
+  // background re-lights the whole simulated glass, like the real desktop.
+  const PREVIEW_BGS = [
+    // 0: Windows 11 dark bloom (default dark wallpaper stand-in)
+    'radial-gradient(38% 55% at 22% 30%, rgba(0,90,190,.85), transparent 70%),' +
+    'radial-gradient(34% 48% at 72% 22%, rgba(30,60,160,.8), transparent 70%),' +
+    'radial-gradient(45% 60% at 60% 78%, rgba(0,120,215,.55), transparent 70%),' +
+    'radial-gradient(30% 40% at 88% 62%, rgba(90,40,160,.5), transparent 70%),' +
+    'linear-gradient(160deg, #0a1e38, #04101f 55%, #020a14)',
+    // 1: Windows 11 light bloom
+    'radial-gradient(38% 55% at 22% 30%, rgba(120,190,255,.9), transparent 70%),' +
+    'radial-gradient(34% 48% at 72% 22%, rgba(160,200,255,.85), transparent 70%),' +
+    'radial-gradient(45% 60% at 60% 78%, rgba(90,160,240,.7), transparent 70%),' +
+    'linear-gradient(160deg, #cfe4fa, #9ec7ef 55%, #74aae2)',
+    // 2: cyberpunk neon
+    'linear-gradient(135deg, #1A0B2E, #6B114D 55%, #00B4D8)',
+    // 3: sunset glow
+    'linear-gradient(135deg, #2B0938, #B5174E 55%, #F77F00)',
+    // 4: emerald aurora
+    'linear-gradient(135deg, #051923, #006466 55%, #38B000)',
+    // 5: midnight gold
+    'linear-gradient(135deg, #0F0F12, #2C221E 55%, #D4AF37)',
+    // 6: crimson dark
+    'linear-gradient(135deg, #0D0208, #4A0E17 55%, #9B111E)',
+    // 7: ocean breeze
+    'linear-gradient(135deg, #003554, #00A6FB 60%, #CAF0F8)',
+    // 8: lavender mist
+    'linear-gradient(135deg, #240046, #7B2CBF 55%, #E0AAFF)',
+    // 9: pure dark
+    '#0D1117',
+    // 10: pure light — readability check over bright windows
+    '#F3F4F6',
+    // 11: glowing orbs — blur diffusion is unmistakable over these
+    'radial-gradient(18% 26% at 20% 30%, rgba(255,60,120,.9), transparent 70%),' +
+    'radial-gradient(20% 28% at 75% 25%, rgba(0,200,255,.85), transparent 70%),' +
+    'radial-gradient(22% 30% at 60% 75%, rgba(120,255,80,.8), transparent 70%),' +
+    'radial-gradient(16% 22% at 88% 60%, rgba(255,200,0,.85), transparent 70%),' +
+    'linear-gradient(160deg, #0b0b10, #15151d)',
+  ];
+  const artboard = document.querySelector('.artboard'), bgbar = $('bgbar');
+  let bgPicked = false;
+  PREVIEW_BGS.forEach((css, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'bg'; b.style.background = css;
+    b.onclick = () => selectBg(i, true);
+    bgbar.appendChild(b);
+  });
+  function selectBg(i, user) {
+    if (user) bgPicked = true;
+    artboard.style.background = PREVIEW_BGS[i];
+    bgbar.querySelectorAll('.bg').forEach((b, j) => b.classList.toggle('on', j === i));
+  }
+
+  // ------------------------------------- RGBA picker (inline in the panel)
+  // Smoked glass + full Win11 accent palette; the leading 0x78/0xA0 alphas are
+  // each swatch's own default — a click keeps the slider's alpha once the user
+  // touched it, so tuning opacity then auditioning colors never loses the value.
+  const RP_PRESETS = [
+    '#78000000', '#78101216', '#781E1E24', '#782D3238', '#784A5459', '#78FFFFFF', '#A0DCDCDC',
+    '#A0F3F3F3', '#780078D4', '#78005FB8', '#7800B7C3', '#78038387', '#784F6BED',
+    '#785F3F9E', '#78744DA9', '#78881798', '#78B146C2', '#78E3008C', '#78EA005E',
+    '#78E74856', '#78D13438', '#78D83B01', '#78F7630C', '#78FFB900',
+    '#78107C10', '#7800CC6A', '#78498205', '#7810893E',
+  ];
   const rpEl = document.createElement('div');
-  rpEl.id = 'rgbaPicker'; rpEl.hidden = true;
-  rpEl.innerHTML = `<div class="swatchGrid"></div>
+  rpEl.className = 'rgbaPick'; rpEl.hidden = true;
+  rpEl.innerHTML = `<div class="pcap"></div><div class="swatchGrid"></div>
     <div class="alphaRow"><span data-i18n="不透明度">不透明度</span><input type="range" min="0" max="255"><span class="aval"></span></div>
     <div class="foot"><button type="button" data-i18n="恢复默认">恢复默认</button></div>`;
-  document.body.appendChild(rpEl);
+  $('rowLight').after(rpEl);
   const rpGrid = rpEl.querySelector('.swatchGrid'), rpAlpha = rpEl.querySelector('input[type=range]'),
-    rpAval = rpEl.querySelector('.aval'), rpReset = rpEl.querySelector('.foot button');
+    rpAval = rpEl.querySelector('.aval'), rpReset = rpEl.querySelector('.foot button'),
+    rpCap = rpEl.querySelector('.pcap');
   for (const c of RP_PRESETS) {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'sw'; b.dataset.c = c; b.style.background = rgbaCss(c);
     rpGrid.appendChild(b);
   }
-  let rpField = null;
+  let rpField = null, rpTouched = false;
   const rpCommit = (v) => {
     if (!rpField) return;
     s[rpField] = v;
@@ -492,17 +562,28 @@
     const field = btn.dataset.rgba;
     if (rpField === field && !rpEl.hidden) { rpEl.hidden = true; rpField = null; return; }
     rpField = field;
+    rpTouched = false;
+    rpCap.textContent = field === 'darkRgba' ? t('深色模式叠加色') : t('浅色模式叠加色');
     const cur = parseRgba(s[field]);
     rpAlpha.value = cur ? cur.a : 255; rpAval.textContent = rpAlpha.value;
     rpGrid.querySelectorAll('.sw').forEach(sw => sw.classList.toggle('on', sw.dataset.c.toUpperCase() === (s[field] || '').toUpperCase()));
     rpEl.hidden = false;
-    const r = btn.getBoundingClientRect();
-    rpEl.style.left = Math.max(8, Math.min(window.innerWidth - rpEl.offsetWidth - 8, r.left + r.width / 2 - rpEl.offsetWidth / 2)) + 'px';
-    rpEl.style.top = (r.bottom + 8 + rpEl.offsetHeight > window.innerHeight ? r.top - rpEl.offsetHeight - 8 : r.bottom + 8) + 'px';
-    rpReset.onclick = () => rpCommit(btn.dataset.rgbaDefault);
+    rpEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    rpReset.onclick = () => { rpTouched = false; rpCommit(btn.dataset.rgbaDefault); };
   }
-  rpGrid.onclick = (e) => { const sw = e.target.closest('.sw'); if (sw) rpCommit(sw.dataset.c); };
+  rpGrid.onclick = (e) => {
+    const sw = e.target.closest('.sw');
+    if (!sw) return;
+    // Keep the tuned alpha; untouched sliders take the swatch's own.
+    if (rpTouched) {
+      const p = parseRgba(sw.dataset.c);
+      rpCommit('#' + Number(rpAlpha.value).toString(16).padStart(2, '0').toUpperCase() + (p ? p.rgb : sw.dataset.c.slice(3)));
+    } else {
+      rpCommit(sw.dataset.c);
+    }
+  };
   rpAlpha.oninput = () => {
+    rpTouched = true;
     rpAval.textContent = rpAlpha.value;
     const cur = parseRgba(s[rpField]) || { rgb: '000000' };
     s[rpField] = '#' + Number(rpAlpha.value).toString(16).padStart(2, '0').toUpperCase() + cur.rgb;
@@ -542,6 +623,7 @@
       if (m.type === 'feState') {
         i18nSet(m.locale, m.translations);
         systemLight = m.systemLight !== false;
+        if (!bgPicked) selectBg(systemLight ? 1 : 0, false);
         const fe = m.fe || {};
         s.effect = fe.effect || '';
         s.clearAddress = !!fe.clearAddress; s.clearBarBg = !!fe.clearBarBg;
