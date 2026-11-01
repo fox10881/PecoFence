@@ -6298,7 +6298,7 @@ index 48e176c..41ad715 100644
  }
  
 diff --git a/crates/app/src/app/mod.rs b/crates/app/src/app/mod.rs
-index b16d68c..ffe42b2 100644
+index b16d68c..1a62b9c 100644
 --- a/crates/app/src/app/mod.rs
 +++ b/crates/app/src/app/mod.rs
 @@ -274,6 +274,13 @@ pub struct App {
@@ -6348,7 +6348,7 @@ index b16d68c..ffe42b2 100644
              theme_mode,
              accent,
              wallpaper_override: args.wallpaper_override.clone(),
-@@ -1416,46 +1428,60 @@ impl App {
+@@ -1416,46 +1428,62 @@ impl App {
          if let Some(a) = app.anchor.borrow_mut().as_mut() {
              a.reanchor("startup");
          }
@@ -6402,10 +6402,11 @@ index b16d68c..ffe42b2 100644
 +        // unloads a stale EBM image left by an unclean shutdown.
 +        let fe = &app.state.config.settings;
 +        {
-+            let (effect, l, d) = (
++            let (effect, l, d, layout) = (
 +                fe.fe_effect.clone(),
 +                fe.fe_light_rgba.clone(),
 +                fe.fe_dark_rgba.clone(),
++                fe.fe_layout.clone(),
 +            );
 +            let flags = (
 +                fe.fe_clear_address,
@@ -6423,12 +6424,13 @@ index b16d68c..ffe42b2 100644
 +                    show_line: flags.3,
 +                    light_rgba: &l,
 +                    dark_rgba: &d,
++                    layout: &layout,
 +                };
 +                let _ = pecofence_platform::file_explorer_styler::apply_effect(&cfg);
              });
          }
          for f in app.fences.values().chain(app.desktop_windows.values()) {
-@@ -2076,14 +2102,20 @@ impl App {
+@@ -2076,14 +2104,20 @@ impl App {
              Command::WindowGone(hwnd) => {
                  if self.settings.as_ref().is_some_and(|h| h.hwnd() == hwnd) {
                      self.settings = None;
@@ -6456,7 +6458,7 @@ index b16d68c..ffe42b2 100644
              }
              Command::FadeOutDone(hwnd) => {
 diff --git a/crates/app/src/app/settings.rs b/crates/app/src/app/settings.rs
-index be7e0a3..127f2a6 100644
+index be7e0a3..b69d7bc 100644
 --- a/crates/app/src/app/settings.rs
 +++ b/crates/app/src/app/settings.rs
 @@ -213,6 +213,39 @@ impl App {
@@ -6529,7 +6531,7 @@ index be7e0a3..127f2a6 100644
          }
          match SettingsHost::open(
              &self.settings_class,
-@@ -276,6 +290,149 @@ impl App {
+@@ -276,6 +290,157 @@ impl App {
          }
      }
  
@@ -6590,6 +6592,10 @@ index be7e0a3..127f2a6 100644
 +                "clearBarBg": s.fe_clear_bar_bg,
 +                "clearWinuiBg": s.fe_clear_winui_bg,
 +                "showLine": s.fe_show_line,
++                "layout": s.fe_layout,
++                "layouts": pecofence_core::fe_layouts::options()
++                    .map(|(id, label)| serde_json::json!({"id": id, "label": label}))
++                    .collect::<Vec<_>>(),
 +                "lightRgba": s.fe_light_rgba,
 +                "darkRgba": s.fe_dark_rgba,
 +            },
@@ -6603,8 +6609,9 @@ index be7e0a3..127f2a6 100644
 +    fn fe_glass_sig(&self) -> String {
 +        let s = &self.state.config.settings;
 +        format!(
-+            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
++            "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
 +            s.fe_effect,
++            s.fe_layout,
 +            s.fe_clear_address,
 +            s.fe_clear_bar_bg,
 +            s.fe_clear_winui_bg,
@@ -6646,12 +6653,15 @@ index be7e0a3..127f2a6 100644
 +        new.fe_clear_bar_bg = bool_of("clearBarBg", old.fe_clear_bar_bg);
 +        new.fe_clear_winui_bg = bool_of("clearWinuiBg", old.fe_clear_winui_bg);
 +        new.fe_show_line = bool_of("showLine", old.fe_show_line);
++        new.fe_layout = str_of("layout").to_string();
 +        new.fe_light_rgba = str_of("lightRgba").to_string();
 +        new.fe_dark_rgba = str_of("darkRgba").to_string();
 +        let wanted = new.fe_effect.clone();
++        let wanted_layout = new.fe_layout.clone();
 +        let changed = new != old;
 +        self.apply_settings(new);
-+        let applied = self.state.config.settings.fe_effect == wanted;
++        let applied = self.state.config.settings.fe_effect == wanted
++            && self.state.config.settings.fe_layout == wanted_layout;
 +        if let Some(h) = &self.fe_glass {
 +            let (text, error) = if !applied {
 +                (
@@ -6679,7 +6689,7 @@ index be7e0a3..127f2a6 100644
      pub(super) fn settings_state_json(&self) -> String {
          let localization = pecofence_core::i18n::ui_payload();
          let fences: Vec<serde_json::Value> = self
-@@ -347,9 +504,6 @@ impl App {
+@@ -347,9 +512,6 @@ impl App {
              "taskbarStyles": pecofence_core::taskbar_themes::style_options_json(),
              // Notification Center Style dropdown — same isolation again.
              "notificationCenterStyles": pecofence_core::notification_center_themes::style_options_json(),
@@ -6689,7 +6699,7 @@ index be7e0a3..127f2a6 100644
          })
          .to_string()
      }
-@@ -358,6 +512,7 @@ impl App {
+@@ -358,6 +520,7 @@ impl App {
          if let Some(h) = &self.settings {
              h.post_json(&self.settings_state_json());
          }
@@ -6697,7 +6707,7 @@ index be7e0a3..127f2a6 100644
      }
  
      /// File watcher/navigation updates must not rebuild controls while the user is
-@@ -468,6 +623,25 @@ impl App {
+@@ -468,6 +631,25 @@ impl App {
                  }
                  self.show_pending_feedback();
              }
@@ -6723,7 +6733,7 @@ index be7e0a3..127f2a6 100644
              Some("setFence") => self.on_set_fence(&v),
              Some("ringFence") => {
                  let host = v
-@@ -765,6 +939,7 @@ impl App {
+@@ -765,6 +947,7 @@ impl App {
                          self.resume_peek_hotkey();
                      }
                  }
@@ -6731,7 +6741,7 @@ index be7e0a3..127f2a6 100644
                  Some("restartExplorer") => {
                      // Failsafe for a stuck taskbar/desktop: kill the shell and
                      // let Windows' own respawn (or our detached spawn) bring it
-@@ -896,7 +1071,7 @@ impl App {
+@@ -896,7 +1079,7 @@ impl App {
              // hand-edited patchSettings — same treatment as a failed write.
              let id = new.start_menu_style.as_str();
              let applied = pecofence_core::start_menu_themes::is_style_id(id)
@@ -6740,7 +6750,7 @@ index be7e0a3..127f2a6 100644
              if !applied {
                  new.start_menu_style.clone_from(&old.start_menu_style);
                  self.settings_error(pecofence_core::i18n::text(
-@@ -907,7 +1082,7 @@ impl App {
+@@ -907,7 +1090,7 @@ impl App {
          if new.taskbar_style != old.taskbar_style {
              let id = new.taskbar_style.as_str();
              let applied = pecofence_core::taskbar_themes::is_style_id(id)
@@ -6749,7 +6759,7 @@ index be7e0a3..127f2a6 100644
              if !applied {
                  new.taskbar_style.clone_from(&old.taskbar_style);
                  self.settings_error(pecofence_core::i18n::text(
-@@ -927,32 +1102,32 @@ impl App {
+@@ -927,32 +1110,34 @@ impl App {
                  ));
              }
          }
@@ -6762,6 +6772,7 @@ index be7e0a3..127f2a6 100644
 +            || new.fe_clear_bar_bg != old.fe_clear_bar_bg
 +            || new.fe_clear_winui_bg != old.fe_clear_winui_bg
 +            || new.fe_show_line != old.fe_show_line
++            || new.fe_layout != old.fe_layout
 +            || new.fe_light_rgba != old.fe_light_rgba
 +            || new.fe_dark_rgba != old.fe_dark_rgba;
 +        if fe_changed {
@@ -6774,6 +6785,7 @@ index be7e0a3..127f2a6 100644
 +                    show_line: new.fe_show_line,
 +                    light_rgba: new.fe_light_rgba.as_str(),
 +                    dark_rgba: new.fe_dark_rgba.as_str(),
++                    layout: new.fe_layout.as_str(),
 +                },
 +            );
              if !applied {
@@ -6803,7 +6815,7 @@ index be7e0a3..127f2a6 100644
          let icons_toggled = new.hide_real_icons != old.hide_real_icons;
          if new.quick_hide.enabled != old.quick_hide.enabled
              && let Some(a) = self.anchor.borrow_mut().as_mut()
-@@ -2485,6 +2660,9 @@ impl App {
+@@ -2485,6 +2670,9 @@ impl App {
          if let Some(host) = &self.settings {
              host.update_language();
          }
@@ -10410,6 +10422,1560 @@ index 30f008e..0000000
 -        assert_eq!(wire.matches("S Background:=").count(), 3);
 -    }
 -}
+diff --git a/crates/core/src/fe_layouts.rs b/crates/core/src/fe_layouts.rs
+new file mode 100644
+index 0000000..56825b9
+--- /dev/null
++++ b/crates/core/src/fe_layouts.rs
+@@ -0,0 +1,1548 @@
++//! File Explorer toolbar/icon layout presets (`feLayout` setting).
++//!
++//! Ported from the mod's `fe_layouts_only` preset table — pure positioning
++//! rules only: **no `Background`, `BorderBrush`, or `Fill` styles may ever
++//! appear here** (the EBM material pipeline owns every visual surface). Each
++//! preset serializes to a `PECO-FES1` wire consumed by the tap resident's
++//! mux (WinUI3) styler — same grammar `taskbar_themes::theme_wire` emits.
++
++/// One `(target, styles)` pair from the preset table.
++pub struct LayoutRule {
++    pub target: &'static str,
++    pub styles: &'static [&'static str],
++}
++
++/// A selectable toolbar/icon arrangement for File Explorer.
++pub struct LayoutPreset {
++    pub id: &'static str,
++    pub label: &'static str,
++    pub rules: &'static [LayoutRule],
++    /// `name=value` pairs; expanded into style strings before emission.
++    pub constants: &'static [&'static str],
++}
++
++/// Longest-name-first `$name` substitution, the mod's own ordering.
++fn expand(s: &str, constants: &[(String, String)]) -> String {
++    let mut out = s.to_string();
++    for (k, v) in constants {
++        let needle = format!("${k}");
++        out = out.replace(&needle, v);
++    }
++    out
++}
++
++/// Every preset, in dropdown order (`""` = Windows Default, not listed).
++pub const LAYOUTS: &[LayoutPreset] = &[
++    LayoutPreset {
++        id: "NoCommandBar",
++        label: "No Command Bar",
++        rules: &[
++            LayoutRule {
++                target: "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.NavigationBarControl",
++                styles: &["Grid.RowSpan=2", "Margin=0,0,0,1"],
++            },
++        ],
++        constants: &[],
++    },
++    LayoutPreset {
++        id: "Minimal_Explorer11",
++        label: "Minimal Explorer 11",
++        rules: &[
++            LayoutRule {
++                target: "AppBarButton#refreshButton",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "AppBarButton#upButton",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Border#BottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.AddressBarControl > Grid#PART_LayoutRoot > Grid#NormalModeGrid",
++                styles: &["BorderThickness=0,0,0,1"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#RightBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem",
++                styles: &["Margin=0,0,3,0"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot",
++                styles: &["CornerRadius=4", "Margin=0,-3,0,3", "Height=28"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Canvas",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#FileExplorerAddressBarGrid",
++                styles: &[
++                    "Grid.ColumnSpan=2",
++                    "Margin=0,0,10,0",
++                    "Visibility=Collapsed",
++                ],
++            },
++            LayoutRule {
++                target: "AutoSuggestBox#FileExplorerSearchBox",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "AppBarButton#backButton > Grid#Root",
++                styles: &["Padding=2"],
++            },
++            LayoutRule {
++                target: "AppBarButton#forwardButton > Grid#Root",
++                styles: &["Padding=2"],
++            },
++            LayoutRule {
++                target: "AppBarButton#forwardButton > Grid#Root > Grid#ContentRoot > Viewbox#ContentViewbox",
++                styles: &["Margin=9"],
++            },
++            LayoutRule {
++                target: "AppBarButton#backButton > Grid#Root > Grid#ContentRoot > Viewbox#ContentViewbox",
++                styles: &["Margin=9"],
++            },
++            LayoutRule {
++                target: "Grid#PART_LayoutRoot",
++                styles: &["MinHeight=28", "Height=28"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border > Button#AddButton",
++                styles: &["Margin=0,0,20,4"],
++            },
++            LayoutRule {
++                target: "Border#ScrollIncreaseButtonContainer",
++                styles: &["Margin=0,0,0,4"],
++            },
++            LayoutRule {
++                target: "Border#ScrollDecreaseButtonContainer",
++                styles: &["Margin=0,0,0,4"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.NavigationBarControl#NavigationBarControl",
++                styles: &["Grid.Row=0", "Grid.RowSpan=2"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.FileExplorerTabControl",
++                styles: &["Margin=100,0,0,-15", "Grid.RowSpan=2"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.NavigationBarControl > Grid#NavigationBarControlGrid",
++                styles: &["Margin=0,0,0,-18", "Width=100", "HorizontalAlignment=0"],
++            },
++        ],
++        constants: &[],
++    },
++    LayoutPreset {
++        id: "Tabless",
++        label: "Tabless (Swapped Bars)",
++        rules: &[
++            LayoutRule {
++                target: "FileExplorerExtensions.NavigationBarControl",
++                styles: &["Grid.Row=$NavigationBarGrid"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
++                styles: &["Grid.Row=$CommandBarGrid", "BorderThickness=0,0,0,1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#TabContainerGrid > Border",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#TabContainer > Microsoft.UI.Xaml.Controls.Button#CloseButton",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.TabViewItem > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.Canvas",
++                styles: &["Opacity=0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#TabContainer",
++                styles: &["BorderThickness=0", "Padding=1,0,0,1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.ContentPresenter > Microsoft.UI.Xaml.Controls.StackPanel > Microsoft.UI.Xaml.Controls.TextBlock",
++                styles: &[
++                    "FontFamily=Segoe UI, Segoe Fluent Icons",
++                    "FontWeight=Normal",
++                ],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.FileExplorerTabControl",
++                styles: &["Height=36"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Viewbox#IconBox",
++                styles: &["Margin=0,0,4,0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.TabViewItem",
++                styles: &["Margin=0,-8,0,0"],
++            },
++        ],
++        constants: &["NavigationBarGrid=2", "CommandBarGrid=1"],
++    },
++    LayoutPreset {
++        id: "Matter",
++        label: "Matter (Clean Command Bar)",
++        rules: &[
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar",
++                styles: &["HorizontalAlignment=1"],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerSecondaryCommandBar",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#RightBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem",
++                styles: &["Margin=0,0,4,0"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot",
++                styles: &["CornerRadius=5", "Margin=2,4,0,4", "Height=29"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Canvas",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
++                styles: &["BorderThickness=0"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border > Button#AddButton",
++                styles: &["Visibility=0", "Margin=0,0,0,3"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
++                styles: &["BorderThickness=0"],
++            },
++            LayoutRule {
++                target: "Grid#PART_LayoutRoot",
++                styles: &["CornerRadius=6", "BorderThickness=0"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
++                styles: &["Margin=0,-5,0,0"],
++            },
++            LayoutRule {
++                target: "AutoSuggestBox#FileExplorerSearchBox > Grid#LayoutRoot > TextBox > Grid@CommonStates > Border#BorderElement",
++                styles: &["CornerRadius=6", "BorderThickness=0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Cut]",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Copy]",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Paste]",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Rename]",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Share]",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarSeparator",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Border#ScrollDecreaseButtonContainer",
++                styles: &["Margin=0,0,0,3"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Border#ScrollIncreaseButtonContainer",
++                styles: &["Margin=0,0,0,3"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#upButton",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#backButton",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Create a new item in the current location.]",
++                styles: &["Visibility=1"],
++            },
++        ],
++        constants: &[],
++    },
++    LayoutPreset {
++        id: "WindowGlass",
++        label: "Centered Icon Bar",
++        rules: &[
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
++                styles: &["RenderTransform:=<TranslateTransform X=\\\"0\\\"/>"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.FirstCrumbStackPanelControl#FirstCrumbStackPanel",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Windows.UI.Xaml.Controls.Grid#RootCommandSearchGrid > Windows.UI.Xaml.Controls.Border#BorderElement",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Primitives.NavigationViewItemPresenter#NavigationViewItemPresenter > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot",
++                styles: &["BorderThickness=$BorderThickness"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
++                styles: &[
++                    "RenderTransform:=<TranslateTransform X=\\\"0\\\" Y=\\\"0\\\" />",
++                    "HorizontalAlignment=Center",
++                    "Margin=-4",
++                    "Padding=10",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerSecondaryCommandBar",
++                styles: &[
++                    "RenderTransform:=<TranslateTransform X=\\\"Auto\\\" />",
++                    "HorizontalAlignment=Center",
++                    "Margin=-4",
++                    "Padding=10",
++                    "Visibility=Collapsed",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
++                styles: &[
++                    "CornerRadius=$CornerRadius",
++                    "BorderThickness=$BorderThickness",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerSecondaryCommandBar > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
++                styles: &[
++                    "CornerRadius=$CornerRadius",
++                    "BorderThickness=$BorderThickness",
++                    "Visibility=Collapsed",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
++                styles: &[
++                    "ColumnDefinitions:=<ColumnDefinitionCollection><ColumnDefinition Width=\\\"Auto\\\"/><ColumnDefinition Width=\\\"*\\\"/><ColumnDefinition Width=\\\"430\\\"/></ColumnDefinitionCollection>",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#HomeViewRootGrid",
++                styles: &["CornerRadius=8", "BorderThickness=0", "Margin=0,0,8,8"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
++                styles: &["CornerRadius=8", "BorderThickness=0", "Margin=0,0,8,8"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#RightBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot",
++                styles: &["CornerRadius=8", "Margin=5", "Height=35"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Canvas",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Border#BottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Shapes.Path#LeftRadiusRenderArc",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Shapes.Path#RightRadiusRenderArc",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#TabContainer",
++                styles: &["Visibility=Visible"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Viewbox#IconBox",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Primitives.CommandBarFlyoutCommandBar > Grid#LayoutRoot > Grid#OuterContentRoot > Grid#ContentRoot > Grid#PrimaryItemsRoot",
++                styles: &[
++                    "BorderThickness=$BorderThickness",
++                    "CornerRadius=$CornerRadius",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Primitives.CommandBarFlyoutCommandBar > Grid#LayoutRoot@ExpansionStates > Grid#OuterContentRoot > Grid#ContentRoot > Microsoft.UI.Xaml.Controls.Primitives.Popup#OverflowPopup",
++                styles: &[
++                    "VerticalOffset@ExpandedUp=-5",
++                    "VerticalOffset@ExpandedDown=5",
++                ],
++            },
++            LayoutRule {
++                target: "Grid#OuterOverflowContentRootV2",
++                styles: &["CornerRadius=$CornerRadius"],
++            },
++            LayoutRule {
++                target: "Grid#OuterOverflowContentRootV2 > Grid#OverflowContentRoot > CommandBarOverflowPresenter#SecondaryItemsControl > Grid#LayoutRoot",
++                styles: &[
++                    "BorderThickness=$BorderThickness",
++                    "CornerRadius=$CornerRadius",
++                ],
++            },
++            LayoutRule {
++                target: "MenuFlyoutPresenter > Border",
++                styles: &[
++                    "BorderThickness=$BorderThickness",
++                    "CornerRadius=$CornerRadius",
++                ],
++            },
++            LayoutRule {
++                target: "Grid#SecondaryItemsControlShadowWrapper > CommandBarOverflowPresenter#SecondaryItemsControl > Grid#LayoutRoot",
++                styles: &[
++                    "BorderThickness=$BorderThickness",
++                    "CornerRadius=$CornerRadius",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AutoSuggestBox#FileExplorerSearchBox > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.TextBox#TextBox",
++                styles: &["CornerRadius=$CornerRadius", "Margin=0,0,180,0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
++                styles: &["MaxWidth=750", "CornerRadius=$CornerRadius"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AutoSuggestBox#PART_AutoSuggestBox > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.TextBox#TextBox",
++                styles: &["CornerRadius=$CornerRadius"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.CommandBar#NavigationCommands",
++                styles: &["Margin=180,0,0,0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Border > Microsoft.UI.Xaml.Controls.Button#AddButton",
++                styles: &["RenderTransform:=<TranslateTransform Y=\\\"-6\\\" />"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.CommandBar > * > Microsoft.UI.Xaml.Controls.TextBlock#TextLabel",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#SubItemChevronPanel > Microsoft.UI.Xaml.Controls.FontIcon#SubItemChevron",
++                styles: &["RenderTransform:=<TranslateTransform X=\\\"-5\\\" Y=\\\"12\\\" />"],
++            },
++        ],
++        constants: &["BorderThickness=0.3,1,0.3,0.3", "CornerRadius=8"],
++    },
++    LayoutPreset {
++        id: "AddressSearchOnly",
++        label: "Address & Search Only",
++        rules: &[
++            LayoutRule {
++                target: "FileExplorerExtensions.NavigationBarControl",
++                styles: &["Grid.Row=0", "MinHeight=48", "Margin=0,26,0,1"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.FileExplorerTabControl",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "AppBarButton#refreshButton",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "AppBarButton#upButton",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "AppBarButton#backButton",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "AppBarButton#forwardButton",
++                styles: &["Visibility=Collapsed"],
++            },
++        ],
++        constants: &[],
++    },
++    LayoutPreset {
++        id: "LiquidGlass",
++        label: "Liquid Compact (No Command Bar)",
++        rules: &[
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
++                styles: &["HorizontalAlignment=Stretch"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.FirstCrumbStackPanelControl#FirstCrumbStackPanel",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Windows.UI.Xaml.Controls.Grid#RootCommandSearchGrid > Windows.UI.Xaml.Controls.Border#BorderElement",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Primitives.NavigationViewItemPresenter#NavigationViewItemPresenter > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot",
++                styles: &[
++                    "BorderThickness=$ElementBorderThickness",
++                    "CornerRadius=$ElementCornerRadius",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#HomeViewRootGrid",
++                styles: &[
++                    "CornerRadius=$ElementCornerRadius",
++                    "BorderThickness=$ElementBorderThickness",
++                    "Margin=4,0",
++                ],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
++                styles: &[
++                    "CornerRadius=$ElementCornerRadius",
++                    "BorderThickness=$ElementBorderThickness",
++                    "Margin=4,0",
++                ],
++            },
++            LayoutRule {
++                target: "ToolTip",
++                styles: &[
++                    "BorderThickness=$ElementBorderThickness",
++                    "CornerRadius=$ElementCornerRadius",
++                ],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#RightBottomBorderLine",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot",
++                styles: &[
++                    "Margin=5",
++                    "Height=28",
++                    "BorderThickness=$ElementBorderThickness",
++                    "CornerRadius=$ElementCornerRadius",
++                ],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Canvas",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Border#BottomBorderLine",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Shapes.Path#LeftRadiusRenderArc",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Shapes.Path#RightRadiusRenderArc",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#TabContainer",
++                styles: &["Visibility=0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Viewbox#IconBox",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "CommandBarOverflowPresenter#SecondaryItemsControl > Grid#LayoutRoot",
++                styles: &[
++                    "BorderThickness=$ElementBorderThickness",
++                    "CornerRadius=$ElementCornerRadius",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AutoSuggestBox#FileExplorerSearchBox > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.TextBox#TextBox",
++                styles: &[
++                    "CornerRadius=$ElementCornerRadius",
++                    "BorderThickness=$ElementBorderThickness",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
++                styles: &[
++                    "CornerRadius=$ElementCornerRadius",
++                    "BorderThickness=$ElementBorderThickness",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AutoSuggestBox#PART_AutoSuggestBox > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.TextBox#TextBox",
++                styles: &["CornerRadius=$ElementCornerRadius"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Border > Microsoft.UI.Xaml.Controls.Button#AddButton",
++                styles: &["RenderTransform:=<TranslateTransform Y=\\\"-8\\\" />"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#SubItemChevronPanel > Microsoft.UI.Xaml.Controls.FontIcon#SubItemChevron",
++                styles: &["RenderTransform:=<TranslateTransform X=\\\"-5\\\" Y=\\\"12\\\" />"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
++                styles: &["Visibility=1"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.NavigationBarControl",
++                styles: &["Grid.RowSpan=2", "Margin=0,0,0,1"],
++            },
++        ],
++        constants: &[
++            "BorderThickness=0.3,1,0.3,0.3",
++            "ElementBorderThickness=0.3,0.3,0.3,1",
++            "CornerRadius=12",
++            "ElementCornerRadius=8",
++        ],
++    },
++    LayoutPreset {
++        id: "OS26_Liquid_Glass",
++        label: "OS26 Floating Layout",
++        rules: &[
++            LayoutRule {
++                target: "Grid#DetailsViewControlRootGrid",
++                styles: &["Margin=20,20,20,1", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "Grid#HomeViewRootGrid",
++                styles: &["Margin=20,20,20,0", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
++                styles: &["Margin=20,20,20,0", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#GalleryRootGrid",
++                styles: &["Margin=10", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=12",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=2,6,2,6",
++                    "Padding@Disabled=0,-7",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#backButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=11",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=0,0,0,0",
++                    "Height@Disabled=32",
++                    "Width@Disabled=20",
++                    "Padding@Disabled=0,-2,0,2",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=11",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=0,0,0,0",
++                    "Height@Disabled=32",
++                    "Width@Disabled=20",
++                    "Padding@Disabled=0,-2,0,2",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#upButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=11",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=0,0,0,0",
++                    "Height@Disabled=32",
++                    "Width@Disabled=20",
++                    "Padding@Disabled=0,-2,0,2",
++                ],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar",
++                styles: &["HorizontalAlignment=1"],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerSecondaryCommandBar",
++                styles: &["MinHeight=0"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#RightBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem",
++                styles: &["Margin=0,0,8,0"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot",
++                styles: &[
++                    "CornerRadius=12",
++                    "Margin=2,4,0,4",
++                    "Height=27",
++                    "BorderThickness=1",
++                ],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Canvas",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
++                styles: &["BorderThickness=0"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border > Button#AddButton",
++                styles: &[
++                    "Visibility=Visible",
++                    "Margin=0,0,0,2",
++                    "CornerRadius=10",
++                    "BorderThickness=1",
++                    "Width=24",
++                    "Height=24",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
++                styles: &["Margin=-6,0,0,0"],
++            },
++            LayoutRule {
++                target: "Grid#PART_LayoutRoot",
++                styles: &["CornerRadius=14", "BorderThickness=1", "Margin=2"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
++                styles: &["Margin=0,0,0,0"],
++            },
++            LayoutRule {
++                target: "AutoSuggestBox#FileExplorerSearchBox > Grid#LayoutRoot > TextBox > Grid@CommonStates > Border#BorderElement",
++                styles: &["CornerRadius=14", "BorderThickness=1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton",
++                styles: &["CornerRadius=12", "BorderThickness=1", "Margin=3,0,3,1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarToggleButton",
++                styles: &["CornerRadius=12", "BorderThickness=1", "Margin=3,0,3,1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#OuterOverflowContentRootV2",
++                styles: &["CornerRadius=20"],
++            },
++            LayoutRule {
++                target: "Button#MoreButton",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarSeparator",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#backButton",
++                styles: &["Margin=0,9,9,0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton",
++                styles: &["Margin=0,9,9,0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#upButton",
++                styles: &["Margin=0,9,9,0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton",
++                styles: &["Margin=0,9,9,0"],
++            },
++        ],
++        constants: &[],
++    },
++    LayoutPreset {
++        id: "OS26_Liquid_Glass_variant_Compact",
++        label: "OS26 Merged Top Bar",
++        rules: &[
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Primitives.SuggestionsPopup",
++                styles: &["Margin=0,0,0,900"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=12",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=2,6,2,6",
++                    "Padding@Disabled=0,-7",
++                ],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > Button#MoreButton",
++                styles: &[
++                    "CornerRadius=12",
++                    "BorderThickness=1",
++                    "Margin=3,2,3,2",
++                    "Width=45",
++                    "Height=32",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#backButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=11",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=0,0,0,0",
++                    "Height@Disabled=32",
++                    "Width@Disabled=20",
++                    "Padding@Disabled=0,-2,0,2",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=11",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=0,0,0,0",
++                    "Height@Disabled=32",
++                    "Width@Disabled=20",
++                    "Padding@Disabled=0,-2,0,2",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=11",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=0,0,0,0",
++                    "Height@Disabled=32",
++                    "Width@Disabled=20",
++                    "Padding@Disabled=0,-2,0,2",
++                ],
++            },
++            LayoutRule {
++                target: "Grid#DetailsViewControlRootGrid",
++                styles: &["Margin=20,20,20,1", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid > OuterOverflowContentRootV2",
++                styles: &["CornerRadius=250"],
++            },
++            LayoutRule {
++                target: "AppBarButton[7]",
++                styles: &[
++                    "Visibility=Collapsed",
++                    "Width=0",
++                    "MinWidth=0",
++                    "Margin=0,0,0,0",
++                    "Padding=0,0,0,0",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Viewbox > ContentViewB",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#HomeViewRootGrid",
++                styles: &["Margin=20,20,20,0", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
++                styles: &["Margin=20,20,20,0", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#GalleryRootGrid",
++                styles: &["Margin=10", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar",
++                styles: &[
++                    "Grid.Row=0",
++                    "Grid.RowSpan=1",
++                    "CornerRadius:=15",
++                    "Width=400",
++                    "HorizontalAlignment=Left",
++                    "Padding=0,0,0,0",
++                ],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > Grid#OverflowSeparator",
++                styles: &["Visibility=Collapsed", "Width=0", "MinWidth=0"],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot",
++                styles: &["HorizontalAlignment=Left"],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > ItemsControl#PrimaryItemsControl",
++                styles: &["HorizontalAlignment=Left"],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerSecondaryCommandBar",
++                styles: &["Visibility=Visible", "Margin=0,40,0,-20"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid",
++                styles: &["Margin=370,1,0,1"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#RightBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem",
++                styles: &["Width=150", "Height=40", "Margin=0,0,8,0"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot",
++                styles: &[
++                    "CornerRadius=10",
++                    "BorderThickness=1",
++                    "Margin=2,2,0,2",
++                    "Height=35",
++                ],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Canvas",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
++                styles: &["BorderThickness=0"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border > Button#AddButton",
++                styles: &[
++                    "Visibility=Visible",
++                    "Margin=0,0,0,4",
++                    "CornerRadius=8",
++                    "BorderThickness=1",
++                    "Width=24",
++                    "Height=24",
++                ],
++            },
++            LayoutRule {
++                target: "Grid#PART_LayoutRoot",
++                styles: &["CornerRadius=10", "BorderThickness=1", "Margin=2"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
++                styles: &["Grid.Row=0", "Grid.RowSpan=2", "Margin=0,0,0,0"],
++            },
++            LayoutRule {
++                target: "AutoSuggestBox#FileExplorerSearchBox > Grid#LayoutRoot > TextBox > Grid@CommonStates",
++                styles: &[
++                    "BorderThickness=1",
++                    "CornerRadius=10",
++                    "Margin=-90,0,90,0",
++                    "Height=32",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
++                styles: &["Margin=-8,0,90,0"],
++            },
++            LayoutRule {
++                target: "CommandBarOverflowPresenter Microsoft.UI.Xaml.Controls.AppBarButton",
++                styles: &["CornerRadius=8", "Margin=2,1,2,1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton",
++                styles: &["CornerRadius=12", "BorderThickness=1", "Margin=3,2,3,2"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#OuterOverflowContentRootV2",
++                styles: &["CornerRadius=20"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarToggleButton",
++                styles: &["CornerRadius=8", "BorderThickness=1", "Margin=3,0,3,1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarSeparator",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#backButton",
++                styles: &["Margin=0,9,9,0", "Visibility=Visible"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton",
++                styles: &["Margin=0,9,9,0", "Visibility=Visible"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#upButton",
++                styles: &["Margin=0,9,9,0", "Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton",
++                styles: &["Visibility=Visible", "Margin=0,9,9,0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#stopButton",
++                styles: &["Visibility=Collapsed", "Margin=0,9,9,0"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.NavigationBarControl",
++                styles: &["Grid.RowSpan=2"],
++            },
++        ],
++        constants: &[],
++    },
++    LayoutPreset {
++        id: "ZEUSosX_044",
++        label: "ZEUS macOS Single Bar",
++        rules: &[
++            LayoutRule {
++                target: "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
++                styles: &[
++                    "BorderThickness=0",
++                    "Grid.Row=0",
++                    "Grid.RowSpan=2",
++                    "HorizontalAlignment=Left",
++                    "VerticalAlignment=Top",
++                    "Width=155",
++                    "Margin=197,-30,0,0",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
++                styles: &["HorizontalAlignment=Left", "VerticalAlignment=Top"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Border#BottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
++                styles: &[
++                    "ColumnDefinitions:=<ColumnDefinitionCollection><ColumnDefinition Width=\\\"Auto\\\"/><ColumnDefinition Width=\\\"*\\\"/><ColumnDefinition Width=\\\"380\\\"/></ColumnDefinitionCollection>",
++                    "Margin=0,-16,0,-21",
++                ],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid",
++                styles: &[
++                    "Grid.Row=0",
++                    "HorizontalAlignment=Left",
++                    "Margin=100,0,0,0",
++                    "Width=1",
++                    "MaxWidth=1",
++                ],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.FileExplorerTabControl",
++                styles: &[
++                    "HorizontalAlignment=Left",
++                    "Margin=100,0,0,0",
++                    "Width=1",
++                    "MaxWidth=1",
++                ],
++            },
++            LayoutRule {
++                target: "TabViewItem",
++                styles: &["Width=0", "Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border > Button#AddButton",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "AutoSuggestBox#FileExplorerSearchBox > Grid#LayoutRoot > TextBox > Grid@CommonStates > Border#BorderElement",
++                styles: &["BorderThickness=0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid > Grid#LayoutRoot > TextBox > Grid@CommonStates > Border#BorderElement",
++                styles: &["BorderThickness=0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AutoSuggestBox#FileExplorerSearchBox > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.TextBox#TextBox",
++                styles: &[
++                    "Margin=0,0,140,0",
++                    "TextAlignment=Center",
++                    "HorizontalContentAlignment=Center",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
++                styles: &[
++                    "HorizontalAlignment=Stretch",
++                    "Height=28",
++                    "Margin=155,0,0,0",
++                ],
++            },
++            LayoutRule {
++                target: "AutoSuggestBox#FileExplorerSearchBox",
++                styles: &[
++                    "HorizontalAlignment=Stretch",
++                    "Height=28",
++                    "Margin=-7,-1,7,0",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar Button",
++                styles: &["FontSize=14"],
++            },
++        ],
++        constants: &[],
++    },
++    LayoutPreset {
++        id: "Compact_Explorer11",
++        label: "Compact Explorer 11",
++        rules: &[
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Primitives.SuggestionsPopup",
++                styles: &["Margin=0,0,0,900"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=10",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=2,6,2,6",
++                    "Padding@Disabled=0,-7",
++                ],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > Button#MoreButton",
++                styles: &[
++                    "CornerRadius=10",
++                    "BorderThickness=1",
++                    "Margin=3,2,3,2",
++                    "Width=45",
++                    "Height=32",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#backButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=11",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=0,0,0,0",
++                    "Height@Disabled=32",
++                    "Width@Disabled=20",
++                    "Padding@Disabled=0,-2,0,2",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=11",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=0,0,0,0",
++                    "Height@Disabled=32",
++                    "Width@Disabled=20",
++                    "Padding@Disabled=0,-2,0,2",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton > Grid@CommonStates",
++                styles: &[
++                    "CornerRadius@Disabled=11",
++                    "BorderThickness@Disabled=1",
++                    "Margin@Disabled=0,0,0,0",
++                    "Height@Disabled=32",
++                    "Width@Disabled=20",
++                    "Padding@Disabled=0,-2,0,2",
++                ],
++            },
++            LayoutRule {
++                target: "Grid#DetailsViewControlRootGrid",
++                styles: &["Margin=20,20,20,1", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid > OuterOverflowContentRootV2",
++                styles: &["CornerRadius=250"],
++            },
++            LayoutRule {
++                target: "AppBarButton[7]",
++                styles: &[
++                    "Visibility=Collapsed",
++                    "Width=0",
++                    "MinWidth=0",
++                    "Margin=0,0,0,0",
++                    "Padding=0,0,0,0",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Viewbox > ContentViewB",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#HomeViewRootGrid",
++                styles: &["Margin=20,20,20,0", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
++                styles: &["Margin=20,20,20,0", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#GalleryRootGrid",
++                styles: &["Margin=10", "CornerRadius=15"],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar",
++                styles: &[
++                    "Grid.Row=0",
++                    "Grid.RowSpan=1",
++                    "CornerRadius:=15",
++                    "Width=400",
++                    "HorizontalAlignment=Left",
++                    "Padding=0,0,0,0",
++                ],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > Grid#OverflowSeparator",
++                styles: &["Visibility=Collapsed", "Width=0", "MinWidth=0"],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot",
++                styles: &["HorizontalAlignment=Left"],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > ItemsControl#PrimaryItemsControl",
++                styles: &["HorizontalAlignment=Left"],
++            },
++            LayoutRule {
++                target: "CommandBar#FileExplorerSecondaryCommandBar",
++                styles: &["Visibility=Visible", "Margin=0,40,0,-20"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid",
++                styles: &["Margin=370,1,0,1"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#RightBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem",
++                styles: &["Width=150", "Height=40", "Margin=0,0,8,0"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot",
++                styles: &[
++                    "CornerRadius=10",
++                    "BorderThickness=1",
++                    "Margin=2,2,0,2",
++                    "Height=35",
++                ],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Canvas",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
++                styles: &["BorderThickness=0"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border > Button#AddButton",
++                styles: &[
++                    "Visibility=Visible",
++                    "Margin=0,0,0,4",
++                    "CornerRadius=10",
++                    "BorderThickness=0",
++                    "Width=24",
++                    "Height=24",
++                ],
++            },
++            LayoutRule {
++                target: "Grid#PART_LayoutRoot",
++                styles: &["CornerRadius=10", "BorderThickness=1", "Margin=1"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
++                styles: &["Grid.Row=0", "Grid.RowSpan=2", "Margin=0,0,0,0"],
++            },
++            LayoutRule {
++                target: "AutoSuggestBox#FileExplorerSearchBox > Grid#LayoutRoot > TextBox > Grid@CommonStates",
++                styles: &["CornerRadius=10", "Margin=-90,0,90,0", "Height=30"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
++                styles: &["Margin=-8,0,90,0"],
++            },
++            LayoutRule {
++                target: "CommandBarOverflowPresenter#SecondaryItemsControl > Microsoft.UI.Xaml.Controls.AppBarButton",
++                styles: &["CornerRadius=4", "BorderThickness=0", "Margin=0,0,0,0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton",
++                styles: &["CornerRadius=10", "BorderThickness=1", "Margin=3,2,3,2"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarToggleButton",
++                styles: &["CornerRadius=8", "BorderThickness=1", "Margin=3,0,3,1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarSeparator",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#backButton",
++                styles: &["Margin=0,9,9,0", "Visibility=Visible"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton",
++                styles: &["Margin=0,9,9,0", "Visibility=Visible"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#upButton",
++                styles: &["Margin=0,9,9,0", "Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton",
++                styles: &["Visibility=Visible", "Margin=0,9,9,0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.AppBarButton#stopButton",
++                styles: &["Visibility=Collapsed", "Margin=0,9,9,0"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.NavigationBarControl",
++                styles: &["Grid.RowSpan=2"],
++            },
++        ],
++        constants: &[],
++    },
++    LayoutPreset {
++        id: "Float",
++        label: "Floating Spaced Bars",
++        rules: &[
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot@CommonStates",
++                styles: &["CornerRadius=6"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
++                styles: &["BorderThickness=0"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot > Canvas",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem > Grid#LayoutRoot",
++                styles: &["BorderThickness=1", "Margin=2,0,0,0", "Height=35"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Border#BottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border#RightBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "TabViewItem",
++                styles: &["CornerRadius=4"],
++            },
++            LayoutRule {
++                target: "Grid#TabContainerGrid > Border > Button#AddButton",
++                styles: &[
++                    "Visibility=Visible",
++                    "Margin=0,0,0,3",
++                    "CornerRadius=10",
++                    "BorderThickness=0",
++                    "Width=24",
++                    "Height=24",
++                ],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#TabContainerGrid",
++                styles: &["Height=44"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Border#RightBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Border#LeftBottomBorderLine",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
++                styles: &["CornerRadius=6", "Margin=8,4,8,0", "Height=54"],
++            },
++            LayoutRule {
++                target: "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
++                styles: &["Margin=0,8,0,0", "BorderThickness=0,1,0,1"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Controls.Primitives.TabViewListView#TabListView",
++                styles: &["Margin=-3,0,0,0"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Shapes.Path#RightRadiusRenderArc",
++                styles: &["Visibility=Collapsed"],
++            },
++            LayoutRule {
++                target: "Microsoft.UI.Xaml.Shapes.Path#LeftRadiusRenderArc",
++                styles: &["Visibility=Collapsed"],
++            },
++        ],
++        constants: &[],
++    },
++];
++
++/// The preset's dropdown options: `("", "Windows Default")` first.
++pub fn options() -> impl Iterator<Item = (&'static str, &'static str)> {
++    std::iter::once(("", "Windows Default")).chain(LAYOUTS.iter().map(|p| (p.id, p.label)))
++}
++
++/// `PECO-FES1` wire for the preset — `T target` then its `S prop=value`
++/// rules with `$constants` expanded. `None` for unknown ids; `""` needs no
++/// wire (the reset path restores originals instead).
++pub fn layout_wire(id: &str) -> Option<String> {
++    let p = LAYOUTS.iter().find(|p| p.id == id)?;
++    let mut constants: Vec<(String, String)> = p
++        .constants
++        .iter()
++        .filter_map(|c| c.split_once('='))
++        .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
++        .collect();
++    for i in 0..constants.len() {
++        let prior = constants[..i].to_vec();
++        constants[i].1 = expand(&constants[i].1, &prior);
++    }
++    constants.sort_by_key(|c| std::cmp::Reverse(c.0.len()));
++
++    let mut out = String::with_capacity(8 * 1024);
++    out.push_str("PECO-FES1\n");
++    for rule in p.rules {
++        let target = expand(rule.target, &constants);
++        out.push_str("T ");
++        out.push_str(&target.replace(['\t', '\n'], " "));
++        out.push('\n');
++        for style in rule.styles {
++            let style = expand(style, &constants);
++            out.push_str("S ");
++            out.push_str(&style);
++            out.push('\n');
++        }
++    }
++    out.push_str("E\n");
++    Some(out)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn every_preset_serializes_without_visual_rules() {
++        // The EBM material pipeline owns every surface — a layout wire that
++        // emitted a brush would silently fight it. Hard-guard both levels.
++        for p in LAYOUTS {
++            for rule in p.rules {
++                for s in rule.styles {
++                    let head = s.split(['=', ':']).next().unwrap_or("");
++                    assert!(
++                        !matches!(head, "Background" | "BorderBrush" | "Fill"),
++                        "{} emits forbidden style {s}",
++                        p.id,
++                    );
++                }
++            }
++            let wire = layout_wire(p.id).expect("wire");
++            assert!(
++                wire.starts_with(
++                    "PECO-FES1
++"
++                ),
++                "{}",
++                p.id
++            );
++            for line in wire.lines().filter(|l| l.starts_with("S ")) {
++                let head = line[2..].split(['=', ':']).next().unwrap_or("");
++                assert!(
++                    !matches!(head, "Background" | "BorderBrush" | "Fill"),
++                    "{} wire emits {line}",
++                    p.id,
++                );
++            }
++        }
++    }
++
++    #[test]
++    fn wire_expands_constants_and_splits_targets() {
++        let w = layout_wire("Tabless").unwrap();
++        assert!(!w.contains('$'), "constants left unexpanded: {w}");
++        assert!(w.contains("Grid.Row=2"));
++        assert!(w.contains("Grid.Row=1"));
++        assert_eq!(options().count(), 1 + LAYOUTS.len());
++        assert!(layout_wire("").is_none());
++        assert!(layout_wire("nope").is_none());
++    }
++}
 diff --git a/crates/core/src/file_explorer_themes.rs b/crates/core/src/file_explorer_themes.rs
 deleted file mode 100644
 index 94fb26f..0000000
@@ -10849,10 +12415,10 @@ index 94fb26f..0000000
 -    }
 -}
 diff --git a/crates/core/src/lib.rs b/crates/core/src/lib.rs
-index 11c8758..df20974 100644
+index 11c8758..5d87476 100644
 --- a/crates/core/src/lib.rs
 +++ b/crates/core/src/lib.rs
-@@ -4,10 +4,8 @@
+@@ -4,10 +4,9 @@
  pub mod adaptive;
  pub mod base64;
  pub mod brand;
@@ -10860,14 +12426,15 @@ index 11c8758..df20974 100644
  pub mod config_store;
  pub mod date_group;
 -pub mod file_explorer_themes;
++pub mod fe_layouts;
  pub mod geometry;
  pub mod hotkey;
  pub mod i18n;
 diff --git a/crates/core/src/model.rs b/crates/core/src/model.rs
-index 2b0d833..917b61d 100644
+index 2b0d833..c2ac231 100644
 --- a/crates/core/src/model.rs
 +++ b/crates/core/src/model.rs
-@@ -180,17 +180,33 @@ pub struct Settings {
+@@ -180,17 +180,38 @@ pub struct Settings {
      /// Local device preference — themes never carry it.
      #[serde(default)]
      pub notification_center_style: String,
@@ -10900,6 +12467,11 @@ index 2b0d833..917b61d 100644
 +    /// file view.
 +    #[serde(default)]
 +    pub fe_show_line: bool,
++    /// File Explorer toolbar/icon arrangement (`""` = Windows Default) —
++    /// pure layout rules only; the EBM material pipeline still owns every
++    /// visual surface. Local device preference — themes never carry it.
++    #[serde(default)]
++    pub fe_layout: String,
 +    /// EBM `[light]` RGBA blend color (`#AARRGGBB`) used while the system
 +    /// runs light mode.
 +    #[serde(default = "fe_light_rgba_default")]
@@ -10910,7 +12482,7 @@ index 2b0d833..917b61d 100644
      /// Background fit mode for bundled theme assets: `false` = strict Cover (a
      /// uniform scale fills the screen, the overflowing axis crops); `true` =
      /// strict Contain (the whole frame centered and uncropped, the leftover
-@@ -317,8 +333,13 @@ impl Default for Settings {
+@@ -317,8 +338,14 @@ impl Default for Settings {
              start_menu_style: String::new(),
              taskbar_style: String::new(),
              notification_center_style: String::new(),
@@ -10921,12 +12493,13 @@ index 2b0d833..917b61d 100644
 +            fe_clear_bar_bg: true,
 +            fe_clear_winui_bg: true,
 +            fe_show_line: false,
++            fe_layout: String::new(),
 +            fe_light_rgba: "#A0DCDCDC".to_string(),
 +            fe_dark_rgba: "#78000000".to_string(),
              contain_background: false,
              stretch_tolerance_pct: 0,
              active_theme_path: None,
-@@ -1972,6 +1993,14 @@ fn default_chameleon_intensity() -> u8 {
+@@ -1972,6 +1999,14 @@ fn default_chameleon_intensity() -> u8 {
      55
  }
  
@@ -10942,10 +12515,10 @@ index 2b0d833..917b61d 100644
      true
  }
 diff --git a/crates/platform/src/file_explorer_styler.rs b/crates/platform/src/file_explorer_styler.rs
-index 9a641dc..e77a192 100644
+index 9a641dc..f865829 100644
 --- a/crates/platform/src/file_explorer_styler.rs
 +++ b/crates/platform/src/file_explorer_styler.rs
-@@ -1,142 +1,89 @@
+@@ -1,144 +1,106 @@
 -//! Host-side controller for the File Explorer XAML styler — the native
 -//! replacement for the Windhawk `windows-11-file-explorer-styler` mod.
 +//! Host-side controller for the File Explorer material — drives the real
@@ -10990,14 +12563,15 @@ index 9a641dc..e77a192 100644
  use std::sync::Mutex;
  use std::sync::atomic::{AtomicBool, Ordering};
 -use windows_core::{PCSTR, PCWSTR};
-+use windows_core::PCWSTR;
- 
+-
 -windows_core::link!("kernel32.dll" "system" fn GetModuleHandleW(name: PCWSTR) -> *mut core::ffi::c_void);
 -windows_core::link!("kernel32.dll" "system" fn GetProcAddress(hmodule: *mut core::ffi::c_void, lpprocname: PCSTR) -> *mut core::ffi::c_void);
 -windows_core::link!("dwmapi.dll" "system" fn DwmSetWindowAttribute(hwnd: crate::bindings::HWND, dwattribute: u32, pvattribute: *const core::ffi::c_void, cbattribute: u32) -> i32);
 -windows_core::link!("dwmapi.dll" "system" fn DwmEnableBlurBehindWindow(hwnd: crate::bindings::HWND, bb: *const DwmBlurBehind) -> i32);
 -windows_core::link!("gdi32.dll" "system" fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> *mut core::ffi::c_void);
 -windows_core::link!("gdi32.dll" "system" fn DeleteObject(obj: *mut core::ffi::c_void) -> windows_core::BOOL);
++use windows_core::PCWSTR;
++
  windows_core::link!("user32.dll" "system" fn GetClassNameW(hwnd: crate::bindings::HWND, lpclassname: windows_core::PWSTR, nmaxcount: i32) -> i32);
 -windows_core::link!("user32.dll" "system" fn RedrawWindow(hwnd: crate::bindings::HWND, lprcupdate: *const core::ffi::c_void, hrgnupdate: *mut core::ffi::c_void, flags: u32) -> windows_core::BOOL);
 -windows_core::link!("user32.dll" "system" fn DefWindowProcW(hwnd: crate::bindings::HWND, msg: u32, wparam: usize, lparam: isize) -> isize);
@@ -11013,6 +12587,7 @@ index 9a641dc..e77a192 100644
 +/// `EBMU` = unload it. `FESR` = the legacy `fe_glass` reset, kept so a
 +/// still-armed resident from an older build disarms its detours before
 +/// EBM takes over (one broadcast per apply — not periodic).
++/// `FELT` = a `PECO-FES1` layout wire (UTF-8, mux engine); `FELR` resets it.
 +const CDS_EBM_LOAD: usize = u32::from_be_bytes(*b"EBML") as usize;
 +const CDS_EBM_UNLOAD: usize = u32::from_be_bytes(*b"EBMU") as usize;
  const CDS_FE_RESET: usize = u32::from_be_bytes(*b"FESR") as usize;
@@ -11035,7 +12610,7 @@ index 9a641dc..e77a192 100644
 -/// it. Verified working on this machine — EBM runs it natively.
 -const ACCENT_ACRYLIC: u32 = 4;
 -const DWMSBT_AUTO: i32 = 0;
- 
+-
 -/// ExplorerBlurMica/Translucent-Windows `HandleEffects` port. The accent
 -/// path (`AccentBlurBehind`) is the proven-working recipe on 23H2+
 -/// `CabinetWClass`: `DwmEnableBlurBehindWindow` TRUE over the whole
@@ -11054,7 +12629,9 @@ index 9a641dc..e77a192 100644
 -        (DWMSBT_AUTO, ACCENT_ACRYLIC, 0, tint_abgr(tint))
 -    }
 -}
--
++const CDS_FE_LAYOUT: usize = u32::from_be_bytes(*b"FELT") as usize;
++const CDS_FE_LAYOUT_RESET: usize = u32::from_be_bytes(*b"FELR") as usize;
+ 
 -/// Selected swatch `#RRGGBB` → `0x24BBGGRR` (the ABGR layout
 -/// `fe_glass::punch_black` stretches across the Win32 surfaces); `""` or
 -/// malformed → `0` (transparent-black punch).
@@ -11089,6 +12666,9 @@ index 9a641dc..e77a192 100644
 +    pub show_line: bool,
 +    pub light_rgba: &'a str,
 +    pub dark_rgba: &'a str,
++    /// Toolbar/icon arrangement — `""` = Windows Default. Pure layout
++    /// rules only (`fe_layouts`); independent of the material above.
++    pub layout: &'a str,
  }
  
 -const RDW_INVALIDATE: u32 = 0x0001;
@@ -11141,19 +12721,31 @@ index 9a641dc..e77a192 100644
 +    /// pid → (cmd window, epoch delivered). `ensure()` only wires pids
 +    /// that are new, stale-epoch, or whose resident restarted.
 +    delivered: std::collections::HashMap<u32, (usize, u64)>,
++    /// Selected layout preset id (`""` = none armed).
++    layout: String,
++    /// Bumped every apply — layout re-wires only when this trails.
++    layout_epoch: u64,
++    /// pid → (cmd window, layout epoch delivered).
++    layout_delivered: std::collections::HashMap<u32, (usize, u64)>,
  }
  
  static FE: Mutex<Option<Fe>> = Mutex::new(None);
 -/// Whether a File Explorer style is armed — read lock-free.
 +/// Whether a File Explorer effect is armed — read lock-free.
  static ARMED: AtomicBool = AtomicBool::new(false);
++/// Whether a layout preset is armed — drives `ensure()` even when the
++/// material is stock (`effect=""`).
++static LAYOUT_ARMED: AtomicBool = AtomicBool::new(false);
  
 -/// `true` while a File Explorer style is armed — `tap` keeps the DLL resident.
-+/// `true` while a File Explorer effect is armed.
++/// `true` while a File Explorer effect or layout is armed.
  pub fn is_armed() -> bool {
-     ARMED.load(Ordering::Acquire)
+-    ARMED.load(Ordering::Acquire)
++    ARMED.load(Ordering::Acquire) || LAYOUT_ARMED.load(Ordering::Acquire)
  }
-@@ -149,9 +96,99 @@ fn widestr(s: &str) -> Vec<u16> {
+ 
+ fn lock() -> std::sync::MutexGuard<'static, Option<Fe>> {
+@@ -149,9 +111,99 @@ fn widestr(s: &str) -> Vec<u16> {
      s.encode_utf16().chain(core::iter::once(0)).collect()
  }
  
@@ -11256,7 +12848,7 @@ index 9a641dc..e77a192 100644
  fn cabinet_windows() -> Vec<crate::bindings::HWND> {
      struct Ctx {
          out: Vec<crate::bindings::HWND>,
-@@ -193,475 +230,206 @@ fn cabinet_windows() -> Vec<crate::bindings::HWND> {
+@@ -193,475 +245,263 @@ fn cabinet_windows() -> Vec<crate::bindings::HWND> {
      ctx.out
  }
  
@@ -11416,24 +13008,17 @@ index 9a641dc..e77a192 100644
 -    }
 -    let dwm = unsafe { GetModuleHandleW(PCWSTR(widestr("dwmapi.dll").as_ptr())) };
 -    if dwm.is_null() {
-+/// Fans `EBML` out to every cabinet-owning explorer pid — **only** to
-+/// pids that are new, whose resident restarted (cmd hwnd changed), or
-+/// whose epoch trails the current config. This is the anti-storm rule:
-+/// `ensure()` calls us every anchor tick but wires only fire on change.
-+fn deliver_all() {
-+    let Some(dll) = residents_dir().map(|d| d.join("ExplorerBlurMica.dll")) else {
-         return;
+-        return;
 -    }
 -    let f = unsafe {
 -        GetProcAddress(
 -            dwm,
 -            PCSTR(c"DwmExtendFrameIntoClientArea".as_ptr() as *const u8),
 -        )
-     };
+-    };
 -    if f.is_null() {
-+    if !dll.is_file() {
-         return;
-     }
+-        return;
+-    }
 -    let f: unsafe extern "system" fn(crate::bindings::HWND, *const Margins) -> i32 =
 -        unsafe { core::mem::transmute(f) };
 -    let m = if on {
@@ -11477,8 +13062,45 @@ index 9a641dc..e77a192 100644
 -            &mut key,
 -        ) != 0
 -        {
--            return;
--        }
++/// Fans `EBML` and the `PECO-FES1` layout wire out to every
++/// cabinet-owning explorer pid — **only** to pids that are new, whose
++/// resident restarted (cmd hwnd changed), or whose epoch trails the
++/// current config. This is the anti-storm rule: `ensure()` calls us
++/// every anchor tick but wires only fire on change. The two legs are
++/// independent: layout delivery never touches the EBM pipeline and runs
++/// even when `effect=""`.
++fn deliver_all() {
++    let wide: Vec<u8> = residents_dir()
++        .map(|d| d.join("ExplorerBlurMica.dll"))
++        .filter(|p| p.is_file())
++        .map(|dll| {
++            dll.display()
++                .to_string()
++                .encode_utf16()
++                .chain(core::iter::once(0))
++                .flat_map(|c| c.to_le_bytes())
++                .collect()
++        })
++        .unwrap_or_default();
++    let anchors = cabinet_anchors();
++    let mut live_pids = Vec::new();
++    for (pid, anchor) in anchors {
++        live_pids.push(pid);
++        let Some(cmd) = crate::tap::ensure_resident_at(anchor) else {
++            continue;
++        };
++        let mut guard = lock();
++        let Some(fe) = guard.as_mut() else {
+             return;
++        };
++        // EBM leg — only while an effect is armed.
++        if !fe.effect.is_empty() && !wide.is_empty() {
++            let current = (cmd.0 as usize, fe.epoch);
++            if fe.delivered.get(&pid) != Some(&current) {
++                deliver_ebm(cmd, &wide);
++                fe.delivered.insert(pid, current);
++            }
+         }
 -        let mut val = 1u32;
 -        let mut ty = 0u32;
 -        let mut cb = core::mem::size_of::<u32>() as u32;
@@ -11492,27 +13114,17 @@ index 9a641dc..e77a192 100644
 -        );
 -        if read != 0 || ty != REG_DWORD || val != 0 {
 -            let _ = RegCloseKey(key);
-+    let wide: Vec<u8> = dll
-+        .display()
-+        .to_string()
-+        .encode_utf16()
-+        .chain(core::iter::once(0))
-+        .flat_map(|c| c.to_le_bytes())
-+        .collect();
-+    let anchors = cabinet_anchors();
-+    let mut live_pids = Vec::new();
-+    for (pid, anchor) in anchors {
-+        live_pids.push(pid);
-+        let Some(cmd) = crate::tap::ensure_resident_at(anchor) else {
-+            continue;
-+        };
-+        let mut guard = lock();
-+        let Some(fe) = guard.as_mut() else {
-             return;
-+        };
-+        let current = (cmd.0 as usize, fe.epoch);
-+        if fe.delivered.get(&pid) == Some(&current) {
-+            continue; // already loaded under this config — silent tick
+-            return;
++        // Layout leg — a `PECO-FES1` wire through the same resident; the
++        // mux engine applies it to the WinUI3 islands.
++        if !fe.layout.is_empty()
++            && let Some(wire) = pecofence_core::fe_layouts::layout_wire(&fe.layout)
++        {
++            let current = (cmd.0 as usize, fe.layout_epoch);
++            if fe.layout_delivered.get(&pid) != Some(&current) {
++                let _ = crate::tap::send_copydata(cmd, CDS_FE_LAYOUT, wire.as_bytes());
++                fe.layout_delivered.insert(pid, current);
++            }
          }
 -        let one = 1u32;
 -        let _ = RegSetValueExW(
@@ -11535,8 +13147,6 @@ index 9a641dc..e77a192 100644
 -            2000,
 -            &mut result,
 -        );
-+        deliver_ebm(cmd, &wide);
-+        fe.delivered.insert(pid, current);
      }
 +    crate::tap::prune_extra_residents(&live_pids);
  }
@@ -11558,7 +13168,14 @@ index 9a641dc..e77a192 100644
 -    let user32 = unsafe { GetModuleHandleW(PCWSTR(widestr("user32.dll").as_ptr())) };
 -    if user32.is_null() {
 -        return;
--    }
++/// Applies just the layout leg — no-op when the id is unchanged AND
++/// already delivered (the epoch bump in `apply_effect` forces a re-wire
++/// on preset switches). `""` broadcasts `FELR` once like `disarm_legacy`.
++fn apply_layout(layout: &str) {
++    let valid = layout.is_empty() || pecofence_core::fe_layouts::layout_wire(layout).is_some();
++    if !valid {
++        tracing::warn!(layout, "unknown feLayout preset — keeping stock");
+     }
 -    let f = unsafe {
 -        GetProcAddress(
 -            user32,
@@ -11567,21 +13184,32 @@ index 9a641dc..e77a192 100644
 -    };
 -    if f.is_null() {
 -        return;
--    }
++    let layout = if valid { layout } else { "" };
++    {
++        let mut guard = lock();
++        let fe = guard.get_or_insert_with(Fe::default);
++        fe.layout = layout.to_string();
++        fe.layout_epoch += 1;
+     }
 -    let f: unsafe extern "system" fn(
 -        crate::bindings::HWND,
 -        *const WindowCompositionAttribData,
 -    ) -> windows_core::BOOL = unsafe { core::mem::transmute(f) };
 -    unsafe {
 -        let _ = f(hwnd, data);
-+/// One-shot disarm for legacy residents: an older app build may have
-+/// left `fe_glass` armed inside explorer — its DWM/uxtheme detours would
-+/// fight the EBM extension over the same surfaces. `FESR` restores
-+/// originals; no-op when nothing is armed.
-+fn disarm_legacy() {
-+    for hwnd in crate::tap::resident_windows_all() {
-+        let _ = crate::tap::send_copydata(hwnd, CDS_FE_RESET, &[]);
++    LAYOUT_ARMED.store(!layout.is_empty(), Ordering::Release);
++    if layout.is_empty() {
++        // Stock layout — one reset broadcast restores originals in every
++        // resident that ever applied a preset.
++        for hwnd in crate::tap::resident_windows_all() {
++            let _ = crate::tap::send_copydata(hwnd, CDS_FE_LAYOUT_RESET, &[]);
++        }
++        if let Some(fe) = lock().as_mut() {
++            fe.layout_delivered.clear();
++        }
++        return;
      }
++    deliver_all();
  }
  
 -/// `WCA_FORCE_ACTIVEWINDOW_APPEARANCE` — `1` while glass is armed, `0` on
@@ -11597,8 +13225,7 @@ index 9a641dc..e77a192 100644
 -        },
 -    );
 -}
-+// ------------------------------------------------------------- public ----
- 
+-
 -/// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY`. The system
 -/// backdrop path keeps this strictly `ACCENT_DISABLED` (mutual exclusion
 -/// with `DWMWA_SYSTEMBACKDROP_TYPE`); it is still written on every apply
@@ -11610,12 +13237,13 @@ index 9a641dc..e77a192 100644
 -        accent_flags: u32,
 -        gradient_color: u32,
 -        animation_id: u32,
-+/// Applies an EBM `effect` + flags + RGBA palettes. `effect=""` →
-+/// `reset()` (Windows Default). Returns `false` when the deploy or the
-+/// `config.ini` write failed so settings can revert.
-+pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
-+    if cfg.effect.is_empty() {
-+        return reset();
++/// One-shot disarm for legacy residents: an older app build may have
++/// left `fe_glass` armed inside explorer — its DWM/uxtheme detours would
++/// fight the EBM extension over the same surfaces. `FESR` restores
++/// originals; no-op when nothing is armed.
++fn disarm_legacy() {
++    for hwnd in crate::tap::resident_windows_all() {
++        let _ = crate::tap::send_copydata(hwnd, CDS_FE_RESET, &[]);
      }
 -    let policy = AccentPolicy {
 -        accent_state: state,
@@ -11631,8 +13259,8 @@ index 9a641dc..e77a192 100644
 -            cb_data: core::mem::size_of::<AccentPolicy>(),
 -        },
 -    );
--}
--
+ }
+ 
 -/// `TriggerWindowCompositionUpdate` — the mod sends `WM_WINDOWPOSCHANGED`
 -/// in-process; cross-process that message's `WINDOWPOS*` is not marshalled,
 -/// so the target would dereference our stack. `SetWindowPos` with
@@ -11658,14 +13286,22 @@ index 9a641dc..e77a192 100644
 -        );
 -    }
 -}
--
++// ------------------------------------------------------------- public ----
+ 
 -/// Sends the stored wire to the resident DLL — same hello/wire pattern as
 -/// the taskbar styler so the death watch re-arms per injection.
 -fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
 -    if fe.cmd_hwnd != hwnd.0 as usize {
 -        fe.hello_sent = false;
-+    if effect_id(cfg.effect).is_none() {
-+        return false;
++/// Applies an EBM `effect` + flags + RGBA palettes + the toolbar/icon
++/// `layout`. The layout leg runs unconditionally (`effect=""` still gets
++/// its wire); `effect=""` additionally unloads EBM everywhere.
++/// Returns `false` when the deploy or the `config.ini` write failed so
++/// settings can revert.
++pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
++    apply_layout(cfg.layout);
++    if cfg.effect.is_empty() {
++        return reset_ebm();
      }
 -    if !fe.hello_sent {
 -        let pid = std::process::id();
@@ -11689,7 +13325,9 @@ index 9a641dc..e77a192 100644
 -        true
 -    } else {
 -        false
--    }
++    if effect_id(cfg.effect).is_none() {
++        return false;
+     }
 -}
 -
 -/// Applies the selected File Explorer style + color tint. `id` is a
@@ -11777,12 +13415,14 @@ index 9a641dc..e77a192 100644
  
 -/// `Windows Default` — restore originals, return cabinet windows to the
 -/// stock backdrop, stop keeping the DLL alive on our account.
-+/// `Windows Default` — `EBMU` broadcast unloads EBM everywhere; also
-+/// disarms any legacy resident glass.
- pub fn reset() -> bool {
+-pub fn reset() -> bool {
 -    let mut guard = lock();
 -    if let Some(hwnd) = crate::tap::resident_window() {
 -        let _ = crate::tap::send_copydata(hwnd, CDS_FE_RESET, &[]);
++/// EBM leg only — `EBMU` broadcast unloads the material everywhere and
++/// clears its delivery bookkeeping. The layout leg is untouched: callers
++/// route `feLayout` through `apply_layout` separately.
++fn reset_ebm() -> bool {
 +    for hwnd in crate::tap::resident_windows_all() {
 +        let _ = crate::tap::send_copydata(hwnd, CDS_EBM_UNLOAD, &[]);
      }
@@ -11805,6 +13445,14 @@ index 9a641dc..e77a192 100644
 -/// re-asserts the DWM backdrop (explorer may rewrite its own attribute —
 -/// without the mod's `DwmSetWindowAttribute` hook ours is a best-effort
 -/// value, so refresh it here). Otherwise sends a `HELLO`.
++/// `Windows Default` — full disarm: EBM unload + layout reset + legacy
++/// glass disarm. Used by shutdown; the settings Apply path goes through
++/// `apply_effect` (which keeps the armed layout).
++pub fn reset() -> bool {
++    apply_layout("");
++    reset_ebm()
++}
++
 +/// Anchor-tick liveness: re-injects + re-delivers `EBML` to explorer
 +/// pids that appeared since the last pass (new cabinet process), whose
 +/// resident restarted, or whose config epoch trails. No wires fire when
@@ -12136,10 +13784,10 @@ index 2b1d4dd..4e791f3 100644
  /// SetWindowPos is intentional: a process started hidden must still be able to open
  /// settings later, and reopening an already maximized window must preserve its size.
 diff --git a/crates/tap/src/command.rs b/crates/tap/src/command.rs
-index 7d797cb..31b5763 100644
+index 7d797cb..26d6f54 100644
 --- a/crates/tap/src/command.rs
 +++ b/crates/tap/src/command.rs
-@@ -274,16 +274,11 @@ const CDS_TB_HELLO: usize = u32::from_be_bytes(*b"TBHI") as usize;
+@@ -274,16 +274,16 @@ const CDS_TB_HELLO: usize = u32::from_be_bytes(*b"TBHI") as usize;
  const CDS_NC_THEME: usize = u32::from_be_bytes(*b"NCST") as usize;
  const CDS_NC_RESET: usize = u32::from_be_bytes(*b"NCSR") as usize;
  const CDS_NC_HELLO: usize = u32::from_be_bytes(*b"NCHI") as usize;
@@ -12158,10 +13806,15 @@ index 7d797cb..31b5763 100644
 +/// The vendored EBM DllMain self-installs inside explorer.exe.
 +const CDS_EBM_LOAD: usize = u32::from_be_bytes(*b"EBML") as usize;
 +const CDS_EBM_UNLOAD: usize = u32::from_be_bytes(*b"EBMU") as usize;
++/// File Explorer layout (`PECO-FES1`) — pure positioning rules only,
++/// applied by the mux (WinUI3) engine; `FELR` restores stock layout.
++/// Independent of EBM: the material pipeline owns every surface brush.
++const CDS_FE_LAYOUT: usize = u32::from_be_bytes(*b"FELT") as usize;
++const CDS_FE_LAYOUT_RESET: usize = u32::from_be_bytes(*b"FELR") as usize;
  
  fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
      if msg == UNLOAD_MSG.load(Ordering::Acquire) && msg != 0 {
-@@ -299,7 +294,7 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
+@@ -299,7 +299,7 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
      if msg == WM_TIMER {
          crate::site::ensure_watching();
          // The mux session's endpoint exists only once a WinUI3 island
@@ -12170,39 +13823,19 @@ index 7d797cb..31b5763 100644
          // window exists, so keep re-trying while the mux engine wants one.
          if crate::styler::mux::wants_session() {
              crate::site::ensure_watching_winui3();
-@@ -339,27 +334,7 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
+@@ -339,36 +339,37 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
                  crate::site::ensure_watching();
                  crate::styler::wux::apply_wire(text);
              }
 -            CDS_FE_THEME if !cds.lp_data.is_null() && cds.cb_data > 0 => {
--                let bytes = unsafe {
--                    core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
--                };
--                let Ok(text) = core::str::from_utf8(bytes) else {
--                    crate::tap_log!("FE styler wire not UTF-8");
--                    return;
--                };
--                // The WinUI3 session may not exist yet (no File Explorer
--                // window open) — the engine holds the theme as pending and
--                // the timer keeps retrying `ensure_watching_winui3`.
--                crate::site::ensure_watching_winui3();
--                crate::styler::mux::apply_wire(text);
--            }
--            CDS_FE_BACKDROP if !cds.lp_data.is_null() && cds.cb_data >= 16 => {
--                let bytes = unsafe {
--                    core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
--                };
--                crate::fe_glass::set_backdrop_params(bytes);
--            }
--            CDS_HELLO | CDS_TB_HELLO | CDS_NC_HELLO | CDS_FE_HELLO
 +            CDS_HELLO | CDS_TB_HELLO | CDS_NC_HELLO
-                 if !cds.lp_data.is_null() && cds.cb_data == 4 =>
-             {
-                 // Host announced itself — arm the death watch so styles
-@@ -367,8 +342,14 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
-                 let pid = unsafe { *(cds.lp_data as *const u32) };
-                 watch_host_process(pid);
-             }
++                if !cds.lp_data.is_null() && cds.cb_data == 4 =>
++            {
++                // Host announced itself — arm the death watch so styles
++                // restore if pecofence.exe dies.
++                let pid = unsafe { *(cds.lp_data as *const u32) };
++                watch_host_process(pid);
++            }
 +            CDS_EBM_LOAD if !cds.lp_data.is_null() && cds.cb_data >= 4 => {
 +                let bytes = unsafe {
 +                    core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
@@ -12210,12 +13843,45 @@ index 7d797cb..31b5763 100644
 +                crate::ebm::load(bytes);
 +            }
 +            CDS_EBM_UNLOAD => crate::ebm::unload(),
++            CDS_FE_LAYOUT if !cds.lp_data.is_null() && cds.cb_data > 0 => {
+                 let bytes = unsafe {
+                     core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
+                 };
+                 let Ok(text) = core::str::from_utf8(bytes) else {
+-                    crate::tap_log!("FE styler wire not UTF-8");
++                    crate::tap_log!("fe layout wire not UTF-8");
+                     return;
+                 };
+-                // The WinUI3 session may not exist yet (no File Explorer
+-                // window open) — the engine holds the theme as pending and
+-                // the timer keeps retrying `ensure_watching_winui3`.
++                // The mux engine styles the WinUI3 islands — arm that
++                // watcher (cheap no-op once advised; the 2s retry timer
++                // re-pokes while `wants_session`).
+                 crate::site::ensure_watching_winui3();
+                 crate::styler::mux::apply_wire(text);
+             }
+-            CDS_FE_BACKDROP if !cds.lp_data.is_null() && cds.cb_data >= 16 => {
+-                let bytes = unsafe {
+-                    core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
+-                };
+-                crate::fe_glass::set_backdrop_params(bytes);
+-            }
+-            CDS_HELLO | CDS_TB_HELLO | CDS_NC_HELLO | CDS_FE_HELLO
+-                if !cds.lp_data.is_null() && cds.cb_data == 4 =>
+-            {
+-                // Host announced itself — arm the death watch so styles
+-                // restore if pecofence.exe dies.
+-                let pid = unsafe { *(cds.lp_data as *const u32) };
+-                watch_host_process(pid);
+-            }
++            CDS_FE_LAYOUT_RESET => crate::styler::mux::reset(),
              CDS_RESET | CDS_TB_RESET | CDS_NC_RESET => crate::styler::wux::reset(),
 -            CDS_FE_RESET => crate::styler::mux::reset(),
              _ => {}
          }
      }
-@@ -454,6 +435,7 @@ fn unload(hwnd: HWND) {
+@@ -454,6 +455,7 @@ fn unload(hwnd: HWND) {
      crate::tap_log!("unload: inert — timer killed, CmdHwnd unstamped");
      crate::styler::wux::shutdown();
      crate::styler::mux::shutdown();
@@ -14179,10 +15845,10 @@ index 01ec2c2..becc545 100644
  windows_core::link!("kernel32.dll" "system" fn FindNextFileW(hfindfile: HANDLE, lpfindfiledata: *mut core::ffi::c_void) -> BOOL);
  windows_core::link!("kernel32.dll" "system" fn FindClose(hfindfile: HANDLE) -> BOOL);
 diff --git a/locales/ar.json b/locales/ar.json
-index 654edbd..14f0ea1 100644
+index 654edbd..d5bc7c0 100644
 --- a/locales/ar.json
 +++ b/locales/ar.json
-@@ -654,9 +654,37 @@
+@@ -654,9 +654,52 @@
    "通知中心样式": "نمط مركز الإشعارات",
    "通知中心和操作中心视觉主题；选择后立即生效": "سمات مرئية لمركز الإشعارات ومركز الإجراءات؛ تُطبَّق فور الاختيار",
    "通知中心样式未能更改，请稍后重试。": "تعذّر تغيير نمط مركز الإشعارات — حاول مرة أخرى.",
@@ -14191,6 +15857,7 @@ index 654edbd..14f0ea1 100644
 -  "资源管理器样式未能更改，请稍后重试。": "تعذّر تغيير نمط مستكشف الملفات — حاول مرة أخرى.",
 -  "主题色叠加": "تراكب لون التمييز",
 -  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "يُطبِّق اللون المحدد على شريط المهام وقائمة ابدأ ومستكشف الملفات — زر الشرطة المائلة للإلغاء"
+-}
 +  "资源管理器背景效果": "تأثير خلفية مستكشف الملفات",
 +  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "تأثير زجاجي بأسلوب ExplorerBlurMica: ضبابي أو أكريليك أو ميكا؛ يُطبَّق فوراً",
 +  "清除地址栏背景": "مسح خلفية شريط العنوان",
@@ -14223,13 +15890,29 @@ index 654edbd..14f0ea1 100644
 +  "当前": "الحالي",
 +  "已应用": "تم التطبيق",
 +  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "تمويه وأكريليك وميكا من ExplorerBlurMica — عاين وخصّص في نافذة مخصصة",
-+  "预览背景": "خلفية المعاينة"
- }
++  "预览背景": "خلفية المعاينة",
++  "工具栏和图标布局": "تخطيط شريط الأدوات والأيقونات",
++  "仅布局规则 — 材质由 EBM 提供": "قواعد التخطيط فقط — المادة يوفرها EBM",
++  "Windows Default": "افتراضي Windows",
++  "No Command Bar": "بدون شريط الأوامر",
++  "Minimal Explorer 11": "Minimal Explorer 11",
++  "Tabless - Swapped Bars": "Tabless — أشرطة مبدّلة",
++  "Matter - Clean Command Bar": "Matter — شريط أوامر نظيف",
++  "Centered Icon Bar": "شريط أيقونات ممركز",
++  "Address & Search Only": "العنوان والبحث فقط",
++  "Liquid Compact": "Liquid Compact",
++  "OS26 Floating Layout": "OS26 Floating Layout",
++  "OS26 Merged Top Bar": "OS26 الشريط العلوي المدمج",
++  "ZEUS macOS Single Bar": "ZEUS شريط macOS المفرد",
++  "Compact Explorer 11": "Compact Explorer 11",
++  "Floating Spaced Bars": "أشرطة عائمة متباعدة"
++}
+\ No newline at end of file
 diff --git a/locales/de.json b/locales/de.json
-index a6b2f5b..3941c46 100644
+index a6b2f5b..022f763 100644
 --- a/locales/de.json
 +++ b/locales/de.json
-@@ -654,9 +654,37 @@
+@@ -654,9 +654,52 @@
    "通知中心样式": "Info-Center-Stil",
    "通知中心和操作中心视觉主题；选择后立即生效": "Visuelle Designs für Info-Center und Aktionscenter; wird sofort übernommen",
    "通知中心样式未能更改，请稍后重试。": "Info-Center-Stil konnte nicht geändert werden — bitte erneut versuchen.",
@@ -14238,6 +15921,7 @@ index a6b2f5b..3941c46 100644
 -  "资源管理器样式未能更改，请稍后重试。": "Der Explorer-Stil konnte nicht geändert werden — bitte erneut versuchen.",
 -  "主题色叠加": "Akzentfarben-Overlay",
 -  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Legt die gewählte Farbe über Taskleiste, Startmenü und Datei-Explorer; die Schaltfläche mit Schrägstrich deaktiviert es"
+-}
 +  "资源管理器背景效果": "Explorer-Hintergrundeffekt",
 +  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Mattglaseffekt im ExplorerBlurMica-Stil: Blur, Acryl oder Mica; gilt sofort",
 +  "清除地址栏背景": "Adressleisten-Hintergrund entfernen",
@@ -14270,13 +15954,29 @@ index a6b2f5b..3941c46 100644
 +  "当前": "Aktuell",
 +  "已应用": "Angewendet",
 +  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica-Unschärfe, -Acryl und -Mica – Vorschau und Anpassung in einem eigenen Fenster",
-+  "预览背景": "Vorschau-Hintergrund"
- }
++  "预览背景": "Vorschau-Hintergrund",
++  "工具栏和图标布局": "Symbolleisten- & Symbol-Layout",
++  "仅布局规则 — 材质由 EBM 提供": "Nur Layout-Regeln — Material von EBM",
++  "Windows Default": "Windows-Standard",
++  "No Command Bar": "Keine Befehlsleiste",
++  "Minimal Explorer 11": "Minimal Explorer 11",
++  "Tabless - Swapped Bars": "Tabless – Vertauschte Leisten",
++  "Matter - Clean Command Bar": "Matter – Klare Befehlsleiste",
++  "Centered Icon Bar": "Zentrierte Symbolleiste",
++  "Address & Search Only": "Nur Adresse & Suche",
++  "Liquid Compact": "Liquid Compact",
++  "OS26 Floating Layout": "OS26 Floating Layout",
++  "OS26 Merged Top Bar": "OS26 Verschmolzene Titelleiste",
++  "ZEUS macOS Single Bar": "ZEUS macOS-Einzelzeile",
++  "Compact Explorer 11": "Compact Explorer 11",
++  "Floating Spaced Bars": "Schwebende Leisten"
++}
+\ No newline at end of file
 diff --git a/locales/en.json b/locales/en.json
-index 4298a37..022000b 100644
+index 4298a37..9f63cc5 100644
 --- a/locales/en.json
 +++ b/locales/en.json
-@@ -654,9 +654,37 @@
+@@ -654,9 +654,52 @@
    "通知中心样式": "Notification Center style",
    "通知中心和操作中心视觉主题；选择后立即生效": "Visual themes for the Notification and Action Center; applies on selection",
    "通知中心样式未能更改，请稍后重试。": "Couldn't change the Notification Center style — try again.",
@@ -14285,6 +15985,7 @@ index 4298a37..022000b 100644
 -  "资源管理器样式未能更改，请稍后重试。": "Couldn't change the File Explorer style — try again.",
 -  "主题色叠加": "Color tint overlay",
 -  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Overlays the chosen color onto the taskbar, Start menu and File Explorer; the slash swatch clears it"
+-}
 +  "资源管理器背景效果": "File Explorer background effect",
 +  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "ExplorerBlurMica-style frosted effect: Blur, Acrylic or Mica; applies immediately",
 +  "清除地址栏背景": "Clear address bar background",
@@ -14317,13 +16018,29 @@ index 4298a37..022000b 100644
 +  "当前": "Current",
 +  "已应用": "Applied",
 +  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica blur, acrylic and mica — preview and customize in a dedicated window",
-+  "预览背景": "Preview background"
- }
++  "预览背景": "Preview background",
++  "工具栏和图标布局": "Toolbar & Icon Layout",
++  "仅布局规则 — 材质由 EBM 提供": "Layout only — EBM owns the material",
++  "Windows Default": "Windows Default",
++  "No Command Bar": "No Command Bar",
++  "Minimal Explorer 11": "Minimal Explorer 11",
++  "Tabless - Swapped Bars": "Tabless - Swapped Bars",
++  "Matter - Clean Command Bar": "Matter - Clean Command Bar",
++  "Centered Icon Bar": "Centered Icon Bar",
++  "Address & Search Only": "Address & Search Only",
++  "Liquid Compact": "Liquid Compact",
++  "OS26 Floating Layout": "OS26 Floating Layout",
++  "OS26 Merged Top Bar": "OS26 Merged Top Bar",
++  "ZEUS macOS Single Bar": "ZEUS macOS Single Bar",
++  "Compact Explorer 11": "Compact Explorer 11",
++  "Floating Spaced Bars": "Floating Spaced Bars"
++}
+\ No newline at end of file
 diff --git a/locales/es.json b/locales/es.json
-index e8f5851..5e683ad 100644
+index e8f5851..ea4458c 100644
 --- a/locales/es.json
 +++ b/locales/es.json
-@@ -654,9 +654,37 @@
+@@ -654,9 +654,52 @@
    "通知中心样式": "Estilo del Centro de notificaciones",
    "通知中心和操作中心视觉主题；选择后立即生效": "Temas visuales para el Centro de notificaciones y de actividades; se aplican al seleccionar",
    "通知中心样式未能更改，请稍后重试。": "No se pudo cambiar el estilo del Centro de notificaciones — inténtalo de nuevo.",
@@ -14332,6 +16049,7 @@ index e8f5851..5e683ad 100644
 -  "资源管理器样式未能更改，请稍后重试。": "No se pudo cambiar el estilo del Explorador de archivos — inténtalo de nuevo.",
 -  "主题色叠加": "Capa de color de énfasis",
 -  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Superpone el color elegido sobre la barra de tareas, el menú Inicio y el Explorador de archivos; la muestra tachada lo quita"
+-}
 +  "资源管理器背景效果": "Efecto de fondo del Explorador",
 +  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Efecto esmerilado estilo ExplorerBlurMica: Desenfoque, Acrílico o Mica; se aplica al instante",
 +  "清除地址栏背景": "Borrar el fondo de la barra de direcciones",
@@ -14364,13 +16082,29 @@ index e8f5851..5e683ad 100644
 +  "当前": "Actual",
 +  "已应用": "Aplicado",
 +  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Desenfoque, acrílico y mica de ExplorerBlurMica: vista previa y personalización en una ventana dedicada",
-+  "预览背景": "Fondo de vista previa"
- }
++  "预览背景": "Fondo de vista previa",
++  "工具栏和图标布局": "Diseño de barra e iconos",
++  "仅布局规则 — 材质由 EBM 提供": "Solo diseño — el material es de EBM",
++  "Windows Default": "Predeterminado de Windows",
++  "No Command Bar": "Sin barra de comandos",
++  "Minimal Explorer 11": "Minimal Explorer 11",
++  "Tabless - Swapped Bars": "Tabless - Barras intercambiadas",
++  "Matter - Clean Command Bar": "Matter - Barra limpia",
++  "Centered Icon Bar": "Barra de iconos centrada",
++  "Address & Search Only": "Solo dirección y búsqueda",
++  "Liquid Compact": "Liquid Compact",
++  "OS26 Floating Layout": "OS26 Floating Layout",
++  "OS26 Merged Top Bar": "OS26 barra superior fusionada",
++  "ZEUS macOS Single Bar": "ZEUS barra única macOS",
++  "Compact Explorer 11": "Compact Explorer 11",
++  "Floating Spaced Bars": "Barras flotantes espaciadas"
++}
+\ No newline at end of file
 diff --git a/locales/fr.json b/locales/fr.json
-index 4e57230..bc185c7 100644
+index 4e57230..8244ff2 100644
 --- a/locales/fr.json
 +++ b/locales/fr.json
-@@ -654,9 +654,37 @@
+@@ -654,9 +654,52 @@
    "通知中心样式": "Style du Centre de notifications",
    "通知中心和操作中心视觉主题；选择后立即生效": "Thèmes visuels pour le Centre de notifications et le Centre d’action ; appliqués dès la sélection",
    "通知中心样式未能更改，请稍后重试。": "Impossible de changer le style du Centre de notifications — réessayez.",
@@ -14379,6 +16113,7 @@ index 4e57230..bc185c7 100644
 -  "资源管理器样式未能更改，请稍后重试。": "Impossible de changer le style de l'Explorateur de fichiers — réessayez.",
 -  "主题色叠加": "Superposition de teinte",
 -  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Superpose la couleur choisie sur la barre des tâches, le menu Démarrer et l'Explorateur de fichiers ; l'échantillon barré la retire"
+-}
 +  "资源管理器背景效果": "Effet d'arrière-plan de l'Explorateur",
 +  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Effet dépoli façon ExplorerBlurMica : Flou, Acrylique ou Mica ; appliqué aussitôt",
 +  "清除地址栏背景": "Effacer l'arrière-plan de la barre d'adresse",
@@ -14411,13 +16146,29 @@ index 4e57230..bc185c7 100644
 +  "当前": "Actuel",
 +  "已应用": "Appliqué",
 +  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Flou, acrylique et mica d'ExplorerBlurMica — aperçu et personnalisation dans une fenêtre dédiée",
-+  "预览背景": "Arrière-plan d'aperçu"
- }
++  "预览背景": "Arrière-plan d'aperçu",
++  "工具栏和图标布局": "Disposition barre & icônes",
++  "仅布局规则 — 材质由 EBM 提供": "Disposition seule — le matériau vient d'EBM",
++  "Windows Default": "Par défaut Windows",
++  "No Command Bar": "Sans barre de commandes",
++  "Minimal Explorer 11": "Minimal Explorer 11",
++  "Tabless - Swapped Bars": "Tabless - Barres inversées",
++  "Matter - Clean Command Bar": "Matter - Barre épurée",
++  "Centered Icon Bar": "Barre d'icônes centrée",
++  "Address & Search Only": "Adresse et recherche seules",
++  "Liquid Compact": "Liquid Compact",
++  "OS26 Floating Layout": "OS26 Floating Layout",
++  "OS26 Merged Top Bar": "OS26 barre supérieure fusionnée",
++  "ZEUS macOS Single Bar": "ZEUS barre unique macOS",
++  "Compact Explorer 11": "Compact Explorer 11",
++  "Floating Spaced Bars": "Barres flottantes espacées"
++}
+\ No newline at end of file
 diff --git a/locales/it.json b/locales/it.json
-index 82fa7f7..e7b0b82 100644
+index 82fa7f7..24e2df3 100644
 --- a/locales/it.json
 +++ b/locales/it.json
-@@ -654,9 +654,37 @@
+@@ -654,9 +654,52 @@
    "通知中心样式": "Stile del Centro notifiche",
    "通知中心和操作中心视觉主题；选择后立即生效": "Temi visivi per il Centro notifiche e il Centro operativo; si applicano alla selezione",
    "通知中心样式未能更改，请稍后重试。": "Impossibile cambiare lo stile del Centro notifiche — riprova.",
@@ -14426,6 +16177,7 @@ index 82fa7f7..e7b0b82 100644
 -  "资源管理器样式未能更改，请稍后重试。": "Impossibile cambiare lo stile di Esplora file — riprova.",
 -  "主题色叠加": "Sovrapposizione tinta",
 -  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Sovrappone il colore scelto a barra delle applicazioni, menu Start ed Esplora file; il campione barrato lo rimuove"
+-}
 +  "资源管理器背景效果": "Effetto sfondo di Esplora file",
 +  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Effetto satinato in stile ExplorerBlurMica: Sfocatura, Acrilico o Mica; applicato subito",
 +  "清除地址栏背景": "Cancella lo sfondo della barra degli indirizzi",
@@ -14458,13 +16210,29 @@ index 82fa7f7..e7b0b82 100644
 +  "当前": "Corrente",
 +  "已应用": "Applicato",
 +  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Sfocatura, acrilico e mica di ExplorerBlurMica — anteprima e personalizzazione in una finestra dedicata",
-+  "预览背景": "Sfondo anteprima"
- }
++  "预览背景": "Sfondo anteprima",
++  "工具栏和图标布局": "Layout barra e icone",
++  "仅布局规则 — 材质由 EBM 提供": "Solo layout — il materiale è di EBM",
++  "Windows Default": "Predefinito di Windows",
++  "No Command Bar": "Nessuna barra dei comandi",
++  "Minimal Explorer 11": "Minimal Explorer 11",
++  "Tabless - Swapped Bars": "Tabless - Barre scambiate",
++  "Matter - Clean Command Bar": "Matter - Barra pulita",
++  "Centered Icon Bar": "Barra icone centrata",
++  "Address & Search Only": "Solo indirizzo e ricerca",
++  "Liquid Compact": "Liquid Compact",
++  "OS26 Floating Layout": "OS26 Floating Layout",
++  "OS26 Merged Top Bar": "OS26 barra superiore unita",
++  "ZEUS macOS Single Bar": "ZEUS barra singola macOS",
++  "Compact Explorer 11": "Compact Explorer 11",
++  "Floating Spaced Bars": "Barre fluttuanti spaziate"
++}
+\ No newline at end of file
 diff --git a/locales/ja.json b/locales/ja.json
-index 93126c2..518ed7e 100644
+index 93126c2..82d0c6c 100644
 --- a/locales/ja.json
 +++ b/locales/ja.json
-@@ -654,9 +654,37 @@
+@@ -654,9 +654,52 @@
    "通知中心样式": "通知センターのスタイル",
    "通知中心和操作中心视觉主题；选择后立即生效": "通知センターとアクションセンターのビジュアルテーマ。選択するとすぐに適用されます",
    "通知中心样式未能更改，请稍后重试。": "通知センターのスタイルを変更できませんでした — もう一度お試しください。",
@@ -14473,6 +16241,7 @@ index 93126c2..518ed7e 100644
 -  "资源管理器样式未能更改，请稍后重试。": "エクスプローラーのスタイルを変更できませんでした。もう一度お試しください。",
 -  "主题色叠加": "アクセントカラーオーバーレイ",
 -  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "選択した色をタスクバー、スタートメニュー、エクスプローラーに重ねます。斜線スウォッチで解除"
+-}
 +  "资源管理器背景效果": "エクスプローラーの背景効果",
 +  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "ExplorerBlurMica 式すりガラス効果：ブラー、アクリル、マイカ。選択後すぐに適用",
 +  "清除地址栏背景": "アドレスバーの背景をクリア",
@@ -14505,13 +16274,29 @@ index 93126c2..518ed7e 100644
 +  "当前": "現在",
 +  "已应用": "適用しました",
 +  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica のぼかし・アクリル・マイカ — 専用ウィンドウでプレビューとカスタマイズ",
-+  "预览背景": "プレビュー背景"
- }
++  "预览背景": "プレビュー背景",
++  "工具栏和图标布局": "ツールバー＆アイコンレイアウト",
++  "仅布局规则 — 材质由 EBM 提供": "レイアウトのみ — マテリアルは EBM",
++  "Windows Default": "Windows 既定",
++  "No Command Bar": "コマンドバーなし",
++  "Minimal Explorer 11": "Minimal Explorer 11",
++  "Tabless - Swapped Bars": "Tabless - バー入れ替え",
++  "Matter - Clean Command Bar": "Matter - クリーンコマンドバー",
++  "Centered Icon Bar": "中央アイコンバー",
++  "Address & Search Only": "アドレスと検索のみ",
++  "Liquid Compact": "Liquid Compact",
++  "OS26 Floating Layout": "OS26 Floating Layout",
++  "OS26 Merged Top Bar": "OS26 統合トップバー",
++  "ZEUS macOS Single Bar": "ZEUS macOS シングルバー",
++  "Compact Explorer 11": "Compact Explorer 11",
++  "Floating Spaced Bars": "フローティングバー"
++}
+\ No newline at end of file
 diff --git a/locales/ko.json b/locales/ko.json
-index b901674..e8580fe 100644
+index b901674..b2aaf5f 100644
 --- a/locales/ko.json
 +++ b/locales/ko.json
-@@ -654,9 +654,37 @@
+@@ -654,9 +654,52 @@
    "通知中心样式": "알림 센터 스타일",
    "通知中心和操作中心视觉主题；选择后立即生效": "알림 센터 및 작업 센터의 시각적 테마; 선택하면 바로 적용됩니다",
    "通知中心样式未能更改，请稍后重试。": "알림 센터 스타일을 변경할 수 없습니다 — 다시 시도하세요.",
@@ -14520,6 +16305,7 @@ index b901674..e8580fe 100644
 -  "资源管理器样式未能更改，请稍后重试。": "파일 탐색기 스타일을 변경할 수 없습니다. 다시 시도하세요.",
 -  "主题色叠加": "강조 색 오버레이",
 -  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "선택한 색을 작업 표시줄, 시작 메뉴, 파일 탐색기에 오버레이합니다. 슬래시 견본은 해제입니다"
+-}
 +  "资源管理器背景效果": "파일 탐색기 배경 효과",
 +  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "ExplorerBlurMica 스타일 반투명 효과: 블러, 아크릴, 마이카. 선택 즉시 적용",
 +  "清除地址栏背景": "주소 표시줄 배경 지우기",
@@ -14552,13 +16338,29 @@ index b901674..e8580fe 100644
 +  "当前": "현재",
 +  "已应用": "적용됨",
 +  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica 블러, 아크릴, 마이카 — 전용 창에서 미리 보기 및 사용자 지정",
-+  "预览背景": "미리 보기 배경"
- }
++  "预览背景": "미리 보기 배경",
++  "工具栏和图标布局": "도구 모음 및 아이콘 레이아웃",
++  "仅布局规则 — 材质由 EBM 提供": "레이아웃 전용 — 재질은 EBM",
++  "Windows Default": "Windows 기본값",
++  "No Command Bar": "명령 모음 없음",
++  "Minimal Explorer 11": "Minimal Explorer 11",
++  "Tabless - Swapped Bars": "Tabless - 바 교체",
++  "Matter - Clean Command Bar": "Matter - 깔끔한 명령 모음",
++  "Centered Icon Bar": "중앙 아이콘 바",
++  "Address & Search Only": "주소 및 검색만",
++  "Liquid Compact": "Liquid Compact",
++  "OS26 Floating Layout": "OS26 Floating Layout",
++  "OS26 Merged Top Bar": "OS26 병합 상단 바",
++  "ZEUS macOS Single Bar": "ZEUS macOS 단일 바",
++  "Compact Explorer 11": "Compact Explorer 11",
++  "Floating Spaced Bars": "플로팅 분리 바"
++}
+\ No newline at end of file
 diff --git a/locales/pt-BR.json b/locales/pt-BR.json
-index bfee5a7..5ec50bd 100644
+index bfee5a7..0295678 100644
 --- a/locales/pt-BR.json
 +++ b/locales/pt-BR.json
-@@ -654,9 +654,37 @@
+@@ -654,9 +654,52 @@
    "通知中心样式": "Estilo da Central de Notificações",
    "通知中心和操作中心视觉主题；选择后立即生效": "Temas visuais para a Central de Notificações e a Central de Ações; aplicam-se ao selecionar",
    "通知中心样式未能更改，请稍后重试。": "Não foi possível alterar o estilo da Central de Notificações — tente novamente.",
@@ -14567,6 +16369,7 @@ index bfee5a7..5ec50bd 100644
 -  "资源管理器样式未能更改，请稍后重试。": "Não foi possível alterar o estilo do Explorador de Arquivos — tente novamente.",
 -  "主题色叠加": "Sobreposição de tonalidade",
 -  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Sobrepõe a cor escolhida na barra de tarefas, menu Iniciar e Explorador de Arquivos; a amostra cortada remove"
+-}
 +  "资源管理器背景效果": "Efeito de fundo do Explorador de Arquivos",
 +  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Efeito fosco estilo ExplorerBlurMica: Desfoque, Acrílico ou Mica; aplicado na hora",
 +  "清除地址栏背景": "Limpar o fundo da barra de endereços",
@@ -14599,13 +16402,29 @@ index bfee5a7..5ec50bd 100644
 +  "当前": "Atual",
 +  "已应用": "Aplicado",
 +  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Desfoque, acrílico e mica do ExplorerBlurMica — visualize e personalize em uma janela dedicada",
-+  "预览背景": "Plano de fundo da visualização"
- }
++  "预览背景": "Plano de fundo da visualização",
++  "工具栏和图标布局": "Layout da barra e ícones",
++  "仅布局规则 — 材质由 EBM 提供": "Apenas layout — o material é do EBM",
++  "Windows Default": "Padrão do Windows",
++  "No Command Bar": "Sem barra de comandos",
++  "Minimal Explorer 11": "Minimal Explorer 11",
++  "Tabless - Swapped Bars": "Tabless - Barras trocadas",
++  "Matter - Clean Command Bar": "Matter - Barra limpa",
++  "Centered Icon Bar": "Barra de ícones centralizada",
++  "Address & Search Only": "Somente endereço e pesquisa",
++  "Liquid Compact": "Liquid Compact",
++  "OS26 Floating Layout": "OS26 Floating Layout",
++  "OS26 Merged Top Bar": "OS26 barra superior mesclada",
++  "ZEUS macOS Single Bar": "ZEUS barra única macOS",
++  "Compact Explorer 11": "Compact Explorer 11",
++  "Floating Spaced Bars": "Barras flutuantes espaçadas"
++}
+\ No newline at end of file
 diff --git a/locales/ru.json b/locales/ru.json
-index 55d1894..9842449 100644
+index 55d1894..09e3865 100644
 --- a/locales/ru.json
 +++ b/locales/ru.json
-@@ -654,9 +654,37 @@
+@@ -654,9 +654,52 @@
    "通知中心样式": "Стиль центра уведомлений",
    "通知中心和操作中心视觉主题；选择后立即生效": "Визуальные темы для центра уведомлений и центра действий; применяются при выборе",
    "通知中心样式未能更改，请稍后重试。": "Не удалось изменить стиль центра уведомлений — повторите попытку.",
@@ -14614,6 +16433,7 @@ index 55d1894..9842449 100644
 -  "资源管理器样式未能更改，请稍后重试。": "Не удалось изменить стиль Проводника — повторите попытку.",
 -  "主题色叠加": "Цветовой оттенок",
 -  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Накладывает выбранный цвет на панель задач, меню «Пуск» и Проводник; зачёркнутый образец снимает"
+-}
 +  "资源管理器背景效果": "Эффект фона Проводника",
 +  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Матовый эффект в стиле ExplorerBlurMica: размытие, акрил или слюда; применяется сразу",
 +  "清除地址栏背景": "Очистить фон адресной строки",
@@ -14646,13 +16466,29 @@ index 55d1894..9842449 100644
 +  "当前": "Текущая",
 +  "已应用": "Применено",
 +  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Размытие, акрил и слюда ExplorerBlurMica — предпросмотр и настройка в отдельном окне",
-+  "预览背景": "Фон предпросмотра"
- }
++  "预览背景": "Фон предпросмотра",
++  "工具栏和图标布局": "Макет панели и значков",
++  "仅布局规则 — 材质由 EBM 提供": "Только макет — материал от EBM",
++  "Windows Default": "По умолчанию Windows",
++  "No Command Bar": "Без панели команд",
++  "Minimal Explorer 11": "Minimal Explorer 11",
++  "Tabless - Swapped Bars": "Tabless - Панели наоборот",
++  "Matter - Clean Command Bar": "Matter - Чистая панель",
++  "Centered Icon Bar": "Центрированная панель значков",
++  "Address & Search Only": "Только адрес и поиск",
++  "Liquid Compact": "Liquid Compact",
++  "OS26 Floating Layout": "OS26 Floating Layout",
++  "OS26 Merged Top Bar": "OS26 объединённая верхняя панель",
++  "ZEUS macOS Single Bar": "ZEUS одиночная панель macOS",
++  "Compact Explorer 11": "Compact Explorer 11",
++  "Floating Spaced Bars": "Плавающие панели"
++}
+\ No newline at end of file
 diff --git a/locales/zh-TW.json b/locales/zh-TW.json
-index c80e811..fbca9f3 100644
+index c80e811..9db3422 100644
 --- a/locales/zh-TW.json
 +++ b/locales/zh-TW.json
-@@ -654,9 +654,37 @@
+@@ -654,9 +654,52 @@
    "通知中心样式": "通知中心樣式",
    "通知中心和操作中心视觉主题；选择后立即生效": "通知中心和操作中心視覺主題；選擇後立即生效",
    "通知中心样式未能更改，请稍后重试。": "通知中心樣式未能更改，請稍後重試。",
@@ -14661,6 +16497,7 @@ index c80e811..fbca9f3 100644
 -  "资源管理器样式未能更改，请稍后重试。": "檔案總管樣式未能更改，請稍後重試。",
 -  "主题色叠加": "主題色疊加",
 -  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "將所選顏色疊加到工作列、開始功能表和檔案總管；斜線按鈕為關閉"
+-}
 +  "资源管理器背景效果": "檔案總管背景效果",
 +  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "ExplorerBlurMica 式磨砂效果：模糊、壓克力或雲母；選擇後立即生效",
 +  "清除地址栏背景": "清除網址列背景",
@@ -14693,8 +16530,24 @@ index c80e811..fbca9f3 100644
 +  "当前": "目前",
 +  "已应用": "已套用",
 +  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica 模糊、壓克力與雲母 — 在專屬視窗中即時預覽並自訂",
-+  "预览背景": "預覽背景"
- }
++  "预览背景": "預覽背景",
++  "工具栏和图标布局": "工具列與圖示配置",
++  "仅布局规则 — 材质由 EBM 提供": "僅版面配置規則 — 材質由 EBM 提供",
++  "Windows Default": "Windows 預設",
++  "No Command Bar": "無命令列",
++  "Minimal Explorer 11": "Minimal Explorer 11",
++  "Tabless - Swapped Bars": "Tabless - 對調列",
++  "Matter - Clean Command Bar": "Matter - 簡潔命令列",
++  "Centered Icon Bar": "置中圖示列",
++  "Address & Search Only": "僅網址與搜尋",
++  "Liquid Compact": "Liquid Compact",
++  "OS26 Floating Layout": "OS26 Floating Layout",
++  "OS26 Merged Top Bar": "OS26 合併頂列",
++  "ZEUS macOS Single Bar": "ZEUS macOS 單一列",
++  "Compact Explorer 11": "Compact Explorer 11",
++  "Floating Spaced Bars": "浮動間隔列"
++}
+\ No newline at end of file
 diff --git a/scripts/make-windows.ps1 b/scripts/make-windows.ps1
 index a50def5..f2c453d 100644
 --- a/scripts/make-windows.ps1
@@ -21478,10 +23331,10 @@ index 0000000..c5ba7ac
 +this path (or already deployed to the residents directory).
 diff --git a/ui/fe_glass.html b/ui/fe_glass.html
 new file mode 100644
-index 0000000..711e1e6
+index 0000000..9409c09
 --- /dev/null
 +++ b/ui/fe_glass.html
-@@ -0,0 +1,644 @@
+@@ -0,0 +1,756 @@
 +<!doctype html>
 +<html lang="zh-CN">
 +<head>
@@ -21709,6 +23562,87 @@ index 0000000..711e1e6
 +  }
 +  .glass.cw .ex-status { background: transparent; }
 +
++  /* -------------------------------- feLayout presets — bar arrangement only
++     These classes move chrome around inside the mock; they never touch the
++     .mat/.tint layers or any surface paint (the EBM preview owns that). */
++  .ex-tabs .mininav { display: none; align-items: center; gap: 10px; width: 100px; flex: none; padding: 0 6px 4px; font-size: 14px; opacity: .8; }
++  .ex-tab .x { font-size: 11px; opacity: .55; margin-inline-start: 4px; }
++  .ex-addr .zeus-cmds { display: none; align-items: center; gap: 12px; font-size: 14px; opacity: .85; }
++
++  /* No Command Bar / Liquid Compact — command bar gone, address above the view */
++  .ly-NoCommandBar .ex-toolbar, .ly-LiquidGlass .ex-toolbar { display: none; }
++
++  /* Minimal Explorer 11 — one row: nav (~100px) + tabs; everything else gone */
++  .ly-Minimal_Explorer11 .ex-toolbar, .ly-Minimal_Explorer11 .ex-addr { display: none; }
++  .ly-Minimal_Explorer11 .mininav { display: flex; }
++
++  /* Tabless — command bar above the address bar; no tab borders/close.
++     Every sibling needs an explicit order or the reordered pair drops. */
++  .ly-Tabless .ex-titlebar { order: 0; } .ly-Tabless .ex-tabs { order: 1; }
++  .ly-Tabless .ex-toolbar { order: 2; border-bottom: none; }
++  .ly-Tabless .ex-addr { order: 3; }
++  .ly-Tabless .ex-body { order: 4; } .ly-Tabless .ex-status { order: 5; }
++  .ly-Tabless .ex-tab { border: none; background: transparent; }
++  .ly-Tabless .ex-tab .x { display: none; }
++
++  /* Matter — centered minimal command bar; nav buttons and edit cluster gone */
++  .ly-Matter .ex-toolbar { justify-content: center; }
++  .ly-Matter .tb-cut, .ly-Matter .tb-copy, .ly-Matter .tb-paste,
++  .ly-Matter .tb-rename, .ly-Matter .tb-share, .ly-Matter .sep,
++  .ly-Matter .navbtn { display: none; }
++
++  /* Centered Icon Bar — icon-only commands, widened search */
++  .ly-WindowGlass .ex-toolbar { justify-content: center; }
++  .ly-WindowGlass .new .tb-txt, .ly-WindowGlass .new .chev { display: none; }
++  .ly-WindowGlass .ex-addr .bar.search { max-width: 340px; opacity: 1; }
++
++  /* Address & Search Only — no tabs, no nav buttons */
++  .ly-AddressSearchOnly .ex-tabs, .ly-AddressSearchOnly .navbtn { display: none; }
++  .ly-AddressSearchOnly .ex-addr { height: 48px; }
++
++  /* OS26 Floating — pill commands centered, 20px floating content card */
++  .ly-OS26_Liquid_Glass .ex-toolbar { justify-content: center; gap: 6px; }
++  .ly-OS26_Liquid_Glass .glyph, .ly-OS26_Liquid_Glass .new {
++    padding: 3px 10px; border-radius: 12px;
++    background: rgba(128,128,128,.16); border: 1px solid rgba(128,128,128,.3);
++  }
++  .ly-OS26_Liquid_Glass .sep, .ly-OS26_Liquid_Glass .tb-more { display: none; }
++  .ly-OS26_Liquid_Glass .ex-content {
++    margin: 20px 20px 20px 1px; border-radius: 15px;
++    background: var(--ex-surface); border: 1px solid rgba(128,128,128,.2);
++  }
++
++  /* Merged top bar (OS26 Compact + Compact Explorer 11) — command bar in the
++     tab row's leading ~370px; content floats 20px in */
++  .ly-merged .ex-toolbar {
++    position: absolute; top: 34px; inset-inline-start: 6px; z-index: 6;
++    width: 370px; height: 32px; gap: 6px; padding: 0 8px;
++    background: transparent; border-bottom: none; font-size: 13px;
++  }
++  .ly-merged .ex-tabs { padding-inline-start: 380px; }
++  .ly-merged .ex-content {
++    margin: 20px; border-radius: 15px;
++    background: var(--ex-surface); border: 1px solid rgba(128,128,128,.2);
++  }
++
++  /* ZEUS macOS — single 44px Finder bar: nav + commands left, search centered */
++  .ly-ZEUSosX_044 .ex-tabs, .ly-ZEUSosX_044 .ex-toolbar { display: none; }
++  .ly-ZEUSosX_044 .ex-addr { height: 44px; position: relative; }
++  .ly-ZEUSosX_044 .zeus-cmds { display: flex; }
++  .ly-ZEUSosX_044 .ex-addr .bar:not(.search) { max-width: 220px; }
++  .ly-ZEUSosX_044 .ex-addr .bar.search {
++    position: absolute; left: 50%; transform: translateX(-50%);
++    width: 320px; max-width: none; opacity: 1;
++  }
++
++  /* Float — 8px/4px floating margins, 6px radius nav bar, taller tabs */
++  .ly-Float .ex-addr {
++    margin: 4px 8px 0; border-radius: 6px; height: 54px;
++    border: 1px solid rgba(128,128,128,.18);
++  }
++  .ly-Float .ex-tabs { height: 44px; }
++  .ly-Float .ex-tab { height: 32px; border-radius: 6px; margin-bottom: 4px; }
++
 +  /* --------------------------------------------------------- footer bar */
 +  footer {
 +    flex: none; display: flex; justify-content: flex-end; gap: 10px;
@@ -21766,6 +23700,25 @@ index 0000000..711e1e6
 +      </select>
 +    </div>
 +
++    <div class="row">
++      <div class="lbl"><div class="t" data-bind="feLayout" data-i18n="工具栏和图标布局">工具栏和图标布局</div><div class="s" data-i18n="仅布局规则 — 材质由 EBM 提供">仅布局规则 — 材质由 EBM 提供</div></div>
++      <select id="layoutSel">
++        <option value="" data-i18n="Windows Default">Windows Default</option>
++        <option value="NoCommandBar" data-i18n="No Command Bar">No Command Bar</option>
++        <option value="Minimal_Explorer11" data-i18n="Minimal Explorer 11">Minimal Explorer 11</option>
++        <option value="Tabless" data-i18n="Tabless - Swapped Bars">Tabless - Swapped Bars</option>
++        <option value="Matter" data-i18n="Matter - Clean Command Bar">Matter - Clean Command Bar</option>
++        <option value="WindowGlass" data-i18n="Centered Icon Bar">Centered Icon Bar</option>
++        <option value="AddressSearchOnly" data-i18n="Address &amp; Search Only">Address &amp; Search Only</option>
++        <option value="LiquidGlass" data-i18n="Liquid Compact">Liquid Compact</option>
++        <option value="OS26_Liquid_Glass" data-i18n="OS26 Floating Layout">OS26 Floating Layout</option>
++        <option value="OS26_Liquid_Glass_variant_Compact" data-i18n="OS26 Merged Top Bar">OS26 Merged Top Bar</option>
++        <option value="ZEUSosX_044" data-i18n="ZEUS macOS Single Bar">ZEUS macOS Single Bar</option>
++        <option value="Compact_Explorer11" data-i18n="Compact Explorer 11">Compact Explorer 11</option>
++        <option value="Float" data-i18n="Floating Spaced Bars">Floating Spaced Bars</option>
++      </select>
++    </div>
++
 +    <h2>ExplorerBlurMica</h2>
 +    <div class="row" id="rowAddress">
 +      <div class="lbl"><div class="t">清除地址栏背景</div><div class="s">EBM clearAddress</div></div>
@@ -21813,18 +23766,20 @@ index 0000000..711e1e6
 +          <span class="cap ic">&#xE921;</span><span class="cap ic">&#xE738;</span><span class="cap ic">&#xE8BB;</span>
 +        </div>
 +        <div class="ex-tabs">
-+          <div class="ex-tab"><span class="ic">&#xE80F;</span><span>主页</span></div>
++          <span class="mininav"><span class="ic">&#xE72B;</span><span class="ic">&#xE72A;</span></span>
++          <div class="ex-tab"><span class="ic">&#xE80F;</span><span>主页</span><span class="x">×</span></div>
 +          <span class="plus">+</span>
 +        </div>
 +        <div class="ex-toolbar">
-+          <span class="new"><span class="ic">&#xE710;</span><span data-i18n="新建">新建</span><span class="ic" style="font-size:9px">&#xE70D;</span></span>
++          <span class="new"><span class="ic">&#xE710;</span><span class="tb-txt" data-i18n="新建">新建</span><span class="ic chev" style="font-size:9px">&#xE70D;</span></span>
 +          <span class="sep"></span>
-+          <span class="glyph ic">&#xE8C8;</span><span class="glyph ic">&#xE74D;</span><span class="glyph ic">&#xE8CB;</span>
-+          <span class="glyph ic">&#xE8AC;</span><span class="glyph ic">&#xE895;</span><span class="glyph ic">&#xE74E;</span>
++          <span class="glyph ic tb-cut">&#xE8C8;</span><span class="glyph ic tb-copy">&#xE74D;</span><span class="glyph ic tb-paste">&#xE8CB;</span>
++          <span class="glyph ic tb-rename">&#xE8AC;</span><span class="glyph ic tb-share">&#xE895;</span><span class="glyph ic tb-del">&#xE74E;</span>
 +          <span class="spring"></span>
-+          <span class="glyph ic">&#xE8CB;</span><span class="glyph ic">&#xE8A7;</span><span class="glyph ic">&#xE712;</span>
++          <span class="glyph ic tb-sort">&#xE8CB;</span><span class="glyph ic tb-view">&#xE8A7;</span><span class="glyph ic tb-more">&#xE712;</span>
 +        </div>
 +        <div class="ex-addr">
++          <span class="zeus-cmds"><span class="ic">&#xE710;</span><span class="ic">&#xE8CB;</span><span class="ic">&#xE8A7;</span></span>
 +          <span class="navbtn ic">&#xE72B;</span><span class="navbtn ic">&#xE72A;</span><span class="navbtn ic">&#xE74A;</span>
 +          <div class="bar"><span class="ic" style="font-size:11px">&#xE8B7;</span><span data-i18n="桌面">桌面</span></div>
 +          <div class="bar search"><span class="ic" style="font-size:11px">&#xE721;</span><span data-i18n="搜索">搜索</span></div>
@@ -21879,7 +23834,7 @@ index 0000000..711e1e6
 +  // Draft state — edits stay local until Apply; Cancel discards them.
 +  const s = {
 +    effect: '', clearAddress: false, clearBarBg: false, clearWinuiBg: false,
-+    showLine: false, lightRgba: '', darkRgba: '',
++    showLine: false, lightRgba: '', darkRgba: '', layout: '',
 +  };
 +  let systemLight = true;
 +
@@ -21911,6 +23866,7 @@ index 0000000..711e1e6
 +  function render() {
 +    document.documentElement.classList.toggle('light', systemLight);
 +    $('effectSel').value = s.effect;
++    $('layoutSel').value = s.layout;
 +    [['tAddress', s.clearAddress], ['tBarBg', s.clearBarBg], ['tWinUI', s.clearWinuiBg], ['tLine', s.showLine]]
 +      .forEach(([id, on]) => { const el = $(id); el.classList.toggle('on', !!on); el.setAttribute('aria-checked', String(!!on)); });
 +
@@ -21929,9 +23885,13 @@ index 0000000..711e1e6
 +    $('darkDot').style.background = dotCss(s.darkRgba);
 +
 +    // Preview: effect material + tint + the four clearing flags.
++    // Layout presets rearrange chrome only — the .mat/.tint material layers
++    // are untouched by every ly-* rule.
++    const merged = s.layout === 'OS26_Liquid_Glass_variant_Compact' || s.layout === 'Compact_Explorer11';
 +    mock.className = 'explorer' + (s.effect ? ' glass fx-' + s.effect : '') +
 +      (s.clearAddress ? ' ca' : '') + (s.clearBarBg ? ' cb' : '') +
-+      (s.clearWinuiBg ? ' cw' : '') + (s.showLine ? ' sl' : '');
++      (s.clearWinuiBg ? ' cw' : '') + (s.showLine ? ' sl' : '') +
++      (s.layout ? ' ly-' + s.layout : '') + (merged ? ' ly-merged' : '');
 +    const active = systemLight ? s.lightRgba : s.darkRgba;
 +    tint.style.background = s.effect ? rgbaCss(active, TINT_SCALE[s.effect] ?? 1) : 'transparent';
 +    const optsOn = !!s.effect;
@@ -21940,10 +23900,13 @@ index 0000000..711e1e6
 +      $(id).style.pointerEvents = optsOn ? '' : 'none';
 +    });
 +    $('effectSel').disabled = false;
++    // Layout is independent of the material — always selectable.
++    $('layoutSel').disabled = false;
 +  }
 +
 +  // ------------------------------------------------------------ controls
 +  $('effectSel').onchange = () => { s.effect = $('effectSel').value; render(); };
++  $('layoutSel').onchange = () => { s.layout = $('layoutSel').value; render(); };
 +  const bindToggle = (id, key) => {
 +    const el = $(id);
 +    el.onclick = () => { s[key] = !s[key]; render(); };
@@ -22091,6 +24054,7 @@ index 0000000..711e1e6
 +      effect: s.effect, clearAddress: !!s.clearAddress, clearBarBg: !!s.clearBarBg,
 +      clearWinuiBg: !!s.clearWinuiBg, showLine: !!s.showLine,
 +      lightRgba: s.lightRgba || '', darkRgba: s.darkRgba || '',
++      layout: s.layout || '',
 +    });
 +  };
 +  $('cancelBtn').onclick = () => send({ type: 'feCancel' });
@@ -22113,6 +24077,7 @@ index 0000000..711e1e6
 +        s.clearAddress = !!fe.clearAddress; s.clearBarBg = !!fe.clearBarBg;
 +        s.clearWinuiBg = !!fe.clearWinuiBg; s.showLine = !!fe.showLine;
 +        s.lightRgba = fe.lightRgba || ''; s.darkRgba = fe.darkRgba || '';
++        s.layout = fe.layout || '';
 +        render();
 +      } else if (m.type === 'feToast') {
 +        showToast(m.text || '');
