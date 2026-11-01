@@ -67,6 +67,12 @@ impl WebEnvironment {
         tracing::debug!("settings: WebView2 environment ready");
         Ok(Self { env })
     }
+
+    /// Shared with secondary hosts (the FE-glass editor) so one environment
+    /// serves every WebView2 window the app opens.
+    pub(crate) fn inner(&self) -> &Environment {
+        &self.env
+    }
 }
 
 struct HostState {

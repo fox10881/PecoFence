@@ -671,5 +671,19 @@
   "Windows 默认": "Windows-Standard",
   "资源管理器背景效果未能更改，请稍后重试。": "Der Explorer-Hintergrundeffekt konnte nicht geändert werden; bitte erneut versuchen.",
   "选择颜色": "Farbe wählen",
-  "恢复默认": "Standard wiederherstellen"
+  "恢复默认": "Standard wiederherstellen",
+  "高级设置": "Erweiterte Einstellungen",
+  "设置": "Einstellungen",
+  "实时预览": "Live-Vorschau",
+  "效果类型": "Effekttyp",
+  "文件资源管理器": "Datei-Explorer",
+  "主页": "Startseite",
+  "快速访问": "Schnellzugriff",
+  "下载": "Downloads",
+  "搜索": "Suchen",
+  "个项目": "Elemente",
+  "混合色": "Mischfarbe",
+  "当前": "Aktuell",
+  "已应用": "Angewendet",
+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica-Unschärfe, -Acryl und -Mica – Vorschau und Anpassung in einem eigenen Fenster"
 }

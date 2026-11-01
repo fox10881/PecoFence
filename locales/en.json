@@ -671,5 +671,19 @@
   "Windows 默认": "Windows default",
   "资源管理器背景效果未能更改，请稍后重试。": "Couldn't change the File Explorer background effect; try again.",
   "选择颜色": "Choose color",
-  "恢复默认": "Restore default"
+  "恢复默认": "Restore default",
+  "高级设置": "Advanced settings",
+  "设置": "Settings",
+  "实时预览": "Live preview",
+  "效果类型": "Effect type",
+  "文件资源管理器": "File Explorer",
+  "主页": "Home",
+  "快速访问": "Quick access",
+  "下载": "Downloads",
+  "搜索": "Search",
+  "个项目": "items",
+  "混合色": "Blend color",
+  "当前": "Current",
+  "已应用": "Applied",
+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica blur, acrylic and mica — preview and customize in a dedicated window"
 }

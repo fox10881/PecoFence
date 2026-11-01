@@ -8,6 +8,7 @@ mod app;
 mod commands;
 mod drag_guides;
 mod drop_preview;
+mod fe_glass_host;
 mod fence_window;
 mod icons;
 mod ipc_server;

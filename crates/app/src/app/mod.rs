@@ -274,6 +274,13 @@ pub struct App {
     /// `PECOFENCE_INSTANCE` of this process (reported by `status.get`).
     instance: Option<String>,
     settings: Option<SettingsHost>,
+    /// The dedicated ExplorerBlurMica customization window (singleton — the
+    /// settings card's 高级设置 button opens or foregrounds it).
+    fe_glass: Option<crate::fe_glass_host::FeGlassHost>,
+    /// Signature of the last `feState` pushed to the glass editor — repeat
+    /// pushes are skipped so its unsaved draft is never clobbered (empty
+    /// forces a push: fresh page, or after close).
+    fe_glass_pushed: RefCell<String>,
     /// Fence to select on the settings page once it reports `ready` (opened via 栅栏选项…).
     settings_focus_fence: Option<FenceId>,
     /// The 「反馈」 form on 「关于」: pending focus and the crash offer (see `feedback.rs`).
@@ -287,6 +294,7 @@ pub struct App {
     settings_ring: Option<FenceId>,
     web_env: Option<WebEnvironment>,
     settings_class: WindowClass,
+    fe_glass_class: WindowClass,
     theme_mode: ThemeMode,
     /// The user's accent palette at the last visual refresh (None = built-in default look).
     accent: Option<systheme::AccentPalette>,
@@ -1172,6 +1180,7 @@ impl App {
             .ok();
 
         let settings_class = SettingsHost::register_class()?;
+        let fe_glass_class = crate::fe_glass_host::FeGlassHost::register_class()?;
         let peek_class = PeekOverlay::register_class()?;
 
         // CLI named pipe: requests land in `ipc_pending`, the control window is poked.
@@ -1231,6 +1240,8 @@ impl App {
             ipc_event_state: None,
             instance: args.instance.clone(),
             settings: None,
+            fe_glass: None,
+            fe_glass_pushed: RefCell::new(String::new()),
             settings_focus_fence: None,
             feedback: Default::default(),
             updates: Default::default(),
@@ -1239,6 +1250,7 @@ impl App {
             settings_ring: None,
             web_env: None,
             settings_class,
+            fe_glass_class,
             theme_mode,
             accent,
             wallpaper_override: args.wallpaper_override.clone(),
@@ -2090,14 +2102,20 @@ impl App {
             Command::WindowGone(hwnd) => {
                 if self.settings.as_ref().is_some_and(|h| h.hwnd() == hwnd) {
                     self.settings = None;
-                    // The WebView2 environment only exists for the window: release it with
-                    // the controller so the browser process manager can shut down too, then
-                    // hand the pages the page touched back to Windows (reopening costs a
-                    // cold ~200 ms environment start instead of keeping them resident).
-                    self.web_env = None;
                     self.set_settings_ring(None);
                     self.resume_peek_hotkey();
-                    pecofence_platform::memstats::trim_working_set();
+                }
+                if self.fe_glass.as_ref().is_some_and(|h| h.hwnd() == hwnd) {
+                    self.fe_glass = None;
+                }
+                if self.settings.is_none() && self.fe_glass.is_none() {
+                    // The WebView2 environment only exists for the windows: release it
+                    // with the last controller so the browser process manager can shut
+                    // down too (reopening costs a cold ~200 ms environment start).
+                    if self.web_env.is_some() {
+                        self.web_env = None;
+                        pecofence_platform::memstats::trim_working_set();
+                    }
                 }
             }
             Command::FadeOutDone(hwnd) => {

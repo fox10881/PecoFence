@@ -664,6 +664,16 @@ impl Drop for SingleInstance {
     }
 }
 
+/// Shows an interactive window maximized and brings it to the foreground.
+pub fn show_maximized(hwnd: HWND) {
+    const SW_MAXIMIZE: i32 = 3;
+    // SAFETY: plain FFI calls.
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_MAXIMIZE);
+        let _ = SetForegroundWindow(hwnd);
+    }
+}
+
 /// Explicitly shows an interactive window, restoring it only if minimized.
 /// SetWindowPos is intentional: a process started hidden must still be able to open
 /// settings later, and reopening an already maximized window must preserve its size.

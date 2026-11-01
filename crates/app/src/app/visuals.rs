@@ -1267,6 +1267,10 @@ impl App {
             }
             self.push_settings_state();
         }
+        if theme_changed && let Some(h) = &self.fe_glass {
+            h.set_theme(mode);
+            self.push_fe_glass_state();
+        }
         for w in self.fences.values().chain(self.desktop_windows.values()) {
             w.set_theme(theme, backdrops.clone(), shadow);
         }

@@ -213,6 +213,39 @@ impl App {
         self.settings_toast(source.done());
     }
 
+    /// Lazily creates the shared WebView2 environment both hosts use;
+    /// `false` means the caller should abandon the open (error reported).
+    fn ensure_web_env(&mut self) -> bool {
+        if self.web_env.is_some() {
+            return true;
+        }
+        match WebEnvironment::create() {
+            Ok(env) => {
+                self.web_env = Some(env);
+                true
+            }
+            // WebView2's wait for its callback pumps messages and ends with an error when
+            // it takes a WM_QUIT (the session ends): quit after all.
+            Err(_) if window::quit_posted() => {
+                window::post_quit(0);
+                false
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "WebView2 environment failed");
+                if let Some(t) = &self.tray {
+                    t.show_info(
+                        "PecoFence",
+                        pecofence_core::i18n::text(
+                            "无法创建 WebView2 环境，请确认已安装 Microsoft Edge WebView2 运行时。",
+                        ),
+                        true,
+                    );
+                }
+                false
+            }
+        }
+    }
+
     pub(super) fn open_settings(&mut self) {
         self.query_store_startup();
         if let Some(h) = &self.settings {
@@ -220,27 +253,8 @@ impl App {
             window::bring_to_front(h.hwnd());
             return;
         }
-        if self.web_env.is_none() {
-            match WebEnvironment::create() {
-                Ok(env) => self.web_env = Some(env),
-                // WebView2's wait for its callback pumps messages and ends with an error when
-                // it takes a WM_QUIT (the session ends): quit after all.
-                Err(_) if window::quit_posted() => {
-                    window::post_quit(0);
-                    return;
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "WebView2 environment failed");
-                    if let Some(t) = &self.tray {
-                        t.show_info(
-                            "PecoFence",
-                            pecofence_core::i18n::text("无法创建 WebView2 环境，请确认已安装 Microsoft Edge WebView2 运行时。"),
-                            true,
-                        );
-                    }
-                    return;
-                }
-            }
+        if !self.ensure_web_env() {
+            return;
         }
         match SettingsHost::open(
             &self.settings_class,
@@ -273,6 +287,149 @@ impl App {
                     );
                 }
             }
+        }
+    }
+
+    /// The dedicated ExplorerBlurMica editor (settings card's 高级设置 button):
+    /// a singleton — a second click foregrounds the open window, maximized or not.
+    pub(super) fn open_fe_glass(&mut self) {
+        if let Some(h) = &self.fe_glass {
+            window::show_normal(h.hwnd());
+            window::bring_to_front(h.hwnd());
+            return;
+        }
+        if !self.ensure_web_env() {
+            return;
+        }
+        match crate::fe_glass_host::FeGlassHost::open(
+            &self.fe_glass_class,
+            self.web_env.as_ref().unwrap(),
+            self.theme_mode,
+            self.queue.clone(),
+        ) {
+            Ok(mut host) => {
+                // Same drawn fence glyph as the settings caption, at 16/32 DIP.
+                let scale = monitors::dpi_for_window(host.hwnd()).max(96) as f32 / 96.0;
+                let accent = self.ctx.theme.borrow().accent_rgb8();
+                let dark = self.theme_mode == ThemeMode::Dark;
+                let small = (16.0 * scale).round() as i32;
+                let big = (32.0 * scale).round() as i32;
+                host.set_icons(
+                    (small, tray_icon_image(small, accent, dark)),
+                    (big, tray_icon_image(big, accent, dark)),
+                );
+                self.fe_glass = Some(host);
+            }
+            Err(_) if window::quit_posted() => window::post_quit(0),
+            Err(e) => {
+                tracing::error!(error = %e, "fe glass window failed");
+                self.settings_error(pecofence_core::i18n::text(
+                    "无法打开设置窗口（WebView2 初始化失败），请检查 Microsoft Edge WebView2 运行时。",
+                ));
+            }
+        }
+    }
+
+    /// The `feState` payload the glass editor renders from — the seven `fe_*`
+    /// fields plus `systemLight` (`AppsUseLightTheme`), which decides which
+    /// RGBA row is editable and which palette the preview tints with.
+    pub(super) fn fe_glass_state_json(&self) -> String {
+        let localization = pecofence_core::i18n::ui_payload();
+        let s = &self.state.config.settings;
+        serde_json::json!({
+            "type": "feState",
+            "locale": localization["locale"],
+            "translations": localization["translations"],
+            "systemLight": systheme::apps_use_light_theme(),
+            "fe": {
+                "effect": s.fe_effect,
+                "clearAddress": s.fe_clear_address,
+                "clearBarBg": s.fe_clear_bar_bg,
+                "clearWinuiBg": s.fe_clear_winui_bg,
+                "showLine": s.fe_show_line,
+                "lightRgba": s.fe_light_rgba,
+                "darkRgba": s.fe_dark_rgba,
+            },
+        })
+        .to_string()
+    }
+
+    /// Signature of the `feState` payload — everything the page renders from
+    /// that can change beneath it: the fields, the active-theme flag, and the
+    /// language (the document localizes itself from `translations`).
+    fn fe_glass_sig(&self) -> String {
+        let s = &self.state.config.settings;
+        format!(
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            s.fe_effect,
+            s.fe_clear_address,
+            s.fe_clear_bar_bg,
+            s.fe_clear_winui_bg,
+            s.fe_show_line,
+            s.fe_light_rgba,
+            s.fe_dark_rgba,
+            systheme::apps_use_light_theme(),
+            pecofence_core::i18n::ui_payload()["locale"],
+        )
+    }
+
+    /// Pushes `feState` to the open glass editor — but only when what it would
+    /// show changed since the last push. Otherwise an unrelated settings
+    /// commit would keep resetting the page's unsaved draft mid-edit.
+    pub(super) fn push_fe_glass_state(&self) {
+        let Some(h) = &self.fe_glass else {
+            return;
+        };
+        let sig = self.fe_glass_sig();
+        if *self.fe_glass_pushed.borrow() == sig {
+            return;
+        }
+        *self.fe_glass_pushed.borrow_mut() = sig;
+        h.post_json(&self.fe_glass_state_json());
+    }
+
+    /// The page's Apply: adopt the seven `fe_*` fields, run the normal
+    /// settings diff (`apply_effect` writes `config.ini` and reloads EBM in
+    /// each cabinet pid), then restart Explorer so every surface re-reads the
+    /// new material — the same refresh upstream's `register.cmd` performs.
+    /// On a no-change apply nothing is restarted.
+    fn apply_fe_glass(&mut self, v: &serde_json::Value) {
+        let old = self.state.config.settings.clone();
+        let mut new = old.clone();
+        let str_of = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("");
+        let bool_of = |k: &str, d: bool| v.get(k).and_then(|x| x.as_bool()).unwrap_or(d);
+        new.fe_effect = str_of("effect").to_string();
+        new.fe_clear_address = bool_of("clearAddress", old.fe_clear_address);
+        new.fe_clear_bar_bg = bool_of("clearBarBg", old.fe_clear_bar_bg);
+        new.fe_clear_winui_bg = bool_of("clearWinuiBg", old.fe_clear_winui_bg);
+        new.fe_show_line = bool_of("showLine", old.fe_show_line);
+        new.fe_light_rgba = str_of("lightRgba").to_string();
+        new.fe_dark_rgba = str_of("darkRgba").to_string();
+        let wanted = new.fe_effect.clone();
+        let changed = new != old;
+        self.apply_settings(new);
+        let applied = self.state.config.settings.fe_effect == wanted;
+        if let Some(h) = &self.fe_glass {
+            let (text, error) = if !applied {
+                (
+                    pecofence_core::i18n::text("资源管理器背景效果未能更改，请稍后重试。")
+                        .to_string(),
+                    true,
+                )
+            } else if changed {
+                (
+                    pecofence_core::i18n::text("正在重启资源管理器…").to_string(),
+                    false,
+                )
+            } else {
+                (pecofence_core::i18n::text("已应用").to_string(), false)
+            };
+            h.post_json(
+                &serde_json::json!({ "type": "feToast", "text": text, "error": error }).to_string(),
+            );
+        }
+        if applied && changed {
+            std::thread::spawn(pecofence_platform::tap::restart_explorer);
         }
     }
 
@@ -355,6 +512,7 @@ impl App {
         if let Some(h) = &self.settings {
             h.post_json(&self.settings_state_json());
         }
+        self.push_fe_glass_state();
     }
 
     /// File watcher/navigation updates must not rebuild controls while the user is
@@ -464,6 +622,25 @@ impl App {
                     self.post_show_fence(fence);
                 }
                 self.show_pending_feedback();
+            }
+            // The glass editor's own protocol — fe_glass.html is the only page
+            // that speaks it, so routing by type stays unambiguous.
+            Some("feReady") => {
+                // Fresh page: force the state push (the sig guard would skip a
+                // repeated payload), then reveal the window maximized.
+                self.fe_glass_pushed.borrow_mut().clear();
+                self.push_fe_glass_state();
+                if let Some(h) = &self.fe_glass {
+                    window::show_maximized(h.hwnd());
+                    window::bring_to_front(h.hwnd());
+                }
+            }
+            Some("feApply") => self.apply_fe_glass(&v),
+            Some("feCancel") => {
+                if let Some(h) = self.fe_glass.take() {
+                    self.fe_glass_pushed.borrow_mut().clear();
+                    h.close();
+                }
             }
             Some("setFence") => self.on_set_fence(&v),
             Some("ringFence") => {
@@ -762,6 +939,7 @@ impl App {
                         self.resume_peek_hotkey();
                     }
                 }
+                Some("openFeGlass") => self.open_fe_glass(),
                 Some("restartExplorer") => {
                     // Failsafe for a stuck taskbar/desktop: kill the shell and
                     // let Windows' own respawn (or our detached spawn) bring it
@@ -2480,6 +2658,9 @@ impl App {
         pecofence_core::i18n::set_language(language);
         tracing::info!(language = language.tag(), "interface language changed");
         if let Some(host) = &self.settings {
+            host.update_language();
+        }
+        if let Some(host) = &self.fe_glass {
             host.update_language();
         }
         for window in self.fences.values() {

@@ -671,5 +671,19 @@
   "Windows 默认": "Predeterminado de Windows",
   "资源管理器背景效果未能更改，请稍后重试。": "No se pudo cambiar el efecto de fondo del Explorador; inténtelo de nuevo.",
   "选择颜色": "Elegir color",
-  "恢复默认": "Restaurar valores predeterminados"
+  "恢复默认": "Restaurar valores predeterminados",
+  "高级设置": "Configuración avanzada",
+  "设置": "Configuración",
+  "实时预览": "Vista previa",
+  "效果类型": "Tipo de efecto",
+  "文件资源管理器": "Explorador de archivos",
+  "主页": "Inicio",
+  "快速访问": "Acceso rápido",
+  "下载": "Descargas",
+  "搜索": "Buscar",
+  "个项目": "elementos",
+  "混合色": "Color de mezcla",
+  "当前": "Actual",
+  "已应用": "Aplicado",
+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Desenfoque, acrílico y mica de ExplorerBlurMica: vista previa y personalización en una ventana dedicada"
 }

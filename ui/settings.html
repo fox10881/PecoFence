@@ -107,17 +107,6 @@
   .card .actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 100%; }
   /* Controls that wrap under a long description stay on the right, as in Windows Settings. */
   .card:not(.stack) > :not(.l):not(.s) { margin-left: auto; }
-  .rgbaRow { display: flex; gap: 8px; align-items: center; }
-  .rgbaRow .dot { width: 20px; height: 20px; border-radius: 5px; border: 1px solid var(--line); flex: none; background: transparent; cursor: pointer; padding: 0; }
-  .rgbaRow input[type=text] { width: 96px; font-family: monospace; }
-  #rgbaPicker { position: fixed; z-index: 50; width: 232px; padding: 12px; background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.35); }
-  #rgbaPicker .swatchGrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-  #rgbaPicker .sw { aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
-  #rgbaPicker .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
-  #rgbaPicker .alphaRow { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--text2); }
-  #rgbaPicker .alphaRow input[type=range] { flex: 1; accent-color: var(--accent); }
-  #rgbaPicker .foot { display: flex; justify-content: flex-end; margin-top: 10px; }
-  #rgbaPicker .foot button { font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
   .card.disabled .t, .card.disabled .s { color: var(--text-disabled); }
   /* A master setting and the rows that only matter while it is on share one surface. */
   .group { display: flex; flex-direction: column; gap: 1px; margin-bottom: 4px; }
@@ -489,27 +478,8 @@
         <select id="startMenuStyleSel" data-bind="startMenuStyle" data-str></select></div>
       <div class="card" id="notificationCenterStyleCard"><div class="l"><span class="ic">&#xE91C;</span><div><div class="t">通知中心样式</div><div class="s">通知中心和操作中心视觉主题；选择后立即生效</div></div></div>
         <select id="notificationCenterStyleSel" data-bind="notificationCenterStyle" data-str></select></div>
-      <div class="card" id="feEffectCard"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">资源管理器背景效果</div><div class="s">ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效</div></div></div>
-        <select id="feEffectSel" data-bind="feEffect" data-str>
-          <option value="">Windows 默认</option>
-          <option value="blur">Blur</option>
-          <option value="acrylic">Acrylic</option>
-          <option value="mica">Mica</option>
-          <option value="blurclear">Blur (Clear)</option>
-          <option value="micaalt">Mica Alt</option>
-        </select></div>
-      <div class="card child" data-fe-opt><div class="l"><div><div class="t">清除地址栏背景</div><div class="s">地址栏与搜索框透出背景效果（EBM clearAddress）</div></div></div>
-        <div class="toggle" role="switch" tabindex="0" data-bind="feClearAddress"></div></div>
-      <div class="card child" data-fe-opt><div class="l"><div><div class="t">清除滚动条背景</div><div class="s">滚动条轨道透出背景效果（EBM clearBarBg）</div></div></div>
-        <div class="toggle" role="switch" tabindex="0" data-bind="feClearBarBg"></div></div>
-      <div class="card child" data-fe-opt><div class="l"><div><div class="t">清除 WinUI 工具栏背景</div><div class="s">选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）</div></div></div>
-        <div class="toggle" role="switch" tabindex="0" data-bind="feClearWinuiBg"></div></div>
-      <div class="card child" data-fe-opt><div class="l"><div><div class="t">显示导航窗格分隔线</div><div class="s">在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）</div></div></div>
-        <div class="toggle" role="switch" tabindex="0" data-bind="feShowLine"></div></div>
-      <div class="card child" data-fe-opt><div class="l"><div><div class="t">浅色模式叠加色</div><div class="s">#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）</div></div></div>
-        <div class="rgbaRow"><button class="dot" id="feLightDot" type="button" data-rgba="feLightRgba" data-rgba-default="#A0DCDCDC" data-i18n-title="选择颜色" title="选择颜色"></button><input type="text" id="feLightRgbaIn" data-bind="feLightRgba" data-str spellcheck="false" autocomplete="off" maxlength="9"></div></div>
-      <div class="card child" data-fe-opt><div class="l"><div><div class="t">深色模式叠加色</div><div class="s">#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）</div></div></div>
-        <div class="rgbaRow"><button class="dot" id="feDarkDot" type="button" data-rgba="feDarkRgba" data-rgba-default="#78000000" data-i18n-title="选择颜色" title="选择颜色"></button><input type="text" id="feDarkRgbaIn" data-bind="feDarkRgba" data-str spellcheck="false" autocomplete="off" maxlength="9"></div></div>
+      <div class="card" id="feEffectCard"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">资源管理器背景效果</div><div class="s">ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义</div></div></div>
+        <div class="actions"><button id="feGlassAdvanced">高级设置</button></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">重启资源管理器</div><div class="s">出现卡顿或异常时按一下</div></div></div>
         <div class="actions"><button id="restartExplorer">重启</button></div></div>
       <h3>行为</h3>
@@ -917,27 +887,8 @@
     au.closest('.card').classList.toggle('disabled', !hasTheme);
     au.tabIndex = hasTheme ? 0 : -1;
     au.setAttribute('aria-disabled', String(!hasTheme));
-    renderFeDependents();
     renderChameleonDependent();
     renderPeekHotkey();
-  }
-
-  // ExplorerBlurMica section: the option rows and RGBA colors only mean
-  // something while an effect is armed ('' = Windows Default disables them).
-  function renderFeDependents() {
-    const on = !!state.settings.feEffect;
-    document.querySelectorAll('[data-fe-opt]').forEach(card => {
-      card.classList.toggle('disabled', !on);
-      const el = card.querySelector('[data-bind]');
-      if (el) { el.tabIndex = on ? 0 : -1; el.setAttribute('aria-disabled', String(!on)); if (el.tagName === 'INPUT') el.disabled = !on; }
-    });
-    const dot = (id, hex) => {
-      const m = /^#?([0-9a-fA-F]{2})([0-9a-fA-F]{6})$/.exec(hex || '');
-      const el = document.getElementById(id);
-      if (el) el.style.background = m ? `rgba(${parseInt(m[2].slice(0,2),16)},${parseInt(m[2].slice(2,4),16)},${parseInt(m[2].slice(4,6),16)},${(parseInt(m[1],16)/255).toFixed(2)})` : 'transparent';
-    };
-    dot('feLightDot', state.settings.feLightRgba);
-    dot('feDarkDot', state.settings.feDarkRgba);
   }
 
   // Start Menu Style options arrive with each state push ({id, label} only -
@@ -1766,43 +1717,9 @@
   document.getElementById('tswCancel').onclick = () => tswDecide('cancel');
   tswVeil.addEventListener('keydown', e => { if (e.key === 'Escape') tswDecide('cancel'); });
   send({ type: 'ready' });
-  // RGBA color picker — opened from the dot beside each #AARRGGBB field:
-  // preset swatches (EBM-style glass blends), an alpha slider that keeps
-  // the RGB channels, and a restore-default button.
-  const RP_PRESETS = ['#78000000','#A0000000','#50101216','#80404040','#A0DCDCDC','#C8FFFFFF','#80FFFFFF','#96C8C8C8','#780078D4','#78E74856','#78107C10','#78FFB900'];
-  const rpEl = document.createElement('div');
-  rpEl.id = 'rgbaPicker'; rpEl.hidden = true;
-  rpEl.innerHTML = `<div class="swatchGrid"></div>
-    <div class="alphaRow"><span data-i18n="不透明度">不透明度</span><input type="range" min="0" max="255"><span class="aval"></span></div>
-    <div class="foot"><button type="button" data-i18n="恢复默认">恢复默认</button></div>`;
-  document.body.appendChild(rpEl);
-  const rpGrid = rpEl.querySelector('.swatchGrid'), rpAlpha = rpEl.querySelector('input[type=range]'), rpAval = rpEl.querySelector('.aval'), rpReset = rpEl.querySelector('.foot button');
-  const rpParse = s => { const m = /^#?([0-9a-fA-F]{2})([0-9a-fA-F]{6})$/.exec(s || ''); return m ? { a: parseInt(m[1],16), rgb: m[2].toUpperCase() } : null; };
-  const rpCss = s => { const p = rpParse(s); return p ? `rgba(${parseInt(p.rgb.slice(0,2),16)},${parseInt(p.rgb.slice(2,4),16)},${parseInt(p.rgb.slice(4,6),16)},${(p.a/255).toFixed(2)})` : 'transparent'; };
-  for (const c of RP_PRESETS) { const b = document.createElement('button'); b.type='button'; b.className='sw'; b.dataset.c=c; b.style.background=rpCss(c); rpGrid.appendChild(b); }
-  let rpField = null;
-  const rpCur = () => rpField ? (state.settings[rpField] || '') : '';
-  const rpCommit = v => { if (!rpField) return; set(state.settings, rpField, v); commit(rpField); const inp = document.querySelector(`[data-bind="${rpField}"]`); if (inp) inp.value = v; renderFeDependents(); };
-  function rpOpen(btn) {
-    const field = btn.dataset.rgba;
-    if (rpField === field && !rpEl.hidden) { rpEl.hidden = true; rpField = null; return; }
-    rpField = field;
-    const cur = rpParse(rpCur());
-    rpAlpha.value = cur ? cur.a : 255;
-    rpAval.textContent = rpAlpha.value;
-    rpGrid.querySelectorAll('.sw').forEach(s => s.classList.toggle('on', s.dataset.c.toUpperCase() === (rpCur()||'').toUpperCase()));
-    rpEl.hidden = false;
-    const r = btn.getBoundingClientRect();
-    rpEl.style.left = Math.max(8, Math.min(window.innerWidth - rpEl.offsetWidth - 8, r.left + r.width/2 - rpEl.offsetWidth/2)) + 'px';
-    rpEl.style.top = (r.bottom + 8 + rpEl.offsetHeight > window.innerHeight ? r.top - rpEl.offsetHeight - 8 : r.bottom + 8) + 'px';
-    rpReset.onclick = () => rpCommit(btn.dataset.rgbaDefault);
-  }
-  rpGrid.onclick = e => { const s = e.target.closest('.sw'); if (s) rpCommit(s.dataset.c); };
-  rpAlpha.oninput = () => { rpAval.textContent = rpAlpha.value; const cur = rpParse(rpCur()) || { rgb: '000000' }; const hex = Number(rpAlpha.value).toString(16).padStart(2,'0').toUpperCase(); set(state.settings, rpField, '#' + hex + cur.rgb); renderFeDependents(); };
-  rpAlpha.onchange = () => rpCommit(state.settings[rpField]);
-  document.addEventListener('click', e => { if (!rpEl.hidden && !rpEl.contains(e.target) && !e.target.closest('.rgbaRow .dot')) { rpEl.hidden = true; rpField = null; } });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !rpEl.hidden) { rpEl.hidden = true; rpField = null; } });
-  document.querySelectorAll('.rgbaRow .dot').forEach(b => b.onclick = () => rpOpen(b));
+  // The File Explorer glass section collapsed to a launcher: the dedicated
+  // maximized editor (its own window, its own page) owns the EBM controls.
+  document.getElementById('feGlassAdvanced').onclick = () => send({ type: 'action', name: 'openFeGlass' });
 })();
 </script>
 </body>

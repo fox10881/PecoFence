@@ -671,5 +671,19 @@
   "Windows 默认": "Par défaut Windows",
   "资源管理器背景效果未能更改，请稍后重试。": "Impossible de modifier l'effet d'arrière-plan de l'Explorateur ; réessayez.",
   "选择颜色": "Choisir une couleur",
-  "恢复默认": "Restaurer les valeurs par défaut"
+  "恢复默认": "Restaurer les valeurs par défaut",
+  "高级设置": "Paramètres avancés",
+  "设置": "Paramètres",
+  "实时预览": "Aperçu en direct",
+  "效果类型": "Type d'effet",
+  "文件资源管理器": "Explorateur de fichiers",
+  "主页": "Accueil",
+  "快速访问": "Accès rapide",
+  "下载": "Téléchargements",
+  "搜索": "Rechercher",
+  "个项目": "éléments",
+  "混合色": "Couleur de fusion",
+  "当前": "Actuel",
+  "已应用": "Appliqué",
+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Flou, acrylique et mica d'ExplorerBlurMica — aperçu et personnalisation dans une fenêtre dédiée"
 }

@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>资源管理器背景效果</title>
+<!-- PECOFENCE_LOCALE -->
+<script src="i18n.js"></script>
+<style>
+  :root {
+    --accent: #0078D4;
+    --sheet: #202020;
+    --card: #2b2b2b;
+    --line: #3c3c3c;
+    --text: #f0f0f0;
+    --text2: #a8a8a8;
+    --control: #333333;
+    --control-strong: #4a4a4a;
+    --ex-bg: #191919;
+    --ex-surface: #242424;
+    --ex-text: #ececec;
+  }
+  html.light {
+    --sheet: #f3f3f3;
+    --card: #ffffff;
+    --line: #dcdcdc;
+    --text: #1b1b1b;
+    --text2: #6a6a6a;
+    --control: #e8e8e8;
+    --control-strong: #cfcfcf;
+    --ex-bg: #f7f7f7;
+    --ex-surface: #ffffff;
+    --ex-text: #1b1b1b;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--sheet); color: var(--text);
+    font: 13px/1.45 "Segoe UI", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+  }
+  .ic { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-weight: 400; font-style: normal; }
+
+  .wrap { flex: 1; display: flex; min-height: 0; }
+
+  /* ------------------------------------------------ left: settings panel */
+  aside.panel {
+    width: 400px; flex: none; padding: 22px 26px; overflow-y: auto;
+    border-inline-end: 1px solid var(--line); background: var(--card);
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 18px; }
+  h2 { font-size: 13px; font-weight: 600; margin: 22px 0 8px; color: var(--text2); text-transform: none; }
+  .row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 0;
+  }
+  .row .lbl { min-width: 0; }
+  .row .lbl .t { font-size: 13px; }
+  .row .lbl .s { font-size: 12px; color: var(--text2); margin-top: 2px; }
+  select, input[type=text] {
+    background: var(--control); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 10px; font: inherit; min-width: 0;
+  }
+  select { width: 170px; }
+  input[type=text] { width: 110px; font-family: Consolas, monospace; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .toggle {
+    width: 40px; height: 20px; flex: none; border-radius: 10px; background: var(--control-strong);
+    position: relative; cursor: pointer; transition: background .15s; border: 1px solid var(--line);
+  }
+  .toggle::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--text2); transition: left .15s, background .15s;
+  }
+  .toggle.on { background: var(--accent); border-color: var(--accent); }
+  .toggle.on::after { left: 22px; background: #fff; }
+  html.light .toggle.on::after { background: #fff; }
+
+  .rgbaRow { display: flex; gap: 8px; align-items: center; }
+  .rgbaRow .dot {
+    width: 22px; height: 22px; border-radius: 5px; border: 1px solid var(--line);
+    flex: none; background: transparent; cursor: pointer; padding: 0;
+  }
+  .row.off { opacity: .45; }
+  .row.off .toggle, .row.off input, .row.off .dot { pointer-events: none; }
+  .row.off .tag { display: inline; }
+  .tag { display: none; font-size: 11px; color: var(--text2); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; margin-inline-start: 6px; }
+  .row.on .tag.active { display: inline; border-color: var(--accent); color: var(--accent); }
+
+  /* --------------------------------------------- right: live preview pane */
+  section.preview { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .preview-head { padding: 22px 28px 10px; }
+  .preview-head h1 { margin: 0; }
+  .stage { flex: 1; position: relative; overflow: hidden; margin: 8px 28px 24px; border-radius: 12px; border: 1px solid var(--line); }
+
+  /* Desktop wallpaper stand-in: layered blobs like the default Win11 bloom. */
+  .artboard {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(38% 55% at 22% 30%, rgba(0,90,190,.85), transparent 70%),
+      radial-gradient(34% 48% at 72% 22%, rgba(30,60,160,.8), transparent 70%),
+      radial-gradient(45% 60% at 60% 78%, rgba(0,120,215,.55), transparent 70%),
+      radial-gradient(30% 40% at 88% 62%, rgba(90,40,160,.5), transparent 70%),
+      linear-gradient(160deg, #0a1e38, #04101f 55%, #020a14);
+  }
+  html.light .artboard {
+    background:
+      radial-gradient(38% 55% at 22% 30%, rgba(120,190,255,.9), transparent 70%),
+      radial-gradient(34% 48% at 72% 22%, rgba(160,200,255,.85), transparent 70%),
+      radial-gradient(45% 60% at 60% 78%, rgba(90,160,240,.7), transparent 70%),
+      linear-gradient(160deg, #cfe4fa, #9ec7ef 55%, #74aae2);
+  }
+  .taskbar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 40px;
+    background: rgba(20,20,24,.72); backdrop-filter: blur(12px);
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+  }
+  html.light .taskbar { background: rgba(240,244,250,.78); }
+  .taskbar i { width: 18px; height: 18px; border-radius: 4px; background: #4aa3ff; display: block; }
+  .taskbar i:nth-child(2) { background: #f2c94c; border-radius: 2px 6px 6px 2px; }
+  .taskbar i:nth-child(3) { background: #e0609a; border-radius: 50%; }
+
+  /* Mock File Explorer window. Its own bg is nearly invisible — the material
+     layer (backdrop-filter) + the EBM tint overlay do the work, like the real
+     pipeline where DWM supplies the material under a cleared window. */
+  .explorer {
+    position: absolute; inset: 7% 12% 10% 12%; min-width: 560px;
+    border-radius: 9px; overflow: hidden; display: flex; flex-direction: column;
+    color: var(--ex-text); font-size: 12px;
+    box-shadow: 0 12px 48px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.08);
+    background: var(--ex-bg);          /* fx-none falls back to opaque */
+    transition: background .2s;
+  }
+  .explorer.glass { background: transparent; }
+  .tint { position: absolute; inset: 0; pointer-events: none; transition: background .2s; }
+  .mat { position: absolute; inset: 0; pointer-events: none; }
+  .explorer:not(.glass) .mat, .explorer:not(.glass) .tint { display: none; }
+  .fx-blur .mat      { backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); }
+  .fx-acrylic .mat   { backdrop-filter: blur(34px) saturate(150%); -webkit-backdrop-filter: blur(34px) saturate(150%); }
+  .fx-mica .mat      { backdrop-filter: blur(60px) saturate(120%); -webkit-backdrop-filter: blur(60px) saturate(120%); }
+  .fx-blurclear .mat { backdrop-filter: blur(22px) saturate(110%); -webkit-backdrop-filter: blur(22px) saturate(110%); }
+  .fx-micaalt .mat   { backdrop-filter: blur(60px) saturate(135%); -webkit-backdrop-filter: blur(60px) saturate(135%); }
+
+  .ex-titlebar {
+    position: relative; z-index: 2; height: 34px; flex: none;
+    display: flex; align-items: center; gap: 8px; padding: 0 10px 0 12px;
+    background: var(--ex-surface); transition: background .2s;
+  }
+  .ex-titlebar .name { font-size: 12px; font-weight: 600; flex: 1; }
+  .ex-titlebar .folder { width: 16px; height: 12px; border-radius: 2px 5px 4px 4px; background: #f2c94c; position: relative; }
+  .ex-titlebar .folder::before { content: ""; position: absolute; left: 0; top: -3px; width: 8px; height: 3px; border-radius: 2px 2px 0 0; background: #f2c94c; }
+  .cap { width: 30px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--ex-text); opacity: .8; }
+  .ex-tabs { position: relative; z-index: 2; height: 32px; flex: none; display: flex; align-items: flex-end; gap: 4px; padding: 0 10px; background: var(--ex-surface); transition: background .2s; }
+  .ex-tab {
+    display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px;
+    border-radius: 6px 6px 0 0; background: rgba(255,255,255,.1); font-size: 12px;
+  }
+  html.light .ex-tab { background: rgba(0,0,0,.06); }
+  .ex-tabs .plus { padding: 0 8px 4px; font-size: 14px; opacity: .7; }
+  .ex-toolbar {
+    position: relative; z-index: 2; height: 44px; flex: none;
+    display: flex; align-items: center; gap: 12px; padding: 0 14px;
+    background: var(--ex-surface); border-bottom: 1px solid rgba(128,128,128,.18);
+    transition: background .2s; font-size: 15px;
+  }
+  .ex-toolbar .new { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+  .ex-toolbar .sep { width: 1px; height: 20px; background: rgba(128,128,128,.3); }
+  .ex-toolbar .glyph { opacity: .85; }
+  .ex-toolbar .spring { flex: 1; }
+  .ex-addr {
+    position: relative; z-index: 2; height: 36px; flex: none;
+    display: flex; align-items: center; gap: 8px; padding: 0 12px;
+    background: var(--ex-surface); transition: background .2s;
+  }
+  .ex-addr .navbtn { width: 26px; height: 24px; display: flex; align-items: center; justify-content: center; opacity: .6; }
+  .ex-addr .bar {
+    flex: 1; height: 24px; border-radius: 5px; display: flex; align-items: center; gap: 6px;
+    padding: 0 10px; font-size: 12px;
+    background: rgba(128,128,128,.16); border: 1px solid rgba(128,128,128,.25);
+    transition: background .2s, border-color .2s;
+  }
+  .ex-addr .bar.search { max-width: 190px; opacity: .8; }
+  .glass.cw .ex-titlebar, .glass.cw .ex-tabs, .glass.cw .ex-toolbar { background: transparent; }
+  .glass.ca .ex-addr { background: transparent; }
+  .glass.ca .ex-addr .bar { background: rgba(128,128,128,.10); }
+
+  .ex-body { position: relative; z-index: 2; flex: 1; display: flex; min-height: 0; }
+  .ex-nav {
+    width: 168px; flex: none; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px;
+    font-size: 12px;
+  }
+  .ex-nav .nhead { display: flex; align-items: center; gap: 7px; padding: 5px 8px; font-weight: 600; }
+  .ex-nav .ni { display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px 22px; border-radius: 5px; opacity: .92; }
+  .ex-nav .ni.sel { background: rgba(128,128,128,.22); }
+  .ex-nav .ni .mini { width: 13px; height: 10px; border-radius: 1px 3px 3px 3px; background: #f2c94c; flex: none; }
+  .ex-nav .ni .mini.blue { background: #4aa3ff; }
+  .ex-nav .ngrp { margin-top: 10px; opacity: .8; }
+  .ex-divider { width: 1px; background: rgba(128,128,128,.3); flex: none; display: none; }
+  .explorer.sl .ex-divider { display: block; }
+  .ex-content { flex: 1; position: relative; padding: 14px 16px; overflow: hidden; }
+  .ex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+  .ex-item { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px; border-radius: 6px; font-size: 11px; text-align: center; }
+  .ex-item .big { width: 40px; height: 30px; border-radius: 3px 8px 7px 7px; background: #f2c94c; position: relative; }
+  .ex-item .big::before { content: ""; position: absolute; left: 0; top: -5px; width: 16px; height: 6px; border-radius: 3px 3px 0 0; background: #f2c94c; }
+  .ex-item .big.dl { background: #27ae60; } .ex-item .big.vid { background: #9b51e0; }
+  .ex-item .big.pic { background: #2d9cdb; } .ex-item .big.mus { background: #eb5757; }
+  .ex-scroll {
+    position: absolute; top: 12px; right: 6px; bottom: 12px; width: 12px; border-radius: 6px;
+    background: rgba(128,128,128,.14); transition: background .2s;
+  }
+  .ex-scroll .thumb { position: absolute; top: 6px; left: 3px; right: 3px; height: 34%; border-radius: 4px; background: rgba(160,160,160,.75); }
+  .glass.cb .ex-scroll { background: transparent; }
+  .ex-status {
+    position: relative; z-index: 2; height: 24px; flex: none;
+    display: flex; align-items: center; padding: 0 14px; font-size: 11px; opacity: .75;
+    background: var(--ex-surface); transition: background .2s;
+  }
+  .glass.cw .ex-status { background: transparent; }
+
+  /* --------------------------------------------------------- footer bar */
+  footer {
+    flex: none; display: flex; justify-content: flex-end; gap: 10px;
+    padding: 12px 22px; border-top: 1px solid var(--line); background: var(--card);
+  }
+  footer button {
+    min-width: 96px; padding: 7px 18px; border-radius: 6px; font: inherit; cursor: pointer;
+    border: 1px solid var(--control-strong); background: var(--control); color: var(--text);
+  }
+  footer button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  footer button:hover { filter: brightness(1.12); }
+
+  /* ------------------------------------------------------------- toast */
+  #toast {
+    position: fixed; left: 50%; bottom: 74px; transform: translateX(-50%);
+    padding: 8px 18px; border-radius: 8px; background: #111; color: #fff;
+    border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,.4);
+    opacity: 0; transition: opacity .18s; pointer-events: none; z-index: 40;
+  }
+  #toast.on { opacity: 1; }
+
+  /* ------------------------------------------------------ color picker */
+  #rgbaPicker {
+    position: fixed; z-index: 50; width: 236px; padding: 12px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.35);
+  }
+  #rgbaPicker .swatchGrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  #rgbaPicker .sw { aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
+  #rgbaPicker .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #rgbaPicker .alphaRow { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--text2); }
+  #rgbaPicker .alphaRow input[type=range] { flex: 1; accent-color: var(--accent); }
+  #rgbaPicker .foot { display: flex; justify-content: flex-end; margin-top: 10px; }
+  #rgbaPicker .foot button {
+    font-size: 12px; padding: 4px 10px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--control); color: var(--text); cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="panel">
+    <h1>设置</h1>
+
+    <div class="row">
+      <div class="lbl"><div class="t">效果类型</div><div class="s">ExplorerBlurMica effect</div></div>
+      <select id="effectSel">
+        <option value="">Windows 默认</option>
+        <option value="blur">Blur</option>
+        <option value="acrylic">Acrylic</option>
+        <option value="mica">Mica</option>
+        <option value="blurclear">Blur (Clear)</option>
+        <option value="micaalt">Mica Alt</option>
+      </select>
+    </div>
+
+    <h2>ExplorerBlurMica</h2>
+    <div class="row" id="rowAddress">
+      <div class="lbl"><div class="t">清除地址栏背景</div><div class="s">EBM clearAddress</div></div>
+      <div class="toggle" id="tAddress" role="switch" tabindex="0"></div>
+    </div>
+    <div class="row" id="rowBarBg">
+      <div class="lbl"><div class="t">清除滚动条背景</div><div class="s">EBM clearBarBg</div></div>
+      <div class="toggle" id="tBarBg" role="switch" tabindex="0"></div>
+    </div>
+    <div class="row" id="rowWinUI">
+      <div class="lbl"><div class="t">清除 WinUI 工具栏背景</div><div class="s">EBM clearWinUIBg</div></div>
+      <div class="toggle" id="tWinUI" role="switch" tabindex="0"></div>
+    </div>
+    <div class="row" id="rowLine">
+      <div class="lbl"><div class="t">显示导航窗格分隔线</div><div class="s">EBM showLine</div></div>
+      <div class="toggle" id="tLine" role="switch" tabindex="0"></div>
+    </div>
+
+    <h2>混合色</h2>
+    <div class="row" id="rowDark">
+      <div class="lbl"><div class="t">深色模式叠加色 <span class="tag" data-i18n="当前">当前</span></div><div class="s">#AARRGGBB — EBM [dark]</div></div>
+      <div class="rgbaRow">
+        <button class="dot" id="darkDot" type="button" data-rgba="darkRgba" data-rgba-default="#78000000" data-i18n-title="选择颜色" title="选择颜色"></button>
+        <input type="text" id="darkRgbaIn" dir="ltr" spellcheck="false" autocomplete="off" maxlength="9">
+      </div>
+    </div>
+    <div class="row" id="rowLight">
+      <div class="lbl"><div class="t">浅色模式叠加色 <span class="tag" data-i18n="当前">当前</span></div><div class="s">#AARRGGBB — EBM [light]</div></div>
+      <div class="rgbaRow">
+        <button class="dot" id="lightDot" type="button" data-rgba="lightRgba" data-rgba-default="#A0DCDCDC" data-i18n-title="选择颜色" title="选择颜色"></button>
+        <input type="text" id="lightRgbaIn" dir="ltr" spellcheck="false" autocomplete="off" maxlength="9">
+      </div>
+    </div>
+  </aside>
+
+  <section class="preview">
+    <div class="preview-head"><h1>实时预览</h1></div>
+    <div class="stage">
+      <div class="artboard"></div>
+      <div class="explorer" id="mock">
+        <div class="mat"></div>
+        <div class="tint" id="tint"></div>
+        <div class="ex-titlebar">
+          <span class="folder"></span><span class="name">文件资源管理器</span>
+          <span class="cap ic">&#xE921;</span><span class="cap ic">&#xE738;</span><span class="cap ic">&#xE8BB;</span>
+        </div>
+        <div class="ex-tabs">
+          <div class="ex-tab"><span class="ic">&#xE80F;</span><span>主页</span></div>
+          <span class="plus">+</span>
+        </div>
+        <div class="ex-toolbar">
+          <span class="new"><span class="ic">&#xE710;</span><span data-i18n="新建">新建</span><span class="ic" style="font-size:9px">&#xE70D;</span></span>
+          <span class="sep"></span>
+          <span class="glyph ic">&#xE8C8;</span><span class="glyph ic">&#xE74D;</span><span class="glyph ic">&#xE8CB;</span>
+          <span class="glyph ic">&#xE8AC;</span><span class="glyph ic">&#xE895;</span><span class="glyph ic">&#xE74E;</span>
+          <span class="spring"></span>
+          <span class="glyph ic">&#xE8CB;</span><span class="glyph ic">&#xE8A7;</span><span class="glyph ic">&#xE712;</span>
+        </div>
+        <div class="ex-addr">
+          <span class="navbtn ic">&#xE72B;</span><span class="navbtn ic">&#xE72A;</span><span class="navbtn ic">&#xE74A;</span>
+          <div class="bar"><span class="ic" style="font-size:11px">&#xE8B7;</span><span data-i18n="桌面">桌面</span></div>
+          <div class="bar search"><span class="ic" style="font-size:11px">&#xE721;</span><span data-i18n="搜索">搜索</span></div>
+        </div>
+        <div class="ex-body">
+          <div class="ex-nav">
+            <div class="nhead"><span class="ic" style="color:#f2a33c">&#xE80F;</span><span data-i18n="快速访问">快速访问</span></div>
+            <div class="ni sel"><span class="mini"></span><span data-i18n="桌面">桌面</span></div>
+            <div class="ni"><span class="mini blue"></span><span data-i18n="下载">下载</span></div>
+            <div class="ni"><span class="mini"></span><span data-i18n="文档">文档</span></div>
+            <div class="ni"><span class="mini"></span><span data-i18n="图片">图片</span></div>
+            <div class="ngrp ni"><span class="ic" style="color:#4aa3ff">&#xE753;</span><span>OneDrive</span></div>
+          </div>
+          <div class="ex-divider"></div>
+          <div class="ex-content">
+            <div class="ex-grid">
+              <div class="ex-item"><span class="big"></span><span data-i18n="桌面">桌面</span></div>
+              <div class="ex-item"><span class="big dl"></span><span data-i18n="下载">下载</span></div>
+              <div class="ex-item"><span class="big"></span><span data-i18n="文档">文档</span></div>
+              <div class="ex-item"><span class="big vid"></span><span data-i18n="视频">视频</span></div>
+              <div class="ex-item"><span class="big pic"></span><span data-i18n="图片">图片</span></div>
+              <div class="ex-item"><span class="big mus"></span><span data-i18n="音乐">音乐</span></div>
+            </div>
+            <div class="ex-scroll"><div class="thumb"></div></div>
+          </div>
+        </div>
+        <div class="ex-status"><span>6&nbsp;</span><span data-i18n="个项目">个项目</span></div>
+      </div>
+      <div class="taskbar"><i></i><i></i><i></i></div>
+    </div>
+  </section>
+</div>
+
+<footer>
+  <button id="cancelBtn" type="button">取消</button>
+  <button id="applyBtn" type="button" class="primary">应用</button>
+</footer>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  'use strict';
+  const t = (s) => (window.PecoFenceI18n ? PecoFenceI18n.text(s) : s);
+  // capture() snapshots the DOM — rebuilt (and re-applied) after every
+  // dynamic append so later-injected Chinese text still localizes.
+  let applyCapture = () => {};
+  const i18nSet = (loc, tr) => { if (window.PecoFenceI18n) { PecoFenceI18n.set(loc, tr); applyCapture(); } };
+
+  const wv = window.chrome && window.chrome.webview;
+  const send = (m) => wv && wv.postMessage(m);
+
+  // Draft state — edits stay local until Apply; Cancel discards them.
+  const s = {
+    effect: '', clearAddress: false, clearBarBg: false, clearWinuiBg: false,
+    showLine: false, lightRgba: '', darkRgba: '',
+  };
+  let systemLight = true;
+
+  const $ = (id) => document.getElementById(id);
+  const mock = $('mock'), tint = $('tint'), toast = $('toast');
+  let toastTimer = 0;
+  function showToast(text) {
+    toast.textContent = text; toast.classList.add('on');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('on'), 2600);
+  }
+
+  const parseRgba = (hex) => {
+    const m = /^#?(?:([0-9a-fA-F]{2}))?([0-9a-fA-F]{6})$/.exec(hex || '');
+    return m ? { a: m[1] === undefined ? 255 : parseInt(m[1], 16), rgb: m[2].toUpperCase() } : null;
+  };
+  const rgbaCss = (hex, scale) => {
+    const p = parseRgba(hex);
+    if (!p) return 'transparent';
+    const a = Math.max(0, Math.min(1, (p.a / 255) * (scale ?? 1)));
+    return `rgba(${parseInt(p.rgb.slice(0, 2), 16)},${parseInt(p.rgb.slice(2, 4), 16)},${parseInt(p.rgb.slice(4, 6), 16)},${a.toFixed(3)})`;
+  };
+  const dotCss = (hex) => rgbaCss(hex) === 'transparent' ? 'transparent' : rgbaCss(hex);
+
+  // Mica samples the desktop heavily (denser, more opaque); Blur (Clear) is the
+  // lightest tint. The tint color itself is always the active theme's RGBA —
+  // matching EBM, where [light]/[dark] apply to every effect.
+  const TINT_SCALE = { blur: 0.85, acrylic: 1.0, mica: 1.0, blurclear: 0.55, micaalt: 1.0 };
+
+  function render() {
+    document.documentElement.classList.toggle('light', systemLight);
+    $('effectSel').value = s.effect;
+    [['tAddress', s.clearAddress], ['tBarBg', s.clearBarBg], ['tWinUI', s.clearWinuiBg], ['tLine', s.showLine]]
+      .forEach(([id, on]) => { const el = $(id); el.classList.toggle('on', !!on); el.setAttribute('aria-checked', String(!!on)); });
+
+    // Active-theme row editable, inactive row greyed + disabled.
+    $('rowLight').classList.toggle('off', !systemLight);
+    $('rowLight').classList.toggle('on', systemLight);
+    $('rowDark').classList.toggle('off', systemLight);
+    $('rowDark').classList.toggle('on', !systemLight);
+    $('lightRgbaIn').disabled = !systemLight;
+    $('darkRgbaIn').disabled = systemLight;
+    $('lightDot').disabled = !systemLight;
+    $('darkDot').disabled = systemLight;
+    if (document.activeElement !== $('lightRgbaIn')) $('lightRgbaIn').value = s.lightRgba || '';
+    if (document.activeElement !== $('darkRgbaIn')) $('darkRgbaIn').value = s.darkRgba || '';
+    $('lightDot').style.background = dotCss(s.lightRgba);
+    $('darkDot').style.background = dotCss(s.darkRgba);
+
+    // Preview: effect material + tint + the four clearing flags.
+    mock.className = 'explorer' + (s.effect ? ' glass fx-' + s.effect : '') +
+      (s.clearAddress ? ' ca' : '') + (s.clearBarBg ? ' cb' : '') +
+      (s.clearWinuiBg ? ' cw' : '') + (s.showLine ? ' sl' : '');
+    const active = systemLight ? s.lightRgba : s.darkRgba;
+    tint.style.background = s.effect ? rgbaCss(active, TINT_SCALE[s.effect] ?? 1) : 'transparent';
+    const optsOn = !!s.effect;
+    ['rowAddress', 'rowBarBg', 'rowWinUI', 'rowLine', 'rowDark', 'rowLight'].forEach(id => {
+      $(id).style.opacity = optsOn ? '' : '.45';
+      $(id).style.pointerEvents = optsOn ? '' : 'none';
+    });
+    $('effectSel').disabled = false;
+  }
+
+  // ------------------------------------------------------------ controls
+  $('effectSel').onchange = () => { s.effect = $('effectSel').value; render(); };
+  const bindToggle = (id, key) => {
+    const el = $(id);
+    el.onclick = () => { s[key] = !s[key]; render(); };
+    el.onkeydown = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); el.click(); } };
+  };
+  bindToggle('tAddress', 'clearAddress');
+  bindToggle('tBarBg', 'clearBarBg');
+  bindToggle('tWinUI', 'clearWinuiBg');
+  bindToggle('tLine', 'showLine');
+  $('lightRgbaIn').oninput = () => { s.lightRgba = $('lightRgbaIn').value.trim(); render(); };
+  $('darkRgbaIn').oninput = () => { s.darkRgba = $('darkRgbaIn').value.trim(); render(); };
+
+  // ------------------------------------------------- RGBA picker popup
+  const RP_PRESETS = ['#78000000', '#A0000000', '#50101216', '#80404040', '#A0DCDCDC', '#C8FFFFFF',
+    '#80FFFFFF', '#96C8C8C8', '#780078D4', '#78E74856', '#78107C10', '#78FFB900'];
+  const rpEl = document.createElement('div');
+  rpEl.id = 'rgbaPicker'; rpEl.hidden = true;
+  rpEl.innerHTML = `<div class="swatchGrid"></div>
+    <div class="alphaRow"><span data-i18n="不透明度">不透明度</span><input type="range" min="0" max="255"><span class="aval"></span></div>
+    <div class="foot"><button type="button" data-i18n="恢复默认">恢复默认</button></div>`;
+  document.body.appendChild(rpEl);
+  const rpGrid = rpEl.querySelector('.swatchGrid'), rpAlpha = rpEl.querySelector('input[type=range]'),
+    rpAval = rpEl.querySelector('.aval'), rpReset = rpEl.querySelector('.foot button');
+  for (const c of RP_PRESETS) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'sw'; b.dataset.c = c; b.style.background = rgbaCss(c);
+    rpGrid.appendChild(b);
+  }
+  let rpField = null;
+  const rpCommit = (v) => {
+    if (!rpField) return;
+    s[rpField] = v;
+    const inp = rpField === 'lightRgba' ? $('lightRgbaIn') : $('darkRgbaIn');
+    inp.value = v; render();
+  };
+  function rpOpen(btn) {
+    const field = btn.dataset.rgba;
+    if (rpField === field && !rpEl.hidden) { rpEl.hidden = true; rpField = null; return; }
+    rpField = field;
+    const cur = parseRgba(s[field]);
+    rpAlpha.value = cur ? cur.a : 255; rpAval.textContent = rpAlpha.value;
+    rpGrid.querySelectorAll('.sw').forEach(sw => sw.classList.toggle('on', sw.dataset.c.toUpperCase() === (s[field] || '').toUpperCase()));
+    rpEl.hidden = false;
+    const r = btn.getBoundingClientRect();
+    rpEl.style.left = Math.max(8, Math.min(window.innerWidth - rpEl.offsetWidth - 8, r.left + r.width / 2 - rpEl.offsetWidth / 2)) + 'px';
+    rpEl.style.top = (r.bottom + 8 + rpEl.offsetHeight > window.innerHeight ? r.top - rpEl.offsetHeight - 8 : r.bottom + 8) + 'px';
+    rpReset.onclick = () => rpCommit(btn.dataset.rgbaDefault);
+  }
+  rpGrid.onclick = (e) => { const sw = e.target.closest('.sw'); if (sw) rpCommit(sw.dataset.c); };
+  rpAlpha.oninput = () => {
+    rpAval.textContent = rpAlpha.value;
+    const cur = parseRgba(s[rpField]) || { rgb: '000000' };
+    s[rpField] = '#' + Number(rpAlpha.value).toString(16).padStart(2, '0').toUpperCase() + cur.rgb;
+    render();
+  };
+  rpAlpha.onchange = () => rpCommit(s[rpField]);
+  document.addEventListener('click', (e) => {
+    if (!rpEl.hidden && !rpEl.contains(e.target) && !e.target.closest('.rgbaRow .dot')) { rpEl.hidden = true; rpField = null; }
+  });
+  $('lightDot').onclick = () => rpOpen($('lightDot'));
+  $('darkDot').onclick = () => rpOpen($('darkDot'));
+
+  // All static + dynamic text is in the DOM now — snapshot it for localization.
+  applyCapture = window.PecoFenceI18n ? PecoFenceI18n.capture(document.body) : () => {};
+  applyCapture();
+
+  // ------------------------------------------------------------- actions
+  $('applyBtn').onclick = () => {
+    send({
+      type: 'feApply',
+      effect: s.effect, clearAddress: !!s.clearAddress, clearBarBg: !!s.clearBarBg,
+      clearWinuiBg: !!s.clearWinuiBg, showLine: !!s.showLine,
+      lightRgba: s.lightRgba || '', darkRgba: s.darkRgba || '',
+    });
+  };
+  $('cancelBtn').onclick = () => send({ type: 'feCancel' });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (!rpEl.hidden) { rpEl.hidden = true; rpField = null; }
+      else send({ type: 'feCancel' });
+    }
+  });
+
+  if (wv) {
+    wv.addEventListener('message', (e) => {
+      const m = e.data || {};
+      if (m.type === 'feState') {
+        i18nSet(m.locale, m.translations);
+        systemLight = m.systemLight !== false;
+        const fe = m.fe || {};
+        s.effect = fe.effect || '';
+        s.clearAddress = !!fe.clearAddress; s.clearBarBg = !!fe.clearBarBg;
+        s.clearWinuiBg = !!fe.clearWinuiBg; s.showLine = !!fe.showLine;
+        s.lightRgba = fe.lightRgba || ''; s.darkRgba = fe.darkRgba || '';
+        render();
+      } else if (m.type === 'feToast') {
+        showToast(m.text || '');
+      }
+    });
+    send({ type: 'feReady' });
+  } else {
+    render();
+  }
+})();
+</script>
+</body>
+</html>
