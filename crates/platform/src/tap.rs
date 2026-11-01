@@ -455,8 +455,10 @@ fn unload_foreign_residents(pid: u32, keep: HWND) {
 /// `PecoFenceTAPNC` class in the Shell hosts, so it must read as stale;
 /// `7` = + File Explorer styler restored (`PECO-FES1` markers + the WinUI3
 /// `FrameworkUdk` diagnostics session — a v6 resident has no FEST handler,
-/// so it must read as stale).
-pub const TAP_PROTOCOL_VERSION: usize = 7;
+/// so it must read as stale);
+/// `8` = + in-process `IImageList2::SetOverlayImage` shortcut-overlay heal
+/// (`SLNK` marker + periodic sync against `HKCU\...\Shell Icons\29`).
+pub const TAP_PROTOCOL_VERSION: usize = 8;
 
 /// Explorer pid carrying a stale pinned resident that can't serve the
 /// taskbar-styler protocol — remembered so the periodic `ensure` doesn't

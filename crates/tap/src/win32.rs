@@ -123,5 +123,11 @@ windows_core::link!("user32.dll" "system" fn TranslateMessage(lpmsg: *const MSG)
 windows_core::link!("user32.dll" "system" fn EnumWindows(lpenumfunc: WNDENUMPROC, lparam: LPARAM) -> BOOL);
 windows_core::link!("user32.dll" "system" fn GetWindowThreadProcessId(hwnd: HWND, lpdwprocessid: *mut u32) -> u32);
 windows_core::link!("user32.dll" "system" fn IsWindow(hwnd: HWND) -> BOOL);
+windows_core::link!("user32.dll" "system" fn RedrawWindow(hwnd: HWND, lprcupdate: *const core::ffi::c_void, hrgnupdate: *mut core::ffi::c_void, flags: u32) -> BOOL);
+windows_core::link!("advapi32.dll" "system" fn RegGetValueW(hkey: isize, lpsubkey: PCWSTR, lpvalue: PCWSTR, dwflags: u32, pdwtype: *mut u32, pvdata: *mut core::ffi::c_void, pcbdata: *mut u32) -> i32);
+windows_core::link!("shell32.dll" "system" fn SHGetImageList(iimagelist: i32, riid: *const windows_core::GUID, ppvobj: *mut *mut core::ffi::c_void) -> windows_core::HRESULT);
+windows_core::link!("shell32.dll" "system" fn SHGetIconOverlayIndexW(psziconpath: PCWSTR, iiconindex: i32) -> i32);
+windows_core::link!("shell32.dll" "system" fn Shell_GetCachedImageIndexW(psziconpath: PCWSTR, iiconindex: i32, uiconflags: u32) -> i32);
+windows_core::link!("shell32.dll" "system" fn SHChangeNotify(weventid: i32, uflags: u32, dwitem1: *const core::ffi::c_void, dwitem2: *const core::ffi::c_void));
 /// `WNDENUMPROC` for `EnumWindows`.
 pub type WNDENUMPROC = Option<unsafe extern "system" fn(hwnd: HWND, lparam: LPARAM) -> BOOL>;

@@ -85,9 +85,11 @@ pub(crate) fn is_unloaded() -> bool {
 /// `7` = + File Explorer styler restored (`PECO-FES1` markers + a second
 /// diagnostics session on `Microsoft.Internal.FrameworkUdk.dll` for the
 /// CabinetWClass WinUI3 islands — a v6 resident has no FEST handler, so
-/// it must read as stale).
+/// it must read as stale);
+/// `8` = + in-process `IImageList2::SetOverlayImage` shortcut-overlay heal
+/// (`SLNK` marker + periodic sync against `HKCU\...\Shell Icons\29`).
 /// Keep in sync with `crates/platform/src/tap.rs::TAP_PROTOCOL_VERSION`.
-pub const TAP_PROTOCOL_VERSION: usize = 7;
+pub const TAP_PROTOCOL_VERSION: usize = 8;
 const BUILD_PROP_NAME: &[u16] = &[
     0x50, 0x65, 0x63, 0x6f, 0x46, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x54, 0x41, 0x50, 0x2e, 0x42, 0x75,
     0x69, 0x6c, 0x64, 0x00, // "PecoFence.TAP.Build"
@@ -150,6 +152,7 @@ pub fn run() {
         // `Shell_TrayWnd` (shell explorer's taskbar) — so the host reads it
         // back with GetPropW instead of guessing among same-class residents.
         stamp_host_props(hwnd);
+        sync_link_overlay(None);
         // The IXDEx retry cadence: a fresh Explorer has no XAML island yet,
         // so early install attempts fail until the taskbar comes up. `site::
         // ensure_watching` is a cheap no-op once the watcher is advised.
@@ -284,6 +287,12 @@ const CDS_EBM_UNLOAD: usize = u32::from_be_bytes(*b"EBMU") as usize;
 /// Independent of EBM: the material pipeline owns every surface brush.
 const CDS_FE_LAYOUT: usize = u32::from_be_bytes(*b"FELT") as usize;
 const CDS_FE_LAYOUT_RESET: usize = u32::from_be_bytes(*b"FELR") as usize;
+/// In-process shortcut-overlay override (`SLNK`, 1 byte: `1` = stock arrow,
+/// `0` = blank). `windows.storage.dll` reads `Shell Icons\29` from `HKLM`
+/// only, so when `HKLM` holds a poisoned resource (`shell32.dll,-50`) and
+/// the process is unelevated, we swap the `SIID_LINK` overlay slot in
+/// Explorer's five `SHGetImageList` instances directly via `IImageList2`.
+const CDS_LINK_OVERLAY: usize = u32::from_be_bytes(*b"SLNK") as usize;
 
 fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
     if msg == UNLOAD_MSG.load(Ordering::Acquire) && msg != 0 {
@@ -308,6 +317,7 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
         // opened after this resident booted has no `CmdHwnd` prop until a
         // re-stamp, and the host would arm the hook forever.
         stamp_host_props(_hwnd);
+        sync_link_overlay(None);
         return;
     }
     if msg == WM_COPYDATA {
@@ -369,9 +379,171 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
                 crate::styler::mux::apply_wire(text);
             }
             CDS_FE_LAYOUT_RESET => crate::styler::mux::reset(),
+            CDS_LINK_OVERLAY if !cds.lp_data.is_null() && cds.cb_data >= 1 => {
+                let shown = unsafe { *(cds.lp_data as *const u8) } != 0;
+                sync_link_overlay(Some(shown));
+            }
             CDS_RESET | CDS_TB_RESET | CDS_NC_RESET => crate::styler::wux::reset(),
             _ => {}
         }
+    }
+}
+
+/// Repairs the shortcut-arrow overlay slot inside `explorer.exe`'s five
+/// `SHGetImageList` instances (`SHIL_LARGE`..=`SHIL_JUMBO`).
+///
+/// Why this lives in the resident: `windows.storage.dll` reads
+/// `Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons\29` from
+/// `HKLM` only (`HKCU` is ignored). When `HKLM` holds a broken entry like
+/// `shell32.dll,-50` and PecoFence runs unelevated, `SHIL_JUMBO` (256x256)
+/// punches a 128x128 transparent hole in the bottom-left corner of every
+/// `.lnk` icon in File Explorer and on the Desktop. Calling
+/// `IImageList2::SetOverlayImage` in-process replaces the overlay slot with
+/// `imageres.dll,-1015` (Microsoft's blank icon, when arrows are hidden) or
+/// `imageres.dll,-163` (Windows 11's stock arrow, when shown) without needing
+/// admin rights or an Explorer restart.
+fn sync_link_overlay(explicit_shown: Option<bool>) {
+    if crate::is_smeh() || crate::is_nch() {
+        return;
+    }
+    let shown = explicit_shown.unwrap_or_else(hkcu_wants_link_arrow);
+    // -163 = stock shortcut arrow in imageres.dll; -1015 = stock blank icon.
+    let icon_id: i32 = if shown { -163 } else { -1015 };
+    let mut win_dir = [0u16; 260];
+    let n = unsafe { GetWindowsDirectoryW(windows_core::PWSTR(win_dir.as_mut_ptr()), 260) };
+    let base = if n > 0 && (n as usize) < win_dir.len() {
+        String::from_utf16_lossy(&win_dir[..n as usize])
+    } else {
+        r"C:\Windows".to_owned()
+    };
+    let imageres: Vec<u16> = format!(r"{base}\System32\imageres.dll")
+        .encode_utf16()
+        .chain(core::iter::once(0))
+        .collect();
+    // IDO_SHGIOI_LINK = 0x0FFFFFFE -> 1-based overlay slot (typically 2).
+    let ovl = unsafe { SHGetIconOverlayIndexW(windows_core::PCWSTR::null(), 0x0FFF_FFFE) };
+    let ovl = if (1..=15).contains(&ovl) { ovl } else { 2 };
+    let target_idx =
+        unsafe { Shell_GetCachedImageIndexW(windows_core::PCWSTR(imageres.as_ptr()), icon_id, 0) };
+    if target_idx < 0 {
+        return;
+    }
+    const IID_IIMAGELIST2: windows_core::GUID =
+        windows_core::GUID::from_u128(0x192b9d83_50fc_457b_90a0_2b82a8b5dae1);
+    let mut changed = false;
+    for shil in 0..=4 {
+        let mut iml: *mut core::ffi::c_void = core::ptr::null_mut();
+        if unsafe { SHGetImageList(shil, &IID_IIMAGELIST2, &mut iml) }.is_err() || iml.is_null() {
+            continue;
+        }
+        unsafe {
+            let vtable = *(iml as *const *const usize);
+            let release: unsafe extern "system" fn(*mut core::ffi::c_void) -> u32 =
+                core::mem::transmute(*vtable.add(2));
+            let set_overlay: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                i32,
+                i32,
+            ) -> windows_core::HRESULT = core::mem::transmute(*vtable.add(5));
+            let get_overlay: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                i32,
+                *mut i32,
+            ) -> windows_core::HRESULT = core::mem::transmute(*vtable.add(31));
+            let force_present: unsafe extern "system" fn(
+                *mut core::ffi::c_void,
+                i32,
+                u32,
+            ) -> windows_core::HRESULT = core::mem::transmute(*vtable.add(37));
+
+            let mut cur_idx = -1i32;
+            let _ = get_overlay(iml, ovl, &mut cur_idx);
+            if cur_idx != target_idx {
+                let _ = force_present(iml, target_idx, 0);
+                if set_overlay(iml, target_idx, ovl).is_ok() {
+                    changed = true;
+                }
+            }
+            let _ = release(iml);
+        }
+    }
+    if changed || explicit_shown.is_some() {
+        crate::tap_log!(
+            "link overlay synced shown={shown} ovl={ovl} target_idx={target_idx} changed={changed}"
+        );
+        const SHCNE_ASSOCCHANGED: i32 = 0x0800_0000u32 as i32;
+        const SHCNE_UPDATEIMAGE: i32 = 0x0000_8000;
+        const SHCNF_IDLIST: u32 = 0x0000;
+        const SHCNF_DWORD: u32 = 0x0003;
+        unsafe {
+            SHChangeNotify(
+                SHCNE_UPDATEIMAGE,
+                SHCNF_DWORD,
+                29usize as *const core::ffi::c_void,
+                core::ptr::null(),
+            );
+            SHChangeNotify(
+                SHCNE_UPDATEIMAGE,
+                SHCNF_DWORD,
+                target_idx as usize as *const core::ffi::c_void,
+                core::ptr::null(),
+            );
+            SHChangeNotify(
+                SHCNE_ASSOCCHANGED,
+                SHCNF_IDLIST,
+                core::ptr::null(),
+                core::ptr::null(),
+            );
+        }
+        redraw_process_windows();
+    }
+}
+
+/// Reads `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons\29`:
+/// `false` when it names our `-1015` blank sentinel; `true` otherwise.
+fn hkcu_wants_link_arrow() -> bool {
+    const HKEY_CURRENT_USER: isize = -0x7FFF_FFFFisize; // 0xFFFFFFFF80000001
+    const RRF_RT_REG_SZ: u32 = 0x02;
+    let subkey: Vec<u16> = r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons"
+        .encode_utf16()
+        .chain(core::iter::once(0))
+        .collect();
+    let val: Vec<u16> = "29\0".encode_utf16().collect();
+    let mut buf = [0u16; 512];
+    let mut size = (buf.len() * 2) as u32;
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            windows_core::PCWSTR(subkey.as_ptr()),
+            windows_core::PCWSTR(val.as_ptr()),
+            RRF_RT_REG_SZ,
+            core::ptr::null_mut(),
+            buf.as_mut_ptr().cast(),
+            &mut size,
+        )
+    };
+    if status != 0 {
+        return true;
+    }
+    let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    let s = String::from_utf16_lossy(&buf[..len]);
+    !s.contains("-1015")
+}
+
+fn redraw_process_windows() {
+    unsafe extern "system" fn cb(hwnd: HWND, _lparam: LPARAM) -> windows_core::BOOL {
+        let mut pid = 0u32;
+        unsafe {
+            let _ = GetWindowThreadProcessId(hwnd, &mut pid);
+            if pid == GetCurrentProcessId() {
+                // RDW_INVALIDATE (1) | RDW_ERASE (4) | RDW_ALLCHILDREN (0x80)
+                let _ = RedrawWindow(hwnd, core::ptr::null(), core::ptr::null_mut(), 0x85);
+            }
+        }
+        windows_core::BOOL(1)
+    }
+    unsafe {
+        let _ = EnumWindows(Some(cb), 0);
     }
 }
 

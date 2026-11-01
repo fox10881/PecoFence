@@ -1457,8 +1457,14 @@ impl App {
         }
         // Heal a poisoned `Shell Icons\29` overlay override — a black-square
         // resource (e.g. `shell32.dll,-50`) gets stamped on every shortcut by
-        // Explorer AND by our own overlay path. One pass per launch.
-        std::thread::spawn(pecofence_platform::shell::heal_link_overlay_source);
+        // Explorer AND by our own overlay path. Syncs both the registry and
+        // Explorer's in-process `SHGetImageList` overlay slot to the saved
+        // `shortcut_arrows` setting on launch.
+        let show_arrows = app.state.config.settings.icons.shortcut_arrows;
+        std::thread::spawn(move || {
+            pecofence_platform::shell::heal_link_overlay_source();
+            pecofence_platform::shell::set_link_overlay_shown(show_arrows);
+        });
         // The saved ExplorerBlurMica effect applies through the resident
         // relay; an empty effect still runs apply_effect → reset(), which
         // unloads a stale EBM image left by an unclean shutdown.
