@@ -347,9 +347,6 @@ impl App {
             "taskbarStyles": pecofence_core::taskbar_themes::style_options_json(),
             // Notification Center Style dropdown — same isolation again.
             "notificationCenterStyles": pecofence_core::notification_center_themes::style_options_json(),
-            // File Explorer Style dropdown — same isolation for the
-            // WinUI3/mux catalog.
-            "fileExplorerStyles": pecofence_core::file_explorer_themes::style_options_json(),
         })
         .to_string()
     }
@@ -896,7 +893,7 @@ impl App {
             // hand-edited patchSettings — same treatment as a failed write.
             let id = new.start_menu_style.as_str();
             let applied = pecofence_core::start_menu_themes::is_style_id(id)
-                && pecofence_platform::start_menu::apply_start_menu_theme(id, &new.color_tint);
+                && pecofence_platform::start_menu::apply_start_menu_theme(id);
             if !applied {
                 new.start_menu_style.clone_from(&old.start_menu_style);
                 self.settings_error(pecofence_core::i18n::text(
@@ -907,7 +904,7 @@ impl App {
         if new.taskbar_style != old.taskbar_style {
             let id = new.taskbar_style.as_str();
             let applied = pecofence_core::taskbar_themes::is_style_id(id)
-                && pecofence_platform::taskbar_styler::apply(id, &new.color_tint);
+                && pecofence_platform::taskbar_styler::apply(id);
             if !applied {
                 new.taskbar_style.clone_from(&old.taskbar_style);
                 self.settings_error(pecofence_core::i18n::text(
@@ -927,30 +924,30 @@ impl App {
                 ));
             }
         }
-        if new.file_explorer_style != old.file_explorer_style {
-            let id = new.file_explorer_style.as_str();
-            let applied = pecofence_core::file_explorer_themes::is_style_id(id)
-                && pecofence_platform::file_explorer_styler::apply(id, &new.color_tint);
+        let fe_changed = new.fe_effect != old.fe_effect
+            || new.fe_clear_address != old.fe_clear_address
+            || new.fe_clear_bar_bg != old.fe_clear_bar_bg
+            || new.fe_clear_winui_bg != old.fe_clear_winui_bg
+            || new.fe_show_line != old.fe_show_line
+            || new.fe_light_rgba != old.fe_light_rgba
+            || new.fe_dark_rgba != old.fe_dark_rgba;
+        if fe_changed {
+            let applied = pecofence_platform::file_explorer_styler::apply_effect(
+                &pecofence_platform::file_explorer_styler::FeGlassConfig {
+                    effect: new.fe_effect.as_str(),
+                    clear_address: new.fe_clear_address,
+                    clear_bar_bg: new.fe_clear_bar_bg,
+                    clear_winui_bg: new.fe_clear_winui_bg,
+                    show_line: new.fe_show_line,
+                    light_rgba: new.fe_light_rgba.as_str(),
+                    dark_rgba: new.fe_dark_rgba.as_str(),
+                },
+            );
             if !applied {
-                new.file_explorer_style.clone_from(&old.file_explorer_style);
+                new.fe_effect.clone_from(&old.fe_effect);
                 self.settings_error(pecofence_core::i18n::text(
-                    "资源管理器样式未能更改，请稍后重试。",
+                    "资源管理器背景效果未能更改，请稍后重试。",
                 ));
-            }
-        }
-        if new.color_tint != old.color_tint {
-            // Palette swatch sends #RRGGBB or "" — anything else is a
-            // hand-edited patchSettings and gets reverted. Re-delivers every
-            // surface's armed wire with the new overlay baked in; the
-            // resident applies the wire atomically, so a quick swatch tap
-            // can't stack stale visuals.
-            if pecofence_core::color_tint::argb(&new.color_tint).is_none() {
-                new.color_tint.clone_from(&old.color_tint);
-            } else {
-                let tint = new.color_tint.as_str();
-                pecofence_platform::start_menu::apply_start_menu_theme(&new.start_menu_style, tint);
-                pecofence_platform::taskbar_styler::apply(&new.taskbar_style, tint);
-                pecofence_platform::file_explorer_styler::apply(&new.file_explorer_style, tint);
             }
         }
         let icons_toggled = new.hide_real_icons != old.hide_real_icons;

@@ -1,17 +1,24 @@
-//! Host-side controller for the File Explorer XAML styler — the native
-//! replacement for the Windhawk `windows-11-file-explorer-styler` mod.
+//! Host-side controller for the File Explorer glass effect — the native
+//! port of [ExplorerBlurMica](https://github.com/Maplespe/ExplorerBlurMica)'s
+//! `config.ini`:
 //!
-//! Same delivery path as the taskbar styler (`tap::ensure_resident` +
-//! `WM_COPYDATA` with a `PECO-FES1` wire), but the resident routes it to
-//! explorer.exe's **WinUI3** diagnostics session — the one
-//! `Microsoft.Internal.FrameworkUdk.dll` hosts — which sees the
-//! `CabinetWClass` XAML islands. The taskbar's WUX session is untouched.
+//! ```ini
+//! [config]  effect=0..4  clearAddress  clearBarBg  clearWinUIBg  showLine
+//! [light]   r g b a        (blend color while the system is light)
+//! [dark]    r g b a        (blend color while the system is dark)
+//! ```
 //!
-//! The theme's `BackgroundTranslucentEffect` maps to a direct
-//! `DwmSetWindowAttribute(DWMWA_SYSTEMBACKDROP_TYPE)` call on every
-//! `CabinetWClass` — the same attribute the mod rewrites through its
-//! `DwmSetWindowAttribute` hook. We don't hook; explorer can re-assert its
-//! own backdrop later, so `ensure` re-applies ours on each tick.
+//! The effect rides two channels into the explorer-resident
+//! `pecofence_tap.dll`:
+//! - `FEBD` COPYDATA — the DWM material: `[backdrop:i32, accent_state:u32,
+//!   accent_flags:u32, gradient_abgr:u32, options:u32]` (little-endian,
+//!   20 bytes). `fe_glass` applies it via `DwmExtendFrameIntoClientArea`,
+//!   `DwmSetWindowAttribute`, `DwmEnableBlurBehindWindow` and
+//!   `WCA_ACCENT_POLICY` — the exact pipeline EBM runs in-process.
+//! - `FEST` COPYDATA — a `PECO-FES1` controlStyles wire carrying the
+//!   `clearAddress`/`clearWinUIBg` island-transparency rules into the
+//!   WinUI 3 diagnostics session. `clearBarBg`/`showLine` are Win32
+//!   behaviors instead — they ride `options` bits in the FEBD.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -36,107 +43,95 @@ windows_core::link!("advapi32.dll" "system" fn RegCloseKey(hkey: isize) -> i32);
 const CDS_FE_THEME: usize = u32::from_be_bytes(*b"FEST") as usize;
 const CDS_FE_RESET: usize = u32::from_be_bytes(*b"FESR") as usize;
 const CDS_FE_HELLO: usize = u32::from_be_bytes(*b"FEHI") as usize;
-/// Backdrop/accent state for the resident's `fe_glass` detours —
-/// `[backdrop:i32, accent_state:u32, accent_flags:u32, gradient:u32]` LE.
+/// Backdrop/accent material for the resident's `fe_glass` detours —
+/// `[backdrop:i32, accent_state:u32, accent_flags:u32, gradient:u32,
+/// options:u32]` little-endian (20 bytes).
 const CDS_FE_BACKDROP: usize = u32::from_be_bytes(*b"FEBD") as usize;
 
-// DWMWA_SYSTEMBACKDROP_TYPE (38) values — the same DWMSBT_* mapping the mod
-// applies through its DwmSetWindowAttribute hook.
+// DWMWA_SYSTEMBACKDROP_TYPE (38) values.
 const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
+const DWMSBT_AUTO: i32 = 0; // system default — accent path wants this
 const DWMSBT_MAINWINDOW: i32 = 2; // Mica
-const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt / explorer's own stock request
+const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt / explorer's stock request
 
+// ACCENT_STATE values (`WCA_ACCENT_POLICY`).
 const ACCENT_DISABLED: u32 = 0;
-/// `ACCENT_STATE_ENABLE_ACRYLICBLURBEHIND` — the ExplorerBlurMica/
-/// Translucent-Windows `AccentBlurBehind` recipe: the acrylic material
-/// belongs to `WCA_ACCENT_POLICY`, `GradientColor` IS the window's tint,
-/// and `SYSTEMBACKDROP` stays `DWMSBT_AUTO` so no DWMSBT material fights
-/// it. Verified working on this machine — EBM runs it natively.
-const ACCENT_ACRYLIC: u32 = 4;
-const DWMSBT_AUTO: i32 = 0;
+const ACCENT_TRANSPARENTGRADIENT: u32 = 2; // EBM "Blur (Clear)"
+const ACCENT_BLURBEHIND: u32 = 3; // EBM "Blur" (removed on Win11 22H2+)
+const ACCENT_ACRYLIC: u32 = 4; // EBM "Acrylic"
 
-/// ExplorerBlurMica/Translucent-Windows `HandleEffects` port. The accent
-/// path (`AccentBlurBehind`) is the proven-working recipe on 23H2+
-/// `CabinetWClass`: `DwmEnableBlurBehindWindow` TRUE over the whole
-/// client region + `WCA_ACCENT_POLICY` `{ACRYLIC, GradientColor=tint}` +
-/// frame margins `-1`, and EVERY `SYSTEMBACKDROP` write resolves to
-/// `DWMSBT_AUTO` (the resident's `dwm_setattr_hook` substitutes it) —
-/// DWM bakes the tint into the material once, top bar through content,
-/// so nothing else may paint a veil (double-stack). `mica` stays on the
-/// `DWMSBT_MAINWINDOW` system-backdrop path (accent off — the punch
-/// keeps its own veil). Returns
-/// `(backdrop, accent_state, accent_flags, gradient_abgr)`.
-fn desired_glass(effect: &str, tint: &str) -> (i32, u32, u32, u32) {
-    if effect == "mica" {
-        (DWMSBT_MAINWINDOW, ACCENT_DISABLED, 0, tint_abgr(tint))
-    } else {
-        (DWMSBT_AUTO, ACCENT_ACRYLIC, 0, tint_abgr(tint))
-    }
+/// `FE_OPTIONS` bits — Win32-side behaviors that can't ride the XAML
+/// wire (must match `fe_glass.rs`).
+const FEOPT_CLEAR_BAR_BG: u32 = 1 << 0;
+const FEOPT_SHOW_LINE: u32 = 1 << 1;
+
+/// The `clearAddress` rule set — the address/search bar containers.
+/// `S Background=Transparent` lets the material show through.
+const CLEAR_ADDRESS_RULES: &[&str] = &[
+    "FileExplorerExtensions.NavigationBarControl",
+    "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
+];
+
+/// The `clearWinUIBg` rule set — the WinUI 3 island's own backgrounds
+/// (tab strip, command bar, root containers). The nav bar is governed by
+/// `clearAddress` instead.
+const CLEAR_WINUI_BG_RULES: &[&str] = &[
+    "FileExplorerExtensions.FileExplorerTabControl",
+    "FileExplorerExtensions.FileExplorerTabControl > Grid",
+    "Microsoft.UI.Xaml.Controls.TabView",
+    "Microsoft.UI.Xaml.Controls.Grid#TabContainerGrid",
+    "FileExplorerExtensions.CommandBarControl_Wave1",
+    "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+    "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
+    "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot",
+    "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
+    "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+    "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+    "Microsoft.UI.Xaml.Controls.Grid#DetailsViewControlRootGrid",
+    "Microsoft.UI.Xaml.Controls.Grid#HomeViewRootGrid",
+    "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
+];
+
+/// UI-facing EBM configuration — mirrors `config.ini`'s `[config]` flags
+/// plus the `[light]`/`[dark]` RGBA strings (`#AARRGGBB`).
+pub struct FeGlassConfig<'a> {
+    /// `""` = off; `"blur"`, `"acrylic"`, `"mica"`, `"blurclear"`,
+    /// `"micaalt"` — EBM `effect=` 0..4.
+    pub effect: &'a str,
+    pub clear_address: bool,
+    pub clear_bar_bg: bool,
+    pub clear_winui_bg: bool,
+    pub show_line: bool,
+    pub light_rgba: &'a str,
+    pub dark_rgba: &'a str,
 }
-
-/// Selected swatch `#RRGGBB` → `0x24BBGGRR` (the ABGR layout
-/// `fe_glass::punch_black` stretches across the Win32 surfaces); `""` or
-/// malformed → `0` (transparent-black punch).
-/// Swatch `#RRGGBB` → `0x48BBGGRR` with channels darkened to 65% (bright
-/// swatches stay glassy dark). `""`/malformed → `0x50161210` — the
-/// default ~31% smoked-charcoal veil (`0x50` alpha over `#101216`), NOT
-/// transparent black: bare `0x00000000` lets bright windows behind
-/// Explorer wash out the white file names. Same color as the XAML veil
-/// (`color_tint::fe_veil_argb`) on the top bar.
-fn tint_abgr(tint: &str) -> u32 {
-    let hex = tint.strip_prefix('#').unwrap_or(tint);
-    if hex.len() == 6
-        && let Ok(rgb) = u32::from_str_radix(hex, 16)
-    {
-        let (r, g, b) = (
-            (rgb >> 16 & 0xFF) * 65 / 100,
-            (rgb >> 8 & 0xFF) * 65 / 100,
-            (rgb & 0xFF) * 65 / 100,
-        );
-        return (pecofence_core::color_tint::FE_TINT_ALPHA as u32) << 24 | b << 16 | g << 8 | r;
-    }
-    0x50161210
-}
-
-const RDW_INVALIDATE: u32 = 0x0001;
-const RDW_ERASE: u32 = 0x0004;
-const RDW_FRAME: u32 = 0x0400;
-const RDW_ALLCHILDREN: u32 = 0x0080;
-const SWP_NOMOVE: u32 = 0x0002;
-const SWP_NOSIZE: u32 = 0x0001;
-const SWP_NOZORDER: u32 = 0x0004;
-const SWP_NOACTIVATE: u32 = 0x0010;
-const SWP_FRAMECHANGED: u32 = 0x0020;
 
 struct Fe {
-    /// The catalog id last delivered ("" = Windows Default — nothing armed).
-    style: String,
-    /// The wire last built — cached so `ensure` re-delivers after an
-    /// explorer restart without re-serializing the catalog.
+    /// The EBM `effect` string currently stored ("" = off).
+    effect: String,
+    /// The flag bits currently resolved into `options`.
+    options: u32,
+    /// The resolved `GradientColor` (light/dark adaptive).
+    gradient: u32,
+    /// The FEST wire last built — cached so `ensure` re-delivers after an
+    /// explorer restart without re-serializing.
     wire: String,
     /// The resident command window the wire was delivered to.
     cmd_hwnd: usize,
     /// Whether `CDS_FE_HELLO` reached the current DLL residency.
     hello_sent: bool,
-    /// The `backgroundTranslucentEffect` currently pushed to cabinets —
-    /// `apply_backdrop` only touches windows when this changes or a new
-    /// `CabinetWClass` appears, so the 2 s ensure tick stays silent.
-    applied_effect: String,
-    /// Cabinet hwnds the current `applied_effect` was pushed to.
+    /// The DWM material values currently pushed to cabinets —
+    /// `apply_glass` skips untouched windows unless these change.
+    applied: (i32, u32, u32),
+    /// Cabinet hwnds the current `applied` material was pushed to.
     seen_hwnds: std::collections::HashSet<isize>,
-    /// Selected `color_tint` (`#RRGGBB`, `""` = off) — drives the accent
-    /// blur's `GradientColor` so the glass takes the overlay color.
-    tint: String,
-    /// Tint currently pushed to cabinets — `apply_backdrop` rewrites
-    /// when it changes, same change-detection as `applied_effect`.
-    applied_tint: String,
 }
 
 static FE: Mutex<Option<Fe>> = Mutex::new(None);
-/// Whether a File Explorer style is armed — read lock-free.
+/// Whether a File Explorer glass effect is armed — read lock-free.
 static ARMED: AtomicBool = AtomicBool::new(false);
 
-/// `true` while a File Explorer style is armed — `tap` keeps the DLL resident.
+/// `true` while a File Explorer effect is armed — `tap` keeps the DLL resident.
 pub fn is_armed() -> bool {
     ARMED.load(Ordering::Acquire)
 }
@@ -149,9 +144,9 @@ fn widestr(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(core::iter::once(0)).collect()
 }
 
-/// Every `CabinetWClass` that is a real File Explorer window — the mod's
-/// `GetTargetWindowType`: frames with a `WorkerW` child are the legacy
-/// Control Panel shell, which has no XAML islands and isn't targeted.
+/// Every `CabinetWClass` that is a real File Explorer window — frames
+/// with a `WorkerW` child are the legacy Control Panel shell, which has
+/// no XAML islands and isn't targeted.
 fn cabinet_windows() -> Vec<crate::bindings::HWND> {
     struct Ctx {
         out: Vec<crate::bindings::HWND>,
@@ -193,52 +188,257 @@ fn cabinet_windows() -> Vec<crate::bindings::HWND> {
     ctx.out
 }
 
-/// `ApplyBackgroundTranslucentEffect` — direct `DwmSetWindowAttribute` on
-/// each cabinet window (`""` restores the stock `DWMSBT_TABBEDWINDOW`
-/// backdrop File Explorer requests for itself, and drops the accent blur
-/// the blur path sets). Runs only when the effect changes or a new
-/// cabinet appears — the ensure tick calls this every 2 s, so painting
-/// everything unconditionally would be a constant repaint storm.
-fn apply_backdrop(effect: &str) {
+/// `#AARRGGBB` (or `#RRGGBB`, alpha `FF` assumed) → `0xAABBGGRR`, the
+/// ABGR layout `ACCENT_POLICY.GradientColor` consumes.
+fn parse_argb(s: &str) -> Option<u32> {
+    let hex = s.strip_prefix('#').unwrap_or(s);
+    let v = match hex.len() {
+        8 => u32::from_str_radix(hex, 16).ok()?,
+        6 => u32::from_str_radix(hex, 16).ok()? | 0xFF00_0000,
+        _ => return None,
+    };
+    let (a, r, g, b) = (v >> 24, (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF);
+    Some(a << 24 | b << 16 | g << 8 | r)
+}
+
+/// `HKCU\...\Personalize\AppsUseLightTheme` — `false` means the system
+/// runs dark mode and the `[dark]` RGBA applies (EBM's adaptive rule).
+fn apps_use_light_theme() -> bool {
+    const HKCU: isize = 0x8000_0001;
+    const KEY_READ: u32 = 0x0002_0019;
+    const REG_DWORD: u32 = 4;
+    let subkey = widestr("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+    let name = widestr("AppsUseLightTheme");
+    unsafe {
+        let mut key = 0isize;
+        if RegOpenKeyExW(HKCU, PCWSTR(subkey.as_ptr()), 0, KEY_READ, &mut key) != 0 {
+            return false; // assume dark — the Explorer glass default
+        }
+        let mut val = 0u32;
+        let mut ty = 0u32;
+        let mut cb = core::mem::size_of::<u32>() as u32;
+        let _ = RegQueryValueExW(
+            key,
+            PCWSTR(name.as_ptr()),
+            core::ptr::null(),
+            &mut ty,
+            &mut val as *mut u32 as *mut u8,
+            &mut cb,
+        );
+        let _ = RegCloseKey(key);
+        ty == REG_DWORD && val != 0
+    }
+}
+
+/// EBM `effect=` → `(backdrop, accent_state)`. Accent materials keep
+/// `DWMSBT_AUTO` so no system backdrop fights `WCA_ACCENT_POLICY`;
+/// mica/mica-alt ride the DWMSBT path with the accent off.
+fn desired_material(effect: &str) -> (i32, u32) {
+    match effect {
+        "blur" => (DWMSBT_AUTO, ACCENT_BLURBEHIND),
+        "acrylic" => (DWMSBT_AUTO, ACCENT_ACRYLIC),
+        "mica" => (DWMSBT_MAINWINDOW, ACCENT_DISABLED),
+        "blurclear" => (DWMSBT_AUTO, ACCENT_TRANSPARENTGRADIENT),
+        "micaalt" => (DWMSBT_TABBEDWINDOW, ACCENT_DISABLED),
+        _ => (DWMSBT_TABBEDWINDOW, ACCENT_DISABLED),
+    }
+}
+
+/// Builds the `PECO-FES1` wire from the `clearAddress`/`clearWinUIBg`
+/// flags — `Background=Transparent` on the matching island targets.
+/// Always at least `magic\nE\n` so the resident arms + restores cleanly.
+fn glass_wire(clear_address: bool, clear_winui_bg: bool) -> String {
+    let mut wire = String::with_capacity(1024);
+    wire.push_str("PECO-FES1\n");
+    for target in CLEAR_ADDRESS_RULES
+        .iter()
+        .filter(|_| clear_address)
+        .chain(CLEAR_WINUI_BG_RULES.iter().filter(|_| clear_winui_bg))
+    {
+        wire.push_str("T ");
+        wire.push_str(target);
+        wire.push_str("\nS Background=Transparent\n");
+    }
+    wire.push_str("E\n");
+    wire
+}
+
+fn options_of(cfg: &FeGlassConfig) -> u32 {
+    let mut o = 0u32;
+    if cfg.clear_bar_bg {
+        o |= FEOPT_CLEAR_BAR_BG;
+    }
+    if cfg.show_line {
+        o |= FEOPT_SHOW_LINE;
+    }
+    o
+}
+
+/// The resolved `GradientColor` for `cfg` under the CURRENT system
+/// scheme — light RGBA when `AppsUseLightTheme`, dark otherwise
+/// (EBM's `[light]`/`[dark]` adaptive palettes).
+fn gradient_of(cfg: &FeGlassConfig) -> u32 {
+    let s = if apps_use_light_theme() {
+        cfg.light_rgba
+    } else {
+        cfg.dark_rgba
+    };
+    // EBM defaults: light #A0DCDCDC / dark #78000000.
+    parse_argb(s).unwrap_or(if apps_use_light_theme() {
+        0xA0DCDCDC
+    } else {
+        0x78000000
+    })
+}
+
+/// Applies an EBM `effect` + flags + adaptive RGBA. `effect=""` →
+/// `reset()` (Windows Default). Returns `false` for an unknown effect id
+/// so settings reverts.
+pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
+    if cfg.effect.is_empty() {
+        return reset();
+    }
+    if !matches!(
+        cfg.effect,
+        "blur" | "acrylic" | "mica" | "blurclear" | "micaalt"
+    ) {
+        return false;
+    }
+    let wire = glass_wire(cfg.clear_address, cfg.clear_winui_bg);
+    let mut guard = lock();
+    let fe = guard.get_or_insert_with(|| Fe {
+        effect: String::new(),
+        options: 0,
+        gradient: 0,
+        wire: String::new(),
+        cmd_hwnd: 0,
+        hello_sent: false,
+        applied: (0, 0, 0),
+        seen_hwnds: std::collections::HashSet::new(),
+    });
+    fe.effect = cfg.effect.to_string();
+    fe.options = options_of(cfg);
+    fe.gradient = gradient_of(cfg);
+    fe.wire = wire;
+    ARMED.store(true, Ordering::Release);
+    ensure_transparency_effects();
+    if let Some((hwnd, _)) = crate::tap::ensure_resident()
+        && !deliver(hwnd, fe)
+    {
+        fe.cmd_hwnd = 0; // delivery pending — `ensure` retries next tick
+    }
+    drop(guard);
+    apply_glass();
+    true
+}
+
+/// `Windows Default` — restore originals, return cabinet windows to the
+/// stock backdrop, stop keeping the DLL alive on our account.
+pub fn reset() -> bool {
+    let mut guard = lock();
+    if let Some(hwnd) = crate::tap::resident_window() {
+        let _ = crate::tap::send_copydata(hwnd, CDS_FE_RESET, &[]);
+    }
+    if let Some(fe) = guard.as_mut() {
+        fe.effect.clear();
+        fe.wire.clear();
+    }
+    ARMED.store(false, Ordering::Release);
+    drop(guard);
+    restore_glass();
+    true
+}
+
+/// Periodic liveness driven by the app's anchor tick: re-injects and
+/// re-delivers the wire when explorer restarted under an armed effect,
+/// and re-asserts the DWM material on cabinet windows.
+pub fn ensure() {
+    if !is_armed() {
+        return;
+    }
+    let Some((hwnd, _)) = crate::tap::ensure_resident() else {
+        return;
+    };
+    let mut guard = lock();
+    let Some(fe) = guard.as_mut() else {
+        return;
+    };
+    if fe.cmd_hwnd != hwnd.0 as usize {
+        let _ = deliver(hwnd, fe);
+    }
+    drop(guard);
+    apply_glass();
+}
+
+/// App shutdown — restore stock styling; `tap::shutdown` unloads the
+/// resident itself.
+pub fn shutdown() {
+    let _ = reset();
+}
+
+/// Sends the stored wire to the resident DLL — FEHI hello, then the FEBD
+/// material payload (the detours need the desired values BEFORE the
+/// theme wire arms them), then the FEST controlStyles wire.
+fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
+    if fe.cmd_hwnd != hwnd.0 as usize {
+        fe.hello_sent = false;
+    }
+    if !fe.hello_sent {
+        let pid = std::process::id();
+        if crate::tap::send_copydata(hwnd, CDS_FE_HELLO, &pid.to_ne_bytes()) {
+            fe.hello_sent = true;
+        }
+    }
+    let (bd, st) = desired_material(&fe.effect);
+    let mut payload = [0u8; 20];
+    payload[0..4].copy_from_slice(&bd.to_le_bytes());
+    payload[4..8].copy_from_slice(&st.to_le_bytes());
+    payload[8..12].copy_from_slice(&0u32.to_le_bytes()); // accent_flags
+    payload[12..16].copy_from_slice(&fe.gradient.to_le_bytes());
+    payload[16..20].copy_from_slice(&fe.options.to_le_bytes());
+    let _ = crate::tap::send_copydata(hwnd, CDS_FE_BACKDROP, &payload);
+    fe.cmd_hwnd = if crate::tap::send_copydata(hwnd, CDS_FE_THEME, fe.wire.as_bytes()) {
+        hwnd.0 as usize
+    } else {
+        0
+    };
+    fe.cmd_hwnd != 0
+}
+
+/// Pushes the DWM material onto every `CabinetWClass` — direct
+/// `DwmSetWindowAttribute`/`SetWindowCompositionAttribute` calls for the
+/// cross-process half (the resident's in-process copy does the same via
+/// its own `apply_glass_to`; the belt-and-suspenders pair keeps windows
+/// styled even before injection lands). Only touches windows when the
+/// material changed or a new cabinet appears.
+fn apply_glass() {
     let hwnds = cabinet_windows();
-    let (changed, mut seen) = {
+    let (material, options, gradient, mut seen) = {
         let mut guard = lock();
         let Some(fe) = guard.as_mut() else {
             return;
         };
-        let changed = fe.applied_effect != effect || fe.applied_tint != fe.tint;
+        let (bd, st) = desired_material(&fe.effect);
+        let changed = fe.applied != (bd, st, fe.options | fe.gradient);
         if changed {
-            fe.applied_effect = effect.to_string();
-            fe.applied_tint = fe.tint.clone();
+            fe.applied = (bd, st, fe.options | fe.gradient);
             fe.seen_hwnds.clear();
         }
-        (changed, std::mem::take(&mut fe.seen_hwnds))
+        (
+            (bd, st),
+            fe.options,
+            fe.gradient,
+            std::mem::take(&mut fe.seen_hwnds),
+        )
     };
-    let (backdrop, accent_state, accent_flags, gradient) = if is_armed() {
-        let tint = {
-            let guard = lock();
-            guard.as_ref().map(|fe| fe.tint.clone()).unwrap_or_default()
-        };
-        desired_glass(effect, &tint)
-    } else {
-        // Disarmed — hand the stock tabbed backdrop explorer asks for
-        // itself back; everything else below restores too.
-        (DWMSBT_TABBEDWINDOW, ACCENT_DISABLED, 0, 0)
-    };
-    // Glass is active for any armed state — a named effect or a
-    // tint-only overlay (the tint rides the XAML ruleset on top of the
-    // same TRANSIENTWINDOW acrylic; the swatch never re-selects the DWM
-    // path).
+    let (backdrop, accent_state) = material;
+    let _ = options; // resident-side bits — not needed cross-process
     let glass = is_armed();
-    if glass && changed {
-        ensure_transparency_effects();
-    }
     for hwnd in &hwnds {
-        if !changed && seen.contains(&(hwnd.0 as usize as isize)) {
+        if seen.contains(&(hwnd.0 as usize as isize)) {
             continue;
         }
         unsafe {
-            // Immersive dark caption while a glass theme is armed.
             let dark: i32 = glass as i32;
             let _ = DwmSetWindowAttribute(
                 *hwnd,
@@ -259,11 +459,10 @@ fn apply_backdrop(effect: &str) {
         // EBM/TW `EnableBlurBehind` — the accent path blurs the whole
         // client region; the SYSTEMBACKDROP path disables blur-behind
         // (mutually exclusive pairings render black).
-        blur_behind(*hwnd, glass && accent_state == ACCENT_ACRYLIC);
-        set_accent_policy(*hwnd, accent_state, accent_flags, gradient);
-        // Kill the unfocused `#585858` fallback: the system backdrop only
-        // blurs while DWM treats the window as active — force that
-        // appearance, then lie about activation so DWM re-evaluates now.
+        blur_behind(*hwnd, glass && accent_state != ACCENT_DISABLED);
+        set_accent_policy(*hwnd, accent_state, 0, gradient);
+        // The system backdrop only blurs while DWM treats the window as
+        // active — force that appearance + fake an activation.
         set_force_active(*hwnd, glass);
         if glass {
             unsafe {
@@ -275,9 +474,36 @@ fn apply_backdrop(effect: &str) {
     }
     let mut guard = lock();
     if let Some(fe) = guard.as_mut() {
-        // Keep only live cabinets — dead hwnds can be reused by the OS.
         seen.retain(|h| hwnds.iter().any(|w| w.0 as usize as isize == *h));
         fe.seen_hwnds = seen;
+    }
+}
+
+/// Restores every cabinet to stock — the disarm counterpart of
+/// `apply_glass`.
+fn restore_glass() {
+    for hwnd in cabinet_windows() {
+        extend_frame(hwnd, false);
+        let stock: i32 = DWMSBT_TABBEDWINDOW;
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_SYSTEMBACKDROP_TYPE,
+                &stock as *const i32 as *const core::ffi::c_void,
+                core::mem::size_of::<i32>() as u32,
+            );
+            let dark: i32 = 0;
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                20,
+                &dark as *const i32 as *const core::ffi::c_void,
+                core::mem::size_of::<i32>() as u32,
+            );
+        }
+        blur_behind(hwnd, false);
+        set_accent_policy(hwnd, ACCENT_DISABLED, 0, 0);
+        set_force_active(hwnd, false);
+        trigger_composition_update(hwnd);
     }
 }
 
@@ -315,11 +541,10 @@ fn blur_behind(hwnd: crate::bindings::HWND, on: bool) {
     }
 }
 
-/// `DwmExtendFrameIntoClientArea` — the prompt's mandatory Step 3 call:
-/// `{ -1, -1, -1, -1 }` pulls the glass frame over the whole client area
-/// so a `Transparent` XAML/Win32 background actually shows the backdrop;
-/// `{0,0,0,0}` restores. The resident detour keeps explorer from
-/// resetting it while a theme is armed.
+/// `DwmExtendFrameIntoClientArea` — `{ -1, -1, -1, -1 }` pulls the glass
+/// frame over the whole client area so a `Transparent` XAML/Win32
+/// background actually shows the material; `{0,0,0,0}` restores. The
+/// resident detour keeps explorer from resetting it while armed.
 fn extend_frame(hwnd: crate::bindings::HWND, on: bool) {
     #[repr(C)]
     struct Margins {
@@ -364,9 +589,9 @@ fn extend_frame(hwnd: crate::bindings::HWND, on: bool) {
 }
 
 /// `HKCU\...\Themes\Personalize\EnableTransparency`: DWM silently renders
-/// every system backdrop opaque while this is 0. Arming glass needs it —
-/// set it once and broadcast `WM_SETTINGCHANGE` (`ImmersiveColorSet`) so
-/// DWM re-reads it without a sign-out.
+/// every backdrop opaque while this is 0. Arming glass needs it — set it
+/// once and broadcast `WM_SETTINGCHANGE` (`ImmersiveColorSet`) so DWM
+/// re-reads it without a sign-out.
 fn ensure_transparency_effects() {
     const HKCU: isize = 0x8000_0001;
     const KEY_READ: u32 = 0x0002_0019;
@@ -433,9 +658,9 @@ struct WindowCompositionAttribData {
 }
 
 const WCA_ACCENT_POLICY: u32 = 19;
-/// Keeps DWM evaluating the system backdrop as if `CabinetWClass` is
-/// always the active window — without it `DWMSBT_TRANSIENTWINDOW` drops
-/// to a flat `#585858` sheet the moment focus moves elsewhere.
+/// Keeps DWM evaluating the backdrop as if `CabinetWClass` is always the
+/// active window — without it the material drops to a flat `#585858`
+/// sheet the moment focus moves elsewhere.
 const WCA_FORCE_ACTIVEWINDOW_APPEARANCE: u32 = 15;
 
 fn composition_attr(hwnd: crate::bindings::HWND, data: &WindowCompositionAttribData) {
@@ -475,8 +700,8 @@ fn set_force_active(hwnd: crate::bindings::HWND, on: bool) {
     );
 }
 
-/// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY`. The system
-/// backdrop path keeps this strictly `ACCENT_DISABLED` (mutual exclusion
+/// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY`. The `mica`/
+/// `micaalt` paths keep it strictly `ACCENT_DISABLED` (mutual exclusion
 /// with `DWMWA_SYSTEMBACKDROP_TYPE`); it is still written on every apply
 /// so a previously-armed accent can't linger.
 fn set_accent_policy(hwnd: crate::bindings::HWND, state: u32, flags: u32, gradient: u32) {
@@ -503,12 +728,9 @@ fn set_accent_policy(hwnd: crate::bindings::HWND, state: u32, flags: u32, gradie
     );
 }
 
-/// `TriggerWindowCompositionUpdate` — the mod sends `WM_WINDOWPOSCHANGED`
-/// in-process; cross-process that message's `WINDOWPOS*` is not marshalled,
-/// so the target would dereference our stack. `SetWindowPos` with
-/// `SWP_FRAMECHANGED` is the equivalent that generates a real
-/// `WM_WINDOWPOSCHANGED`/`WM_NCCALCSIZE` inside explorer — same nudge the
-/// mod is after, no pointer hand-off.
+/// `TriggerWindowCompositionUpdate` — `SetWindowPos` with
+/// `SWP_FRAMECHANGED` generates a real `WM_WINDOWPOSCHANGED`/
+/// `WM_NCCALCSIZE` inside explorer — the nudge EBM does in-process.
 fn trigger_composition_update(hwnd: crate::bindings::HWND) {
     unsafe {
         let _ = crate::bindings::SetWindowPos(
@@ -529,139 +751,51 @@ fn trigger_composition_update(hwnd: crate::bindings::HWND) {
     }
 }
 
-/// Sends the stored wire to the resident DLL — same hello/wire pattern as
-/// the taskbar styler so the death watch re-arms per injection.
-fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
-    if fe.cmd_hwnd != hwnd.0 as usize {
-        fe.hello_sent = false;
-    }
-    if !fe.hello_sent {
-        let pid = std::process::id();
-        if crate::tap::send_copydata(hwnd, CDS_FE_HELLO, &pid.to_ne_bytes()) {
-            fe.hello_sent = true;
-        }
-    }
-    // The resident's fe_glass detours need our desired backdrop BEFORE the
-    // theme wire arms them — send FEBD first so `set_armed`'s in-process
-    // apply already pushes the right values.
-    let effect = pecofence_core::file_explorer_themes::backdrop(&fe.style).unwrap_or_default();
-    let (bd, st, fl, gr) = desired_glass(effect, &fe.tint);
-    let mut payload = [0u8; 16];
-    payload[0..4].copy_from_slice(&bd.to_le_bytes());
-    payload[4..8].copy_from_slice(&st.to_le_bytes());
-    payload[8..12].copy_from_slice(&fl.to_le_bytes());
-    payload[12..16].copy_from_slice(&gr.to_le_bytes());
-    let _ = crate::tap::send_copydata(hwnd, CDS_FE_BACKDROP, &payload);
-    if crate::tap::send_copydata(hwnd, CDS_FE_THEME, fe.wire.as_bytes()) {
-        fe.cmd_hwnd = hwnd.0 as usize;
-        true
-    } else {
-        false
-    }
-}
+const RDW_INVALIDATE: u32 = 0x0001;
+const RDW_ERASE: u32 = 0x0004;
+const RDW_FRAME: u32 = 0x0400;
+const RDW_ALLCHILDREN: u32 = 0x0080;
+const SWP_NOMOVE: u32 = 0x0002;
+const SWP_NOSIZE: u32 = 0x0001;
+const SWP_NOZORDER: u32 = 0x0004;
+const SWP_NOACTIVATE: u32 = 0x0010;
+const SWP_FRAMECHANGED: u32 = 0x0020;
 
-/// Applies the selected File Explorer style + color tint. `id` is a
-/// catalog id (`""` = no theme — tint-only when `tint` is set, `Windows
-/// Default` → reset when both are empty). The tint rides the same wire as
-/// appended `controlStyles` rules, so a theme switch or tint clear
-/// restores cleanly through the resident's atomic re-apply path — no
-/// stale layer can stack. Returns `false` only for an unknown id so
-/// settings reverts.
-pub fn apply(id: &str, tint: &str) -> bool {
-    let effect = pecofence_core::file_explorer_themes::backdrop(id)
-        .unwrap_or_default()
-        .to_string();
-    let wire = if id.is_empty() {
-        if tint.is_empty() {
-            return reset();
-        }
-        pecofence_core::color_tint::fe_clear_wire("PECO-FES1")
-    } else {
-        let Some(mut w) = pecofence_core::file_explorer_themes::theme_wire(id) else {
-            return false;
-        };
-        // Accent path (everything but mica): the tint lives in the DWM
-        // acrylic material — XAML stays Transparent so the top bar shows
-        // the SAME tint instead of double-stacking a second veil. The
-        // mica path has no accent material, so its top bar keeps the
-        // smoked/darkened XAML veil.
-        if effect == "mica" {
-            pecofence_core::color_tint::apply_fe_tint(&mut w, tint);
-        } else {
-            pecofence_core::color_tint::apply_fe_clear(&mut w);
-        }
-        w
-    };
-    let mut guard = lock();
-    let fe = guard.get_or_insert_with(|| Fe {
-        style: String::new(),
-        wire: String::new(),
-        cmd_hwnd: 0,
-        hello_sent: false,
-        applied_effect: String::new(),
-        seen_hwnds: std::collections::HashSet::new(),
-        tint: String::new(),
-        applied_tint: String::new(),
-    });
-    fe.style = id.to_string();
-    fe.wire = wire;
-    fe.tint = tint.to_string();
-    ARMED.store(true, Ordering::Release);
-    if let Some((hwnd, _)) = crate::tap::ensure_resident()
-        && !deliver(hwnd, fe)
-    {
-        fe.cmd_hwnd = 0; // delivery pending — `ensure` retries next tick
-    }
-    drop(guard);
-    apply_backdrop(&effect);
-    true
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// `Windows Default` — restore originals, return cabinet windows to the
-/// stock backdrop, stop keeping the DLL alive on our account.
-pub fn reset() -> bool {
-    let mut guard = lock();
-    if let Some(hwnd) = crate::tap::resident_window() {
-        let _ = crate::tap::send_copydata(hwnd, CDS_FE_RESET, &[]);
+    #[test]
+    fn effect_maps_to_material() {
+        assert_eq!(desired_material("acrylic"), (DWMSBT_AUTO, ACCENT_ACRYLIC));
+        assert_eq!(desired_material("blur"), (DWMSBT_AUTO, ACCENT_BLURBEHIND));
+        assert_eq!(
+            desired_material("blurclear"),
+            (DWMSBT_AUTO, ACCENT_TRANSPARENTGRADIENT)
+        );
+        assert_eq!(desired_material("mica"), (DWMSBT_MAINWINDOW, 0));
+        assert_eq!(desired_material("micaalt"), (DWMSBT_TABBEDWINDOW, 0));
     }
-    if let Some(fe) = guard.as_mut() {
-        fe.style.clear();
-        fe.wire.clear();
-    }
-    ARMED.store(false, Ordering::Release);
-    drop(guard);
-    apply_backdrop("");
-    true
-}
 
-/// Periodic liveness driven by the app's anchor tick: re-injects and
-/// re-delivers the wire when explorer restarted under an armed style, and
-/// re-asserts the DWM backdrop (explorer may rewrite its own attribute —
-/// without the mod's `DwmSetWindowAttribute` hook ours is a best-effort
-/// value, so refresh it here). Otherwise sends a `HELLO`.
-pub fn ensure() {
-    if !is_armed() {
-        return;
+    #[test]
+    fn argb_parses_to_abgr() {
+        assert_eq!(parse_argb("#A0DCDCDC"), Some(0xA0DCDCDC));
+        assert_eq!(parse_argb("#78000000"), Some(0x78000000));
+        assert_eq!(parse_argb("78000000"), Some(0x78000000));
+        assert_eq!(parse_argb("#0078D4"), Some(0xFFD47800));
+        assert!(parse_argb("#FFF").is_none());
+        assert!(parse_argb("garbage").is_none());
     }
-    let Some((hwnd, _)) = crate::tap::ensure_resident() else {
-        return;
-    };
-    let mut guard = lock();
-    let Some(fe) = guard.as_mut() else {
-        return;
-    };
-    if fe.cmd_hwnd != hwnd.0 as usize {
-        let _ = deliver(hwnd, fe);
-    }
-    let effect = pecofence_core::file_explorer_themes::backdrop(&fe.style)
-        .unwrap_or_default()
-        .to_string();
-    drop(guard);
-    apply_backdrop(&effect);
-}
 
-/// App shutdown — restore stock styling; `tap::shutdown` unloads the
-/// resident itself.
-pub fn shutdown() {
-    let _ = reset();
+    #[test]
+    fn clear_wire_lists_targets() {
+        let w = glass_wire(true, true);
+        assert!(w.starts_with("PECO-FES1\n"));
+        assert!(w.ends_with("E\n"));
+        assert!(w.contains("T Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid\n"));
+        assert_eq!(w.matches("S Background=Transparent").count(), 16);
+
+        let none = glass_wire(false, false);
+        assert_eq!(none, "PECO-FES1\nE\n");
+    }
 }

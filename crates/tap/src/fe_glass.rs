@@ -322,7 +322,9 @@ pub fn is_armed() -> bool {
 
 /// The platform's desired backdrop/accent state — `FEBD` payload:
 /// `[backdrop:i32, accent_state:u32, accent_flags:u32, gradient:u32]`
-/// little-endian. Re-applies to every live cabinet while armed.
+/// little-endian, plus an optional `options:u32` slot at `[16..20]`
+/// carrying the EBM flag bits (`FEOPT_*`). Re-applies to every live
+/// cabinet while armed.
 pub fn set_backdrop_params(bytes: &[u8]) {
     if bytes.len() < 16 {
         return;
@@ -333,10 +335,23 @@ pub fn set_backdrop_params(bytes: &[u8]) {
     ACCENT_STATE.store(u32le(4), Ordering::Release);
     ACCENT_FLAGS.store(u32le(8), Ordering::Release);
     ACCENT_GRADIENT.store(u32le(12), Ordering::Release);
+    FE_OPTIONS.store(
+        if bytes.len() >= 20 { u32le(16) } else { 0 },
+        Ordering::Release,
+    );
     if is_armed() {
         apply_to_cabinets();
         refresh_cabinets();
     }
+}
+
+/// `FE_OPTIONS` bits — EBM behaviors that live on the Win32 side and
+/// can't ride the XAML wire (`file_explorer_styler::FEOPT_*`).
+const FEOPT_CLEAR_BAR_BG: u32 = 1 << 0;
+const FEOPT_SHOW_LINE: u32 = 1 << 1;
+static FE_OPTIONS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+fn fe_option(bit: u32) -> bool {
+    FE_OPTIONS.load(Ordering::Acquire) & bit != 0
 }
 
 fn tramp<F>(name: &'static str) -> Option<F> {
@@ -1125,7 +1140,61 @@ fn should_punch_part(htheme: HTheme, part: i32, state: i32) -> bool {
     if class_in(htheme, &["ItemsView", "ListView"]) {
         return part == 0;
     }
+    // EBM `clearBarBg` — scrollbar TRACK parts (SBP_LOWER/UPPERTRACK*)
+    // go transparent; thumb/grip keep their stock fill so the control
+    // stays usable.
+    if fe_option(FEOPT_CLEAR_BAR_BG) && class_in(htheme, &["ScrollBar"]) {
+        return (4..=7).contains(&part);
+    }
     bg_class(htheme) && is_bg_part(part, state)
+}
+
+/// EBM `showLine` — the 1px split between the TreeView pane and the file
+/// view, painted as a premultiplied translucent-white column on the
+/// tree's right edge after its background is punched.
+fn draw_split_line(hdc: Hdc, rect: *const Rect) {
+    let (right, top, bottom) = unsafe { ((*rect).right, (*rect).top, (*rect).bottom) };
+    if bottom - top <= 0 {
+        return;
+    }
+    let pixel: u32 = 0x403E3E3E; // premultiplied ~25% white
+    let bmi = BitmapInfo {
+        size: 40,
+        width: 1,
+        height: -1,
+        planes: 1,
+        bpp: 32,
+        compression: 0,
+        image_size: 0,
+        xppm: 0,
+        yppm: 0,
+        used: 0,
+        important: 0,
+        colors: [0],
+    };
+    let line = Rect {
+        left: right - 1,
+        top,
+        right,
+        bottom,
+    };
+    unsafe {
+        let _ = StretchDIBits(
+            hdc,
+            line.left,
+            line.top,
+            1,
+            bottom - top,
+            0,
+            0,
+            1,
+            1,
+            &pixel as *const u32 as *const core::ffi::c_void,
+            &bmi as *const BitmapInfo as *const core::ffi::c_void,
+            0,
+            SRCCOPY,
+        );
+    }
 }
 
 type DrawThemeBgFn =
@@ -1140,6 +1209,9 @@ unsafe extern "system" fn draw_theme_bg_hook(
 ) -> HResult {
     if is_armed() && !rect.is_null() && cabinet_dc(hdc) && should_punch_part(htheme, part, state) {
         if punch_black(hdc, rect) {
+            if fe_option(FEOPT_SHOW_LINE) && class_in(htheme, &["TreeView"]) && part == 0 {
+                draw_split_line(hdc, rect);
+            }
             return 0;
         }
     }
@@ -1162,6 +1234,9 @@ unsafe extern "system" fn draw_theme_bg_ex_hook(
 ) -> HResult {
     if is_armed() && !rect.is_null() && cabinet_dc(hdc) && should_punch_part(htheme, part, state) {
         if punch_black(hdc, rect) {
+            if fe_option(FEOPT_SHOW_LINE) && class_in(htheme, &["TreeView"]) && part == 0 {
+                draw_split_line(hdc, rect);
+            }
             return 0;
         }
     }

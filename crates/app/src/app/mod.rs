@@ -1416,46 +1416,60 @@ impl App {
         if let Some(a) = app.anchor.borrow_mut().as_mut() {
             a.reanchor("startup");
         }
-        // Saved surface styles + color tint — each apply() stores the
-        // selection either way, and the periodic ensure() delivers it when
-        // the hosts (re)launch. A tint alone still arms the wire.
+        // Saved surface styles — each apply() stores the selection either
+        // way, and the periodic ensure() delivers it when the hosts
+        // (re)launch.
         let saved_style = app.state.config.settings.start_menu_style.clone();
-        let saved_tint = app.state.config.settings.color_tint.clone();
-        if !saved_style.is_empty() || !saved_tint.is_empty() {
-            let tint = saved_tint.clone();
+        if !saved_style.is_empty() {
             std::thread::spawn(move || {
-                let _ = pecofence_platform::start_menu::apply_start_menu_theme(&saved_style, &tint);
+                let _ = pecofence_platform::start_menu::apply_start_menu_theme(&saved_style);
             });
         }
         // A saved Taskbar style rides the same resident — apply() injects
         // the DLL when explorer is up and the tick's ensure() re-delivers
         // it after restarts.
         let saved_tb_style = app.state.config.settings.taskbar_style.clone();
-        if !saved_tb_style.is_empty() || !saved_tint.is_empty() {
-            let tint = saved_tint.clone();
+        if !saved_tb_style.is_empty() {
             std::thread::spawn(move || {
-                let _ = pecofence_platform::taskbar_styler::apply(&saved_tb_style, &tint);
+                let _ = pecofence_platform::taskbar_styler::apply(&saved_tb_style);
             });
         }
         // A saved Notification Center style injects into the Shell hosts —
         // apply() stores it either way, and the tick's ensure() delivers it
         // to hosts that launch later.
-        // The color tint does NOT reach the Notification Center — boot
-        // reapply carries the style alone.
         let saved_nc_style = app.state.config.settings.notification_center_style.clone();
         if !saved_nc_style.is_empty() {
             std::thread::spawn(move || {
                 let _ = pecofence_platform::notification_center::apply(&saved_nc_style);
             });
         }
-        // A saved File Explorer style rides the same explorer resident —
-        // apply() arms + delivers it (with the tint overlay baked in), and
-        // the ensure tick re-asserts the backdrop on cabinet windows.
-        let saved_fe_style = app.state.config.settings.file_explorer_style.clone();
-        if !saved_fe_style.is_empty() || !saved_tint.is_empty() {
-            let tint = saved_tint.clone();
+        // The saved ExplorerBlurMica glass effect rides the same explorer
+        // resident — apply_effect() arms + delivers it, and the ensure
+        // tick re-asserts the accent on cabinet windows.
+        let fe = &app.state.config.settings;
+        if !fe.fe_effect.is_empty() {
+            let (effect, l, d) = (
+                fe.fe_effect.clone(),
+                fe.fe_light_rgba.clone(),
+                fe.fe_dark_rgba.clone(),
+            );
+            let flags = (
+                fe.fe_clear_address,
+                fe.fe_clear_bar_bg,
+                fe.fe_clear_winui_bg,
+                fe.fe_show_line,
+            );
             std::thread::spawn(move || {
-                let _ = pecofence_platform::file_explorer_styler::apply(&saved_fe_style, &tint);
+                let cfg = pecofence_platform::file_explorer_styler::FeGlassConfig {
+                    effect: &effect,
+                    clear_address: flags.0,
+                    clear_bar_bg: flags.1,
+                    clear_winui_bg: flags.2,
+                    show_line: flags.3,
+                    light_rgba: &l,
+                    dark_rgba: &d,
+                };
+                let _ = pecofence_platform::file_explorer_styler::apply_effect(&cfg);
             });
         }
         for f in app.fences.values().chain(app.desktop_windows.values()) {

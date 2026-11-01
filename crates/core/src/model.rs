@@ -180,17 +180,33 @@ pub struct Settings {
     /// Local device preference — themes never carry it.
     #[serde(default)]
     pub notification_center_style: String,
-    /// Accent color tint overlaid on the styled shell surfaces —
-    /// `#RRGGBB`, `""` = no tint. Layers over the taskbar/Start Menu/
-    /// Notification Center styles; local device preference.
-    #[serde(default)]
-    pub color_tint: String,
-    /// The File Explorer style applied through the native WinUI3 XAML
-    /// styler — a [`crate::file_explorer_themes`] catalog id, `""` =
-    /// Windows Default (stock Explorer chrome + backdrop restored).
+    /// File Explorer window glass — the ExplorerBlurMica recipe applied
+    /// natively: `""` = Windows Default (stock chrome + backdrop);
+    /// `"blur"`/`"acrylic"`/`"mica"`/`"blurclear"`/`"micaalt"` map to
+    /// EBM's `effect=` (Blur/Acrylic/Mica/Blur (Clear)/Mica Alt).
     /// Local device preference — themes never carry it.
     #[serde(default)]
-    pub file_explorer_style: String,
+    pub fe_effect: String,
+    /// EBM `clearAddress` — clear the address bar background.
+    #[serde(default)]
+    pub fe_clear_address: bool,
+    /// EBM `clearBarBg` — clear the scrollbar background.
+    #[serde(default)]
+    pub fe_clear_bar_bg: bool,
+    /// EBM `clearWinUIBg` — clear the WinUI 3 top-bar island background.
+    #[serde(default)]
+    pub fe_clear_winui_bg: bool,
+    /// EBM `showLine` — the split line between the tree pane and the
+    /// file view.
+    #[serde(default)]
+    pub fe_show_line: bool,
+    /// EBM `[light]` RGBA blend color (`#AARRGGBB`) used while the system
+    /// runs light mode.
+    #[serde(default)]
+    pub fe_light_rgba: String,
+    /// EBM `[dark]` RGBA blend color (`#AARRGGBB`) used in dark mode.
+    #[serde(default)]
+    pub fe_dark_rgba: String,
     /// Background fit mode for bundled theme assets: `false` = strict Cover (a
     /// uniform scale fills the screen, the overflowing axis crops); `true` =
     /// strict Contain (the whole frame centered and uncropped, the leftover
@@ -317,8 +333,13 @@ impl Default for Settings {
             start_menu_style: String::new(),
             taskbar_style: String::new(),
             notification_center_style: String::new(),
-            color_tint: String::new(),
-            file_explorer_style: String::new(),
+            fe_effect: String::new(),
+            fe_clear_address: true,
+            fe_clear_bar_bg: true,
+            fe_clear_winui_bg: true,
+            fe_show_line: false,
+            fe_light_rgba: "#A0DCDCDC".to_string(),
+            fe_dark_rgba: "#78000000".to_string(),
             contain_background: false,
             stretch_tolerance_pct: 0,
             active_theme_path: None,
