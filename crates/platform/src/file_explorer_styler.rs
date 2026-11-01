@@ -47,6 +47,40 @@ const CDS_FE_RESET: usize = u32::from_be_bytes(*b"FESR") as usize;
 const CDS_FE_LAYOUT: usize = u32::from_be_bytes(*b"FELT") as usize;
 const CDS_FE_LAYOUT_RESET: usize = u32::from_be_bytes(*b"FELR") as usize;
 
+/// The `clearWinUIBg` XAML rule set — `S Background=Transparent` on the
+/// WinUI 3 island's own containers (tab strip, command bar, gallery,
+/// details grid, breadcrumb bar, overflow presenter, flyouts). EBM can
+/// only place material *behind* the islands; these nested XAML elements
+/// still paint their own opaque `Background` brush on top, which DWM
+/// cannot reach — only the mux styler can clear it. Only emitted while an
+/// EBM effect is armed: without material behind them a transparent
+/// background would read as a hole instead of glass.
+const CLEAR_WINUI_BG_RULES: &[&str] = &[
+    "FileExplorerExtensions.FileExplorerTabControl",
+    "FileExplorerExtensions.FileExplorerTabControl > Grid",
+    "Microsoft.UI.Xaml.Controls.TabView",
+    "Microsoft.UI.Xaml.Controls.Grid#TabContainerGrid",
+    "FileExplorerExtensions.CommandBarControl_Wave1",
+    "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+    "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
+    "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot",
+    "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
+    "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+    "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+    "Microsoft.UI.Xaml.Controls.Grid#DetailsViewControlRootGrid",
+    "Microsoft.UI.Xaml.Controls.Grid#HomeViewRootGrid",
+    "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
+    "Microsoft.UI.Xaml.Controls.Grid#GalleryRootGrid",
+    "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail",
+    "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail > Microsoft.UI.Xaml.Controls.Grid",
+    "Microsoft.UI.Xaml.Controls.TabViewItem > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.Grid#TabContainer",
+    "Microsoft.UI.Xaml.Controls.CommandBarOverflowPresenter#SecondaryItemsControl > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot",
+    "Microsoft.UI.Xaml.Controls.Grid#OuterOverflowContentRootV2",
+    "Microsoft.UI.Xaml.Controls.MenuFlyoutPresenter > Microsoft.UI.Xaml.Controls.Border",
+    "Microsoft.UI.Xaml.Controls.Primitives.NavigationViewItemPresenter#NavigationViewItemPresenter > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot",
+    "FileExplorerExtensions.FirstCrumbStackPanelControl#FirstCrumbStackPanel",
+];
+
 /// UI-facing EBM configuration — mirrors `config.ini`'s `[config]` flags
 /// plus the `[light]`/`[dark]` RGBA strings (`#AARRGGBB`).
 pub struct FeGlassConfig<'a> {
@@ -85,22 +119,22 @@ struct Fe {
     delivered: std::collections::HashMap<u32, (usize, u64)>,
     /// Selected layout preset id (`""` = none armed).
     layout: String,
-    /// Bumped every apply — layout re-wires only when this trails.
-    layout_epoch: u64,
-    /// pid → (cmd window, layout epoch delivered).
-    layout_delivered: std::collections::HashMap<u32, (usize, u64)>,
+    /// Bumped every apply — the XAML wire re-sends only when this trails.
+    xaml_epoch: u64,
+    /// pid → (cmd window, XAML epoch delivered).
+    xaml_delivered: std::collections::HashMap<u32, (usize, u64)>,
 }
 
 static FE: Mutex<Option<Fe>> = Mutex::new(None);
 /// Whether a File Explorer effect is armed — read lock-free.
 static ARMED: AtomicBool = AtomicBool::new(false);
-/// Whether a layout preset is armed — drives `ensure()` even when the
-/// material is stock (`effect=""`).
-static LAYOUT_ARMED: AtomicBool = AtomicBool::new(false);
+/// Whether the XAML leg (layout preset and/or `clearWinUIBg` clears) is
+/// armed — drives `ensure()` even when the material is stock (`effect=""`).
+static XAML_ARMED: AtomicBool = AtomicBool::new(false);
 
-/// `true` while a File Explorer effect or layout is armed.
+/// `true` while a File Explorer effect or the XAML leg is armed.
 pub fn is_armed() -> bool {
-    ARMED.load(Ordering::Acquire) || LAYOUT_ARMED.load(Ordering::Acquire)
+    ARMED.load(Ordering::Acquire) || XAML_ARMED.load(Ordering::Acquire)
 }
 
 fn lock() -> std::sync::MutexGuard<'static, Option<Fe>> {
@@ -273,12 +307,41 @@ fn deliver_ebm(cmd: crate::bindings::HWND, dll_path_utf16: &[u8]) {
     let _ = crate::tap::send_copydata(cmd, CDS_EBM_LOAD, dll_path_utf16);
 }
 
-/// Fans `EBML` and the `PECO-FES1` layout wire out to every
+/// The `PECO-FES1` XAML wire: the layout preset's pure positioning rules,
+/// then — when `clearWinUIBg` is on AND an EBM effect is armed —
+/// `S Background=Transparent` clears for the nested WinUI containers the
+/// layouts expose (`CLEAR_WINUI_BG_RULES`). `None` when neither wants a
+/// wire. Clear rules are appended before the wire's terminal `E` marker —
+/// the resident parser stops reading there.
+fn build_xaml_wire(fe: &Fe) -> Option<String> {
+    let mut out = if fe.layout.is_empty() {
+        String::new()
+    } else {
+        pecofence_core::fe_layouts::layout_wire(&fe.layout)?
+    };
+    if !fe.clear_winui_bg || fe.effect.is_empty() {
+        return (!out.is_empty()).then_some(out);
+    }
+    if out.is_empty() {
+        out.push_str("PECO-FES1\n");
+    } else if let Some(pos) = out.rfind("\nE\n") {
+        out.truncate(pos + 1);
+    }
+    for target in CLEAR_WINUI_BG_RULES {
+        out.push_str("T ");
+        out.push_str(target);
+        out.push_str("\nS Background=Transparent\n");
+    }
+    out.push_str("E\n");
+    Some(out)
+}
+
+/// Fans `EBML` and the `PECO-FES1` XAML wire out to every
 /// cabinet-owning explorer pid — **only** to pids that are new, whose
 /// resident restarted (cmd hwnd changed), or whose epoch trails the
 /// current config. This is the anti-storm rule: `ensure()` calls us
 /// every anchor tick but wires only fire on change. The two legs are
-/// independent: layout delivery never touches the EBM pipeline and runs
+/// independent: XAML delivery never touches the EBM pipeline and runs
 /// even when `effect=""`.
 fn deliver_all() {
     let wide: Vec<u8> = residents_dir()
@@ -312,49 +375,53 @@ fn deliver_all() {
                 fe.delivered.insert(pid, current);
             }
         }
-        // Layout leg — a `PECO-FES1` wire through the same resident; the
+        // XAML leg — a `PECO-FES1` wire through the same resident; the
         // mux engine applies it to the WinUI3 islands.
-        if !fe.layout.is_empty()
-            && let Some(wire) = pecofence_core::fe_layouts::layout_wire(&fe.layout)
-        {
-            let current = (cmd.0 as usize, fe.layout_epoch);
-            if fe.layout_delivered.get(&pid) != Some(&current) {
+        if let Some(wire) = build_xaml_wire(fe) {
+            let current = (cmd.0 as usize, fe.xaml_epoch);
+            if fe.xaml_delivered.get(&pid) != Some(&current) {
                 let _ = crate::tap::send_copydata(cmd, CDS_FE_LAYOUT, wire.as_bytes());
-                fe.layout_delivered.insert(pid, current);
+                fe.xaml_delivered.insert(pid, current);
             }
         }
     }
     crate::tap::prune_extra_residents(&live_pids);
 }
 
-/// Applies just the layout leg — no-op when the id is unchanged AND
-/// already delivered (the epoch bump in `apply_effect` forces a re-wire
-/// on preset switches). `""` broadcasts `FELR` once like `disarm_legacy`.
+/// Stores the layout preset id — validation only. Arming/delivery runs in
+/// `sync_xaml_leg` + `deliver_all`, which the caller runs once every field
+/// the wire depends on (`layout`, `effect`, `clear_winui_bg`) is settled;
+/// wiring mid-apply would send a stale `clearWinUIBg` gate.
 fn apply_layout(layout: &str) {
     let valid = layout.is_empty() || pecofence_core::fe_layouts::layout_wire(layout).is_some();
     if !valid {
         tracing::warn!(layout, "unknown feLayout preset — keeping stock");
     }
     let layout = if valid { layout } else { "" };
-    {
-        let mut guard = lock();
-        let fe = guard.get_or_insert_with(Fe::default);
-        fe.layout = layout.to_string();
-        fe.layout_epoch += 1;
-    }
-    LAYOUT_ARMED.store(!layout.is_empty(), Ordering::Release);
-    if layout.is_empty() {
-        // Stock layout — one reset broadcast restores originals in every
-        // resident that ever applied a preset.
+    let mut guard = lock();
+    let fe = guard.get_or_insert_with(Fe::default);
+    fe.layout = layout.to_string();
+    fe.xaml_epoch += 1;
+}
+
+/// Recomputes the XAML leg after `layout`/`effect`/`clear_winui_bg`
+/// change. Armed = a layout preset is selected, or `clearWinUIBg` is on
+/// while an effect is armed. Disarmed fires one `FELR` broadcast so every
+/// resident restores the elements it touched, and clears delivery
+/// bookkeeping so a later re-arm re-wires.
+fn sync_xaml_leg() {
+    let armed = lock()
+        .as_ref()
+        .is_some_and(|fe| !fe.layout.is_empty() || (fe.clear_winui_bg && !fe.effect.is_empty()));
+    XAML_ARMED.store(armed, Ordering::Release);
+    if !armed {
         for hwnd in crate::tap::resident_windows_all() {
             let _ = crate::tap::send_copydata(hwnd, CDS_FE_LAYOUT_RESET, &[]);
         }
         if let Some(fe) = lock().as_mut() {
-            fe.layout_delivered.clear();
+            fe.xaml_delivered.clear();
         }
-        return;
     }
-    deliver_all();
 }
 
 /// One-shot disarm for legacy residents: an older app build may have
@@ -370,8 +437,9 @@ fn disarm_legacy() {
 // ------------------------------------------------------------- public ----
 
 /// Applies an EBM `effect` + flags + RGBA palettes + the toolbar/icon
-/// `layout`. The layout leg runs unconditionally (`effect=""` still gets
-/// its wire); `effect=""` additionally unloads EBM everywhere.
+/// `layout`. The XAML leg runs unconditionally (`effect=""` still gets the
+/// layout wire — minus the clear rules, which need material behind them);
+/// `effect=""` additionally unloads EBM everywhere.
 /// Returns `false` when the deploy or the `config.ini` write failed so
 /// settings can revert.
 pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
@@ -393,6 +461,7 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
         fe.light_rgba = cfg.light_rgba.to_string();
         fe.dark_rgba = cfg.dark_rgba.to_string();
         fe.epoch += 1; // every live pid reloads EBM under the new config
+        fe.xaml_epoch += 1; // `clearWinUIBg`/`effect` gate the wire contents
         let dir = match residents_dir() {
             Some(d) => d,
             None => return false,
@@ -406,6 +475,7 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
     // Legacy resident disarm BEFORE EBM lands — belt for the upgrade
     // path; harmless when nothing is armed.
     disarm_legacy();
+    sync_xaml_leg();
     deliver_all();
     tracing::info!(
         effect = cfg.effect,
@@ -415,8 +485,9 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
 }
 
 /// EBM leg only — `EBMU` broadcast unloads the material everywhere and
-/// clears its delivery bookkeeping. The layout leg is untouched: callers
-/// route `feLayout` through `apply_layout` separately.
+/// clears its delivery bookkeeping. The XAML leg then re-evaluates: a
+/// still-selected layout re-wires WITHOUT the clear rules (no material
+/// behind them anymore); with no layout it fully disarms via `FELR`.
 fn reset_ebm() -> bool {
     for hwnd in crate::tap::resident_windows_all() {
         let _ = crate::tap::send_copydata(hwnd, CDS_EBM_UNLOAD, &[]);
@@ -425,8 +496,13 @@ fn reset_ebm() -> bool {
     if let Some(fe) = lock().as_mut() {
         fe.effect.clear();
         fe.delivered.clear();
+        fe.xaml_epoch += 1; // clear rules drop out of the wire
     }
     ARMED.store(false, Ordering::Release);
+    sync_xaml_leg();
+    if XAML_ARMED.load(Ordering::Acquire) {
+        deliver_all();
+    }
     true
 }
 
@@ -477,6 +553,63 @@ mod tests {
         assert_eq!(parse_rgba("FF0000"), Some((0xFF, 0, 0, 0xFF)));
         assert_eq!(parse_rgba("#xyz"), None);
         assert_eq!(parse_rgba(""), None);
+    }
+
+    #[test]
+    fn xaml_wire_appends_clear_rules_only_with_effect() {
+        // No layout + no clear → no wire at all.
+        let fe = Fe::default();
+        assert!(build_xaml_wire(&fe).is_none());
+
+        // Clear flag without an armed effect must NOT emit clears — a
+        // transparent container with no material behind it reads as a hole.
+        let fe = Fe {
+            clear_winui_bg: true,
+            ..Default::default()
+        };
+        assert!(build_xaml_wire(&fe).is_none());
+
+        // Effect + clear → every clear target gets `S Background=Transparent`.
+        let fe = Fe {
+            effect: "blur".into(),
+            clear_winui_bg: true,
+            ..Default::default()
+        };
+        let wire = build_xaml_wire(&fe).unwrap();
+        assert!(wire.starts_with("PECO-FES1\n"));
+        assert!(wire.ends_with("E\n"), "terminal marker must stay last");
+        for target in CLEAR_WINUI_BG_RULES {
+            assert!(wire.contains(&format!("T {target}\n")), "missing {target}");
+        }
+        assert_eq!(
+            wire.matches("S Background=Transparent\n").count(),
+            CLEAR_WINUI_BG_RULES.len()
+        );
+
+        // Layout-only wire: preset rules present, zero clear rules.
+        let fe = Fe {
+            layout: "Tabless".into(),
+            ..Default::default()
+        };
+        let wire = build_xaml_wire(&fe).unwrap();
+        assert!(wire.contains("Grid.Row="));
+        assert!(!wire.contains("Background"));
+
+        // Layout + clear + effect → preset rules first, clears appended
+        // before the terminal `E`.
+        let fe = Fe {
+            effect: "acrylic".into(),
+            clear_winui_bg: true,
+            layout: "Tabless".into(),
+            ..Default::default()
+        };
+        let wire = build_xaml_wire(&fe).unwrap();
+        assert!(wire.contains("Grid.Row="));
+        assert!(wire.ends_with("E\n"));
+        assert_eq!(
+            wire.matches("S Background=Transparent\n").count(),
+            CLEAR_WINUI_BG_RULES.len()
+        );
     }
 
     #[test]
