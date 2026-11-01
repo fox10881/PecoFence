@@ -188,13 +188,13 @@ pub struct Settings {
     #[serde(default)]
     pub fe_effect: String,
     /// EBM `clearAddress` — clear the address bar background.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub fe_clear_address: bool,
     /// EBM `clearBarBg` — clear the scrollbar background.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub fe_clear_bar_bg: bool,
     /// EBM `clearWinUIBg` — clear the WinUI 3 top-bar island background.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub fe_clear_winui_bg: bool,
     /// EBM `showLine` — the split line between the tree pane and the
     /// file view.
@@ -202,10 +202,10 @@ pub struct Settings {
     pub fe_show_line: bool,
     /// EBM `[light]` RGBA blend color (`#AARRGGBB`) used while the system
     /// runs light mode.
-    #[serde(default)]
+    #[serde(default = "fe_light_rgba_default")]
     pub fe_light_rgba: String,
     /// EBM `[dark]` RGBA blend color (`#AARRGGBB`) used in dark mode.
-    #[serde(default)]
+    #[serde(default = "fe_dark_rgba_default")]
     pub fe_dark_rgba: String,
     /// Background fit mode for bundled theme assets: `false` = strict Cover (a
     /// uniform scale fills the screen, the overflowing axis crops); `true` =
@@ -1991,6 +1991,14 @@ impl Config {
 
 fn default_chameleon_intensity() -> u8 {
     55
+}
+
+fn fe_light_rgba_default() -> String {
+    "#A0DCDCDC".to_string()
+}
+
+fn fe_dark_rgba_default() -> String {
+    "#78000000".to_string()
 }
 
 fn default_true() -> bool {
