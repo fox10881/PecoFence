@@ -401,16 +401,21 @@ impl App {
     fn apply_fe_glass(&mut self, v: &serde_json::Value) {
         let old = self.state.config.settings.clone();
         let mut new = old.clone();
-        let str_of = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("");
+        // Missing keys keep the old value — a partial/malformed payload
+        // must not wipe fields (an absent `layout` would persist "" and the
+        // next feState push would snap the dropdown back to Windows Default).
+        let str_of = |k: &str, d: &str| -> String {
+            v.get(k).and_then(|x| x.as_str()).unwrap_or(d).to_string()
+        };
         let bool_of = |k: &str, d: bool| v.get(k).and_then(|x| x.as_bool()).unwrap_or(d);
-        new.fe_effect = str_of("effect").to_string();
+        new.fe_effect = str_of("effect", &old.fe_effect);
         new.fe_clear_address = bool_of("clearAddress", old.fe_clear_address);
         new.fe_clear_bar_bg = bool_of("clearBarBg", old.fe_clear_bar_bg);
         new.fe_clear_winui_bg = bool_of("clearWinuiBg", old.fe_clear_winui_bg);
         new.fe_show_line = bool_of("showLine", old.fe_show_line);
-        new.fe_layout = str_of("layout").to_string();
-        new.fe_light_rgba = str_of("lightRgba").to_string();
-        new.fe_dark_rgba = str_of("darkRgba").to_string();
+        new.fe_layout = str_of("layout", &old.fe_layout);
+        new.fe_light_rgba = str_of("lightRgba", &old.fe_light_rgba);
+        new.fe_dark_rgba = str_of("darkRgba", &old.fe_dark_rgba);
         let wanted = new.fe_effect.clone();
         let wanted_layout = new.fe_layout.clone();
         let changed = new != old;
@@ -1119,6 +1124,17 @@ impl App {
             || new.fe_light_rgba != old.fe_light_rgba
             || new.fe_dark_rgba != old.fe_dark_rgba;
         if fe_changed {
+            // The dropdown only offers catalog ids; an unknown id here means
+            // a hand-edited feApply — same revert treatment as the style
+            // dropdowns above.
+            if !new.fe_layout.is_empty()
+                && pecofence_core::fe_layouts::layout_wire(&new.fe_layout).is_none()
+            {
+                new.fe_layout.clone_from(&old.fe_layout);
+                self.settings_error(pecofence_core::i18n::text(
+                    "工具栏和图标布局未能更改，请稍后重试。",
+                ));
+            }
             let applied = pecofence_platform::file_explorer_styler::apply_effect(
                 &pecofence_platform::file_explorer_styler::FeGlassConfig {
                     effect: new.fe_effect.as_str(),
@@ -1133,6 +1149,7 @@ impl App {
             );
             if !applied {
                 new.fe_effect.clone_from(&old.fe_effect);
+                new.fe_layout.clone_from(&old.fe_layout);
                 self.settings_error(pecofence_core::i18n::text(
                     "资源管理器背景效果未能更改，请稍后重试。",
                 ));

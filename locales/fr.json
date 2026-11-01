@@ -670,6 +670,7 @@
   "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — couleur de fusion du verre en thème sombre (EBM [dark])",
   "Windows 默认": "Par défaut Windows",
   "资源管理器背景效果未能更改，请稍后重试。": "Impossible de modifier l'effet d'arrière-plan de l'Explorateur ; réessayez.",
+  "工具栏和图标布局未能更改，请稍后重试。": "Impossible de modifier la disposition de la barre d'outils et des icônes; réessayez.",
   "选择颜色": "Choisir une couleur",
   "恢复默认": "Restaurer les valeurs par défaut",
   "高级设置": "Paramètres avancés",

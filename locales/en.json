@@ -670,6 +670,7 @@
   "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — glass blend color under the dark theme (EBM [dark])",
   "Windows 默认": "Windows default",
   "资源管理器背景效果未能更改，请稍后重试。": "Couldn't change the File Explorer background effect; try again.",
+  "工具栏和图标布局未能更改，请稍后重试。": "Couldn't change the toolbar & icon layout; try again.",
   "选择颜色": "Choose color",
   "恢复默认": "Restore default",
   "高级设置": "Advanced settings",
