@@ -40,9 +40,12 @@ windows_core::link!("advapi32.dll" "system" fn RegCloseKey(hkey: isize) -> i32);
 /// `EBMU` = unload it. `FESR` = the legacy `fe_glass` reset, kept so a
 /// still-armed resident from an older build disarms its detours before
 /// EBM takes over (one broadcast per apply — not periodic).
+/// `FELT` = a `PECO-FES1` layout wire (UTF-8, mux engine); `FELR` resets it.
 const CDS_EBM_LOAD: usize = u32::from_be_bytes(*b"EBML") as usize;
 const CDS_EBM_UNLOAD: usize = u32::from_be_bytes(*b"EBMU") as usize;
 const CDS_FE_RESET: usize = u32::from_be_bytes(*b"FESR") as usize;
+const CDS_FE_LAYOUT: usize = u32::from_be_bytes(*b"FELT") as usize;
+const CDS_FE_LAYOUT_RESET: usize = u32::from_be_bytes(*b"FELR") as usize;
 
 /// UI-facing EBM configuration — mirrors `config.ini`'s `[config]` flags
 /// plus the `[light]`/`[dark]` RGBA strings (`#AARRGGBB`).
@@ -56,6 +59,9 @@ pub struct FeGlassConfig<'a> {
     pub show_line: bool,
     pub light_rgba: &'a str,
     pub dark_rgba: &'a str,
+    /// Toolbar/icon arrangement — `""` = Windows Default. Pure layout
+    /// rules only (`fe_layouts`); independent of the material above.
+    pub layout: &'a str,
 }
 
 /// Owned snapshot of the last applied config — `ensure()` re-delivers it
@@ -77,15 +83,24 @@ struct Fe {
     /// pid → (cmd window, epoch delivered). `ensure()` only wires pids
     /// that are new, stale-epoch, or whose resident restarted.
     delivered: std::collections::HashMap<u32, (usize, u64)>,
+    /// Selected layout preset id (`""` = none armed).
+    layout: String,
+    /// Bumped every apply — layout re-wires only when this trails.
+    layout_epoch: u64,
+    /// pid → (cmd window, layout epoch delivered).
+    layout_delivered: std::collections::HashMap<u32, (usize, u64)>,
 }
 
 static FE: Mutex<Option<Fe>> = Mutex::new(None);
 /// Whether a File Explorer effect is armed — read lock-free.
 static ARMED: AtomicBool = AtomicBool::new(false);
+/// Whether a layout preset is armed — drives `ensure()` even when the
+/// material is stock (`effect=""`).
+static LAYOUT_ARMED: AtomicBool = AtomicBool::new(false);
 
-/// `true` while a File Explorer effect is armed.
+/// `true` while a File Explorer effect or layout is armed.
 pub fn is_armed() -> bool {
-    ARMED.load(Ordering::Acquire)
+    ARMED.load(Ordering::Acquire) || LAYOUT_ARMED.load(Ordering::Acquire)
 }
 
 fn lock() -> std::sync::MutexGuard<'static, Option<Fe>> {
@@ -258,24 +273,26 @@ fn deliver_ebm(cmd: crate::bindings::HWND, dll_path_utf16: &[u8]) {
     let _ = crate::tap::send_copydata(cmd, CDS_EBM_LOAD, dll_path_utf16);
 }
 
-/// Fans `EBML` out to every cabinet-owning explorer pid — **only** to
-/// pids that are new, whose resident restarted (cmd hwnd changed), or
-/// whose epoch trails the current config. This is the anti-storm rule:
-/// `ensure()` calls us every anchor tick but wires only fire on change.
+/// Fans `EBML` and the `PECO-FES1` layout wire out to every
+/// cabinet-owning explorer pid — **only** to pids that are new, whose
+/// resident restarted (cmd hwnd changed), or whose epoch trails the
+/// current config. This is the anti-storm rule: `ensure()` calls us
+/// every anchor tick but wires only fire on change. The two legs are
+/// independent: layout delivery never touches the EBM pipeline and runs
+/// even when `effect=""`.
 fn deliver_all() {
-    let Some(dll) = residents_dir().map(|d| d.join("ExplorerBlurMica.dll")) else {
-        return;
-    };
-    if !dll.is_file() {
-        return;
-    }
-    let wide: Vec<u8> = dll
-        .display()
-        .to_string()
-        .encode_utf16()
-        .chain(core::iter::once(0))
-        .flat_map(|c| c.to_le_bytes())
-        .collect();
+    let wide: Vec<u8> = residents_dir()
+        .map(|d| d.join("ExplorerBlurMica.dll"))
+        .filter(|p| p.is_file())
+        .map(|dll| {
+            dll.display()
+                .to_string()
+                .encode_utf16()
+                .chain(core::iter::once(0))
+                .flat_map(|c| c.to_le_bytes())
+                .collect()
+        })
+        .unwrap_or_default();
     let anchors = cabinet_anchors();
     let mut live_pids = Vec::new();
     for (pid, anchor) in anchors {
@@ -287,14 +304,57 @@ fn deliver_all() {
         let Some(fe) = guard.as_mut() else {
             return;
         };
-        let current = (cmd.0 as usize, fe.epoch);
-        if fe.delivered.get(&pid) == Some(&current) {
-            continue; // already loaded under this config — silent tick
+        // EBM leg — only while an effect is armed.
+        if !fe.effect.is_empty() && !wide.is_empty() {
+            let current = (cmd.0 as usize, fe.epoch);
+            if fe.delivered.get(&pid) != Some(&current) {
+                deliver_ebm(cmd, &wide);
+                fe.delivered.insert(pid, current);
+            }
         }
-        deliver_ebm(cmd, &wide);
-        fe.delivered.insert(pid, current);
+        // Layout leg — a `PECO-FES1` wire through the same resident; the
+        // mux engine applies it to the WinUI3 islands.
+        if !fe.layout.is_empty()
+            && let Some(wire) = pecofence_core::fe_layouts::layout_wire(&fe.layout)
+        {
+            let current = (cmd.0 as usize, fe.layout_epoch);
+            if fe.layout_delivered.get(&pid) != Some(&current) {
+                let _ = crate::tap::send_copydata(cmd, CDS_FE_LAYOUT, wire.as_bytes());
+                fe.layout_delivered.insert(pid, current);
+            }
+        }
     }
     crate::tap::prune_extra_residents(&live_pids);
+}
+
+/// Applies just the layout leg — no-op when the id is unchanged AND
+/// already delivered (the epoch bump in `apply_effect` forces a re-wire
+/// on preset switches). `""` broadcasts `FELR` once like `disarm_legacy`.
+fn apply_layout(layout: &str) {
+    let valid = layout.is_empty() || pecofence_core::fe_layouts::layout_wire(layout).is_some();
+    if !valid {
+        tracing::warn!(layout, "unknown feLayout preset — keeping stock");
+    }
+    let layout = if valid { layout } else { "" };
+    {
+        let mut guard = lock();
+        let fe = guard.get_or_insert_with(Fe::default);
+        fe.layout = layout.to_string();
+        fe.layout_epoch += 1;
+    }
+    LAYOUT_ARMED.store(!layout.is_empty(), Ordering::Release);
+    if layout.is_empty() {
+        // Stock layout — one reset broadcast restores originals in every
+        // resident that ever applied a preset.
+        for hwnd in crate::tap::resident_windows_all() {
+            let _ = crate::tap::send_copydata(hwnd, CDS_FE_LAYOUT_RESET, &[]);
+        }
+        if let Some(fe) = lock().as_mut() {
+            fe.layout_delivered.clear();
+        }
+        return;
+    }
+    deliver_all();
 }
 
 /// One-shot disarm for legacy residents: an older app build may have
@@ -309,12 +369,15 @@ fn disarm_legacy() {
 
 // ------------------------------------------------------------- public ----
 
-/// Applies an EBM `effect` + flags + RGBA palettes. `effect=""` →
-/// `reset()` (Windows Default). Returns `false` when the deploy or the
-/// `config.ini` write failed so settings can revert.
+/// Applies an EBM `effect` + flags + RGBA palettes + the toolbar/icon
+/// `layout`. The layout leg runs unconditionally (`effect=""` still gets
+/// its wire); `effect=""` additionally unloads EBM everywhere.
+/// Returns `false` when the deploy or the `config.ini` write failed so
+/// settings can revert.
 pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
+    apply_layout(cfg.layout);
     if cfg.effect.is_empty() {
-        return reset();
+        return reset_ebm();
     }
     if effect_id(cfg.effect).is_none() {
         return false;
@@ -351,9 +414,10 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
     true
 }
 
-/// `Windows Default` — `EBMU` broadcast unloads EBM everywhere; also
-/// disarms any legacy resident glass.
-pub fn reset() -> bool {
+/// EBM leg only — `EBMU` broadcast unloads the material everywhere and
+/// clears its delivery bookkeeping. The layout leg is untouched: callers
+/// route `feLayout` through `apply_layout` separately.
+fn reset_ebm() -> bool {
     for hwnd in crate::tap::resident_windows_all() {
         let _ = crate::tap::send_copydata(hwnd, CDS_EBM_UNLOAD, &[]);
     }
@@ -364,6 +428,14 @@ pub fn reset() -> bool {
     }
     ARMED.store(false, Ordering::Release);
     true
+}
+
+/// `Windows Default` — full disarm: EBM unload + layout reset + legacy
+/// glass disarm. Used by shutdown; the settings Apply path goes through
+/// `apply_effect` (which keeps the armed layout).
+pub fn reset() -> bool {
+    apply_layout("");
+    reset_ebm()
 }
 
 /// Anchor-tick liveness: re-injects + re-delivers `EBML` to explorer

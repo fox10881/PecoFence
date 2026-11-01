@@ -225,6 +225,87 @@
   }
   .glass.cw .ex-status { background: transparent; }
 
+  /* -------------------------------- feLayout presets — bar arrangement only
+     These classes move chrome around inside the mock; they never touch the
+     .mat/.tint layers or any surface paint (the EBM preview owns that). */
+  .ex-tabs .mininav { display: none; align-items: center; gap: 10px; width: 100px; flex: none; padding: 0 6px 4px; font-size: 14px; opacity: .8; }
+  .ex-tab .x { font-size: 11px; opacity: .55; margin-inline-start: 4px; }
+  .ex-addr .zeus-cmds { display: none; align-items: center; gap: 12px; font-size: 14px; opacity: .85; }
+
+  /* No Command Bar / Liquid Compact — command bar gone, address above the view */
+  .ly-NoCommandBar .ex-toolbar, .ly-LiquidGlass .ex-toolbar { display: none; }
+
+  /* Minimal Explorer 11 — one row: nav (~100px) + tabs; everything else gone */
+  .ly-Minimal_Explorer11 .ex-toolbar, .ly-Minimal_Explorer11 .ex-addr { display: none; }
+  .ly-Minimal_Explorer11 .mininav { display: flex; }
+
+  /* Tabless — command bar above the address bar; no tab borders/close.
+     Every sibling needs an explicit order or the reordered pair drops. */
+  .ly-Tabless .ex-titlebar { order: 0; } .ly-Tabless .ex-tabs { order: 1; }
+  .ly-Tabless .ex-toolbar { order: 2; border-bottom: none; }
+  .ly-Tabless .ex-addr { order: 3; }
+  .ly-Tabless .ex-body { order: 4; } .ly-Tabless .ex-status { order: 5; }
+  .ly-Tabless .ex-tab { border: none; background: transparent; }
+  .ly-Tabless .ex-tab .x { display: none; }
+
+  /* Matter — centered minimal command bar; nav buttons and edit cluster gone */
+  .ly-Matter .ex-toolbar { justify-content: center; }
+  .ly-Matter .tb-cut, .ly-Matter .tb-copy, .ly-Matter .tb-paste,
+  .ly-Matter .tb-rename, .ly-Matter .tb-share, .ly-Matter .sep,
+  .ly-Matter .navbtn { display: none; }
+
+  /* Centered Icon Bar — icon-only commands, widened search */
+  .ly-WindowGlass .ex-toolbar { justify-content: center; }
+  .ly-WindowGlass .new .tb-txt, .ly-WindowGlass .new .chev { display: none; }
+  .ly-WindowGlass .ex-addr .bar.search { max-width: 340px; opacity: 1; }
+
+  /* Address & Search Only — no tabs, no nav buttons */
+  .ly-AddressSearchOnly .ex-tabs, .ly-AddressSearchOnly .navbtn { display: none; }
+  .ly-AddressSearchOnly .ex-addr { height: 48px; }
+
+  /* OS26 Floating — pill commands centered, 20px floating content card */
+  .ly-OS26_Liquid_Glass .ex-toolbar { justify-content: center; gap: 6px; }
+  .ly-OS26_Liquid_Glass .glyph, .ly-OS26_Liquid_Glass .new {
+    padding: 3px 10px; border-radius: 12px;
+    background: rgba(128,128,128,.16); border: 1px solid rgba(128,128,128,.3);
+  }
+  .ly-OS26_Liquid_Glass .sep, .ly-OS26_Liquid_Glass .tb-more { display: none; }
+  .ly-OS26_Liquid_Glass .ex-content {
+    margin: 20px 20px 20px 1px; border-radius: 15px;
+    background: var(--ex-surface); border: 1px solid rgba(128,128,128,.2);
+  }
+
+  /* Merged top bar (OS26 Compact + Compact Explorer 11) — command bar in the
+     tab row's leading ~370px; content floats 20px in */
+  .ly-merged .ex-toolbar {
+    position: absolute; top: 34px; inset-inline-start: 6px; z-index: 6;
+    width: 370px; height: 32px; gap: 6px; padding: 0 8px;
+    background: transparent; border-bottom: none; font-size: 13px;
+  }
+  .ly-merged .ex-tabs { padding-inline-start: 380px; }
+  .ly-merged .ex-content {
+    margin: 20px; border-radius: 15px;
+    background: var(--ex-surface); border: 1px solid rgba(128,128,128,.2);
+  }
+
+  /* ZEUS macOS — single 44px Finder bar: nav + commands left, search centered */
+  .ly-ZEUSosX_044 .ex-tabs, .ly-ZEUSosX_044 .ex-toolbar { display: none; }
+  .ly-ZEUSosX_044 .ex-addr { height: 44px; position: relative; }
+  .ly-ZEUSosX_044 .zeus-cmds { display: flex; }
+  .ly-ZEUSosX_044 .ex-addr .bar:not(.search) { max-width: 220px; }
+  .ly-ZEUSosX_044 .ex-addr .bar.search {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    width: 320px; max-width: none; opacity: 1;
+  }
+
+  /* Float — 8px/4px floating margins, 6px radius nav bar, taller tabs */
+  .ly-Float .ex-addr {
+    margin: 4px 8px 0; border-radius: 6px; height: 54px;
+    border: 1px solid rgba(128,128,128,.18);
+  }
+  .ly-Float .ex-tabs { height: 44px; }
+  .ly-Float .ex-tab { height: 32px; border-radius: 6px; margin-bottom: 4px; }
+
   /* --------------------------------------------------------- footer bar */
   footer {
     flex: none; display: flex; justify-content: flex-end; gap: 10px;
@@ -282,6 +363,25 @@
       </select>
     </div>
 
+    <div class="row">
+      <div class="lbl"><div class="t" data-bind="feLayout" data-i18n="工具栏和图标布局">工具栏和图标布局</div><div class="s" data-i18n="仅布局规则 — 材质由 EBM 提供">仅布局规则 — 材质由 EBM 提供</div></div>
+      <select id="layoutSel">
+        <option value="" data-i18n="Windows Default">Windows Default</option>
+        <option value="NoCommandBar" data-i18n="No Command Bar">No Command Bar</option>
+        <option value="Minimal_Explorer11" data-i18n="Minimal Explorer 11">Minimal Explorer 11</option>
+        <option value="Tabless" data-i18n="Tabless - Swapped Bars">Tabless - Swapped Bars</option>
+        <option value="Matter" data-i18n="Matter - Clean Command Bar">Matter - Clean Command Bar</option>
+        <option value="WindowGlass" data-i18n="Centered Icon Bar">Centered Icon Bar</option>
+        <option value="AddressSearchOnly" data-i18n="Address &amp; Search Only">Address &amp; Search Only</option>
+        <option value="LiquidGlass" data-i18n="Liquid Compact">Liquid Compact</option>
+        <option value="OS26_Liquid_Glass" data-i18n="OS26 Floating Layout">OS26 Floating Layout</option>
+        <option value="OS26_Liquid_Glass_variant_Compact" data-i18n="OS26 Merged Top Bar">OS26 Merged Top Bar</option>
+        <option value="ZEUSosX_044" data-i18n="ZEUS macOS Single Bar">ZEUS macOS Single Bar</option>
+        <option value="Compact_Explorer11" data-i18n="Compact Explorer 11">Compact Explorer 11</option>
+        <option value="Float" data-i18n="Floating Spaced Bars">Floating Spaced Bars</option>
+      </select>
+    </div>
+
     <h2>ExplorerBlurMica</h2>
     <div class="row" id="rowAddress">
       <div class="lbl"><div class="t">清除地址栏背景</div><div class="s">EBM clearAddress</div></div>
@@ -329,18 +429,20 @@
           <span class="cap ic">&#xE921;</span><span class="cap ic">&#xE738;</span><span class="cap ic">&#xE8BB;</span>
         </div>
         <div class="ex-tabs">
-          <div class="ex-tab"><span class="ic">&#xE80F;</span><span>主页</span></div>
+          <span class="mininav"><span class="ic">&#xE72B;</span><span class="ic">&#xE72A;</span></span>
+          <div class="ex-tab"><span class="ic">&#xE80F;</span><span>主页</span><span class="x">×</span></div>
           <span class="plus">+</span>
         </div>
         <div class="ex-toolbar">
-          <span class="new"><span class="ic">&#xE710;</span><span data-i18n="新建">新建</span><span class="ic" style="font-size:9px">&#xE70D;</span></span>
+          <span class="new"><span class="ic">&#xE710;</span><span class="tb-txt" data-i18n="新建">新建</span><span class="ic chev" style="font-size:9px">&#xE70D;</span></span>
           <span class="sep"></span>
-          <span class="glyph ic">&#xE8C8;</span><span class="glyph ic">&#xE74D;</span><span class="glyph ic">&#xE8CB;</span>
-          <span class="glyph ic">&#xE8AC;</span><span class="glyph ic">&#xE895;</span><span class="glyph ic">&#xE74E;</span>
+          <span class="glyph ic tb-cut">&#xE8C8;</span><span class="glyph ic tb-copy">&#xE74D;</span><span class="glyph ic tb-paste">&#xE8CB;</span>
+          <span class="glyph ic tb-rename">&#xE8AC;</span><span class="glyph ic tb-share">&#xE895;</span><span class="glyph ic tb-del">&#xE74E;</span>
           <span class="spring"></span>
-          <span class="glyph ic">&#xE8CB;</span><span class="glyph ic">&#xE8A7;</span><span class="glyph ic">&#xE712;</span>
+          <span class="glyph ic tb-sort">&#xE8CB;</span><span class="glyph ic tb-view">&#xE8A7;</span><span class="glyph ic tb-more">&#xE712;</span>
         </div>
         <div class="ex-addr">
+          <span class="zeus-cmds"><span class="ic">&#xE710;</span><span class="ic">&#xE8CB;</span><span class="ic">&#xE8A7;</span></span>
           <span class="navbtn ic">&#xE72B;</span><span class="navbtn ic">&#xE72A;</span><span class="navbtn ic">&#xE74A;</span>
           <div class="bar"><span class="ic" style="font-size:11px">&#xE8B7;</span><span data-i18n="桌面">桌面</span></div>
           <div class="bar search"><span class="ic" style="font-size:11px">&#xE721;</span><span data-i18n="搜索">搜索</span></div>
@@ -395,7 +497,7 @@
   // Draft state — edits stay local until Apply; Cancel discards them.
   const s = {
     effect: '', clearAddress: false, clearBarBg: false, clearWinuiBg: false,
-    showLine: false, lightRgba: '', darkRgba: '',
+    showLine: false, lightRgba: '', darkRgba: '', layout: '',
   };
   let systemLight = true;
 
@@ -427,6 +529,7 @@
   function render() {
     document.documentElement.classList.toggle('light', systemLight);
     $('effectSel').value = s.effect;
+    $('layoutSel').value = s.layout;
     [['tAddress', s.clearAddress], ['tBarBg', s.clearBarBg], ['tWinUI', s.clearWinuiBg], ['tLine', s.showLine]]
       .forEach(([id, on]) => { const el = $(id); el.classList.toggle('on', !!on); el.setAttribute('aria-checked', String(!!on)); });
 
@@ -445,9 +548,13 @@
     $('darkDot').style.background = dotCss(s.darkRgba);
 
     // Preview: effect material + tint + the four clearing flags.
+    // Layout presets rearrange chrome only — the .mat/.tint material layers
+    // are untouched by every ly-* rule.
+    const merged = s.layout === 'OS26_Liquid_Glass_variant_Compact' || s.layout === 'Compact_Explorer11';
     mock.className = 'explorer' + (s.effect ? ' glass fx-' + s.effect : '') +
       (s.clearAddress ? ' ca' : '') + (s.clearBarBg ? ' cb' : '') +
-      (s.clearWinuiBg ? ' cw' : '') + (s.showLine ? ' sl' : '');
+      (s.clearWinuiBg ? ' cw' : '') + (s.showLine ? ' sl' : '') +
+      (s.layout ? ' ly-' + s.layout : '') + (merged ? ' ly-merged' : '');
     const active = systemLight ? s.lightRgba : s.darkRgba;
     tint.style.background = s.effect ? rgbaCss(active, TINT_SCALE[s.effect] ?? 1) : 'transparent';
     const optsOn = !!s.effect;
@@ -456,10 +563,13 @@
       $(id).style.pointerEvents = optsOn ? '' : 'none';
     });
     $('effectSel').disabled = false;
+    // Layout is independent of the material — always selectable.
+    $('layoutSel').disabled = false;
   }
 
   // ------------------------------------------------------------ controls
   $('effectSel').onchange = () => { s.effect = $('effectSel').value; render(); };
+  $('layoutSel').onchange = () => { s.layout = $('layoutSel').value; render(); };
   const bindToggle = (id, key) => {
     const el = $(id);
     el.onclick = () => { s[key] = !s[key]; render(); };
@@ -607,6 +717,7 @@
       effect: s.effect, clearAddress: !!s.clearAddress, clearBarBg: !!s.clearBarBg,
       clearWinuiBg: !!s.clearWinuiBg, showLine: !!s.showLine,
       lightRgba: s.lightRgba || '', darkRgba: s.darkRgba || '',
+      layout: s.layout || '',
     });
   };
   $('cancelBtn').onclick = () => send({ type: 'feCancel' });
@@ -629,6 +740,7 @@
         s.clearAddress = !!fe.clearAddress; s.clearBarBg = !!fe.clearBarBg;
         s.clearWinuiBg = !!fe.clearWinuiBg; s.showLine = !!fe.showLine;
         s.lightRgba = fe.lightRgba || ''; s.darkRgba = fe.darkRgba || '';
+        s.layout = fe.layout || '';
         render();
       } else if (m.type === 'feToast') {
         showToast(m.text || '');

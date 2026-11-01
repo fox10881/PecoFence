@@ -347,6 +347,10 @@ impl App {
                 "clearBarBg": s.fe_clear_bar_bg,
                 "clearWinuiBg": s.fe_clear_winui_bg,
                 "showLine": s.fe_show_line,
+                "layout": s.fe_layout,
+                "layouts": pecofence_core::fe_layouts::options()
+                    .map(|(id, label)| serde_json::json!({"id": id, "label": label}))
+                    .collect::<Vec<_>>(),
                 "lightRgba": s.fe_light_rgba,
                 "darkRgba": s.fe_dark_rgba,
             },
@@ -360,8 +364,9 @@ impl App {
     fn fe_glass_sig(&self) -> String {
         let s = &self.state.config.settings;
         format!(
-            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             s.fe_effect,
+            s.fe_layout,
             s.fe_clear_address,
             s.fe_clear_bar_bg,
             s.fe_clear_winui_bg,
@@ -403,12 +408,15 @@ impl App {
         new.fe_clear_bar_bg = bool_of("clearBarBg", old.fe_clear_bar_bg);
         new.fe_clear_winui_bg = bool_of("clearWinuiBg", old.fe_clear_winui_bg);
         new.fe_show_line = bool_of("showLine", old.fe_show_line);
+        new.fe_layout = str_of("layout").to_string();
         new.fe_light_rgba = str_of("lightRgba").to_string();
         new.fe_dark_rgba = str_of("darkRgba").to_string();
         let wanted = new.fe_effect.clone();
+        let wanted_layout = new.fe_layout.clone();
         let changed = new != old;
         self.apply_settings(new);
-        let applied = self.state.config.settings.fe_effect == wanted;
+        let applied = self.state.config.settings.fe_effect == wanted
+            && self.state.config.settings.fe_layout == wanted_layout;
         if let Some(h) = &self.fe_glass {
             let (text, error) = if !applied {
                 (
@@ -1107,6 +1115,7 @@ impl App {
             || new.fe_clear_bar_bg != old.fe_clear_bar_bg
             || new.fe_clear_winui_bg != old.fe_clear_winui_bg
             || new.fe_show_line != old.fe_show_line
+            || new.fe_layout != old.fe_layout
             || new.fe_light_rgba != old.fe_light_rgba
             || new.fe_dark_rgba != old.fe_dark_rgba;
         if fe_changed {
@@ -1119,6 +1128,7 @@ impl App {
                     show_line: new.fe_show_line,
                     light_rgba: new.fe_light_rgba.as_str(),
                     dark_rgba: new.fe_dark_rgba.as_str(),
+                    layout: new.fe_layout.as_str(),
                 },
             );
             if !applied {

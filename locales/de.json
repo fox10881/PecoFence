@@ -686,5 +686,20 @@
   "当前": "Aktuell",
   "已应用": "Angewendet",
   "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica-Unschärfe, -Acryl und -Mica – Vorschau und Anpassung in einem eigenen Fenster",
-  "预览背景": "Vorschau-Hintergrund"
+  "预览背景": "Vorschau-Hintergrund",
+  "工具栏和图标布局": "Symbolleisten- & Symbol-Layout",
+  "仅布局规则 — 材质由 EBM 提供": "Nur Layout-Regeln — Material von EBM",
+  "Windows Default": "Windows-Standard",
+  "No Command Bar": "Keine Befehlsleiste",
+  "Minimal Explorer 11": "Minimal Explorer 11",
+  "Tabless - Swapped Bars": "Tabless – Vertauschte Leisten",
+  "Matter - Clean Command Bar": "Matter – Klare Befehlsleiste",
+  "Centered Icon Bar": "Zentrierte Symbolleiste",
+  "Address & Search Only": "Nur Adresse & Suche",
+  "Liquid Compact": "Liquid Compact",
+  "OS26 Floating Layout": "OS26 Floating Layout",
+  "OS26 Merged Top Bar": "OS26 Verschmolzene Titelleiste",
+  "ZEUS macOS Single Bar": "ZEUS macOS-Einzelzeile",
+  "Compact Explorer 11": "Compact Explorer 11",
+  "Floating Spaced Bars": "Schwebende Leisten"
 }

@@ -686,5 +686,20 @@
   "当前": "Текущая",
   "已应用": "Применено",
   "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Размытие, акрил и слюда ExplorerBlurMica — предпросмотр и настройка в отдельном окне",
-  "预览背景": "Фон предпросмотра"
+  "预览背景": "Фон предпросмотра",
+  "工具栏和图标布局": "Макет панели и значков",
+  "仅布局规则 — 材质由 EBM 提供": "Только макет — материал от EBM",
+  "Windows Default": "По умолчанию Windows",
+  "No Command Bar": "Без панели команд",
+  "Minimal Explorer 11": "Minimal Explorer 11",
+  "Tabless - Swapped Bars": "Tabless - Панели наоборот",
+  "Matter - Clean Command Bar": "Matter - Чистая панель",
+  "Centered Icon Bar": "Центрированная панель значков",
+  "Address & Search Only": "Только адрес и поиск",
+  "Liquid Compact": "Liquid Compact",
+  "OS26 Floating Layout": "OS26 Floating Layout",
+  "OS26 Merged Top Bar": "OS26 объединённая верхняя панель",
+  "ZEUS macOS Single Bar": "ZEUS одиночная панель macOS",
+  "Compact Explorer 11": "Compact Explorer 11",
+  "Floating Spaced Bars": "Плавающие панели"
 }

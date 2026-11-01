@@ -686,5 +686,20 @@
   "当前": "Atual",
   "已应用": "Aplicado",
   "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Desfoque, acrílico e mica do ExplorerBlurMica — visualize e personalize em uma janela dedicada",
-  "预览背景": "Plano de fundo da visualização"
+  "预览背景": "Plano de fundo da visualização",
+  "工具栏和图标布局": "Layout da barra e ícones",
+  "仅布局规则 — 材质由 EBM 提供": "Apenas layout — o material é do EBM",
+  "Windows Default": "Padrão do Windows",
+  "No Command Bar": "Sem barra de comandos",
+  "Minimal Explorer 11": "Minimal Explorer 11",
+  "Tabless - Swapped Bars": "Tabless - Barras trocadas",
+  "Matter - Clean Command Bar": "Matter - Barra limpa",
+  "Centered Icon Bar": "Barra de ícones centralizada",
+  "Address & Search Only": "Somente endereço e pesquisa",
+  "Liquid Compact": "Liquid Compact",
+  "OS26 Floating Layout": "OS26 Floating Layout",
+  "OS26 Merged Top Bar": "OS26 barra superior mesclada",
+  "ZEUS macOS Single Bar": "ZEUS barra única macOS",
+  "Compact Explorer 11": "Compact Explorer 11",
+  "Floating Spaced Bars": "Barras flutuantes espaçadas"
 }

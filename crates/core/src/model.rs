@@ -200,6 +200,11 @@ pub struct Settings {
     /// file view.
     #[serde(default)]
     pub fe_show_line: bool,
+    /// File Explorer toolbar/icon arrangement (`""` = Windows Default) —
+    /// pure layout rules only; the EBM material pipeline still owns every
+    /// visual surface. Local device preference — themes never carry it.
+    #[serde(default)]
+    pub fe_layout: String,
     /// EBM `[light]` RGBA blend color (`#AARRGGBB`) used while the system
     /// runs light mode.
     #[serde(default = "fe_light_rgba_default")]
@@ -338,6 +343,7 @@ impl Default for Settings {
             fe_clear_bar_bg: true,
             fe_clear_winui_bg: true,
             fe_show_line: false,
+            fe_layout: String::new(),
             fe_light_rgba: "#A0DCDCDC".to_string(),
             fe_dark_rgba: "#78000000".to_string(),
             contain_background: false,

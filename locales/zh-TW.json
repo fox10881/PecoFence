@@ -686,5 +686,20 @@
   "当前": "目前",
   "已应用": "已套用",
   "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica 模糊、壓克力與雲母 — 在專屬視窗中即時預覽並自訂",
-  "预览背景": "預覽背景"
+  "预览背景": "預覽背景",
+  "工具栏和图标布局": "工具列與圖示配置",
+  "仅布局规则 — 材质由 EBM 提供": "僅版面配置規則 — 材質由 EBM 提供",
+  "Windows Default": "Windows 預設",
+  "No Command Bar": "無命令列",
+  "Minimal Explorer 11": "Minimal Explorer 11",
+  "Tabless - Swapped Bars": "Tabless - 對調列",
+  "Matter - Clean Command Bar": "Matter - 簡潔命令列",
+  "Centered Icon Bar": "置中圖示列",
+  "Address & Search Only": "僅網址與搜尋",
+  "Liquid Compact": "Liquid Compact",
+  "OS26 Floating Layout": "OS26 Floating Layout",
+  "OS26 Merged Top Bar": "OS26 合併頂列",
+  "ZEUS macOS Single Bar": "ZEUS macOS 單一列",
+  "Compact Explorer 11": "Compact Explorer 11",
+  "Floating Spaced Bars": "浮動間隔列"
 }

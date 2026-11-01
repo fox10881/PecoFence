@@ -686,5 +686,20 @@
   "当前": "현재",
   "已应用": "적용됨",
   "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica 블러, 아크릴, 마이카 — 전용 창에서 미리 보기 및 사용자 지정",
-  "预览背景": "미리 보기 배경"
+  "预览背景": "미리 보기 배경",
+  "工具栏和图标布局": "도구 모음 및 아이콘 레이아웃",
+  "仅布局规则 — 材质由 EBM 提供": "레이아웃 전용 — 재질은 EBM",
+  "Windows Default": "Windows 기본값",
+  "No Command Bar": "명령 모음 없음",
+  "Minimal Explorer 11": "Minimal Explorer 11",
+  "Tabless - Swapped Bars": "Tabless - 바 교체",
+  "Matter - Clean Command Bar": "Matter - 깔끔한 명령 모음",
+  "Centered Icon Bar": "중앙 아이콘 바",
+  "Address & Search Only": "주소 및 검색만",
+  "Liquid Compact": "Liquid Compact",
+  "OS26 Floating Layout": "OS26 Floating Layout",
+  "OS26 Merged Top Bar": "OS26 병합 상단 바",
+  "ZEUS macOS Single Bar": "ZEUS macOS 단일 바",
+  "Compact Explorer 11": "Compact Explorer 11",
+  "Floating Spaced Bars": "플로팅 분리 바"
 }

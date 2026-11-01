@@ -1460,10 +1460,11 @@ impl App {
         // unloads a stale EBM image left by an unclean shutdown.
         let fe = &app.state.config.settings;
         {
-            let (effect, l, d) = (
+            let (effect, l, d, layout) = (
                 fe.fe_effect.clone(),
                 fe.fe_light_rgba.clone(),
                 fe.fe_dark_rgba.clone(),
+                fe.fe_layout.clone(),
             );
             let flags = (
                 fe.fe_clear_address,
@@ -1480,6 +1481,7 @@ impl App {
                     show_line: flags.3,
                     light_rgba: &l,
                     dark_rgba: &d,
+                    layout: &layout,
                 };
                 let _ = pecofence_platform::file_explorer_styler::apply_effect(&cfg);
             });
