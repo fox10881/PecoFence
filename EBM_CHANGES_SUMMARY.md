@@ -1,0 +1,6257 @@
+# ExplorerBlurMica Integration — Change Summary
+
+ملخص آخر طلبين: حذف إعدادَي «File Explorer Style» و«Color Tint» مع كل ما يتعلق بهما، وإضافة
+[ExplorerBlurMica](https://github.com/Maplespe/ExplorerBlurMica) كخيار جديد بإعدادات `config.ini`
+كاملة في واجهة PecoFence — ثم الترجمة لكل اللغات + تدقيق ثانٍ مقابل مصدر EBM + منتقي ألوان.
+
+الـ commits:
+
+| Commit | الوصف |
+|---|---|
+| `ded3f4d` | حذف الكتالوج والـ tint العام + إعداد EBM كامل (Request 1) |
+| `cdb66c2` | إصلاح `#[serde(default)]` ليطابق قيم `Default` (Request 1) |
+| `4b7c190` | multi-PID residency + الترجمات + color picker + clearAddress (Request 2) |
+
+---
+
+## Request 1 — حذف الإعدادين + إضافة ExplorerBlurMica
+
+### المحذوف (−4,143 سطر)
+
+| الملف | ماذا حُذف |
+|---|---|
+| `crates/core/src/color_tint.rs` | الوحدة كاملة — تلوين الـ shell العام (−274) |
+| `crates/core/src/file_explorer_themes.rs` | كتالوج الثيمات (−432) |
+| `crates/core/data/file_explorer_themes.json` | بيانات الكتالوج (−2990) |
+| `crates/platform/src/taskbar_styler.rs` | معامل `tint_argb` من `apply()` — عاد `apply(id)` فقط |
+| `crates/platform/src/start_menu.rs` | حقل `Smeh.tint` + معامل tint — عاد `apply_start_menu_theme(id)` |
+| `ui/settings.html` | بطاقتا `#fileExplorerStyleRow` و`#colorTintRow` + `bindColorTint`/`renderColorTint`/`renderFileExplorerStyles` |
+
+`colorTint` للـ **fences الفردية** (`tintPalette`) بقي — لا علاقة له بالبطاقة المحذوفة.
+
+### المُضاف — نموذج الإعدادات (`crates/core/src/model.rs`)
+
+```rust
+/// ExplorerBlurMica `config.ini` — File Explorer material + options.
+#[serde(default = "default_fe_effect")]           // "" = Windows Default
+pub fe_effect: String,
+#[serde(default = "default_true")]                // clearAddress
+pub fe_clear_address: bool,
+#[serde(default = "default_true")]                // clearBarBg
+pub fe_clear_bar_bg: bool,
+#[serde(default = "default_true")]                // clearWinUIBg
+pub fe_clear_winui_bg: bool,
+#[serde(default)]                                 // showLine
+pub fe_show_line: bool,
+#[serde(default = "default_fe_light")]            // [light] r,g,b,a
+pub fe_light_rgba: String,
+#[serde(default = "default_fe_dark")]             // [dark] r,g,b,a
+pub fe_dark_rgba: String,
+// ...
+fn default_fe_light() -> String { "#A0DCDCDC".into() }
+fn default_fe_dark() -> String { "#78000000".into() }
+```
+
+تسلسل camelCase → الواجهة ترى `feEffect, feClearAddress, feClearBarBg, feClearWinUIBg, feShowLine, feLightRgba, feDarkRgba`.
+
+### المُضاف — المحرك (`crates/platform/src/file_explorer_styler.rs`)
+
+**خريطة `effect=` → المادة (EBM نفسها):**
+
+```rust
+fn desired_material(effect: &str) -> (i32, u32) {
+    match effect {
+        "blur"     => (DWMSBT_AUTO,        ACCENT_BLURBEHIND),        // effect=0
+        "acrylic"  => (DWMSBT_AUTO,        ACCENT_ACRYLIC),           // effect=1
+        "mica"     => (DWMSBT_MAINWINDOW,  ACCENT_DISABLED),          // effect=2
+        "blurclear"=> (DWMSBT_AUTO,        ACCENT_ACRYLIC_NO_HOSTBK), // effect=3
+        "micaalt"  => (DWMSBT_TABBEDWINDOW,ACCENT_DISABLED),          // effect=4
+        _          => (DWMSBT_AUTO,        ACCENT_DISABLED),          // Windows Default
+    }
+}
+```
+
+**حزمة `FEBD` الجديدة — 20 بايت** (كان 12): `[backdrop:i32, accent_state:u32, accent_flags:u32, gradient:u32, options:u32]`
+
+```rust
+let mut febd = Vec::with_capacity(20);
+febd.extend_from_slice(&backdrop.to_le_bytes());
+febd.extend_from_slice(&accent_state.to_le_bytes());
+febd.extend_from_slice(&0u32.to_le_bytes());                    // accent flags
+febd.extend_from_slice(&gradient.to_le_bytes());                // ABGR من [light]/[dark]
+febd.extend_from_slice(&options.to_le_bytes());                 // FEOPT_* bits
+```
+
+`gradient` يتبدل تلقائياً light/dark حسب `AppsUseLightTheme` — مثل EBM. الـ `options` تجمع
+`FEOPT_CLEAR_BAR_BG | FEOPT_SHOW_LINE | FEOPT_CLEAR_ADDRESS` من الـ toggles.
+
+**أعلام `FEST`** — أسلاك `controlStyles` تُبنى فقط من الـ toggles المفعّلة (16 قاعدة
+`Background=Transparent` على جزيرة WinUI: `NavigationBarControlGrid` تحت `clearAddress`،
+`PART_ListView`/`ScrollBar` تحت `clearBarBg`، بقية أدوات WinUI تحت `clearWinUIBg`).
+
+### المُضاف — الـ resident (`crates/tap/src/fe_glass.rs`)
+
+```rust
+pub fn set_backdrop_params(bytes: &[u8]) {
+    // [backdrop:i32, accent_state, accent_flags, gradient, options:u32 @16..20]
+    DESIRED_BACKDROP.store(i32le(0), Ordering::Release);
+    ACCENT_STATE.store(u32le(4), Ordering::Release);
+    ACCENT_FLAGS.store(u32le(8), Ordering::Release);
+    ACCENT_GRADIENT.store(u32le(12), Ordering::Release);
+    FE_OPTIONS.store(if bytes.len() >= 20 { u32le(16) } else { 0 }, Ordering::Release);
+    if is_armed() { apply_to_cabinets(); refresh_cabinets(); }
+}
+
+const FEOPT_CLEAR_BAR_BG: u32 = 1 << 0;
+const FEOPT_SHOW_LINE:    u32 = 1 << 1;
+const FEOPT_CLEAR_ADDRESS: u32 = 1 << 2;
+```
+
+### المُضاف — الواجهة (`ui/settings.html`)
+
+قسم «ExplorerBlurMica» منظّم: بطاقة رئيسية (select للـ effect) + بطاقة فرعية للأعلام
++ بطاقة ألوان light/dark — تتعطّل الفرعية كلها عند `feEffect == ""`:
+
+```html
+<select data-bind="feEffect">
+  <option value="">Windows 默认</option>
+  <option value="blur">Blur</option><option value="acrylic">Acrylic</option>
+  <option value="mica">Mica</option><option value="blurclear">Blur (Clear)</option>
+  <option value="micaalt">Mica Alt</option>
+</select>
+<!-- toggles: feClearAddress / feClearBarBg / feClearWinUIBg / feShowLine -->
+<!-- ألوان: feLightRgba / feDarkRgba + dot معاينة -->
+```
+
+### نقاط التطبيق
+
+- `crates/app/src/app/settings.rs` — diff على كل حقول `fe_*` → يبني `FeGlassConfig` → `apply_effect`؛ عند الفشل يعيد `fe_effect` ويبلّغ
+- `crates/app/src/app/mod.rs` — إعادة تطبيق عند الإقلاع (نسخ owned داخل الخيط — لا borrow)
+
+---
+
+## Request 2 — الترجمة + التدقيق + منتقي الألوان
+
+### 1) الترجمات — `locales/*.json` (11 لغة)
+
+كل ملف: **−5 مفاتيح ميتة** (`资源管理器样式`/`选择要套用…`/`选择颜色着色`/`浅色模式着色`/`深色模式着色`)
+**+18 مفتاحاً جديداً**: عنوان القسم، أسماء الخيارات الستة، التلميحات، الأعلام الأربعة،
+أسماء اللونين، `选择颜色`/`恢复默认`/`不透明度`. الناتج 673 مفتاحاً لكل لغة
+(ar · de · en · es · fr · it · ja · ko · pt-BR · ru · zh-TW).
+
+### 2) التدقيق الثاني — الإصلاح الجذري multi-PID
+
+اكتُشف أن نوافذ `CabinetWClass` تعيش في **`explorer.exe` منفصل** عن بروسيس الـ shell
+الذي يُحقن فيه الـ resident — فكان كل شيء يصل للبروسيس الخطأ.
+
+`crates/platform/src/tap.rs`:
+
+```rust
+/// Non-shell explorers (cabinet windows can live in their own explorer.exe).
+static EXTRA_TAPS: LazyLock<Mutex<HashMap<u32, Option<Tap>>>> = ...;
+
+/// Same handshake as `ensure_resident`, keyed by the process that owns `anchor`.
+pub fn ensure_resident_at(anchor: HWND) -> Option<HWND> { ... }
+
+/// Drops taps for pids that no longer own cabinets.
+pub fn prune_extra_residents(live: &[u32]) { ... }
+
+/// Every resident command window, across all injected pids — for reset broadcast.
+pub fn resident_windows_all() -> Vec<HWND> { ... }
+```
+
+`crates/platform/src/file_explorer_styler.rs`:
+
+```rust
+/// (pid, anchor) per cabinet-owning explorer process.
+fn cabinet_anchors() -> Vec<(u32, HWND)> { ... }
+
+/// Fans FEHI + FEBD + FEST to each pid's resident; prunes dead pids.
+fn deliver_all() { ... }
+
+/// Windows Default — broadcasts FE_RESET to every resident window.
+pub fn reset() -> bool { for h in tap::resident_windows_all() { send_copydata(h, CDS_FE_RESET, &[]) } ... }
+
+/// Anchor-tick re-delivery — late explorers join on the next pass.
+pub fn ensure() { if !is_armed() { return; } deliver_all(); apply_glass(); }
+```
+
+### 3) فجوات EBM المُنقولة
+
+- **`FEOPT_CLEAR_ADDRESS`** يقيّد ثقب `AddressBand`/`SearchBox` في الـ Win32 أيضاً (كان دائم الثقب)
+- **`FEOPT_CLEAR_BAR_BG`** — مسارات الـ scrollbar تُثقب + إبهام شبه شفاف مخصص
+- **`FEOPT_SHOW_LINE`** — خط فاصل 1px بين الشجرة والملفات
+
+### 4) منتقي الألوان — `ui/settings.html`
+
+```javascript
+// popup يفتح من النقطة الملوّنة بجانب حقل #AARRGGBB:
+// 12 swatch (تدرجات EBM) + سلايدر alpha يحافظ على RGB + زر استعادة الافتراضي
+const RP_PRESETS = ['#78000000','#A0000000','#50101216','#80404040','#A0DCDCDC',
+                    '#C8FFFFFF','#80FFFFFF','#96C8C8C8','#780078D4','#78E74856',
+                    '#78107C10','#78FFB900'];
+// rpOpen: يتموضع تحت الزر، يغلق بـ Esc/نقرة خارجية، يكتب مباشرة في data-bind
+```
+
+---
+
+## الملفات الكاملة المعدّلة
+
+### Request 1 — `ded3f4d~1 → cdb66c2` (647+ / −4143)
+
+```
+crates/app/src/app/mod.rs                   |   52 +-
+crates/app/src/app/settings.rs              |   49 +-
+crates/core/data/file_explorer_themes.json  | 2990 -----------
+crates/core/src/color_tint.rs               |  274 --- (محذوف)
+crates/core/src/file_explorer_themes.rs     |  432 --- (محذوف)
+crates/core/src/lib.rs                      |    2 -
+crates/core/src/model.rs                    |   51 +-
+crates/platform/src/file_explorer_styler.rs |  696 ++++---
+crates/platform/src/start_menu.rs           |   29 +-
+crates/platform/src/taskbar_styler.rs       |   29 +-
+crates/tap/src/fe_glass.rs                  |   77 +-
+ui/settings.html                            |  109 +-
+```
+
+### Request 2 — `cdb66c2 → 4b7c190` (431+ / −99)
+
+```
+crates/platform/src/file_explorer_styler.rs |  110 +-
+crates/platform/src/tap.rs                  |   77 ++
+crates/tap/src/fe_glass.rs                  |   39 +-
+locales/{ar,de,en,es,fr,it,ja,ko,pt-BR,ru,zh-TW}.json | 23+ each
+ui/settings.html                            |   51 +
+```
+
+---
+
+## الـ diffs الكاملة
+
+### Request 1 — `ded3f4d~1 → cdb66c2`
+
+```diff
+diff --git a/crates/app/src/app/mod.rs b/crates/app/src/app/mod.rs
+index b16d68c..166251d 100644
+--- a/crates/app/src/app/mod.rs
++++ b/crates/app/src/app/mod.rs
+@@ -1416,46 +1416,60 @@ impl App {
+         if let Some(a) = app.anchor.borrow_mut().as_mut() {
+             a.reanchor("startup");
+         }
+-        // Saved surface styles + color tint — each apply() stores the
+-        // selection either way, and the periodic ensure() delivers it when
+-        // the hosts (re)launch. A tint alone still arms the wire.
++        // Saved surface styles — each apply() stores the selection either
++        // way, and the periodic ensure() delivers it when the hosts
++        // (re)launch.
+         let saved_style = app.state.config.settings.start_menu_style.clone();
+-        let saved_tint = app.state.config.settings.color_tint.clone();
+-        if !saved_style.is_empty() || !saved_tint.is_empty() {
+-            let tint = saved_tint.clone();
++        if !saved_style.is_empty() {
+             std::thread::spawn(move || {
+-                let _ = pecofence_platform::start_menu::apply_start_menu_theme(&saved_style, &tint);
++                let _ = pecofence_platform::start_menu::apply_start_menu_theme(&saved_style);
+             });
+         }
+         // A saved Taskbar style rides the same resident — apply() injects
+         // the DLL when explorer is up and the tick's ensure() re-delivers
+         // it after restarts.
+         let saved_tb_style = app.state.config.settings.taskbar_style.clone();
+-        if !saved_tb_style.is_empty() || !saved_tint.is_empty() {
+-            let tint = saved_tint.clone();
++        if !saved_tb_style.is_empty() {
+             std::thread::spawn(move || {
+-                let _ = pecofence_platform::taskbar_styler::apply(&saved_tb_style, &tint);
++                let _ = pecofence_platform::taskbar_styler::apply(&saved_tb_style);
+             });
+         }
+         // A saved Notification Center style injects into the Shell hosts —
+         // apply() stores it either way, and the tick's ensure() delivers it
+         // to hosts that launch later.
+-        // The color tint does NOT reach the Notification Center — boot
+-        // reapply carries the style alone.
+         let saved_nc_style = app.state.config.settings.notification_center_style.clone();
+         if !saved_nc_style.is_empty() {
+             std::thread::spawn(move || {
+                 let _ = pecofence_platform::notification_center::apply(&saved_nc_style);
+             });
+         }
+-        // A saved File Explorer style rides the same explorer resident —
+-        // apply() arms + delivers it (with the tint overlay baked in), and
+-        // the ensure tick re-asserts the backdrop on cabinet windows.
+-        let saved_fe_style = app.state.config.settings.file_explorer_style.clone();
+-        if !saved_fe_style.is_empty() || !saved_tint.is_empty() {
+-            let tint = saved_tint.clone();
++        // The saved ExplorerBlurMica glass effect rides the same explorer
++        // resident — apply_effect() arms + delivers it, and the ensure
++        // tick re-asserts the accent on cabinet windows.
++        let fe = &app.state.config.settings;
++        if !fe.fe_effect.is_empty() {
++            let (effect, l, d) = (
++                fe.fe_effect.clone(),
++                fe.fe_light_rgba.clone(),
++                fe.fe_dark_rgba.clone(),
++            );
++            let flags = (
++                fe.fe_clear_address,
++                fe.fe_clear_bar_bg,
++                fe.fe_clear_winui_bg,
++                fe.fe_show_line,
++            );
+             std::thread::spawn(move || {
+-                let _ = pecofence_platform::file_explorer_styler::apply(&saved_fe_style, &tint);
++                let cfg = pecofence_platform::file_explorer_styler::FeGlassConfig {
++                    effect: &effect,
++                    clear_address: flags.0,
++                    clear_bar_bg: flags.1,
++                    clear_winui_bg: flags.2,
++                    show_line: flags.3,
++                    light_rgba: &l,
++                    dark_rgba: &d,
++                };
++                let _ = pecofence_platform::file_explorer_styler::apply_effect(&cfg);
+             });
+         }
+         for f in app.fences.values().chain(app.desktop_windows.values()) {
+diff --git a/crates/app/src/app/settings.rs b/crates/app/src/app/settings.rs
+index be7e0a3..2f88ccc 100644
+--- a/crates/app/src/app/settings.rs
++++ b/crates/app/src/app/settings.rs
+@@ -347,9 +347,6 @@ impl App {
+             "taskbarStyles": pecofence_core::taskbar_themes::style_options_json(),
+             // Notification Center Style dropdown — same isolation again.
+             "notificationCenterStyles": pecofence_core::notification_center_themes::style_options_json(),
+-            // File Explorer Style dropdown — same isolation for the
+-            // WinUI3/mux catalog.
+-            "fileExplorerStyles": pecofence_core::file_explorer_themes::style_options_json(),
+         })
+         .to_string()
+     }
+@@ -896,7 +893,7 @@ impl App {
+             // hand-edited patchSettings — same treatment as a failed write.
+             let id = new.start_menu_style.as_str();
+             let applied = pecofence_core::start_menu_themes::is_style_id(id)
+-                && pecofence_platform::start_menu::apply_start_menu_theme(id, &new.color_tint);
++                && pecofence_platform::start_menu::apply_start_menu_theme(id);
+             if !applied {
+                 new.start_menu_style.clone_from(&old.start_menu_style);
+                 self.settings_error(pecofence_core::i18n::text(
+@@ -907,7 +904,7 @@ impl App {
+         if new.taskbar_style != old.taskbar_style {
+             let id = new.taskbar_style.as_str();
+             let applied = pecofence_core::taskbar_themes::is_style_id(id)
+-                && pecofence_platform::taskbar_styler::apply(id, &new.color_tint);
++                && pecofence_platform::taskbar_styler::apply(id);
+             if !applied {
+                 new.taskbar_style.clone_from(&old.taskbar_style);
+                 self.settings_error(pecofence_core::i18n::text(
+@@ -927,32 +924,32 @@ impl App {
+                 ));
+             }
+         }
+-        if new.file_explorer_style != old.file_explorer_style {
+-            let id = new.file_explorer_style.as_str();
+-            let applied = pecofence_core::file_explorer_themes::is_style_id(id)
+-                && pecofence_platform::file_explorer_styler::apply(id, &new.color_tint);
++        let fe_changed = new.fe_effect != old.fe_effect
++            || new.fe_clear_address != old.fe_clear_address
++            || new.fe_clear_bar_bg != old.fe_clear_bar_bg
++            || new.fe_clear_winui_bg != old.fe_clear_winui_bg
++            || new.fe_show_line != old.fe_show_line
++            || new.fe_light_rgba != old.fe_light_rgba
++            || new.fe_dark_rgba != old.fe_dark_rgba;
++        if fe_changed {
++            let applied = pecofence_platform::file_explorer_styler::apply_effect(
++                &pecofence_platform::file_explorer_styler::FeGlassConfig {
++                    effect: new.fe_effect.as_str(),
++                    clear_address: new.fe_clear_address,
++                    clear_bar_bg: new.fe_clear_bar_bg,
++                    clear_winui_bg: new.fe_clear_winui_bg,
++                    show_line: new.fe_show_line,
++                    light_rgba: new.fe_light_rgba.as_str(),
++                    dark_rgba: new.fe_dark_rgba.as_str(),
++                },
++            );
+             if !applied {
+-                new.file_explorer_style.clone_from(&old.file_explorer_style);
++                new.fe_effect.clone_from(&old.fe_effect);
+                 self.settings_error(pecofence_core::i18n::text(
+-                    "资源管理器样式未能更改，请稍后重试。",
++                    "资源管理器背景效果未能更改，请稍后重试。",
+                 ));
+             }
+         }
+-        if new.color_tint != old.color_tint {
+-            // Palette swatch sends #RRGGBB or "" — anything else is a
+-            // hand-edited patchSettings and gets reverted. Re-delivers every
+-            // surface's armed wire with the new overlay baked in; the
+-            // resident applies the wire atomically, so a quick swatch tap
+-            // can't stack stale visuals.
+-            if pecofence_core::color_tint::argb(&new.color_tint).is_none() {
+-                new.color_tint.clone_from(&old.color_tint);
+-            } else {
+-                let tint = new.color_tint.as_str();
+-                pecofence_platform::start_menu::apply_start_menu_theme(&new.start_menu_style, tint);
+-                pecofence_platform::taskbar_styler::apply(&new.taskbar_style, tint);
+-                pecofence_platform::file_explorer_styler::apply(&new.file_explorer_style, tint);
+-            }
+-        }
+         let icons_toggled = new.hide_real_icons != old.hide_real_icons;
+         if new.quick_hide.enabled != old.quick_hide.enabled
+             && let Some(a) = self.anchor.borrow_mut().as_mut()
+diff --git a/crates/core/data/file_explorer_themes.json b/crates/core/data/file_explorer_themes.json
+deleted file mode 100644
+index 2ca8974..0000000
+--- a/crates/core/data/file_explorer_themes.json
++++ /dev/null
+@@ -1,2990 +0,0 @@
+-{
+- "options": [
+-  {
+-   "id": "",
+-   "label": "Windows Default"
+-  },
+-  {
+-   "id": "Translucent_Explorer11",
+-   "label": "Translucent Explorer11"
+-  },
+-  {
+-   "id": "MicaBar",
+-   "label": "MicaBar"
+-  },
+-  {
+-   "id": "NoCommandBar",
+-   "label": "NoCommandBar"
+-  },
+-  {
+-   "id": "Minimal_Explorer11",
+-   "label": "Minimal Explorer11"
+-  },
+-  {
+-   "id": "Tabless",
+-   "label": "Tabless"
+-  },
+-  {
+-   "id": "Matter",
+-   "label": "Matter"
+-  },
+-  {
+-   "id": "WindowGlass",
+-   "label": "WindowGlass"
+-  },
+-  {
+-   "id": "AddressSearchOnly",
+-   "label": "AddressSearchOnly"
+-  },
+-  {
+-   "id": "TintedGlass",
+-   "label": "TintedGlass"
+-  },
+-  {
+-   "id": "LiquidGlass",
+-   "label": "LiquidGlass"
+-  },
+-  {
+-   "id": "MicaTabless",
+-   "label": "MicaTabless"
+-  },
+-  {
+-   "id": "OS26_Liquid_Glass",
+-   "label": "OS26 Liquid Glass"
+-  },
+-  {
+-   "id": "OS26_Liquid_Glass_variant_Compact",
+-   "label": "OS26 Liquid Glass variant Compact"
+-  },
+-  {
+-   "id": "ZEUSosX_044",
+-   "label": "ZEUSosX_044"
+-  },
+-  {
+-   "id": "Compact_Explorer11",
+-   "label": "Compact Explorer11"
+-  },
+-  {
+-   "id": "Float",
+-   "label": "Float"
+-  }
+- ],
+- "themes": {
+-  "Translucent_Explorer11": {
+-   "targetStyles": [
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "BorderThickness=0,0,0,1",
+-      "BorderBrush=#40A0A0A0",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Canvas > Microsoft.UI.Xaml.Shapes.Path#SelectedBackgroundPath",
+-     "styles": [
+-      "Fill=#40404040"
+-     ]
+-    },
+-    {
+-     "target": "Grid#HomeViewRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#GalleryRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "ToolTip",
+-     "styles": [
+-      "Background:=<AcrylicBrush TintColor=\"#121212\" Opacity=\"0.3\"/>"
+-     ]
+-    },
+-    {
+-     "target": "Grid#DetailsViewControlRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "StackPanel#DetailsViewThumbnail > Grid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kAcrylic"
+-  },
+-  "MicaBar": {
+-   "targetStyles": [
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "Background:=<SolidColorBrush Color=\"{ThemeResource LayerOnMicaBaseAltFillColorDefault}\"/>",
+-      "BorderThickness=0,0,0,1"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  },
+-  "NoCommandBar": {
+-   "targetStyles": [
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.NavigationBarControl",
+-     "styles": [
+-      "Grid.RowSpan=2",
+-      "Margin=0,0,0,1"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  },
+-  "Minimal_Explorer11": {
+-   "targetStyles": [
+-    {
+-     "target": "AppBarButton#backButton > Grid#Root@CommonStates > Border#AppBarButtonInnerBorder",
+-     "styles": [
+-      "Background@Normal:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.07\"/>",
+-      "Background@PointerOver:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.12\"/>",
+-      "Background@Pressed:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.12\"/>",
+-      "Background@Disabled:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.05\"/>"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton#forwardButton > Grid#Root@CommonStates > Border#AppBarButtonInnerBorder",
+-     "styles": [
+-      "Background@Normal:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.05\"/>",
+-      "Background@PointerOver:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.12\"/>",
+-      "Background@Pressed:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.12\"/>",
+-      "Background@Disabled:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.05\"/>"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton#refreshButton",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton#upButton",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Border#BottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.AddressBarControl > Grid#PART_LayoutRoot > Grid#NormalModeGrid",
+-     "styles": [
+-      "BorderThickness=0,0,0,1",
+-      "BorderBrush=#A0A0A0"
+-     ]
+-    },
+-    {
+-     "target": "Grid#DetailsViewControlRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#RightBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "StackPanel#DetailsViewThumbnail > Grid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem",
+-     "styles": [
+-      "Margin=0,0,3,0"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot",
+-     "styles": [
+-      "CornerRadius=4",
+-      "Margin=0,-3,0,3",
+-      "Height=28"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Canvas",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderBrush=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot@CommonStates",
+-     "styles": [
+-      "Background@Selected:=<SolidColorBrush Color=\"#808080\" Opacity=\"0.35\"/>",
+-      "Background@PointerOverSelected:=<SolidColorBrush Color=\"#808080\" Opacity=\"0.35\"/>",
+-      "Background@PointerOver:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.13\"/>",
+-      "Background@Normal:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.05\"/>",
+-      "Background@PressedSelected:=<SolidColorBrush Color=\"#808080\" Opacity=\"0.35\"/>"
+-     ]
+-    },
+-    {
+-     "target": "Grid#FileExplorerAddressBarGrid",
+-     "styles": [
+-      "Grid.ColumnSpan=2",
+-      "Margin=0,0,10,0"
+-     ]
+-    },
+-    {
+-     "target": "AutoSuggestBox#FileExplorerSearchBox",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton#backButton > Grid#Root",
+-     "styles": [
+-      "Padding=2"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton#forwardButton > Grid#Root",
+-     "styles": [
+-      "Padding=2"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton#forwardButton > Grid#Root > Grid#ContentRoot > Viewbox#ContentViewbox",
+-     "styles": [
+-      "Margin=9"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton#backButton > Grid#Root > Grid#ContentRoot > Viewbox#ContentViewbox",
+-     "styles": [
+-      "Margin=9"
+-     ]
+-    },
+-    {
+-     "target": "Grid#PART_LayoutRoot",
+-     "styles": [
+-      "MinHeight=28",
+-      "Height=28"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border > Button#AddButton",
+-     "styles": [
+-      "Margin=0,0,20,4"
+-     ]
+-    },
+-    {
+-     "target": "Border#ScrollIncreaseButtonContainer",
+-     "styles": [
+-      "Margin=0,0,0,4"
+-     ]
+-    },
+-    {
+-     "target": "Border#ScrollDecreaseButtonContainer",
+-     "styles": [
+-      "Margin=0,0,0,4"
+-     ]
+-    },
+-    {
+-     "target": "Grid#FileExplorerAddressBarGrid",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.NavigationBarControl#NavigationBarControl",
+-     "styles": [
+-      "Grid.Row=0",
+-      "Grid.RowSpan=2"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.FileExplorerTabControl",
+-     "styles": [
+-      "Margin=100,0,0,-15",
+-      "Grid.RowSpan=2"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.NavigationBarControl > Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Margin=0,0,0,-18",
+-      "Background=Transparent",
+-      "Width=100",
+-      "HorizontalAlignment=0"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  },
+-  "Tabless": {
+-   "targetStyles": [
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.NavigationBarControl",
+-     "styles": [
+-      "Grid.Row=$NavigationBarGrid"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
+-     "styles": [
+-      "Grid.Row=$CommandBarGrid"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#TabContainerGrid > Border",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#TabContainer > Microsoft.UI.Xaml.Controls.Button#CloseButton",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.TabViewItem > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.Canvas",
+-     "styles": [
+-      "Opacity=0"
+-     ]
+-    },
+-    {
+-     "target": "Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background:=<SolidColorBrush Color=\"{ThemeResource SystemChromeLowColor}\" />"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#TabContainer",
+-     "styles": [
+-      "BorderThickness=0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.ContentPresenter > Microsoft.UI.Xaml.Controls.StackPanel > Microsoft.UI.Xaml.Controls.TextBlock",
+-     "styles": [
+-      "FontFamily=Segoe UI, Segoe Fluent Icons",
+-      "FontWeight=Normal"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "BorderThickness=0,0,0,1"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.FileExplorerTabControl",
+-     "styles": [
+-      "Height=36"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#TabContainer",
+-     "styles": [
+-      "Padding=1,0,0,1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Viewbox#IconBox",
+-     "styles": [
+-      "Margin=0,0,4,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.TabViewItem",
+-     "styles": [
+-      "Margin=0,-8,0,0"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [
+-    "NavigationBarGrid=2",
+-    "CommandBarGrid=1"
+-   ],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  },
+-  "Matter": {
+-   "targetStyles": [
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar",
+-     "styles": [
+-      "Background=Transparent",
+-      "HorizontalAlignment  = 1"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerSecondaryCommandBar",
+-     "styles": [
+-      "Background=Transparent",
+-      "Visibility = 1"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#RightBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem",
+-     "styles": [
+-      "Margin=0,0,4,0"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot",
+-     "styles": [
+-      "CornerRadius=5",
+-      "Margin=2,4,0,4",
+-      "Height=29"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Canvas",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
+-     "styles": [
+-      "Background = Transparent",
+-      "BorderThickness = 0"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot@CommonStates",
+-     "styles": [
+-      "Background@Selected:= $accentColor2",
+-      "Background@PointerOverSelected:= $accentColor",
+-      "Background@PointerOver:= $accentColor2",
+-      "Background@Normal=$accentColor",
+-      "Background@PressedSelected:=$accentColor2",
+-      "Background@Pressed := $accentColor2"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border > Button#AddButton",
+-     "styles": [
+-      "Visibility  = 0",
+-      "Margin = 0,0,0,3"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderThickness = 0"
+-     ]
+-    },
+-    {
+-     "target": "Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Grid#PART_LayoutRoot",
+-     "styles": [
+-      "Background :=<SolidColorBrush Color=\"{ThemeResource SystemAccentColorLight1}\" Opacity=\"0.4\" />",
+-      "CornerRadius = 6",
+-      "BorderThickness = 0"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
+-     "styles": [
+-      "Margin = 0,-5,0,0"
+-     ]
+-    },
+-    {
+-     "target": "AutoSuggestBox#FileExplorerSearchBox > Grid#LayoutRoot > TextBox > Grid@CommonStates > Border#BorderElement",
+-     "styles": [
+-      "Background :=<SolidColorBrush Color=\"{ThemeResource SystemAccentColorLight1}\" Opacity=\"0.4\" />",
+-      "CornerRadius = 6",
+-      "BorderThickness = 0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Cut]",
+-     "styles": [
+-      "Visibility  = 1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Copy]",
+-     "styles": [
+-      "Visibility  = 1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Paste]",
+-     "styles": [
+-      "Visibility  = 1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Rename]",
+-     "styles": [
+-      "Visibility  = 1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Share]",
+-     "styles": [
+-      "Visibility  = 1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarSeparator",
+-     "styles": [
+-      "Visibility  = 1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Border#ScrollDecreaseButtonContainer",
+-     "styles": [
+-      "Margin = 0,0,0,3"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Border#ScrollIncreaseButtonContainer",
+-     "styles": [
+-      "Margin = 0,0,0,3"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton",
+-     "styles": [
+-      "Visibility  =1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#upButton",
+-     "styles": [
+-      "Visibility  =1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton",
+-     "styles": [
+-      "Visibility  =1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#backButton",
+-     "styles": [
+-      "Visibility  =1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton[ToolTipService.ToolTip = Create a new item in the current location.]",
+-     "styles": [
+-      "Visibility  = 1"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [
+-    "accentColor=<SolidColorBrush Color=\"{ThemeResource SystemAccentColorLight1}\" />",
+-    "accentColor2=<SolidColorBrush Color=\"{ThemeResource SystemAccentColorLight1}\" Opacity=\"0.5\" />"
+-   ],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  },
+-  "WindowGlass": {
+-   "targetStyles": [
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
+-     "styles": [
+-      "RenderTransform:=<TranslateTransform X=\"0\"/>",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.FirstCrumbStackPanelControl#FirstCrumbStackPanel",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Windows.UI.Xaml.Controls.Grid#RootCommandSearchGrid > Windows.UI.Xaml.Controls.Border#BorderElement",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Primitives.NavigationViewItemPresenter#NavigationViewItemPresenter > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot",
+-     "styles": [
+-      "BorderThickness=$BorderThickness",
+-      "Background:=$ButtonBackground",
+-      "BorderBrush:=$ButtonBorder"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "BorderBrush=Transparent",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
+-     "styles": [
+-      "RenderTransform:=<TranslateTransform X=\"0\" Y=\"0\" />",
+-      "HorizontalAlignment=Center",
+-      "Margin=-4",
+-      "Padding=10",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerSecondaryCommandBar",
+-     "styles": [
+-      "RenderTransform:=<TranslateTransform X=\"Auto\" />",
+-      "HorizontalAlignment=Center",
+-      "Margin=-4",
+-      "Padding=10",
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+-     "styles": [
+-      "CornerRadius=$CornerRadius",
+-      "BorderThickness=$BorderThickness",
+-      "BorderBrush=Transparent",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerSecondaryCommandBar > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+-     "styles": [
+-      "CornerRadius=$CornerRadius",
+-      "BorderThickness=$BorderThickness",
+-      "BorderBrush:=$BorderBrush",
+-      "Background=#10808080",
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "BorderBrush=Transparent",
+-      "ColumnDefinitions:=<ColumnDefinitionCollection><ColumnDefinition Width=\"Auto\"/><ColumnDefinition Width=\"*\"/><ColumnDefinition Width=\"430\"/></ColumnDefinitionCollection>",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#HomeViewRootGrid",
+-     "styles": [
+-      "BorderBrush:=$MainContentBG",
+-      "CornerRadius=8",
+-      "BorderThickness=0",
+-      "Margin=0,0,8,8",
+-      "Background:=$MainContentBG",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
+-     "styles": [
+-      "BorderBrush:=$MainContentBG",
+-      "CornerRadius=8",
+-      "BorderThickness=0",
+-      "Margin=0,0,8,8",
+-      "Background:=$MainContentBG",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
+-     "styles": [
+-      "Background:=$MainContentBG",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "ToolTip",
+-     "styles": [
+-      "Background:=$AcrylicBackground"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#RightBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot",
+-     "styles": [
+-      "CornerRadius=8",
+-      "Margin=5",
+-      "Height=35"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Canvas",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderBrush=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot@CommonStates",
+-     "styles": [
+-      "Background@Selected:=<SolidColorBrush Color=\"#808080\" Opacity=\"0.10\"/>",
+-      "Background@PointerOverSelected:=<SolidColorBrush Color=\"#808080\" Opacity=\"0.10\"/>",
+-      "Background@PointerOver:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.13\"/>",
+-      "Background@Normal:=<AcrylicBrush TintColor=\"Transparent\" Opacity=\"0.05\"/>",
+-      "Background@PressedSelected:=<SolidColorBrush Color=\"#808080\" Opacity=\"0.10\"/>"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#RightBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Border#BottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Shapes.Path#LeftRadiusRenderArc",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Shapes.Path#RightRadiusRenderArc",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#TabContainer",
+-     "styles": [
+-      "Visibility=Visible"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Viewbox#IconBox",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Primitives.CommandBarFlyoutCommandBar > Grid#LayoutRoot > Grid#OuterContentRoot > Grid#ContentRoot > Grid#PrimaryItemsRoot",
+-     "styles": [
+-      "Background:=$Background",
+-      "BorderThickness=$BorderThickness",
+-      "BorderBrush:=$BorderBrush",
+-      "CornerRadius=$CornerRadius"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Primitives.CommandBarFlyoutCommandBar > Grid#LayoutRoot@ExpansionStates > Grid#OuterContentRoot > Grid#ContentRoot > Microsoft.UI.Xaml.Controls.Primitives.Popup#OverflowPopup",
+-     "styles": [
+-      "VerticalOffset@ExpandedUp=-5",
+-      "VerticalOffset@ExpandedDown=5"
+-     ]
+-    },
+-    {
+-     "target": "Grid#OuterOverflowContentRootV2",
+-     "styles": [
+-      "CornerRadius=$CornerRadius"
+-     ]
+-    },
+-    {
+-     "target": "Grid#OuterOverflowContentRootV2 > Grid#OverflowContentRoot > CommandBarOverflowPresenter#SecondaryItemsControl > Grid#LayoutRoot",
+-     "styles": [
+-      "Background:=$Background",
+-      "BorderThickness=$BorderThickness",
+-      "BorderBrush:=$BorderBrush",
+-      "CornerRadius=$CornerRadius"
+-     ]
+-    },
+-    {
+-     "target": "MenuFlyoutPresenter > Border",
+-     "styles": [
+-      "Background:=$Background",
+-      "BorderThickness=$BorderThickness",
+-      "BorderBrush:=$BorderBrush",
+-      "CornerRadius=$CornerRadius"
+-     ]
+-    },
+-    {
+-     "target": "Grid#SecondaryItemsControlShadowWrapper > CommandBarOverflowPresenter#SecondaryItemsControl > Grid#LayoutRoot",
+-     "styles": [
+-      "Background:=$AcrylicBackground",
+-      "BorderThickness=$BorderThickness",
+-      "BorderBrush:=$BorderBrush",
+-      "CornerRadius=$CornerRadius"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AutoSuggestBox#FileExplorerSearchBox > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.TextBox#TextBox",
+-     "styles": [
+-      "CornerRadius=$CornerRadius",
+-      "Margin=0,0,180,0",
+-      "Background=Transparent",
+-      "BorderBrush=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
+-     "styles": [
+-      "MaxWidth=750",
+-      "CornerRadius=$CornerRadius"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AutoSuggestBox#PART_AutoSuggestBox > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.TextBox#TextBox",
+-     "styles": [
+-      "CornerRadius=$CornerRadius"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.CommandBar#NavigationCommands",
+-     "styles": [
+-      "Margin=180,0,0,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Border > Microsoft.UI.Xaml.Controls.Button#AddButton",
+-     "styles": [
+-      "RenderTransform:=<TranslateTransform Y=\"-6\" />"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.CommandBar > * > Microsoft.UI.Xaml.Controls.TextBlock#TextLabel",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#SubItemChevronPanel > Microsoft.UI.Xaml.Controls.FontIcon#SubItemChevron",
+-     "styles": [
+-      "RenderTransform:=<TranslateTransform X=\"-5\" Y=\"12\" />"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#DetailsViewControlRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail > Grid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [
+-    "Background=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#15323232\"/>",
+-    "AcrylicBackground=<AcrylicBrush TintColor=\"{ThemeResource SystemChromeMediumLowColor}\" TintOpacity=\"0.9\" Opacity=\"0.96\"/>",
+-    "BorderBrush=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"0,1\"><GradientStop Color=\"{ThemeResource SystemChromeHighColor}\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SystemChromeLowColor}\" Offset=\"0.15\" /><GradientStop Color=\"{ThemeResource SystemChromeHighColor}\" Offset=\"0.95\" /></LinearGradientBrush>",
+-    "BorderThickness=0.3,1,0.3,0.3",
+-    "ButtonBackground=<SolidColorBrush Color=\"{ThemeResource SystemAccentColor}\" Opacity=\"0\" />",
+-    "ButtonBorder=<SolidColorBrush Color=\"{ThemeResource SystemAccentColorLight3}\" Opacity=\"0\" />",
+-    "CornerRadius=8",
+-    "Background2=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"0\" />",
+-    "MainContentBG=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"0\" />"
+-   ],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kAcrylic"
+-  },
+-  "AddressSearchOnly": {
+-   "targetStyles": [
+-    {
+-     "target": "FileExplorerExtensions.NavigationBarControl",
+-     "styles": [
+-      "Grid.Row=0",
+-      "Background=Transparent",
+-      "MinHeight=48",
+-      "Margin=0,26,0,1"
+-     ]
+-    },
+-    {
+-     "target": "Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.FileExplorerTabControl",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton#refreshButton",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton#upButton",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton#backButton",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton#forwardButton",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  },
+-  "TintedGlass": {
+-   "targetStyles": [
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "Background:=$CommonBgBrush",
+-      "BorderThickness=0,0,0,0",
+-      "BorderBrush=$CommonBgBrush"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background:=$CommonBgBrush"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Canvas > Microsoft.UI.Xaml.Shapes.Path#SelectedBackgroundPath",
+-     "styles": [
+-      "Fill:=$CommonBgBrush"
+-     ]
+-    },
+-    {
+-     "target": "Grid#HomeViewRootGrid",
+-     "styles": [
+-      "Background:=$CommonBgBrush"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
+-     "styles": [
+-      "Background:=$CommonBgBrush"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#GalleryRootGrid",
+-     "styles": [
+-      "Background:=$CommonBgBrush"
+-     ]
+-    },
+-    {
+-     "target": "ToolTip",
+-     "styles": [
+-      "Background:=$CommonBgBrush"
+-     ]
+-    },
+-    {
+-     "target": "Grid#DetailsViewControlRootGrid",
+-     "styles": [
+-      "Background:=$CommonBgBrush"
+-     ]
+-    },
+-    {
+-     "target": "StackPanel#DetailsViewThumbnail > Grid",
+-     "styles": [
+-      "Background:=$CommonBgBrush"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [
+-    "CommonBgBrush=<WindhawkBlur BlurAmount=\"18\" TintColor=\"#80000000\"/>"
+-   ],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kAcrylic"
+-  },
+-  "LiquidGlass": {
+-   "targetStyles": [
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
+-     "styles": [
+-      "HorizontalAlignment=Stretch",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.FirstCrumbStackPanelControl#FirstCrumbStackPanel",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "Windows.UI.Xaml.Controls.Grid#RootCommandSearchGrid > Windows.UI.Xaml.Controls.Border#BorderElement",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Primitives.NavigationViewItemPresenter#NavigationViewItemPresenter > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot",
+-     "styles": [
+-      "BorderThickness=$ElementBorderThickness",
+-      "Background:=$ElementBackground",
+-      "BorderBrush:=$ElementBorder",
+-      "CornerRadius=$ElementCornerRadius"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background:=Transparent",
+-      "BorderBrush:=Transparent",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#HomeViewRootGrid",
+-     "styles": [
+-      "BorderBrush:=$ElementBorderBrush",
+-      "CornerRadius=$ElementCornerRadius",
+-      "BorderThickness=$ElementBorderThickness",
+-      "Margin=4,0",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
+-     "styles": [
+-      "BorderBrush:=$ElementBorderBrush",
+-      "CornerRadius=$ElementCornerRadius",
+-      "BorderThickness=$ElementBorderThickness",
+-      "Margin=4,0",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
+-     "styles": [
+-      "Background:=Transparent",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "ToolTip",
+-     "styles": [
+-      "BorderBrush:=$ElementBorderBrush",
+-      "BorderThickness=$ElementBorderThickness",
+-      "CornerRadius=$ElementCornerRadius"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#RightBottomBorderLine",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot",
+-     "styles": [
+-      "Margin=5",
+-      "Height=35",
+-      "BorderThickness=$ElementBorderThickness",
+-      "CornerRadius=$ElementCornerRadius",
+-      "BorderBrush:=$ElementBorderBrush"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Canvas",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderBrush=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot@CommonStates",
+-     "styles": [
+-      "Background@Selected:=$ElementBackground",
+-      "Background@PointerOverSelected:=$AccentBackground",
+-      "Background@PointerOver:=$AccentBackground",
+-      "Background@Normal:=$ElementBackground",
+-      "Background@PressedSelected:=$ButtonBackground2"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#RightBottomBorderLine",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Border#BottomBorderLine",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Shapes.Path#LeftRadiusRenderArc",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Shapes.Path#RightRadiusRenderArc",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#TabContainer",
+-     "styles": [
+-      "Visibility=0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Viewbox#IconBox",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "CommandBarOverflowPresenter#SecondaryItemsControl > Grid#LayoutRoot",
+-     "styles": [
+-      "Background:=$ElementBackground",
+-      "BorderThickness=$ElementBorderThickness",
+-      "BorderBrush:=$ElementBorderBrush",
+-      "CornerRadius=$ElementCornerRadius"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AutoSuggestBox#FileExplorerSearchBox > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.TextBox#TextBox",
+-     "styles": [
+-      "CornerRadius=$ElementCornerRadius",
+-      "Background:=$ElementBackground",
+-      "BorderBrush:=$ElementBorderBrush",
+-      "BorderThickness=$ElementBorderThickness"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
+-     "styles": [
+-      "CornerRadius=$ElementCornerRadius",
+-      "Background:=$ElementBackground",
+-      "BorderBrush:=$ElementBorderBrush",
+-      "BorderThickness=$ElementBorderThickness"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AutoSuggestBox#PART_AutoSuggestBox > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.TextBox#TextBox",
+-     "styles": [
+-      "CornerRadius=$ElementCornerRadius"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+-     "styles": [
+-      "Background:=Transparent",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Border > Microsoft.UI.Xaml.Controls.Button#AddButton",
+-     "styles": [
+-      "RenderTransform:=<TranslateTransform Y=\"-8\" />"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#SubItemChevronPanel > Microsoft.UI.Xaml.Controls.FontIcon#SubItemChevron",
+-     "styles": [
+-      "RenderTransform:=<TranslateTransform X=\"-5\" Y=\"12\" />"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot",
+-     "styles": [
+-      "Height = 28"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Canvas",
+-     "styles": [
+-      "Visibility=1"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.NavigationBarControl",
+-     "styles": [
+-      "Grid.RowSpan=2",
+-      "Margin=0,0,0,1"
+-     ]
+-    },
+-    {
+-     "target": "Grid#DetailsViewControlRootGrid",
+-     "styles": [
+-      "Background:=Transparent",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "StackPanel#DetailsViewThumbnail",
+-     "styles": [
+-      "Background:=Transparent",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail > Grid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [
+-    "ContentBG=<SolidColorBrush Color=\"{ThemeResource SystemChromeAltHighColor}\" Opacity=\"0\" />",
+-    "Background=<WindhawkBlur BlurAmount=\"15\" TintColor=\"{ThemeResource SystemAltLowColor}\" TintOpacity=\"0.2\" />",
+-    "ElementBackground=<WindhawkBlur BlurAmount=\"20\" TintColor=\"{ThemeResource SystemAltLowColor}\" TintOpacity=\"0.4\" />",
+-    "ElementBackground2=<WindhawkBlur BlurAmount=\"20\" TintColor=\"{ThemeResource SystemAltLowColor}\" TintOpacity=\"0.2\" />",
+-    "AccentBackground=<WindhawkBlur BlurAmount=\"15\" TintColor=\"{ThemeResource SystemAccentColorLight1}\" TintOpacity=\"0.2\" />",
+-    "BorderBrush=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"0,1\"><GradientStop Color=\"#50808080\" Offset=\"0.0\" /><GradientStop Color=\"#50404040\" Offset=\"0.25\" /><GradientStop Color=\"#50808080\" Offset=\"1\" /></LinearGradientBrush>",
+-    "ElementBorderBrush=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"0,1\"><GradientStop Color=\"#50808080\" Offset=\"1\" /><GradientStop Color=\"#50606060\" Offset=\"0.15\" /></LinearGradientBrush>",
+-    "BorderThickness=0.3,1,0.3,0.3",
+-    "ElementBorderThickness=0.3,0.3,0.3,1",
+-    "CornerRadius=12",
+-    "ElementCornerRadius=8"
+-   ],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  },
+-  "MicaTabless": {
+-   "targetStyles": [
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.NavigationBarControl",
+-     "styles": [
+-      "Grid.Row=$NavigationBarGrid"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
+-     "styles": [
+-      "Grid.Row=$CommandBarGrid"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#TabContainerGrid > Border",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#TabContainer > Microsoft.UI.Xaml.Controls.Button#CloseButton",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.TabViewItem > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.Canvas",
+-     "styles": [
+-      "Opacity=0"
+-     ]
+-    },
+-    {
+-     "target": "Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background:=<SolidColorBrush Color=\"{ThemeResource SystemChromeLowColor}\" />"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#TabContainer",
+-     "styles": [
+-      "BorderThickness=0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.ContentPresenter > Microsoft.UI.Xaml.Controls.StackPanel > Microsoft.UI.Xaml.Controls.TextBlock",
+-     "styles": [
+-      "FontFamily=Segoe UI, Segoe Fluent Icons",
+-      "FontWeight=Normal"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "BorderThickness=0,0,0,1"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.FileExplorerTabControl",
+-     "styles": [
+-      "Height=36"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#TabContainer",
+-     "styles": [
+-      "Padding=1,0,0,1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Viewbox#IconBox",
+-     "styles": [
+-      "Margin=0,0,4,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.TabViewItem",
+-     "styles": [
+-      "Margin=0,-8,0,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#DetailsViewControlRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarSeparator",
+-     "styles": [
+-      "Opacity=0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#GalleryRootGrid",
+-     "styles": [
+-      "Background:="
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Microsoft.UI.Xaml.Controls.Grid",
+-     "styles": [
+-      "Background:="
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#HomeViewRootGrid",
+-     "styles": [
+-      "Background:="
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail > Microsoft.UI.Xaml.Controls.Grid",
+-     "styles": [
+-      "Background:="
+-     ]
+-    }
+-   ],
+-   "styleConstants": [
+-    "NavigationBarGrid=1",
+-    "CommandBarGrid=2"
+-   ],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  },
+-  "OS26_Liquid_Glass": {
+-   "targetStyles": [
+-    {
+-     "target": "Grid#DetailsViewControlRootGrid",
+-     "styles": [
+-      "Margin=20,20,20,1",
+-      "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "StackPanel#DetailsViewThumbnail > Grid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Grid#HomeViewRootGrid",
+-     "styles": [
+-      "Margin=20,20,20,0",
+-      "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
+-     "styles": [
+-      "Margin=20,20,20,0",
+-      "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#GalleryRootGrid",
+-     "styles": [
+-      "Margin=10",
+-      "Background:=transparent",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius@Disabled=12",
+-      "BorderThickness@Disabled=1",
+-      "Margin@Disabled=2,6,2,6",
+-      "Padding@Disabled=0,-7",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#backButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius@Disabled=11",
+-      "BorderThickness@Disabled=1",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "Margin@Disabled=0,0,0,0",
+-      "Height@Disabled=32",
+-      "Width@Disabled=20",
+-      "Padding@Disabled=0,-2,0,2"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius@Disabled=11",
+-      "BorderThickness@Disabled=1",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "Margin@Disabled=0,0,0,0",
+-      "Height@Disabled=32",
+-      "Width@Disabled=20",
+-      "Padding@Disabled=0,-2,0,2"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#upButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius@Disabled=11",
+-      "BorderThickness@Disabled=1",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "Margin@Disabled=0,0,0,0",
+-      "Height@Disabled=32",
+-      "Width@Disabled=20",
+-      "Padding@Disabled=0,-2,0,2"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar",
+-     "styles": [
+-      "HorizontalAlignment=1",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerSecondaryCommandBar",
+-     "styles": [
+-      "Background=Transparent",
+-      "MinHeight=0"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#RightBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem",
+-     "styles": [
+-      "Margin=0,0,8,0"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot",
+-     "styles": [
+-      "CornerRadius=12",
+-      "Margin=2,4,0,4",
+-      "Height=27",
+-      "BorderThickness=1",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Canvas",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderThickness=0"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot@CommonStates",
+-     "styles": [
+-      "Background@Selected:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#25ffffff\" />",
+-      "Background@PointerOverSelected:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#35ffffff\" />",
+-      "Background@Normal:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#15ffffff\" />"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border > Button#AddButton",
+-     "styles": [
+-      "Visibility=Visible",
+-      "Margin=0,0,0,2",
+-      "Background:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius=10",
+-      "BorderThickness=1",
+-      "BorderBrush:=<LinearGradientBrush EndPoint=\"1,1\" StartPoint=\"0,0\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\"/><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\"/><GradientStop Color=\"#80ffffff\" Offset=\"1\"/></LinearGradientBrush>",
+-      "Width=24",
+-      "Height=24"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
+-     "styles": [
+-      "Margin=-6,0,0,0"
+-     ]
+-    },
+-    {
+-     "target": "Grid#PART_LayoutRoot",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#25ffffff\" />",
+-      "CornerRadius=14",
+-      "BorderThickness=1",
+-      "Margin=2",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
+-     "styles": [
+-      "Margin=0,0,0,0"
+-     ]
+-    },
+-    {
+-     "target": "AutoSuggestBox#FileExplorerSearchBox > Grid#LayoutRoot > TextBox > Grid@CommonStates > Border#BorderElement",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#25ffffff\" />",
+-      "CornerRadius=14",
+-      "BorderThickness=1",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#25ffffff\" />",
+-      "CornerRadius=12",
+-      "BorderThickness=1",
+-      "Margin=3,0,3,1",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarToggleButton",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#25ffffff\" />",
+-      "CornerRadius=12",
+-      "BorderThickness=1",
+-      "Margin=3,0,3,1",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#OuterOverflowContentRootV2",
+-     "styles": [
+-      "CornerRadius=20"
+-     ]
+-    },
+-    {
+-     "target": "Button#MoreButton",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarSeparator",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#backButton",
+-     "styles": [
+-      "Margin=0,9,9,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton",
+-     "styles": [
+-      "Margin=0,9,9,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#upButton",
+-     "styles": [
+-      "Margin=0,9,9,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton",
+-     "styles": [
+-      "Margin=0,9,9,0"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  },
+-  "OS26_Liquid_Glass_variant_Compact": {
+-   "targetStyles": [
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Primitives.SuggestionsPopup",
+-     "styles": [
+-      "Margin=0,0,0,900"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<LinearGradientBrush StartPoint=\"-0.3,-0.3\" EndPoint=\"1.3,1.3\"><GradientStop Color=\"#55f0f07d\" Offset=\"0.0\"/><GradientStop Color=\"#2AF0F0F0\" Offset=\"0.3\"/><GradientStop Color=\"#00F0F0F0\" Offset=\"0.6\"/></LinearGradientBrush>",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "CornerRadius@Disabled=12",
+-      "BorderThickness@Disabled=1",
+-      "Margin@Disabled=2,6,2,6",
+-      "Padding@Disabled=0,-7"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > Button#MoreButton",
+-     "styles": [
+-      "Background:=<LinearGradientBrush StartPoint=\"-0.3,-0.3\" EndPoint=\"1.3,1.3\"><GradientStop Color=\"#55f0f07d\" Offset=\"0.0\"/><GradientStop Color=\"#2AF0F0F0\" Offset=\"0.3\"/><GradientStop Color=\"#00F0F0F0\" Offset=\"0.6\"/></LinearGradientBrush>",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "CornerRadius=12",
+-      "BorderThickness=1",
+-      "Margin=3,2,3,2",
+-      "Width=45",
+-      "Height=32"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#backButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<LinearGradientBrush StartPoint=\"-0.3,-0.3\" EndPoint=\"1.3,1.3\"><GradientStop Color=\"#55f0f07d\" Offset=\"0.0\"/><GradientStop Color=\"#2AF0F0F0\" Offset=\"0.3\"/><GradientStop Color=\"#00F0F0F0\" Offset=\"0.6\"/></LinearGradientBrush>",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "CornerRadius@Disabled=11",
+-      "BorderThickness@Disabled=1",
+-      "Margin@Disabled=0,0,0,0",
+-      "Height@Disabled=32",
+-      "Width@Disabled=20",
+-      "Padding@Disabled=0,-2,0,2"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<LinearGradientBrush StartPoint=\"-0.3,-0.3\" EndPoint=\"1.3,1.3\"><GradientStop Color=\"#55f0f07d\" Offset=\"0.0\"/><GradientStop Color=\"#2AF0F0F0\" Offset=\"0.3\"/><GradientStop Color=\"#00F0F0F0\" Offset=\"0.6\"/></LinearGradientBrush>",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "CornerRadius@Disabled=11",
+-      "BorderThickness@Disabled=1",
+-      "Margin@Disabled=0,0,0,0",
+-      "Height@Disabled=32",
+-      "Width@Disabled=20",
+-      "Padding@Disabled=0,-2,0,2"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<LinearGradientBrush StartPoint=\"-0.3,-0.3\" EndPoint=\"1.3,1.3\"><GradientStop Color=\"#55f0f07d\" Offset=\"0.0\"/><GradientStop Color=\"#2AF0F0F0\" Offset=\"0.3\"/><GradientStop Color=\"#00F0F0F0\" Offset=\"0.6\"/></LinearGradientBrush>",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "CornerRadius@Disabled=11",
+-      "BorderThickness@Disabled=1",
+-      "Margin@Disabled=0,0,0,0",
+-      "Height@Disabled=32",
+-      "Width@Disabled=20",
+-      "Padding@Disabled=0,-2,0,2"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarToggleButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#2D101010\"/>"
+-     ]
+-    },
+-    {
+-     "target": "Grid#DetailsViewControlRootGrid",
+-     "styles": [
+-      "Margin=20,20,20,1",
+-      "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "StackPanel#DetailsViewThumbnail > Grid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid > OuterOverflowContentRootV2",
+-     "styles": [
+-      "CornerRadius=250"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.CommandBarOverflowPresenter > Microsoft.UI.Xaml.Controls.CommandBarOverflowPresenter",
+-     "styles": [
+-      "Background=transparent"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton[7]",
+-     "styles": [
+-      "Visibility=Collapsed",
+-      "Width=0",
+-      "MinWidth=0",
+-      "Margin=0,0,0,0",
+-      "Padding=0,0,0,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Viewbox > ContentViewB",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#HomeViewRootGrid",
+-     "styles": [
+-      "Margin=20,20,20,0",
+-      "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
+-     "styles": [
+-      "Margin=20,20,20,0",
+-      "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#GalleryRootGrid",
+-     "styles": [
+-      "Margin=10",
+-      "Background:=transparent",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar",
+-     "styles": [
+-      "Grid.Row=0",
+-      "Grid.RowSpan=1",
+-      "CornerRadius:=15",
+-      "Width=400",
+-      "HorizontalAlignment=Left",
+-      "Background:=transparent",
+-      "Padding=0,0,0,0",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > Grid#OverflowSeparator",
+-     "styles": [
+-      "Visibility=Collapsed",
+-      "Width=0",
+-      "MinWidth=0"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot",
+-     "styles": [
+-      "HorizontalAlignment=Left"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > ItemsControl#PrimaryItemsControl",
+-     "styles": [
+-      "HorizontalAlignment=Left"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerSecondaryCommandBar",
+-     "styles": [
+-      "Visibility=Visible",
+-      "Margin=0,40,0,-20"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid",
+-     "styles": [
+-      "Margin=370,1,0,1"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#RightBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem",
+-     "styles": [
+-      "Width=150",
+-      "Height=40",
+-      "Margin=0,0,8,0"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius=10",
+-      "BorderThickness=1",
+-      "Margin=2,2,0,2",
+-      "Height=35"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Canvas",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderThickness=0"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot@CommonStates",
+-     "styles": [
+-      "Background@Selected:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#20ffffff\"/>",
+-      "Background@PointerOverSelected:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#25ffffff\"/>",
+-      "Background@Normal:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#15ffffff\"/>",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border > Button#AddButton",
+-     "styles": [
+-      "Visibility=Visible",
+-      "Margin=0,0,0,4",
+-      "Background:=<LinearGradientBrush StartPoint=\"-0.3,-0.3\" EndPoint=\"1.3,1.3\"><GradientStop Color=\"#55f0f07d\" Offset=\"0.0\"/><GradientStop Color=\"#2AF0F0F0\" Offset=\"0.3\"/><GradientStop Color=\"#00F0F0F0\" Offset=\"0.6\"/></LinearGradientBrush>",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "CornerRadius=8",
+-      "BorderThickness=1",
+-      "BorderBrush:=<LinearGradientBrush EndPoint=\"1,1\" StartPoint=\"0,0\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\"/><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\"/><GradientStop Color=\"#80ffffff\" Offset=\"1\"/></LinearGradientBrush>",
+-      "Width=24",
+-      "Height=24"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "Background:=",
+-      "BorderBrush:=",
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Grid#PART_LayoutRoot",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#15ffffff\"/>",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "CornerRadius=10",
+-      "BorderThickness=1",
+-      "Margin=2"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
+-     "styles": [
+-      "Grid.Row=0",
+-      "Grid.RowSpan=2",
+-      "Margin=0,0,0,0"
+-     ]
+-    },
+-    {
+-     "target": "AutoSuggestBox#FileExplorerSearchBox > Grid#LayoutRoot > TextBox > Grid@CommonStates",
+-     "styles": [
+-      "BorderThickness=1",
+-      "Background:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#15ffffff\"/>",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "CornerRadius=10",
+-      "Margin=-90,0,90,0",
+-      "Height=32"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
+-     "styles": [
+-      "Margin=-8,0,90,0"
+-     ]
+-    },
+-    {
+-     "target": "CommandBarOverflowPresenter Microsoft.UI.Xaml.Controls.AppBarButton",
+-     "styles": [
+-      "Background=Transparent",
+-      "CornerRadius=8",
+-      "Margin=2,1,2,1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton",
+-     "styles": [
+-      "Background:=<LinearGradientBrush StartPoint=\"-0.3,-0.3\" EndPoint=\"1.3,1.3\"><GradientStop Color=\"#55f0f07d\" Offset=\"0.0\"/><GradientStop Color=\"#2AF0F0F0\" Offset=\"0.3\"/><GradientStop Color=\"#00F0F0F0\" Offset=\"0.6\"/></LinearGradientBrush>",
+-      "BorderBrush:=<LinearGradientBrush StartPoint=\"0,0\" EndPoint=\"1,1\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\" /><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\" /><GradientStop Color=\"#80ffffff\" Offset=\"1\" /></LinearGradientBrush>",
+-      "CornerRadius=12",
+-      "BorderThickness=1",
+-      "Margin=3,2,3,2"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#OuterOverflowContentRootV2",
+-     "styles": [
+-      "CornerRadius=20"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarToggleButton",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#2D101010\"/>",
+-      "CornerRadius=8",
+-      "BorderThickness=1",
+-      "Margin=3,0,3,1",
+-      "BorderBrush:=<LinearGradientBrush EndPoint=\"1,1\" StartPoint=\"0,0\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\"/><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\"/><GradientStop Color=\"#80ffffff\" Offset=\"1\"/></LinearGradientBrush>"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarSeparator",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#backButton",
+-     "styles": [
+-      "Margin=0,9,9,0",
+-      "Visibility=Visible"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton",
+-     "styles": [
+-      "Margin=0,9,9,0",
+-      "Visibility=Visible"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#upButton",
+-     "styles": [
+-      "Margin=0,9,9,0",
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton",
+-     "styles": [
+-      "Visibility=Visible",
+-      "Margin=0,9,9,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#stopButton",
+-     "styles": [
+-      "Visibility=Collapsed",
+-      "Margin=0,9,9,0"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.NavigationBarControl",
+-     "styles": [
+-      "Grid.RowSpan=2"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid > Grid#GalleryRootGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.StackPanel#DetailsViewThumbnail",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  },
+-  "ZEUSosX_044": {
+-   "targetStyles": [
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderThickness=0",
+-      "Grid.Row=0",
+-      "Grid.RowSpan=2",
+-      "HorizontalAlignment=Left",
+-      "VerticalAlignment=Top",
+-      "Width=155",
+-      "Margin=197,-30,0,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
+-     "styles": [
+-      "Background=Transparent",
+-      "HorizontalAlignment=Left",
+-      "VerticalAlignment=Top"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Border#BottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderBrush=Transparent",
+-      "ColumnDefinitions:=<ColumnDefinitionCollection><ColumnDefinition Width=\"Auto\"/><ColumnDefinition Width=\"*\"/><ColumnDefinition Width=\"380\"/></ColumnDefinitionCollection>",
+-      "Margin=0,-16,0,-21"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid",
+-     "styles": [
+-      "Grid.Row=0",
+-      "HorizontalAlignment=Left",
+-      "Margin=100,0,0,0",
+-      "Width=1",
+-      "MaxWidth=1"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.FileExplorerTabControl",
+-     "styles": [
+-      "HorizontalAlignment=Left",
+-      "Margin=100,0,0,0",
+-      "Width=1",
+-      "MaxWidth=1"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem",
+-     "styles": [
+-      "Width=0",
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border > Button#AddButton",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "AutoSuggestBox#FileExplorerSearchBox > Grid#LayoutRoot > TextBox > Grid@CommonStates > Border#BorderElement",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderThickness=0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid > Grid#LayoutRoot > TextBox > Grid@CommonStates > Border#BorderElement",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderThickness=0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AutoSuggestBox#FileExplorerSearchBox > Microsoft.UI.Xaml.Controls.Grid#LayoutRoot > Microsoft.UI.Xaml.Controls.TextBox#TextBox",
+-     "styles": [
+-      "Margin=0,0,140,0",
+-      "Background=Transparent",
+-      "BorderBrush=Transparent",
+-      "TextAlignment=Center",
+-      "HorizontalContentAlignment=Center"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
+-     "styles": [
+-      "HorizontalAlignment=Stretch",
+-      "Height=28",
+-      "Margin=155,0,0,0"
+-     ]
+-    },
+-    {
+-     "target": "AutoSuggestBox#FileExplorerSearchBox",
+-     "styles": [
+-      "HorizontalAlignment=Stretch",
+-      "Height=28",
+-      "Margin=-7,-1,7,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar Button",
+-     "styles": [
+-      "FontSize=14"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kMica"
+-  },
+-  "Compact_Explorer11": {
+-   "targetStyles": [
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Primitives.SuggestionsPopup",
+-     "styles": [
+-      "Margin=0,0,0,900"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius@Disabled=10",
+-      "BorderThickness@Disabled=1",
+-      "Margin@Disabled=2,6,2,6",
+-      "Padding@Disabled=0,-7"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > Button#MoreButton",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius=10",
+-      "BorderThickness=1",
+-      "Margin=3,2,3,2",
+-      "Width=45",
+-      "Height=32"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#backButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius@Disabled=11",
+-      "BorderThickness@Disabled=1",
+-      "Margin@Disabled=0,0,0,0",
+-      "Height@Disabled=32",
+-      "Width@Disabled=20",
+-      "Padding@Disabled=0,-2,0,2"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius@Disabled=11",
+-      "BorderThickness@Disabled=1",
+-      "Margin@Disabled=0,0,0,0",
+-      "Height@Disabled=32",
+-      "Width@Disabled=20",
+-      "Padding@Disabled=0,-2,0,2"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius@Disabled=11",
+-      "BorderThickness@Disabled=1",
+-      "Margin@Disabled=0,0,0,0",
+-      "Height@Disabled=32",
+-      "Width@Disabled=20",
+-      "Padding@Disabled=0,-2,0,2"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarToggleButton > Grid@CommonStates",
+-     "styles": [
+-      "Background@Disabled:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#2D101010\"/>"
+-     ]
+-    },
+-    {
+-     "target": "Grid#DetailsViewControlRootGrid",
+-     "styles": [
+-      "Margin=20,20,20,1",
+-      "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "StackPanel#DetailsViewThumbnail > Grid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid > OuterOverflowContentRootV2",
+-     "styles": [
+-      "CornerRadius=250"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.CommandBarOverflowPresenter > Microsoft.UI.Xaml.Controls.CommandBarOverflowPresenter",
+-     "styles": [
+-      "Background=transparent"
+-     ]
+-    },
+-    {
+-     "target": "AppBarButton[7]",
+-     "styles": [
+-      "Visibility=Collapsed",
+-      "Width=0",
+-      "MinWidth=0",
+-      "Margin=0,0,0,0",
+-      "Padding=0,0,0,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Viewbox > ContentViewB",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#HomeViewRootGrid",
+-     "styles": [
+-      "Margin=20,20,20,0",
+-      "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
+-     "styles": [
+-      "Margin=20,20,20,0",
+-      "Background:=<WindhawkBlur BlurAmount=\"30\" TintColor=\"#2D101010\" TintOpacity=\"0.4\"/>",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#GalleryRootGrid",
+-     "styles": [
+-      "Margin=10",
+-      "Background:=transparent",
+-      "CornerRadius=15"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar",
+-     "styles": [
+-      "Grid.Row=0",
+-      "Grid.RowSpan=1",
+-      "CornerRadius:=15",
+-      "Width=400",
+-      "HorizontalAlignment=Left",
+-      "Background:=transparent",
+-      "Padding=0,0,0,0"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > Grid#OverflowSeparator",
+-     "styles": [
+-      "Visibility=Collapsed",
+-      "Width=0",
+-      "MinWidth=0"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot",
+-     "styles": [
+-      "HorizontalAlignment=Left"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot > ItemsControl#PrimaryItemsControl",
+-     "styles": [
+-      "HorizontalAlignment=Left"
+-     ]
+-    },
+-    {
+-     "target": "CommandBar#FileExplorerSecondaryCommandBar",
+-     "styles": [
+-      "Visibility=Visible",
+-      "Margin=0,40,0,-20"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid",
+-     "styles": [
+-      "Margin=370,1,0,1"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#RightBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem",
+-     "styles": [
+-      "Width=150",
+-      "Height=40",
+-      "Margin=0,0,8,0"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius=10",
+-      "BorderThickness=1",
+-      "Margin=2,2,0,2",
+-      "Height=35"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Canvas",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderThickness=0"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot@CommonStates",
+-     "styles": [
+-      "Background@Selected:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#30ffffff\"/>",
+-      "Background@PointerOverSelected:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#40ffffff\"/>",
+-      "Background@Normal:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#20ffffff\"/>"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border > Button#AddButton",
+-     "styles": [
+-      "Visibility=Visible",
+-      "Margin=0,0,0,4",
+-      "Background:=<WindhawkBlur BlurAmount=\"15\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius=10",
+-      "BorderThickness=0",
+-      "BorderBrush:=<LinearGradientBrush EndPoint=\"1,1\" StartPoint=\"0,0\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\"/><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\"/><GradientStop Color=\"#80ffffff\" Offset=\"1\"/></LinearGradientBrush>",
+-      "Width=24",
+-      "Height=24"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "Background:=",
+-      "BorderBrush:="
+-     ]
+-    },
+-    {
+-     "target": "Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "Background=Transparent"
+-     ]
+-    },
+-    {
+-     "target": "Grid#PART_LayoutRoot",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius=10",
+-      "BorderThickness=1",
+-      "Margin=1"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1, FileExplorerExtensions.CommandBarControl",
+-     "styles": [
+-      "Grid.Row=0",
+-      "Grid.RowSpan=2",
+-      "Margin=0,0,0,0"
+-     ]
+-    },
+-    {
+-     "target": "AutoSuggestBox#FileExplorerSearchBox > Grid#LayoutRoot > TextBox > Grid@CommonStates",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius=10",
+-      "Margin=-90,0,90,0",
+-      "Height=30"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#FileExplorerAddressBarGrid",
+-     "styles": [
+-      "Margin=-8,0,90,0"
+-     ]
+-    },
+-    {
+-     "target": "CommandBarOverflowPresenter#SecondaryItemsControl > Microsoft.UI.Xaml.Controls.AppBarButton",
+-     "styles": [
+-      "Background=Transparent",
+-      "CornerRadius=4",
+-      "BorderThickness=0",
+-      "Margin=0,0,0,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#25ffffff\"/>",
+-      "CornerRadius=10",
+-      "BorderThickness=1",
+-      "Margin=3,2,3,2"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarToggleButton",
+-     "styles": [
+-      "Background:=<WindhawkBlur BlurAmount=\"8\" TintColor=\"#2D101010\"/>",
+-      "CornerRadius=8",
+-      "BorderThickness=1",
+-      "Margin=3,0,3,1",
+-      "BorderBrush:=<LinearGradientBrush EndPoint=\"1,1\" StartPoint=\"0,0\"><GradientStop Color=\"#80ffffff\" Offset=\"0.0\"/><GradientStop Color=\"{ThemeResource SurfaceStrokeColorDefault}\" Offset=\"0.55\"/><GradientStop Color=\"#80ffffff\" Offset=\"1\"/></LinearGradientBrush>"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarSeparator",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#backButton",
+-     "styles": [
+-      "Margin=0,9,9,0",
+-      "Visibility=Visible"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#forwardButton",
+-     "styles": [
+-      "Margin=0,9,9,0",
+-      "Visibility=Visible"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#upButton",
+-     "styles": [
+-      "Margin=0,9,9,0",
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#refreshButton",
+-     "styles": [
+-      "Visibility=Visible",
+-      "Margin=0,9,9,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.AppBarButton#stopButton",
+-     "styles": [
+-      "Visibility=Collapsed",
+-      "Margin=0,9,9,0"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.NavigationBarControl",
+-     "styles": [
+-      "Grid.RowSpan=2"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [],
+-   "themeResourceVariables": [],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  },
+-  "Float": {
+-   "targetStyles": [
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot@CommonStates",
+-     "styles": [
+-      "Background@Selected:=<AcrylicBrush TintColor=\"{ThemeResource Tab}\" TintOpacity=\"0.9\" Opacity=\"0.6\"/>",
+-      "Background@PointerOverSelected:=<AcrylicBrush TintColor=\"{ThemeResource Tab}\" TintOpacity=\"0.9\" Opacity=\"0.7\"/>",
+-      "Background@PointerOver:=<AcrylicBrush TintColor=\"{ThemeResource Tab}\" TintOpacity=\"0.9\" Opacity=\"0.3\"/>",
+-      "Background@Normal:=<AcrylicBrush TintColor=\"{ThemeResource Tab}\" TintOpacity=\"0.9\" Opacity=\"0\"/>",
+-      "Background@PressedSelected:=<AcrylicBrush TintColor=\"{ThemeResource Tab}\" TintOpacity=\"0.9\" Opacity=\"0.9\"/>",
+-      "CornerRadius=6"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Grid#TabContainer",
+-     "styles": [
+-      "Background=Transparent",
+-      "BorderThickness=0"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot > Canvas",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem > Grid#LayoutRoot",
+-     "styles": [
+-      "BorderThickness=1",
+-      "Margin=2,0,0,0",
+-      "Height=35"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Border#BottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#LeftBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border#RightBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "TabViewItem",
+-     "styles": [
+-      "CornerRadius=4"
+-     ]
+-    },
+-    {
+-     "target": "Grid#TabContainerGrid > Border > Button#AddButton",
+-     "styles": [
+-      "Visibility=Visible",
+-      "Margin=0,0,0,3",
+-      "CornerRadius=10",
+-      "BorderThickness=0",
+-      "Width=24",
+-      "Height=24"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#TabContainerGrid",
+-     "styles": [
+-      "Height=44"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Border#RightBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Border#LeftBottomBorderLine",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
+-     "styles": [
+-      "CornerRadius=6",
+-      "Margin=8,4,8,0",
+-      "Height=54"
+-     ]
+-    },
+-    {
+-     "target": "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-     "styles": [
+-      "Margin=0,8,0,0",
+-      "BorderThickness=0,1,0,1"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Controls.Primitives.TabViewListView#TabListView",
+-     "styles": [
+-      "Margin=-3,0,0,0"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Shapes.Path#RightRadiusRenderArc",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    },
+-    {
+-     "target": "Microsoft.UI.Xaml.Shapes.Path#LeftRadiusRenderArc",
+-     "styles": [
+-      "Visibility=Collapsed"
+-     ]
+-    }
+-   ],
+-   "styleConstants": [],
+-   "themeResourceVariables": [
+-    "Tab@Light=#ffffffff",
+-    "Tab@Dark=#000000"
+-   ],
+-   "explorerFrameContainerHeight": 0,
+-   "backgroundTranslucentEffect": "kDefault"
+-  }
+- }
+-}
+\ No newline at end of file
+diff --git a/crates/core/src/color_tint.rs b/crates/core/src/color_tint.rs
+deleted file mode 100644
+index 30f008e..0000000
+--- a/crates/core/src/color_tint.rs
++++ /dev/null
+@@ -1,274 +0,0 @@
+-//! Accent-color tint for the stable shell surfaces.
+-//!
+-//! Instead of fighting the shell for transparency, a user-picked color is
+-//! applied as a semi-transparent `SolidColorBrush` over each surface's
+-//! canonical background element — the same `controlStyles` grammar every
+-//! theme wire already speaks. The tint lines are appended *after* the
+-//! theme's own rules so they always win on the background property, and
+-//! they ride the normal restore path: a later wire without the lines (or
+-//! a reset) puts the theme's originals back, so rapid switching can't
+-//! stack stale visuals.
+-//!
+-//! Palette + swatch UI live in `ui/settings.html`; this module owns the
+-//! engine-facing bits: validation, `#RRGGBB` → `#AARRGGBB` expansion and
+-//! the per-surface target tables.
+-
+-/// Overlay opacity baked into every tint — strong enough to read as a
+-/// real accent, translucent enough that the surface's own material still
+-/// shows through (mirrors Windows' "show accent color" strength).
+-const TINT_ALPHA: u8 = 0x80;
+-
+-/// `(target, property)` pairs the tint writes per surface — the canonical
+-/// background elements every surface's XAML tree always exposes (the same
+-/// elements the theme catalogs restyle most often).
+-pub const TASKBAR_TARGETS: &[(&str, &str)] = &[
+-    ("Rectangle#BackgroundFill", "Fill"),
+-    ("Rectangle#BackgroundStroke", "Fill"),
+-];
+-pub const START_MENU_TARGETS: &[(&str, &str)] = &[
+-    ("Border#AcrylicBorder", "Background"),
+-    ("Border#AcrylicOverlay", "Background"),
+-];
+-/// File Explorer's WinUI3 chrome — the three NON-overlapping top-bar
+-/// root containers only. Nested targets (`TabViewItem > Grid#LayoutRoot`)
+-/// stacked the veil 2-3 layers deep, and content grids must stay clear:
+-/// the Win32 side already lays the identical 0x24-alpha BGRA tint on
+-/// `SysTreeView32`/`DirectUIHWND` via `fe_glass::punch_black`.
+-pub const FILE_EXPLORER_TARGETS: &[(&str, &str)] = &[
+-    (
+-        "FileExplorerExtensions.FileExplorerTabControl > Grid",
+-        "Background",
+-    ),
+-    (
+-        "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
+-        "Background",
+-    ),
+-    (
+-        "FileExplorerExtensions.CommandBarControl_Wave1 > Grid",
+-        "Background",
+-    ),
+-];
+-/// File Explorer tint alpha — ~28%; the Win32 punch
+-/// (`fe_glass::punch_black` BGRA stretch) and this XAML veil carry the
+-/// identical opacity. Taskbar/Start Menu keep `TINT_ALPHA`.
+-pub const FE_TINT_ALPHA: u8 = 0x48;
+-/// The veil painted when NO swatch is picked: ~31%-opaque dark smoked
+-/// charcoal. Bare transparent (`#00000000`) let bright windows behind
+-/// Explorer shine straight through white file names — this supplies the
+-/// contrast the glyphs need while staying glassy.
+-pub const FE_DEFAULT_VEIL_ARGB: &str = "#50101216";
+-
+-/// `fe_veil_argb` — the File Explorer overlay color in `#AARRGGBB`:
+-/// `""` → `FE_DEFAULT_VEIL_ARGB`; `#RRGGBB` → `FE_TINT_ALPHA` alpha over
+-/// the swatch darkened to 65% (bright swatches would wash the glass out).
+-/// `None` only for malformed input. Identical RGB/alpha to the resident's
+-/// `tint_abgr` BGRA value — one color across XAML and Win32.
+-pub fn fe_veil_argb(tint: &str) -> Option<String> {
+-    let hex = tint.strip_prefix('#').unwrap_or(tint);
+-    if hex.is_empty() {
+-        return Some(FE_DEFAULT_VEIL_ARGB.to_string());
+-    }
+-    if hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+-        let n = u32::from_str_radix(hex, 16).ok()?;
+-        let (r, g, b) = ((n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF);
+-        return Some(format!(
+-            "#{FE_TINT_ALPHA:02X}{:02X}{:02X}{:02X}",
+-            r * 65 / 100,
+-            g * 65 / 100,
+-            b * 65 / 100
+-        ));
+-    }
+-    None
+-}
+-
+-/// Always-on File Explorer veil — appends the three top-bar-root rules
+-/// even when `tint` is `""` (default smoked glass). `fe_glass`'s Win32
+-/// punch carries the same veil, so XAML only covers the island.
+-pub fn apply_fe_tint(wire: &mut String, tint: &str) {
+-    let Some(argb) = fe_veil_argb(tint) else {
+-        return;
+-    };
+-    if wire.ends_with("E\n") {
+-        wire.truncate(wire.len() - 2);
+-    }
+-    for (target, prop) in FILE_EXPLORER_TARGETS {
+-        wire.push_str("T ");
+-        wire.push_str(target);
+-        wire.push('\n');
+-        wire.push_str("S ");
+-        wire.push_str(prop);
+-        wire.push_str(":=<SolidColorBrush Color=\"");
+-        wire.push_str(&argb);
+-        wire.push_str("\"/>\n");
+-    }
+-    wire.push_str("E\n");
+-}
+-
+-/// A veil-only FE wire (`""` theme): magic + the smoked/darkened tint
+-/// rules — File Explorer with no theme still gets readable glass.
+-/// (DWMSBT/mica path only — the accent path uses `fe_clear_wire`.)
+-pub fn fe_tint_wire(magic: &str, tint: &str) -> Option<String> {
+-    fe_veil_argb(tint)?;
+-    let mut wire = String::with_capacity(256);
+-    wire.push_str(magic);
+-    wire.push('\n');
+-    wire.push_str("E\n");
+-    apply_fe_tint(&mut wire, tint);
+-    Some(wire)
+-}
+-
+-/// The ExplorerBlurMica/accent path counterpart of `apply_fe_tint`: with
+-/// `ACCENT_ENABLE_ACRYLICBLURBEHIND` the `GradientColor` tint lives in the
+-/// DWM material itself — the top-bar roots go `Transparent` so the SAME
+-/// material shows through instead of stacking a second XAML veil.
+-pub fn apply_fe_clear(wire: &mut String) {
+-    if wire.ends_with("E\n") {
+-        wire.truncate(wire.len() - 2);
+-    }
+-    for (target, prop) in FILE_EXPLORER_TARGETS {
+-        wire.push_str("T ");
+-        wire.push_str(target);
+-        wire.push('\n');
+-        wire.push_str("S ");
+-        wire.push_str(prop);
+-        wire.push_str("=Transparent\n");
+-    }
+-    wire.push_str("E\n");
+-}
+-
+-/// Clear-only FE wire (`""` theme) for the accent path — the tint rides
+-/// the FEBD `GradientColor`, so the wire just keeps the island
+-/// transparent (an always-armed wire also anchors the FE styler).
+-pub fn fe_clear_wire(magic: &str) -> String {
+-    let mut wire = String::with_capacity(256);
+-    wire.push_str(magic);
+-    wire.push('\n');
+-    wire.push_str("E\n");
+-    apply_fe_clear(&mut wire);
+-    wire
+-}
+-
+-/// `Some(argb)` for `#RRGGBB` / `RRGGBB` palette values, `None` for
+-/// `""` (tint off) and malformed input — settings treats `None` on a
+-/// non-empty value as invalid and reverts.
+-pub fn argb(tint: &str) -> Option<String> {
+-    argb_with_alpha(tint, TINT_ALPHA)
+-}
+-
+-/// `argb` with a caller-chosen alpha — File Explorer uses the lighter
+-/// `FE_TINT_ALPHA` so its XAML veil matches the Win32 punch.
+-pub fn argb_with_alpha(tint: &str, alpha: u8) -> Option<String> {
+-    let hex = tint.strip_prefix('#').unwrap_or(tint);
+-    if hex.is_empty() {
+-        return Some(String::new());
+-    }
+-    if hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
+-        return Some(format!("#{alpha:02X}{}", hex.to_uppercase()));
+-    }
+-    None
+-}
+-
+-/// Appends the tint rules to a theme wire in place — strips the `E\n`
+-/// end marker, emits `T`/`S` lines after the theme's own rules (last
+-/// writer wins on the background property), restores `E\n`. No-op when
+-/// `tint` is `""`.
+-pub fn apply_to_wire(wire: &mut String, targets: &[(&str, &str)], tint: &str) {
+-    apply_to_wire_alpha(wire, targets, tint, TINT_ALPHA);
+-}
+-
+-/// `apply_to_wire` with a caller-chosen alpha (File Explorer's `FE_TINT_ALPHA`).
+-pub fn apply_to_wire_alpha(wire: &mut String, targets: &[(&str, &str)], tint: &str, alpha: u8) {
+-    let Some(argb) = argb_with_alpha(tint, alpha) else {
+-        return;
+-    };
+-    if argb.is_empty() {
+-        return;
+-    }
+-    if wire.ends_with("E\n") {
+-        wire.truncate(wire.len() - 2);
+-    }
+-    for (target, prop) in targets {
+-        wire.push_str("T ");
+-        wire.push_str(target);
+-        wire.push('\n');
+-        wire.push_str("S ");
+-        wire.push_str(prop);
+-        wire.push_str(":=<SolidColorBrush Color=\"");
+-        wire.push_str(&argb);
+-        wire.push_str("\"/>\n");
+-    }
+-    wire.push_str("E\n");
+-}
+-
+-/// A tint-only wire (`""` theme) — just the magic header + tint rules,
+-/// so a surface with no selected style still gets the color overlay.
+-pub fn tint_wire(magic: &str, targets: &[(&str, &str)], tint: &str) -> Option<String> {
+-    tint_wire_alpha(magic, targets, tint, TINT_ALPHA)
+-}
+-
+-/// `tint_wire` with a caller-chosen alpha (File Explorer's `FE_TINT_ALPHA`).
+-pub fn tint_wire_alpha(
+-    magic: &str,
+-    targets: &[(&str, &str)],
+-    tint: &str,
+-    alpha: u8,
+-) -> Option<String> {
+-    let argb = argb_with_alpha(tint, alpha)?;
+-    if argb.is_empty() {
+-        return None;
+-    }
+-    let mut wire = String::with_capacity(256);
+-    wire.push_str(magic);
+-    wire.push('\n');
+-    wire.push_str("E\n"); // apply_to_wire strips it again — keeps one code path
+-    apply_to_wire_alpha(&mut wire, targets, tint, alpha);
+-    Some(wire)
+-}
+-
+-#[cfg(test)]
+-mod tests {
+-    use super::*;
+-
+-    #[test]
+-    fn hex_values_expand_to_argb() {
+-        assert_eq!(argb("#E3008C").as_deref(), Some("#80E3008C"));
+-        assert_eq!(argb("e3008c").as_deref(), Some("#80E3008C"));
+-        assert_eq!(argb("").as_deref(), Some(""));
+-        assert!(argb("#FF00").is_none());
+-        assert!(argb("not-a-color").is_none());
+-    }
+-
+-    #[test]
+-    fn tint_lines_append_after_the_theme_and_keep_the_end_marker() {
+-        let mut wire = String::from("PECO-TBS1\nT Grid\nS Fill=Red\nE\n");
+-        apply_to_wire(&mut wire, TASKBAR_TARGETS, "#107C10");
+-        assert!(wire.ends_with("E\n"));
+-        let fill = wire
+-            .find("S Fill:=<SolidColorBrush Color=\"#80107C10\"/>")
+-            .unwrap();
+-        let theme = wire.find("S Fill=Red").unwrap();
+-        assert!(fill > theme, "tint must land after the theme's rules");
+-        assert_eq!(wire.matches("T Rectangle#").count(), 2);
+-    }
+-
+-    #[test]
+-    fn empty_tint_is_a_noop() {
+-        let mut wire = String::from("PECO-SMS1\nT Grid\nE\n");
+-        let before = wire.clone();
+-        apply_to_wire(&mut wire, START_MENU_TARGETS, "");
+-        assert_eq!(wire, before);
+-        assert!(tint_wire("PECO-FES1", FILE_EXPLORER_TARGETS, "").is_none());
+-    }
+-
+-    #[test]
+-    fn tint_only_wire_is_wellformed() {
+-        let wire = fe_tint_wire("PECO-FES1", "#0078D4").unwrap();
+-        assert!(wire.starts_with("PECO-FES1\n"));
+-        assert!(wire.ends_with("E\n"));
+-        assert!(wire.contains("T FileExplorerExtensions.FileExplorerTabControl > Grid\n"));
+-        // #0078D4 darkened to 65% → #004E89 under the 0x48 veil alpha.
+-        assert!(wire.contains("S Background:=<SolidColorBrush Color=\"#48004E89\"/>"));
+-        // One veil per surface — no overlapping child targets.
+-        assert_eq!(wire.matches("S Background:=").count(), 3);
+-    }
+-}
+diff --git a/crates/core/src/file_explorer_themes.rs b/crates/core/src/file_explorer_themes.rs
+deleted file mode 100644
+index 94fb26f..0000000
+--- a/crates/core/src/file_explorer_themes.rs
++++ /dev/null
+@@ -1,432 +0,0 @@
+-//! Windhawk `windows-11-file-explorer-styler` theme catalog.
+-//!
+-//! `scripts/import-file-explorer-themes.py` converts the mod's published
+-//! theme structs into `data/file_explorer_themes.json`, embedded here.
+-//! The settings UI receives only the `{id, label}` option list; the full
+-//! targeting rules, style constants, theme-resource variables and the DWM
+-//! backdrop choice stay behind this module so the frontend never carries
+-//! the raw payload. `id` is the exact string the mod's `theme` setting
+-//! expects; `""` is Windows Default (stock File Explorer restored).
+-//!
+-//! The themes target the WinUI3 islands inside `CabinetWClass` windows —
+-//! the same surface the mod's `Microsoft.Internal.FrameworkUdk`
+-//! `InitializeXamlDiagnosticsEx` session watches.
+-
+-use serde::Deserialize;
+-use std::collections::BTreeMap;
+-use std::sync::OnceLock;
+-
+-#[derive(Deserialize)]
+-struct OptionEntry {
+-    id: String,
+-    label: String,
+-}
+-
+-#[derive(Deserialize)]
+-struct Catalog {
+-    options: Vec<OptionEntry>,
+-    #[serde(default)]
+-    themes: BTreeMap<String, serde_json::Value>,
+-}
+-
+-static CATALOG: OnceLock<Catalog> = OnceLock::new();
+-
+-fn catalog() -> &'static Catalog {
+-    CATALOG.get_or_init(|| {
+-        serde_json::from_str(include_str!("../data/file_explorer_themes.json"))
+-            .expect("file_explorer_themes.json is generated and parse-checked")
+-    })
+-}
+-
+-/// A dropdown entry: Windhawk `theme` setting id + display label.
+-pub struct StyleOption {
+-    pub id: &'static str,
+-    pub label: &'static str,
+-}
+-
+-/// Every selectable style, Windows Default first.
+-pub fn style_options() -> &'static [StyleOption] {
+-    static OPTIONS: OnceLock<Vec<StyleOption>> = OnceLock::new();
+-    OPTIONS.get_or_init(|| {
+-        catalog()
+-            .options
+-            .iter()
+-            .map(|o| StyleOption {
+-                id: o.id.as_str(),
+-                label: o.label.as_str(),
+-            })
+-            .collect()
+-    })
+-}
+-
+-/// Whether `id` is selectable: `""` (Windows Default) or a known theme.
+-pub fn is_style_id(id: &str) -> bool {
+-    id.is_empty() || catalog().themes.contains_key(id)
+-}
+-
+-/// The theme's full converted payload — target styles, style constants and
+-/// theme-resource variables.
+-pub fn theme(id: &str) -> Option<&'static serde_json::Value> {
+-    catalog().themes.get(id)
+-}
+-
+-/// The theme's DWM backdrop choice (`BackgroundTranslucentEffect` in the
+-/// mod), applied to `CabinetWClass` windows via
+-/// `DWMWA_SYSTEMBACKDROP_TYPE` on the platform side. Every non-default
+-/// catalog theme drives the system-acrylic path: on Windows 11 23H2 the
+-/// `kDefault`/empty entries still need `DWMSBT_TRANSIENTWINDOW` or the
+-/// frame-extension glass never engages — only `kMica` keeps its own
+-/// system backdrop. `None` only for `""`/unknown ids.
+-pub fn backdrop(id: &str) -> Option<&'static str> {
+-    let theme = theme(id)?;
+-    Some(match theme["backgroundTranslucentEffect"].as_str() {
+-        Some("kMica") => "mica",
+-        _ => "acrylic",
+-    })
+-}
+-
+-/// `WindhawkBlur` is not a real XAML type — the mod injects it. Re-express
+-/// it as a translucent `SolidColorBrush` so `XamlReader.Load` resolves a
+-/// plain brush inside the WinUI3 session: WinUI3's `AcrylicBrush` is
+-/// in-app acrylic and has no usable backdrop inside a `CabinetWClass`
+-/// island (it degrades to a ~95%-opaque block), while the DWM accent
+-/// policy already blurs the desktop behind the whole window. Alpha comes
+-/// from `TintOpacity` (else the tint color's own alpha), clamped to
+-/// `0x10..=0x45` — translucent, never opaque, never fully clear.
+-fn normalize_blur(value: &str) -> String {
+-    const TAGS: [&str; 2] = ["<WindhawkBlur", "<AcrylicBrush"];
+-    let mut out = String::with_capacity(value.len());
+-    let mut rest = value;
+-    // Earliest occurrence of either blur-brush tag wins each rewrite.
+-    while let Some((pos, tag)) = TAGS
+-        .iter()
+-        .filter_map(|t| rest.find(t).map(|p| (p, *t)))
+-        .min_by_key(|(p, _)| *p)
+-    {
+-        out.push_str(&rest[..pos]);
+-        let inner = &rest[pos + tag.len()..];
+-        let end = inner.find('>').map(|e| e + 1).unwrap_or(inner.len());
+-        let attrs = &inner[..end.min(inner.len())];
+-        let attr = |name: &str| -> Option<String> {
+-            let pat = format!("{name}=\"");
+-            let s = attrs.find(&pat)? + pat.len();
+-            let e = attrs[s..].find('"')? + s;
+-            Some(attrs[s..e].to_string())
+-        };
+-        let opacity = attr("TintOpacity")
+-            .or_else(|| attr("Opacity"))
+-            .and_then(|o| o.parse::<f32>().ok())
+-            .map(|o| (o.clamp(0.0, 1.0) * 255.0).round() as u32);
+-        let tint = attr("TintColor").or_else(|| attr("FallbackColor"));
+-        let (r, g, b, a) = match tint.as_deref().map(str::trim) {
+-            // `Transparent` (hover/rest states): near-clear white veil so
+-            // DWM glass stays visible; alpha rides the brush's opacity.
+-            Some(c) if c.eq_ignore_ascii_case("transparent") => {
+-                (0xFF, 0xFF, 0xFF, opacity.unwrap_or(0x14).clamp(0x08, 0x24))
+-            }
+-            // Literal #AARRGGBB / #RRGGBB: keep the author's RGB; alpha
+-            // from the color (TintOpacity wins), clamped translucent.
+-            Some(c) if c.starts_with('#') => {
+-                let n = u32::from_str_radix(&c[1..], 16).unwrap_or(0);
+-                match c.len() - 1 {
+-                    8 => (
+-                        (n >> 16) & 0xFF,
+-                        (n >> 8) & 0xFF,
+-                        n & 0xFF,
+-                        opacity.unwrap_or((n >> 24) & 0xFF).clamp(0x10, 0x28),
+-                    ),
+-                    6 => (
+-                        (n >> 16) & 0xFF,
+-                        (n >> 8) & 0xFF,
+-                        n & 0xFF,
+-                        opacity.unwrap_or(0x80).clamp(0x10, 0x28),
+-                    ),
+-                    _ => (0x20, 0x20, 0x20, opacity.unwrap_or(0x1A).clamp(0x12, 0x24)),
+-                }
+-            }
+-            // `{ThemeResource x}`, missing, or anything unparseable:
+-            // neutral frosted-gray — never the old opaque #45101010 mud.
+-            _ => (0x20, 0x20, 0x20, opacity.unwrap_or(0x1A).clamp(0x12, 0x24)),
+-        };
+-        out.push_str(&format!(
+-            "<SolidColorBrush Color=\"#{a:02X}{r:02X}{g:02X}{b:02X}\"/>"
+-        ));
+-        rest = &inner[end.min(inner.len())..];
+-    }
+-    out.push_str(rest);
+-    out
+-}
+-
+-/// Top-bar (WinUI 3 island) transparency guaranteed for every theme: the
+-/// island's root containers default to opaque theme resources, so these
+-/// rules are appended after each theme's own styles — last write wins —
+-/// to keep the DWM `DWMSBT_TRANSIENTWINDOW` blur visible end to end.
+-const TOP_BAR_RULES: &[(&str, &[&str])] = &[
+-    (
+-        "FileExplorerExtensions.FileExplorerTabControl",
+-        &["Background=Transparent"],
+-    ),
+-    (
+-        "FileExplorerExtensions.FileExplorerTabControl > Grid",
+-        &["Background=Transparent"],
+-    ),
+-    (
+-        "Microsoft.UI.Xaml.Controls.TabView",
+-        &["Background=Transparent"],
+-    ),
+-    (
+-        "Microsoft.UI.Xaml.Controls.Grid#TabContainerGrid",
+-        &["Background=Transparent"],
+-    ),
+-    (
+-        "FileExplorerExtensions.NavigationBarControl",
+-        &["Background=Transparent"],
+-    ),
+-    (
+-        "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
+-        &["Background=Transparent", "BorderBrush=Transparent"],
+-    ),
+-    (
+-        "FileExplorerExtensions.CommandBarControl_Wave1",
+-        &["Background=Transparent"],
+-    ),
+-    (
+-        "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
+-        &["Background=Transparent", "BorderBrush=Transparent"],
+-    ),
+-    (
+-        "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
+-        &["Background=Transparent"],
+-    ),
+-    (
+-        "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot",
+-        &["Background=Transparent", "BorderBrush=Transparent"],
+-    ),
+-    (
+-        "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
+-        &["Background=Transparent"],
+-    ),
+-    (
+-        "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
+-        &["Background=Transparent"],
+-    ),
+-    (
+-        "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
+-        &["Background=Transparent"],
+-    ),
+-    // Content grids hosting DirectUIHWND — the Win32 punch already lays
+-    // the veil/tint beneath them; an XAML background here would
+-    // double-stack the overlay.
+-    (
+-        "Microsoft.UI.Xaml.Controls.Grid#DetailsViewControlRootGrid",
+-        &["Background=Transparent"],
+-    ),
+-    (
+-        "Microsoft.UI.Xaml.Controls.Grid#HomeViewRootGrid",
+-        &["Background=Transparent"],
+-    ),
+-    (
+-        "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
+-        &["Background=Transparent"],
+-    ),
+-];
+-
+-/// Serializes the theme into the line wire-format the injected
+-/// `pecofence_tap.dll` parses inside `explorer.exe`'s WinUI3 diagnostics
+-/// session (the host transports it with `WM_COPYDATA`):
+-///
+-/// ```text
+-/// PECO-FES1
+-/// T <target>
+-/// S <style>
+-/// ...
+-/// R <key>\t<value>       (theme resource variables)
+-/// E
+-/// ```
+-///
+-/// `$constant` substitution is done here (longest-name-first, the mod's own
+-/// ordering), so the DLL only ever sees expanded style strings.
+-pub fn theme_wire(id: &str) -> Option<String> {
+-    let theme = theme(id)?;
+-    let mut out = String::with_capacity(64 * 1024);
+-    out.push_str("PECO-FES1\n");
+-
+-    // Constants: `name=value` pairs applied to every style/target string
+-    // with longest-name-first replacement order.
+-    let mut constants: Vec<(String, String)> = theme["styleConstants"]
+-        .as_array()
+-        .map(|a| {
+-            a.iter()
+-                .filter_map(|v| v.as_str())
+-                .filter(|s| !s.starts_with("//"))
+-                .filter_map(|s| {
+-                    let (k, v) = s.split_once('=')?;
+-                    Some((k.trim().to_string(), v.trim().to_string()))
+-                })
+-                .collect()
+-        })
+-        .unwrap_or_default();
+-    for i in 0..constants.len() {
+-        let prior = constants[..i].to_vec();
+-        constants[i].1 = expand_constants(&constants[i].1, &prior);
+-    }
+-    constants.sort_by_key(|c| std::cmp::Reverse(c.0.len()));
+-
+-    if let Some(styles) = theme["targetStyles"].as_array() {
+-        for entry in styles {
+-            let Some(target) = entry["target"].as_str() else {
+-                continue;
+-            };
+-            if target.starts_with("//") {
+-                continue;
+-            }
+-            let target = expand_constants(target, &constants);
+-            let mut emitted_target = false;
+-            if let Some(arr) = entry["styles"].as_array() {
+-                for style in arr.iter().filter_map(|s| s.as_str()) {
+-                    let style = style.trim();
+-                    if style.is_empty() || style.starts_with("//") {
+-                        continue;
+-                    }
+-                    if !emitted_target {
+-                        out.push_str("T ");
+-                        out.push_str(&target.replace(['\t', '\n'], " "));
+-                        out.push('\n');
+-                        emitted_target = true;
+-                    }
+-                    let style = normalize_blur(&expand_constants(style, &constants));
+-                    out.push_str("S ");
+-                    out.push_str(&style.replace(['\t', '\n'], " "));
+-                    out.push('\n');
+-                }
+-            }
+-        }
+-    }
+-    // Top-bar transparency floor — appended last so it overrides any
+-    // opaque island background a theme left behind.
+-    for (target, styles) in TOP_BAR_RULES {
+-        out.push_str("T ");
+-        out.push_str(target);
+-        out.push('\n');
+-        for style in *styles {
+-            out.push_str("S ");
+-            out.push_str(style);
+-            out.push('\n');
+-        }
+-    }
+-    if let Some(vars) = theme["themeResourceVariables"].as_array() {
+-        for var in vars.iter().filter_map(|v| v.as_str()) {
+-            if var.starts_with("//") {
+-                continue;
+-            }
+-            let var = normalize_blur(&expand_constants(var, &constants));
+-            out.push_str("R ");
+-            out.push_str(&var.replace(['\t', '\n'], " "));
+-            out.push('\n');
+-        }
+-    }
+-    out.push_str("E\n");
+-    Some(out)
+-}
+-
+-/// `ApplyStyleConstants` from the mod: replace each `$name` token with its
+-/// constant's value; unknown `$x` survives literally.
+-fn expand_constants(input: &str, constants: &[(String, String)]) -> String {
+-    let mut out = String::with_capacity(input.len());
+-    let bytes = input.as_bytes();
+-    let mut i = 0;
+-    while i < bytes.len() {
+-        if bytes[i] == b'$' {
+-            let rest = &input[i + 1..];
+-            if let Some((name, value)) =
+-                constants.iter().find(|(n, _)| rest.starts_with(n.as_str()))
+-            {
+-                out.push_str(value);
+-                i += 1 + name.len();
+-                continue;
+-            }
+-        }
+-        let ch_len = input[i..].chars().next().map(char::len_utf8).unwrap_or(1);
+-        out.push_str(&input[i..i + ch_len]);
+-        i += ch_len;
+-    }
+-    out
+-}
+-
+-/// The option list as a JSON value for the settings state payload.
+-pub fn style_options_json() -> serde_json::Value {
+-    serde_json::Value::Array(
+-        catalog()
+-            .options
+-            .iter()
+-            .map(|o| {
+-                serde_json::json!({
+-                    "id": o.id,
+-                    "label": o.label,
+-                })
+-            })
+-            .collect(),
+-    )
+-}
+-
+-#[cfg(test)]
+-mod tests {
+-    use super::*;
+-
+-    #[test]
+-    fn the_catalog_lists_every_selectable_style() {
+-        let opts = style_options();
+-        assert_eq!(opts.len(), 17);
+-        assert_eq!(opts[0].id, "");
+-        assert_eq!(opts[0].label, "Windows Default");
+-        for o in &opts[1..] {
+-            assert!(!o.id.is_empty(), "non-default styles carry the Windhawk id");
+-            assert!(is_style_id(o.id), "{} must validate", o.id);
+-        }
+-        assert!(is_style_id("Translucent_Explorer11"));
+-        assert!(is_style_id("MicaBar"));
+-        assert!(is_style_id("WindowGlass"));
+-        assert!(is_style_id(""));
+-        assert!(!is_style_id("NoSuchTheme"));
+-    }
+-
+-    #[test]
+-    fn theme_wire_serializes_rules_and_resources() {
+-        let wire = theme_wire("Translucent_Explorer11").expect("wire for known theme");
+-        assert!(wire.starts_with("PECO-FES1\n"));
+-        assert!(wire.ends_with("E\n"));
+-        assert!(wire.contains(
+-            "T FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid\n"
+-        ));
+-        assert!(wire.contains("S Background=Transparent\n"));
+-
+-        // Windows Default and unknown ids produce no wire.
+-        assert!(theme_wire("").is_none());
+-        assert!(theme_wire("NoSuchTheme").is_none());
+-    }
+-
+-    #[test]
+-    fn windhawk_blur_rewrites_to_translucent_solid() {
+-        // OS26 themes carry `<WindhawkBlur>` — the wire must emit a
+-        // translucent SolidColorBrush (WinUI3 AcrylicBrush is in-app
+-        // acrylic and reads opaque inside a CabinetWClass island).
+-        let wire = theme_wire("OS26_Liquid_Glass").expect("wire for known theme");
+-        assert!(
+-            !wire.contains("WindhawkBlur"),
+-            "mod-only type must not ship"
+-        );
+-        assert!(!wire.contains("<AcrylicBrush"));
+-        assert!(wire.contains("<SolidColorBrush"));
+-    }
+-
+-    #[test]
+-    fn backdrop_defaults_every_theme_to_acrylic() {
+-        assert_eq!(backdrop("Translucent_Explorer11"), Some("acrylic"));
+-        // `kDefault` themes must still select the system-acrylic path —
+-        // without it the frame-extension glass never engages on 23H2.
+-        assert_eq!(backdrop("LiquidGlass"), Some("acrylic"));
+-        assert_eq!(backdrop("Compact_Explorer11"), Some("acrylic"));
+-        assert_eq!(backdrop(""), None);
+-        assert_eq!(backdrop("NoSuchTheme"), None);
+-    }
+-}
+diff --git a/crates/core/src/lib.rs b/crates/core/src/lib.rs
+index 11c8758..df20974 100644
+--- a/crates/core/src/lib.rs
++++ b/crates/core/src/lib.rs
+@@ -4,10 +4,8 @@
+ pub mod adaptive;
+ pub mod base64;
+ pub mod brand;
+-pub mod color_tint;
+ pub mod config_store;
+ pub mod date_group;
+-pub mod file_explorer_themes;
+ pub mod geometry;
+ pub mod hotkey;
+ pub mod i18n;
+diff --git a/crates/core/src/model.rs b/crates/core/src/model.rs
+index 2b0d833..917b61d 100644
+--- a/crates/core/src/model.rs
++++ b/crates/core/src/model.rs
+@@ -180,17 +180,33 @@ pub struct Settings {
+     /// Local device preference — themes never carry it.
+     #[serde(default)]
+     pub notification_center_style: String,
+-    /// Accent color tint overlaid on the styled shell surfaces —
+-    /// `#RRGGBB`, `""` = no tint. Layers over the taskbar/Start Menu/
+-    /// Notification Center styles; local device preference.
+-    #[serde(default)]
+-    pub color_tint: String,
+-    /// The File Explorer style applied through the native WinUI3 XAML
+-    /// styler — a [`crate::file_explorer_themes`] catalog id, `""` =
+-    /// Windows Default (stock Explorer chrome + backdrop restored).
++    /// File Explorer window glass — the ExplorerBlurMica recipe applied
++    /// natively: `""` = Windows Default (stock chrome + backdrop);
++    /// `"blur"`/`"acrylic"`/`"mica"`/`"blurclear"`/`"micaalt"` map to
++    /// EBM's `effect=` (Blur/Acrylic/Mica/Blur (Clear)/Mica Alt).
+     /// Local device preference — themes never carry it.
+     #[serde(default)]
+-    pub file_explorer_style: String,
++    pub fe_effect: String,
++    /// EBM `clearAddress` — clear the address bar background.
++    #[serde(default = "default_true")]
++    pub fe_clear_address: bool,
++    /// EBM `clearBarBg` — clear the scrollbar background.
++    #[serde(default = "default_true")]
++    pub fe_clear_bar_bg: bool,
++    /// EBM `clearWinUIBg` — clear the WinUI 3 top-bar island background.
++    #[serde(default = "default_true")]
++    pub fe_clear_winui_bg: bool,
++    /// EBM `showLine` — the split line between the tree pane and the
++    /// file view.
++    #[serde(default)]
++    pub fe_show_line: bool,
++    /// EBM `[light]` RGBA blend color (`#AARRGGBB`) used while the system
++    /// runs light mode.
++    #[serde(default = "fe_light_rgba_default")]
++    pub fe_light_rgba: String,
++    /// EBM `[dark]` RGBA blend color (`#AARRGGBB`) used in dark mode.
++    #[serde(default = "fe_dark_rgba_default")]
++    pub fe_dark_rgba: String,
+     /// Background fit mode for bundled theme assets: `false` = strict Cover (a
+     /// uniform scale fills the screen, the overflowing axis crops); `true` =
+     /// strict Contain (the whole frame centered and uncropped, the leftover
+@@ -317,8 +333,13 @@ impl Default for Settings {
+             start_menu_style: String::new(),
+             taskbar_style: String::new(),
+             notification_center_style: String::new(),
+-            color_tint: String::new(),
+-            file_explorer_style: String::new(),
++            fe_effect: String::new(),
++            fe_clear_address: true,
++            fe_clear_bar_bg: true,
++            fe_clear_winui_bg: true,
++            fe_show_line: false,
++            fe_light_rgba: "#A0DCDCDC".to_string(),
++            fe_dark_rgba: "#78000000".to_string(),
+             contain_background: false,
+             stretch_tolerance_pct: 0,
+             active_theme_path: None,
+@@ -1972,6 +1993,14 @@ fn default_chameleon_intensity() -> u8 {
+     55
+ }
+ 
++fn fe_light_rgba_default() -> String {
++    "#A0DCDCDC".to_string()
++}
++
++fn fe_dark_rgba_default() -> String {
++    "#78000000".to_string()
++}
++
+ fn default_true() -> bool {
+     true
+ }
+diff --git a/crates/platform/src/file_explorer_styler.rs b/crates/platform/src/file_explorer_styler.rs
+index 9a641dc..681c389 100644
+--- a/crates/platform/src/file_explorer_styler.rs
++++ b/crates/platform/src/file_explorer_styler.rs
+@@ -1,17 +1,24 @@
+-//! Host-side controller for the File Explorer XAML styler — the native
+-//! replacement for the Windhawk `windows-11-file-explorer-styler` mod.
++//! Host-side controller for the File Explorer glass effect — the native
++//! port of [ExplorerBlurMica](https://github.com/Maplespe/ExplorerBlurMica)'s
++//! `config.ini`:
+ //!
+-//! Same delivery path as the taskbar styler (`tap::ensure_resident` +
+-//! `WM_COPYDATA` with a `PECO-FES1` wire), but the resident routes it to
+-//! explorer.exe's **WinUI3** diagnostics session — the one
+-//! `Microsoft.Internal.FrameworkUdk.dll` hosts — which sees the
+-//! `CabinetWClass` XAML islands. The taskbar's WUX session is untouched.
++//! ```ini
++//! [config]  effect=0..4  clearAddress  clearBarBg  clearWinUIBg  showLine
++//! [light]   r g b a        (blend color while the system is light)
++//! [dark]    r g b a        (blend color while the system is dark)
++//! ```
+ //!
+-//! The theme's `BackgroundTranslucentEffect` maps to a direct
+-//! `DwmSetWindowAttribute(DWMWA_SYSTEMBACKDROP_TYPE)` call on every
+-//! `CabinetWClass` — the same attribute the mod rewrites through its
+-//! `DwmSetWindowAttribute` hook. We don't hook; explorer can re-assert its
+-//! own backdrop later, so `ensure` re-applies ours on each tick.
++//! The effect rides two channels into the explorer-resident
++//! `pecofence_tap.dll`:
++//! - `FEBD` COPYDATA — the DWM material: `[backdrop:i32, accent_state:u32,
++//!   accent_flags:u32, gradient_abgr:u32, options:u32]` (little-endian,
++//!   20 bytes). `fe_glass` applies it via `DwmExtendFrameIntoClientArea`,
++//!   `DwmSetWindowAttribute`, `DwmEnableBlurBehindWindow` and
++//!   `WCA_ACCENT_POLICY` — the exact pipeline EBM runs in-process.
++//! - `FEST` COPYDATA — a `PECO-FES1` controlStyles wire carrying the
++//!   `clearAddress`/`clearWinUIBg` island-transparency rules into the
++//!   WinUI 3 diagnostics session. `clearBarBg`/`showLine` are Win32
++//!   behaviors instead — they ride `options` bits in the FEBD.
+ 
+ use std::sync::Mutex;
+ use std::sync::atomic::{AtomicBool, Ordering};
+@@ -36,107 +43,95 @@ windows_core::link!("advapi32.dll" "system" fn RegCloseKey(hkey: isize) -> i32);
+ const CDS_FE_THEME: usize = u32::from_be_bytes(*b"FEST") as usize;
+ const CDS_FE_RESET: usize = u32::from_be_bytes(*b"FESR") as usize;
+ const CDS_FE_HELLO: usize = u32::from_be_bytes(*b"FEHI") as usize;
+-/// Backdrop/accent state for the resident's `fe_glass` detours —
+-/// `[backdrop:i32, accent_state:u32, accent_flags:u32, gradient:u32]` LE.
++/// Backdrop/accent material for the resident's `fe_glass` detours —
++/// `[backdrop:i32, accent_state:u32, accent_flags:u32, gradient:u32,
++/// options:u32]` little-endian (20 bytes).
+ const CDS_FE_BACKDROP: usize = u32::from_be_bytes(*b"FEBD") as usize;
+ 
+-// DWMWA_SYSTEMBACKDROP_TYPE (38) values — the same DWMSBT_* mapping the mod
+-// applies through its DwmSetWindowAttribute hook.
++// DWMWA_SYSTEMBACKDROP_TYPE (38) values.
+ const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
++const DWMSBT_AUTO: i32 = 0; // system default — accent path wants this
+ const DWMSBT_MAINWINDOW: i32 = 2; // Mica
+-const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt / explorer's own stock request
++const DWMSBT_TABBEDWINDOW: i32 = 4; // Mica Alt / explorer's stock request
+ 
++// ACCENT_STATE values (`WCA_ACCENT_POLICY`).
+ const ACCENT_DISABLED: u32 = 0;
+-/// `ACCENT_STATE_ENABLE_ACRYLICBLURBEHIND` — the ExplorerBlurMica/
+-/// Translucent-Windows `AccentBlurBehind` recipe: the acrylic material
+-/// belongs to `WCA_ACCENT_POLICY`, `GradientColor` IS the window's tint,
+-/// and `SYSTEMBACKDROP` stays `DWMSBT_AUTO` so no DWMSBT material fights
+-/// it. Verified working on this machine — EBM runs it natively.
+-const ACCENT_ACRYLIC: u32 = 4;
+-const DWMSBT_AUTO: i32 = 0;
+-
+-/// ExplorerBlurMica/Translucent-Windows `HandleEffects` port. The accent
+-/// path (`AccentBlurBehind`) is the proven-working recipe on 23H2+
+-/// `CabinetWClass`: `DwmEnableBlurBehindWindow` TRUE over the whole
+-/// client region + `WCA_ACCENT_POLICY` `{ACRYLIC, GradientColor=tint}` +
+-/// frame margins `-1`, and EVERY `SYSTEMBACKDROP` write resolves to
+-/// `DWMSBT_AUTO` (the resident's `dwm_setattr_hook` substitutes it) —
+-/// DWM bakes the tint into the material once, top bar through content,
+-/// so nothing else may paint a veil (double-stack). `mica` stays on the
+-/// `DWMSBT_MAINWINDOW` system-backdrop path (accent off — the punch
+-/// keeps its own veil). Returns
+-/// `(backdrop, accent_state, accent_flags, gradient_abgr)`.
+-fn desired_glass(effect: &str, tint: &str) -> (i32, u32, u32, u32) {
+-    if effect == "mica" {
+-        (DWMSBT_MAINWINDOW, ACCENT_DISABLED, 0, tint_abgr(tint))
+-    } else {
+-        (DWMSBT_AUTO, ACCENT_ACRYLIC, 0, tint_abgr(tint))
+-    }
+-}
++const ACCENT_TRANSPARENTGRADIENT: u32 = 2; // EBM "Blur (Clear)"
++const ACCENT_BLURBEHIND: u32 = 3; // EBM "Blur" (removed on Win11 22H2+)
++const ACCENT_ACRYLIC: u32 = 4; // EBM "Acrylic"
+ 
+-/// Selected swatch `#RRGGBB` → `0x24BBGGRR` (the ABGR layout
+-/// `fe_glass::punch_black` stretches across the Win32 surfaces); `""` or
+-/// malformed → `0` (transparent-black punch).
+-/// Swatch `#RRGGBB` → `0x48BBGGRR` with channels darkened to 65% (bright
+-/// swatches stay glassy dark). `""`/malformed → `0x50161210` — the
+-/// default ~31% smoked-charcoal veil (`0x50` alpha over `#101216`), NOT
+-/// transparent black: bare `0x00000000` lets bright windows behind
+-/// Explorer wash out the white file names. Same color as the XAML veil
+-/// (`color_tint::fe_veil_argb`) on the top bar.
+-fn tint_abgr(tint: &str) -> u32 {
+-    let hex = tint.strip_prefix('#').unwrap_or(tint);
+-    if hex.len() == 6
+-        && let Ok(rgb) = u32::from_str_radix(hex, 16)
+-    {
+-        let (r, g, b) = (
+-            (rgb >> 16 & 0xFF) * 65 / 100,
+-            (rgb >> 8 & 0xFF) * 65 / 100,
+-            (rgb & 0xFF) * 65 / 100,
+-        );
+-        return (pecofence_core::color_tint::FE_TINT_ALPHA as u32) << 24 | b << 16 | g << 8 | r;
+-    }
+-    0x50161210
+-}
++/// `FE_OPTIONS` bits — Win32-side behaviors that can't ride the XAML
++/// wire (must match `fe_glass.rs`).
++const FEOPT_CLEAR_BAR_BG: u32 = 1 << 0;
++const FEOPT_SHOW_LINE: u32 = 1 << 1;
+ 
+-const RDW_INVALIDATE: u32 = 0x0001;
+-const RDW_ERASE: u32 = 0x0004;
+-const RDW_FRAME: u32 = 0x0400;
+-const RDW_ALLCHILDREN: u32 = 0x0080;
+-const SWP_NOMOVE: u32 = 0x0002;
+-const SWP_NOSIZE: u32 = 0x0001;
+-const SWP_NOZORDER: u32 = 0x0004;
+-const SWP_NOACTIVATE: u32 = 0x0010;
+-const SWP_FRAMECHANGED: u32 = 0x0020;
++/// The `clearAddress` rule set — the address/search bar containers.
++/// `S Background=Transparent` lets the material show through.
++const CLEAR_ADDRESS_RULES: &[&str] = &[
++    "FileExplorerExtensions.NavigationBarControl",
++    "Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid",
++];
++
++/// The `clearWinUIBg` rule set — the WinUI 3 island's own backgrounds
++/// (tab strip, command bar, root containers). The nav bar is governed by
++/// `clearAddress` instead.
++const CLEAR_WINUI_BG_RULES: &[&str] = &[
++    "FileExplorerExtensions.FileExplorerTabControl",
++    "FileExplorerExtensions.FileExplorerTabControl > Grid",
++    "Microsoft.UI.Xaml.Controls.TabView",
++    "Microsoft.UI.Xaml.Controls.Grid#TabContainerGrid",
++    "FileExplorerExtensions.CommandBarControl_Wave1",
++    "FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid",
++    "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar",
++    "Microsoft.UI.Xaml.Controls.CommandBar#FileExplorerCommandBar > Grid#LayoutRoot > Grid#ContentRoot",
++    "Microsoft.UI.Xaml.Controls.Grid#PART_LayoutRoot",
++    "Microsoft.UI.Xaml.Controls.Grid#ContentRoot",
++    "Microsoft.UI.Xaml.Controls.Grid#RootContainer",
++    "Microsoft.UI.Xaml.Controls.Grid#DetailsViewControlRootGrid",
++    "Microsoft.UI.Xaml.Controls.Grid#HomeViewRootGrid",
++    "FileExplorerExtensions.GalleryViewControl#GalleryViewControl > Grid",
++];
++
++/// UI-facing EBM configuration — mirrors `config.ini`'s `[config]` flags
++/// plus the `[light]`/`[dark]` RGBA strings (`#AARRGGBB`).
++pub struct FeGlassConfig<'a> {
++    /// `""` = off; `"blur"`, `"acrylic"`, `"mica"`, `"blurclear"`,
++    /// `"micaalt"` — EBM `effect=` 0..4.
++    pub effect: &'a str,
++    pub clear_address: bool,
++    pub clear_bar_bg: bool,
++    pub clear_winui_bg: bool,
++    pub show_line: bool,
++    pub light_rgba: &'a str,
++    pub dark_rgba: &'a str,
++}
+ 
+ struct Fe {
+-    /// The catalog id last delivered ("" = Windows Default — nothing armed).
+-    style: String,
+-    /// The wire last built — cached so `ensure` re-delivers after an
+-    /// explorer restart without re-serializing the catalog.
++    /// The EBM `effect` string currently stored ("" = off).
++    effect: String,
++    /// The flag bits currently resolved into `options`.
++    options: u32,
++    /// The resolved `GradientColor` (light/dark adaptive).
++    gradient: u32,
++    /// The FEST wire last built — cached so `ensure` re-delivers after an
++    /// explorer restart without re-serializing.
+     wire: String,
+     /// The resident command window the wire was delivered to.
+     cmd_hwnd: usize,
+     /// Whether `CDS_FE_HELLO` reached the current DLL residency.
+     hello_sent: bool,
+-    /// The `backgroundTranslucentEffect` currently pushed to cabinets —
+-    /// `apply_backdrop` only touches windows when this changes or a new
+-    /// `CabinetWClass` appears, so the 2 s ensure tick stays silent.
+-    applied_effect: String,
+-    /// Cabinet hwnds the current `applied_effect` was pushed to.
++    /// The DWM material values currently pushed to cabinets —
++    /// `apply_glass` skips untouched windows unless these change.
++    applied: (i32, u32, u32),
++    /// Cabinet hwnds the current `applied` material was pushed to.
+     seen_hwnds: std::collections::HashSet<isize>,
+-    /// Selected `color_tint` (`#RRGGBB`, `""` = off) — drives the accent
+-    /// blur's `GradientColor` so the glass takes the overlay color.
+-    tint: String,
+-    /// Tint currently pushed to cabinets — `apply_backdrop` rewrites
+-    /// when it changes, same change-detection as `applied_effect`.
+-    applied_tint: String,
+ }
+ 
+ static FE: Mutex<Option<Fe>> = Mutex::new(None);
+-/// Whether a File Explorer style is armed — read lock-free.
++/// Whether a File Explorer glass effect is armed — read lock-free.
+ static ARMED: AtomicBool = AtomicBool::new(false);
+ 
+-/// `true` while a File Explorer style is armed — `tap` keeps the DLL resident.
++/// `true` while a File Explorer effect is armed — `tap` keeps the DLL resident.
+ pub fn is_armed() -> bool {
+     ARMED.load(Ordering::Acquire)
+ }
+@@ -149,9 +144,9 @@ fn widestr(s: &str) -> Vec<u16> {
+     s.encode_utf16().chain(core::iter::once(0)).collect()
+ }
+ 
+-/// Every `CabinetWClass` that is a real File Explorer window — the mod's
+-/// `GetTargetWindowType`: frames with a `WorkerW` child are the legacy
+-/// Control Panel shell, which has no XAML islands and isn't targeted.
++/// Every `CabinetWClass` that is a real File Explorer window — frames
++/// with a `WorkerW` child are the legacy Control Panel shell, which has
++/// no XAML islands and isn't targeted.
+ fn cabinet_windows() -> Vec<crate::bindings::HWND> {
+     struct Ctx {
+         out: Vec<crate::bindings::HWND>,
+@@ -193,52 +188,257 @@ fn cabinet_windows() -> Vec<crate::bindings::HWND> {
+     ctx.out
+ }
+ 
+-/// `ApplyBackgroundTranslucentEffect` — direct `DwmSetWindowAttribute` on
+-/// each cabinet window (`""` restores the stock `DWMSBT_TABBEDWINDOW`
+-/// backdrop File Explorer requests for itself, and drops the accent blur
+-/// the blur path sets). Runs only when the effect changes or a new
+-/// cabinet appears — the ensure tick calls this every 2 s, so painting
+-/// everything unconditionally would be a constant repaint storm.
+-fn apply_backdrop(effect: &str) {
++/// `#AARRGGBB` (or `#RRGGBB`, alpha `FF` assumed) → `0xAABBGGRR`, the
++/// ABGR layout `ACCENT_POLICY.GradientColor` consumes.
++fn parse_argb(s: &str) -> Option<u32> {
++    let hex = s.strip_prefix('#').unwrap_or(s);
++    let v = match hex.len() {
++        8 => u32::from_str_radix(hex, 16).ok()?,
++        6 => u32::from_str_radix(hex, 16).ok()? | 0xFF00_0000,
++        _ => return None,
++    };
++    let (a, r, g, b) = (v >> 24, (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF);
++    Some(a << 24 | b << 16 | g << 8 | r)
++}
++
++/// `HKCU\...\Personalize\AppsUseLightTheme` — `false` means the system
++/// runs dark mode and the `[dark]` RGBA applies (EBM's adaptive rule).
++fn apps_use_light_theme() -> bool {
++    const HKCU: isize = 0x8000_0001;
++    const KEY_READ: u32 = 0x0002_0019;
++    const REG_DWORD: u32 = 4;
++    let subkey = widestr("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
++    let name = widestr("AppsUseLightTheme");
++    unsafe {
++        let mut key = 0isize;
++        if RegOpenKeyExW(HKCU, PCWSTR(subkey.as_ptr()), 0, KEY_READ, &mut key) != 0 {
++            return false; // assume dark — the Explorer glass default
++        }
++        let mut val = 0u32;
++        let mut ty = 0u32;
++        let mut cb = core::mem::size_of::<u32>() as u32;
++        let _ = RegQueryValueExW(
++            key,
++            PCWSTR(name.as_ptr()),
++            core::ptr::null(),
++            &mut ty,
++            &mut val as *mut u32 as *mut u8,
++            &mut cb,
++        );
++        let _ = RegCloseKey(key);
++        ty == REG_DWORD && val != 0
++    }
++}
++
++/// EBM `effect=` → `(backdrop, accent_state)`. Accent materials keep
++/// `DWMSBT_AUTO` so no system backdrop fights `WCA_ACCENT_POLICY`;
++/// mica/mica-alt ride the DWMSBT path with the accent off.
++fn desired_material(effect: &str) -> (i32, u32) {
++    match effect {
++        "blur" => (DWMSBT_AUTO, ACCENT_BLURBEHIND),
++        "acrylic" => (DWMSBT_AUTO, ACCENT_ACRYLIC),
++        "mica" => (DWMSBT_MAINWINDOW, ACCENT_DISABLED),
++        "blurclear" => (DWMSBT_AUTO, ACCENT_TRANSPARENTGRADIENT),
++        "micaalt" => (DWMSBT_TABBEDWINDOW, ACCENT_DISABLED),
++        _ => (DWMSBT_TABBEDWINDOW, ACCENT_DISABLED),
++    }
++}
++
++/// Builds the `PECO-FES1` wire from the `clearAddress`/`clearWinUIBg`
++/// flags — `Background=Transparent` on the matching island targets.
++/// Always at least `magic\nE\n` so the resident arms + restores cleanly.
++fn glass_wire(clear_address: bool, clear_winui_bg: bool) -> String {
++    let mut wire = String::with_capacity(1024);
++    wire.push_str("PECO-FES1\n");
++    for target in CLEAR_ADDRESS_RULES
++        .iter()
++        .filter(|_| clear_address)
++        .chain(CLEAR_WINUI_BG_RULES.iter().filter(|_| clear_winui_bg))
++    {
++        wire.push_str("T ");
++        wire.push_str(target);
++        wire.push_str("\nS Background=Transparent\n");
++    }
++    wire.push_str("E\n");
++    wire
++}
++
++fn options_of(cfg: &FeGlassConfig) -> u32 {
++    let mut o = 0u32;
++    if cfg.clear_bar_bg {
++        o |= FEOPT_CLEAR_BAR_BG;
++    }
++    if cfg.show_line {
++        o |= FEOPT_SHOW_LINE;
++    }
++    o
++}
++
++/// The resolved `GradientColor` for `cfg` under the CURRENT system
++/// scheme — light RGBA when `AppsUseLightTheme`, dark otherwise
++/// (EBM's `[light]`/`[dark]` adaptive palettes).
++fn gradient_of(cfg: &FeGlassConfig) -> u32 {
++    let s = if apps_use_light_theme() {
++        cfg.light_rgba
++    } else {
++        cfg.dark_rgba
++    };
++    // EBM defaults: light #A0DCDCDC / dark #78000000.
++    parse_argb(s).unwrap_or(if apps_use_light_theme() {
++        0xA0DCDCDC
++    } else {
++        0x78000000
++    })
++}
++
++/// Applies an EBM `effect` + flags + adaptive RGBA. `effect=""` →
++/// `reset()` (Windows Default). Returns `false` for an unknown effect id
++/// so settings reverts.
++pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
++    if cfg.effect.is_empty() {
++        return reset();
++    }
++    if !matches!(
++        cfg.effect,
++        "blur" | "acrylic" | "mica" | "blurclear" | "micaalt"
++    ) {
++        return false;
++    }
++    let wire = glass_wire(cfg.clear_address, cfg.clear_winui_bg);
++    let mut guard = lock();
++    let fe = guard.get_or_insert_with(|| Fe {
++        effect: String::new(),
++        options: 0,
++        gradient: 0,
++        wire: String::new(),
++        cmd_hwnd: 0,
++        hello_sent: false,
++        applied: (0, 0, 0),
++        seen_hwnds: std::collections::HashSet::new(),
++    });
++    fe.effect = cfg.effect.to_string();
++    fe.options = options_of(cfg);
++    fe.gradient = gradient_of(cfg);
++    fe.wire = wire;
++    ARMED.store(true, Ordering::Release);
++    ensure_transparency_effects();
++    if let Some((hwnd, _)) = crate::tap::ensure_resident()
++        && !deliver(hwnd, fe)
++    {
++        fe.cmd_hwnd = 0; // delivery pending — `ensure` retries next tick
++    }
++    drop(guard);
++    apply_glass();
++    true
++}
++
++/// `Windows Default` — restore originals, return cabinet windows to the
++/// stock backdrop, stop keeping the DLL alive on our account.
++pub fn reset() -> bool {
++    let mut guard = lock();
++    if let Some(hwnd) = crate::tap::resident_window() {
++        let _ = crate::tap::send_copydata(hwnd, CDS_FE_RESET, &[]);
++    }
++    if let Some(fe) = guard.as_mut() {
++        fe.effect.clear();
++        fe.wire.clear();
++    }
++    ARMED.store(false, Ordering::Release);
++    drop(guard);
++    restore_glass();
++    true
++}
++
++/// Periodic liveness driven by the app's anchor tick: re-injects and
++/// re-delivers the wire when explorer restarted under an armed effect,
++/// and re-asserts the DWM material on cabinet windows.
++pub fn ensure() {
++    if !is_armed() {
++        return;
++    }
++    let Some((hwnd, _)) = crate::tap::ensure_resident() else {
++        return;
++    };
++    let mut guard = lock();
++    let Some(fe) = guard.as_mut() else {
++        return;
++    };
++    if fe.cmd_hwnd != hwnd.0 as usize {
++        let _ = deliver(hwnd, fe);
++    }
++    drop(guard);
++    apply_glass();
++}
++
++/// App shutdown — restore stock styling; `tap::shutdown` unloads the
++/// resident itself.
++pub fn shutdown() {
++    let _ = reset();
++}
++
++/// Sends the stored wire to the resident DLL — FEHI hello, then the FEBD
++/// material payload (the detours need the desired values BEFORE the
++/// theme wire arms them), then the FEST controlStyles wire.
++fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
++    if fe.cmd_hwnd != hwnd.0 as usize {
++        fe.hello_sent = false;
++    }
++    if !fe.hello_sent {
++        let pid = std::process::id();
++        if crate::tap::send_copydata(hwnd, CDS_FE_HELLO, &pid.to_ne_bytes()) {
++            fe.hello_sent = true;
++        }
++    }
++    let (bd, st) = desired_material(&fe.effect);
++    let mut payload = [0u8; 20];
++    payload[0..4].copy_from_slice(&bd.to_le_bytes());
++    payload[4..8].copy_from_slice(&st.to_le_bytes());
++    payload[8..12].copy_from_slice(&0u32.to_le_bytes()); // accent_flags
++    payload[12..16].copy_from_slice(&fe.gradient.to_le_bytes());
++    payload[16..20].copy_from_slice(&fe.options.to_le_bytes());
++    let _ = crate::tap::send_copydata(hwnd, CDS_FE_BACKDROP, &payload);
++    fe.cmd_hwnd = if crate::tap::send_copydata(hwnd, CDS_FE_THEME, fe.wire.as_bytes()) {
++        hwnd.0 as usize
++    } else {
++        0
++    };
++    fe.cmd_hwnd != 0
++}
++
++/// Pushes the DWM material onto every `CabinetWClass` — direct
++/// `DwmSetWindowAttribute`/`SetWindowCompositionAttribute` calls for the
++/// cross-process half (the resident's in-process copy does the same via
++/// its own `apply_glass_to`; the belt-and-suspenders pair keeps windows
++/// styled even before injection lands). Only touches windows when the
++/// material changed or a new cabinet appears.
++fn apply_glass() {
+     let hwnds = cabinet_windows();
+-    let (changed, mut seen) = {
++    let (material, options, gradient, mut seen) = {
+         let mut guard = lock();
+         let Some(fe) = guard.as_mut() else {
+             return;
+         };
+-        let changed = fe.applied_effect != effect || fe.applied_tint != fe.tint;
++        let (bd, st) = desired_material(&fe.effect);
++        let changed = fe.applied != (bd, st, fe.options | fe.gradient);
+         if changed {
+-            fe.applied_effect = effect.to_string();
+-            fe.applied_tint = fe.tint.clone();
++            fe.applied = (bd, st, fe.options | fe.gradient);
+             fe.seen_hwnds.clear();
+         }
+-        (changed, std::mem::take(&mut fe.seen_hwnds))
+-    };
+-    let (backdrop, accent_state, accent_flags, gradient) = if is_armed() {
+-        let tint = {
+-            let guard = lock();
+-            guard.as_ref().map(|fe| fe.tint.clone()).unwrap_or_default()
+-        };
+-        desired_glass(effect, &tint)
+-    } else {
+-        // Disarmed — hand the stock tabbed backdrop explorer asks for
+-        // itself back; everything else below restores too.
+-        (DWMSBT_TABBEDWINDOW, ACCENT_DISABLED, 0, 0)
++        (
++            (bd, st),
++            fe.options,
++            fe.gradient,
++            std::mem::take(&mut fe.seen_hwnds),
++        )
+     };
+-    // Glass is active for any armed state — a named effect or a
+-    // tint-only overlay (the tint rides the XAML ruleset on top of the
+-    // same TRANSIENTWINDOW acrylic; the swatch never re-selects the DWM
+-    // path).
++    let (backdrop, accent_state) = material;
++    let _ = options; // resident-side bits — not needed cross-process
+     let glass = is_armed();
+-    if glass && changed {
+-        ensure_transparency_effects();
+-    }
+     for hwnd in &hwnds {
+-        if !changed && seen.contains(&(hwnd.0 as usize as isize)) {
++        if seen.contains(&(hwnd.0 as usize as isize)) {
+             continue;
+         }
+         unsafe {
+-            // Immersive dark caption while a glass theme is armed.
+             let dark: i32 = glass as i32;
+             let _ = DwmSetWindowAttribute(
+                 *hwnd,
+@@ -259,11 +459,10 @@ fn apply_backdrop(effect: &str) {
+         // EBM/TW `EnableBlurBehind` — the accent path blurs the whole
+         // client region; the SYSTEMBACKDROP path disables blur-behind
+         // (mutually exclusive pairings render black).
+-        blur_behind(*hwnd, glass && accent_state == ACCENT_ACRYLIC);
+-        set_accent_policy(*hwnd, accent_state, accent_flags, gradient);
+-        // Kill the unfocused `#585858` fallback: the system backdrop only
+-        // blurs while DWM treats the window as active — force that
+-        // appearance, then lie about activation so DWM re-evaluates now.
++        blur_behind(*hwnd, glass && accent_state != ACCENT_DISABLED);
++        set_accent_policy(*hwnd, accent_state, 0, gradient);
++        // The system backdrop only blurs while DWM treats the window as
++        // active — force that appearance + fake an activation.
+         set_force_active(*hwnd, glass);
+         if glass {
+             unsafe {
+@@ -275,12 +474,39 @@ fn apply_backdrop(effect: &str) {
+     }
+     let mut guard = lock();
+     if let Some(fe) = guard.as_mut() {
+-        // Keep only live cabinets — dead hwnds can be reused by the OS.
+         seen.retain(|h| hwnds.iter().any(|w| w.0 as usize as isize == *h));
+         fe.seen_hwnds = seen;
+     }
+ }
+ 
++/// Restores every cabinet to stock — the disarm counterpart of
++/// `apply_glass`.
++fn restore_glass() {
++    for hwnd in cabinet_windows() {
++        extend_frame(hwnd, false);
++        let stock: i32 = DWMSBT_TABBEDWINDOW;
++        unsafe {
++            let _ = DwmSetWindowAttribute(
++                hwnd,
++                DWMWA_SYSTEMBACKDROP_TYPE,
++                &stock as *const i32 as *const core::ffi::c_void,
++                core::mem::size_of::<i32>() as u32,
++            );
++            let dark: i32 = 0;
++            let _ = DwmSetWindowAttribute(
++                hwnd,
++                20,
++                &dark as *const i32 as *const core::ffi::c_void,
++                core::mem::size_of::<i32>() as u32,
++            );
++        }
++        blur_behind(hwnd, false);
++        set_accent_policy(hwnd, ACCENT_DISABLED, 0, 0);
++        set_force_active(hwnd, false);
++        trigger_composition_update(hwnd);
++    }
++}
++
+ #[repr(C)]
+ struct DwmBlurBehind {
+     flags: u32,
+@@ -315,11 +541,10 @@ fn blur_behind(hwnd: crate::bindings::HWND, on: bool) {
+     }
+ }
+ 
+-/// `DwmExtendFrameIntoClientArea` — the prompt's mandatory Step 3 call:
+-/// `{ -1, -1, -1, -1 }` pulls the glass frame over the whole client area
+-/// so a `Transparent` XAML/Win32 background actually shows the backdrop;
+-/// `{0,0,0,0}` restores. The resident detour keeps explorer from
+-/// resetting it while a theme is armed.
++/// `DwmExtendFrameIntoClientArea` — `{ -1, -1, -1, -1 }` pulls the glass
++/// frame over the whole client area so a `Transparent` XAML/Win32
++/// background actually shows the material; `{0,0,0,0}` restores. The
++/// resident detour keeps explorer from resetting it while armed.
+ fn extend_frame(hwnd: crate::bindings::HWND, on: bool) {
+     #[repr(C)]
+     struct Margins {
+@@ -364,9 +589,9 @@ fn extend_frame(hwnd: crate::bindings::HWND, on: bool) {
+ }
+ 
+ /// `HKCU\...\Themes\Personalize\EnableTransparency`: DWM silently renders
+-/// every system backdrop opaque while this is 0. Arming glass needs it —
+-/// set it once and broadcast `WM_SETTINGCHANGE` (`ImmersiveColorSet`) so
+-/// DWM re-reads it without a sign-out.
++/// every backdrop opaque while this is 0. Arming glass needs it — set it
++/// once and broadcast `WM_SETTINGCHANGE` (`ImmersiveColorSet`) so DWM
++/// re-reads it without a sign-out.
+ fn ensure_transparency_effects() {
+     const HKCU: isize = 0x8000_0001;
+     const KEY_READ: u32 = 0x0002_0019;
+@@ -433,9 +658,9 @@ struct WindowCompositionAttribData {
+ }
+ 
+ const WCA_ACCENT_POLICY: u32 = 19;
+-/// Keeps DWM evaluating the system backdrop as if `CabinetWClass` is
+-/// always the active window — without it `DWMSBT_TRANSIENTWINDOW` drops
+-/// to a flat `#585858` sheet the moment focus moves elsewhere.
++/// Keeps DWM evaluating the backdrop as if `CabinetWClass` is always the
++/// active window — without it the material drops to a flat `#585858`
++/// sheet the moment focus moves elsewhere.
+ const WCA_FORCE_ACTIVEWINDOW_APPEARANCE: u32 = 15;
+ 
+ fn composition_attr(hwnd: crate::bindings::HWND, data: &WindowCompositionAttribData) {
+@@ -475,8 +700,8 @@ fn set_force_active(hwnd: crate::bindings::HWND, on: bool) {
+     );
+ }
+ 
+-/// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY`. The system
+-/// backdrop path keeps this strictly `ACCENT_DISABLED` (mutual exclusion
++/// `SetWindowCompositionAttribute` — `WCA_ACCENT_POLICY`. The `mica`/
++/// `micaalt` paths keep it strictly `ACCENT_DISABLED` (mutual exclusion
+ /// with `DWMWA_SYSTEMBACKDROP_TYPE`); it is still written on every apply
+ /// so a previously-armed accent can't linger.
+ fn set_accent_policy(hwnd: crate::bindings::HWND, state: u32, flags: u32, gradient: u32) {
+@@ -503,12 +728,9 @@ fn set_accent_policy(hwnd: crate::bindings::HWND, state: u32, flags: u32, gradie
+     );
+ }
+ 
+-/// `TriggerWindowCompositionUpdate` — the mod sends `WM_WINDOWPOSCHANGED`
+-/// in-process; cross-process that message's `WINDOWPOS*` is not marshalled,
+-/// so the target would dereference our stack. `SetWindowPos` with
+-/// `SWP_FRAMECHANGED` is the equivalent that generates a real
+-/// `WM_WINDOWPOSCHANGED`/`WM_NCCALCSIZE` inside explorer — same nudge the
+-/// mod is after, no pointer hand-off.
++/// `TriggerWindowCompositionUpdate` — `SetWindowPos` with
++/// `SWP_FRAMECHANGED` generates a real `WM_WINDOWPOSCHANGED`/
++/// `WM_NCCALCSIZE` inside explorer — the nudge EBM does in-process.
+ fn trigger_composition_update(hwnd: crate::bindings::HWND) {
+     unsafe {
+         let _ = crate::bindings::SetWindowPos(
+@@ -529,139 +751,51 @@ fn trigger_composition_update(hwnd: crate::bindings::HWND) {
+     }
+ }
+ 
+-/// Sends the stored wire to the resident DLL — same hello/wire pattern as
+-/// the taskbar styler so the death watch re-arms per injection.
+-fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
+-    if fe.cmd_hwnd != hwnd.0 as usize {
+-        fe.hello_sent = false;
+-    }
+-    if !fe.hello_sent {
+-        let pid = std::process::id();
+-        if crate::tap::send_copydata(hwnd, CDS_FE_HELLO, &pid.to_ne_bytes()) {
+-            fe.hello_sent = true;
+-        }
+-    }
+-    // The resident's fe_glass detours need our desired backdrop BEFORE the
+-    // theme wire arms them — send FEBD first so `set_armed`'s in-process
+-    // apply already pushes the right values.
+-    let effect = pecofence_core::file_explorer_themes::backdrop(&fe.style).unwrap_or_default();
+-    let (bd, st, fl, gr) = desired_glass(effect, &fe.tint);
+-    let mut payload = [0u8; 16];
+-    payload[0..4].copy_from_slice(&bd.to_le_bytes());
+-    payload[4..8].copy_from_slice(&st.to_le_bytes());
+-    payload[8..12].copy_from_slice(&fl.to_le_bytes());
+-    payload[12..16].copy_from_slice(&gr.to_le_bytes());
+-    let _ = crate::tap::send_copydata(hwnd, CDS_FE_BACKDROP, &payload);
+-    if crate::tap::send_copydata(hwnd, CDS_FE_THEME, fe.wire.as_bytes()) {
+-        fe.cmd_hwnd = hwnd.0 as usize;
+-        true
+-    } else {
+-        false
+-    }
+-}
++const RDW_INVALIDATE: u32 = 0x0001;
++const RDW_ERASE: u32 = 0x0004;
++const RDW_FRAME: u32 = 0x0400;
++const RDW_ALLCHILDREN: u32 = 0x0080;
++const SWP_NOMOVE: u32 = 0x0002;
++const SWP_NOSIZE: u32 = 0x0001;
++const SWP_NOZORDER: u32 = 0x0004;
++const SWP_NOACTIVATE: u32 = 0x0010;
++const SWP_FRAMECHANGED: u32 = 0x0020;
+ 
+-/// Applies the selected File Explorer style + color tint. `id` is a
+-/// catalog id (`""` = no theme — tint-only when `tint` is set, `Windows
+-/// Default` → reset when both are empty). The tint rides the same wire as
+-/// appended `controlStyles` rules, so a theme switch or tint clear
+-/// restores cleanly through the resident's atomic re-apply path — no
+-/// stale layer can stack. Returns `false` only for an unknown id so
+-/// settings reverts.
+-pub fn apply(id: &str, tint: &str) -> bool {
+-    let effect = pecofence_core::file_explorer_themes::backdrop(id)
+-        .unwrap_or_default()
+-        .to_string();
+-    let wire = if id.is_empty() {
+-        if tint.is_empty() {
+-            return reset();
+-        }
+-        pecofence_core::color_tint::fe_clear_wire("PECO-FES1")
+-    } else {
+-        let Some(mut w) = pecofence_core::file_explorer_themes::theme_wire(id) else {
+-            return false;
+-        };
+-        // Accent path (everything but mica): the tint lives in the DWM
+-        // acrylic material — XAML stays Transparent so the top bar shows
+-        // the SAME tint instead of double-stacking a second veil. The
+-        // mica path has no accent material, so its top bar keeps the
+-        // smoked/darkened XAML veil.
+-        if effect == "mica" {
+-            pecofence_core::color_tint::apply_fe_tint(&mut w, tint);
+-        } else {
+-            pecofence_core::color_tint::apply_fe_clear(&mut w);
+-        }
+-        w
+-    };
+-    let mut guard = lock();
+-    let fe = guard.get_or_insert_with(|| Fe {
+-        style: String::new(),
+-        wire: String::new(),
+-        cmd_hwnd: 0,
+-        hello_sent: false,
+-        applied_effect: String::new(),
+-        seen_hwnds: std::collections::HashSet::new(),
+-        tint: String::new(),
+-        applied_tint: String::new(),
+-    });
+-    fe.style = id.to_string();
+-    fe.wire = wire;
+-    fe.tint = tint.to_string();
+-    ARMED.store(true, Ordering::Release);
+-    if let Some((hwnd, _)) = crate::tap::ensure_resident()
+-        && !deliver(hwnd, fe)
+-    {
+-        fe.cmd_hwnd = 0; // delivery pending — `ensure` retries next tick
+-    }
+-    drop(guard);
+-    apply_backdrop(&effect);
+-    true
+-}
++#[cfg(test)]
++mod tests {
++    use super::*;
+ 
+-/// `Windows Default` — restore originals, return cabinet windows to the
+-/// stock backdrop, stop keeping the DLL alive on our account.
+-pub fn reset() -> bool {
+-    let mut guard = lock();
+-    if let Some(hwnd) = crate::tap::resident_window() {
+-        let _ = crate::tap::send_copydata(hwnd, CDS_FE_RESET, &[]);
+-    }
+-    if let Some(fe) = guard.as_mut() {
+-        fe.style.clear();
+-        fe.wire.clear();
++    #[test]
++    fn effect_maps_to_material() {
++        assert_eq!(desired_material("acrylic"), (DWMSBT_AUTO, ACCENT_ACRYLIC));
++        assert_eq!(desired_material("blur"), (DWMSBT_AUTO, ACCENT_BLURBEHIND));
++        assert_eq!(
++            desired_material("blurclear"),
++            (DWMSBT_AUTO, ACCENT_TRANSPARENTGRADIENT)
++        );
++        assert_eq!(desired_material("mica"), (DWMSBT_MAINWINDOW, 0));
++        assert_eq!(desired_material("micaalt"), (DWMSBT_TABBEDWINDOW, 0));
+     }
+-    ARMED.store(false, Ordering::Release);
+-    drop(guard);
+-    apply_backdrop("");
+-    true
+-}
+ 
+-/// Periodic liveness driven by the app's anchor tick: re-injects and
+-/// re-delivers the wire when explorer restarted under an armed style, and
+-/// re-asserts the DWM backdrop (explorer may rewrite its own attribute —
+-/// without the mod's `DwmSetWindowAttribute` hook ours is a best-effort
+-/// value, so refresh it here). Otherwise sends a `HELLO`.
+-pub fn ensure() {
+-    if !is_armed() {
+-        return;
++    #[test]
++    fn argb_parses_to_abgr() {
++        assert_eq!(parse_argb("#A0DCDCDC"), Some(0xA0DCDCDC));
++        assert_eq!(parse_argb("#78000000"), Some(0x78000000));
++        assert_eq!(parse_argb("78000000"), Some(0x78000000));
++        assert_eq!(parse_argb("#0078D4"), Some(0xFFD47800));
++        assert!(parse_argb("#FFF").is_none());
++        assert!(parse_argb("garbage").is_none());
+     }
+-    let Some((hwnd, _)) = crate::tap::ensure_resident() else {
+-        return;
+-    };
+-    let mut guard = lock();
+-    let Some(fe) = guard.as_mut() else {
+-        return;
+-    };
+-    if fe.cmd_hwnd != hwnd.0 as usize {
+-        let _ = deliver(hwnd, fe);
+-    }
+-    let effect = pecofence_core::file_explorer_themes::backdrop(&fe.style)
+-        .unwrap_or_default()
+-        .to_string();
+-    drop(guard);
+-    apply_backdrop(&effect);
+-}
+ 
+-/// App shutdown — restore stock styling; `tap::shutdown` unloads the
+-/// resident itself.
+-pub fn shutdown() {
+-    let _ = reset();
++    #[test]
++    fn clear_wire_lists_targets() {
++        let w = glass_wire(true, true);
++        assert!(w.starts_with("PECO-FES1\n"));
++        assert!(w.ends_with("E\n"));
++        assert!(w.contains("T Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid\n"));
++        assert_eq!(w.matches("S Background=Transparent").count(), 16);
++
++        let none = glass_wire(false, false);
++        assert_eq!(none, "PECO-FES1\nE\n");
++    }
+ }
+diff --git a/crates/platform/src/start_menu.rs b/crates/platform/src/start_menu.rs
+index a5e02c8..07433e7 100644
+--- a/crates/platform/src/start_menu.rs
++++ b/crates/platform/src/start_menu.rs
+@@ -89,9 +89,6 @@ struct Smeh {
+     pid: u32,
+     /// The catalog id last sent ("" = Windows Default).
+     style: String,
+-    /// The `#RRGGBB` tint baked into `wire` — kept so `ensure`'s reapply
+-    /// rebuilds the wire with the same overlay after an SMEH restart.
+-    tint: String,
+     /// `RegisterWindowMessage` id for the unload command.
+     msg_unload: u32,
+     /// The theme serialized for transport — cached so a re-inject after an
+@@ -331,25 +328,12 @@ fn deliver_locked(smeh: &mut Smeh) -> bool {
+ /// a running SMEH rejected the command channel — when SMEH isn't running at
+ /// all the selection is stored and applied on its next launch, so the call
+ /// still reports success (same UX as the old Windhawk write).
+-pub fn apply_start_menu_theme(id: &str, tint: &str) -> bool {
++pub fn apply_start_menu_theme(id: &str) -> bool {
+     let wire = if id.is_empty() {
+-        // Tint-only overlay, or nothing at all (empty wire → CDS_RESET).
+-        pecofence_core::color_tint::tint_wire(
+-            "PECO-SMS1",
+-            pecofence_core::color_tint::START_MENU_TARGETS,
+-            tint,
+-        )
+-        .unwrap_or_default()
++        String::new() // empty wire → CDS_RESET
+     } else {
+         match pecofence_core::start_menu_themes::theme_wire(id) {
+-            Some(mut w) => {
+-                pecofence_core::color_tint::apply_to_wire(
+-                    &mut w,
+-                    pecofence_core::color_tint::START_MENU_TARGETS,
+-                    tint,
+-                );
+-                w
+-            }
++            Some(w) => w,
+             None => return false,
+         }
+     };
+@@ -358,13 +342,11 @@ pub fn apply_start_menu_theme(id: &str, tint: &str) -> bool {
+         cmd_hwnd: HWND(core::ptr::null_mut()),
+         pid: 0,
+         style: String::new(),
+-        tint: String::new(),
+         msg_unload: 0,
+         wire: String::new(),
+         hello_sent: false,
+     });
+     smeh.style = id.to_string();
+-    smeh.tint = tint.to_string();
+     smeh.wire = wire;
+     let Some(pid) = find_smeh_pid() else {
+         return true; // applies when SMEH next launches
+@@ -414,9 +396,8 @@ pub fn ensure() {
+         }
+     }
+     let style = smeh.style.clone();
+-    let tint = smeh.tint.clone();
+     drop(guard);
+-    let _ = apply_start_menu_theme(&style, &tint);
++    let _ = apply_start_menu_theme(&style);
+ }
+ 
+ /// Call on shutdown: restores the Start Menu and unloads the DLL if injected.
+@@ -447,7 +428,7 @@ mod tests {
+     #[test]
+     #[ignore]
+     fn probe_apply() {
+-        let ok = apply_start_menu_theme("TranslucentStartMenu", "");
++        let ok = apply_start_menu_theme("TranslucentStartMenu");
+         eprintln!("apply -> {ok}");
+         let g = lock();
+         if let Some(s) = g.as_ref() {
+diff --git a/crates/platform/src/taskbar_styler.rs b/crates/platform/src/taskbar_styler.rs
+index ca0b1a2..1b0de70 100644
+--- a/crates/platform/src/taskbar_styler.rs
++++ b/crates/platform/src/taskbar_styler.rs
+@@ -150,35 +150,18 @@ fn deliver(hwnd: crate::bindings::HWND, tb: &mut Tb) -> bool {
+     }
+ }
+ 
+-/// Applies the selected taskbar style + color tint. `id` is a catalog id
+-/// (`""` = no theme — tint-only when `tint` is set, `Windows Default` →
+-/// reset when both are empty). The tint rides the same wire as appended
+-/// `controlStyles` rules, so a later theme switch or tint clear restores
+-/// cleanly through the normal re-apply path. Returns `false` only for an
+-/// unknown id so settings reverts.
+-pub fn apply(id: &str, tint: &str) -> bool {
++/// Applies the selected taskbar style. `id` is a catalog id (`""` =
++/// Windows Default → reset). Returns `false` only for an unknown id so
++/// settings reverts.
++pub fn apply(id: &str) -> bool {
+     let use_variant =
+         pecofence_core::taskbar_themes::variant_feature(id).is_some_and(feature_enabled);
+     let wire = if id.is_empty() {
+-        pecofence_core::color_tint::tint_wire(
+-            "PECO-TBS1",
+-            pecofence_core::color_tint::TASKBAR_TARGETS,
+-            tint,
+-        )
++        return reset();
+     } else {
+-        pecofence_core::taskbar_themes::theme_wire(id, use_variant).map(|mut w| {
+-            pecofence_core::color_tint::apply_to_wire(
+-                &mut w,
+-                pecofence_core::color_tint::TASKBAR_TARGETS,
+-                tint,
+-            );
+-            w
+-        })
++        pecofence_core::taskbar_themes::theme_wire(id, use_variant)
+     };
+     let Some(wire) = wire else {
+-        if id.is_empty() {
+-            return reset();
+-        }
+         return false;
+     };
+     let vertical = taskbar_is_vertical();
+diff --git a/crates/tap/src/fe_glass.rs b/crates/tap/src/fe_glass.rs
+index 6af5194..4278c11 100644
+--- a/crates/tap/src/fe_glass.rs
++++ b/crates/tap/src/fe_glass.rs
+@@ -322,7 +322,9 @@ pub fn is_armed() -> bool {
+ 
+ /// The platform's desired backdrop/accent state — `FEBD` payload:
+ /// `[backdrop:i32, accent_state:u32, accent_flags:u32, gradient:u32]`
+-/// little-endian. Re-applies to every live cabinet while armed.
++/// little-endian, plus an optional `options:u32` slot at `[16..20]`
++/// carrying the EBM flag bits (`FEOPT_*`). Re-applies to every live
++/// cabinet while armed.
+ pub fn set_backdrop_params(bytes: &[u8]) {
+     if bytes.len() < 16 {
+         return;
+@@ -333,12 +335,25 @@ pub fn set_backdrop_params(bytes: &[u8]) {
+     ACCENT_STATE.store(u32le(4), Ordering::Release);
+     ACCENT_FLAGS.store(u32le(8), Ordering::Release);
+     ACCENT_GRADIENT.store(u32le(12), Ordering::Release);
++    FE_OPTIONS.store(
++        if bytes.len() >= 20 { u32le(16) } else { 0 },
++        Ordering::Release,
++    );
+     if is_armed() {
+         apply_to_cabinets();
+         refresh_cabinets();
+     }
+ }
+ 
++/// `FE_OPTIONS` bits — EBM behaviors that live on the Win32 side and
++/// can't ride the XAML wire (`file_explorer_styler::FEOPT_*`).
++const FEOPT_CLEAR_BAR_BG: u32 = 1 << 0;
++const FEOPT_SHOW_LINE: u32 = 1 << 1;
++static FE_OPTIONS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
++fn fe_option(bit: u32) -> bool {
++    FE_OPTIONS.load(Ordering::Acquire) & bit != 0
++}
++
+ fn tramp<F>(name: &'static str) -> Option<F> {
+     let p = *TRAMPS.lock().unwrap_or_else(|p| p.into_inner()).get(name)?;
+     if p == 0 {
+@@ -1125,9 +1140,63 @@ fn should_punch_part(htheme: HTheme, part: i32, state: i32) -> bool {
+     if class_in(htheme, &["ItemsView", "ListView"]) {
+         return part == 0;
+     }
++    // EBM `clearBarBg` — scrollbar TRACK parts (SBP_LOWER/UPPERTRACK*)
++    // go transparent; thumb/grip keep their stock fill so the control
++    // stays usable.
++    if fe_option(FEOPT_CLEAR_BAR_BG) && class_in(htheme, &["ScrollBar"]) {
++        return (4..=7).contains(&part);
++    }
+     bg_class(htheme) && is_bg_part(part, state)
+ }
+ 
++/// EBM `showLine` — the 1px split between the TreeView pane and the file
++/// view, painted as a premultiplied translucent-white column on the
++/// tree's right edge after its background is punched.
++fn draw_split_line(hdc: Hdc, rect: *const Rect) {
++    let (right, top, bottom) = unsafe { ((*rect).right, (*rect).top, (*rect).bottom) };
++    if bottom - top <= 0 {
++        return;
++    }
++    let pixel: u32 = 0x403E3E3E; // premultiplied ~25% white
++    let bmi = BitmapInfo {
++        size: 40,
++        width: 1,
++        height: -1,
++        planes: 1,
++        bpp: 32,
++        compression: 0,
++        image_size: 0,
++        xppm: 0,
++        yppm: 0,
++        used: 0,
++        important: 0,
++        colors: [0],
++    };
++    let line = Rect {
++        left: right - 1,
++        top,
++        right,
++        bottom,
++    };
++    unsafe {
++        let _ = StretchDIBits(
++            hdc,
++            line.left,
++            line.top,
++            1,
++            bottom - top,
++            0,
++            0,
++            1,
++            1,
++            &pixel as *const u32 as *const core::ffi::c_void,
++            &bmi as *const BitmapInfo as *const core::ffi::c_void,
++            0,
++            SRCCOPY,
++        );
++    }
++}
++
+ type DrawThemeBgFn =
+     unsafe extern "system" fn(HTheme, Hdc, i32, i32, *const Rect, *const Rect) -> HResult;
+ unsafe extern "system" fn draw_theme_bg_hook(
+@@ -1140,6 +1209,9 @@ unsafe extern "system" fn draw_theme_bg_hook(
+ ) -> HResult {
+     if is_armed() && !rect.is_null() && cabinet_dc(hdc) && should_punch_part(htheme, part, state) {
+         if punch_black(hdc, rect) {
++            if fe_option(FEOPT_SHOW_LINE) && class_in(htheme, &["TreeView"]) && part == 0 {
++                draw_split_line(hdc, rect);
++            }
+             return 0;
+         }
+     }
+@@ -1162,6 +1234,9 @@ unsafe extern "system" fn draw_theme_bg_ex_hook(
+ ) -> HResult {
+     if is_armed() && !rect.is_null() && cabinet_dc(hdc) && should_punch_part(htheme, part, state) {
+         if punch_black(hdc, rect) {
++            if fe_option(FEOPT_SHOW_LINE) && class_in(htheme, &["TreeView"]) && part == 0 {
++                draw_split_line(hdc, rect);
++            }
+             return 0;
+         }
+     }
+diff --git a/ui/settings.html b/ui/settings.html
+index 0216771..1ec49da 100644
+--- a/ui/settings.html
++++ b/ui/settings.html
+@@ -107,11 +107,9 @@
+   .card .actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 100%; }
+   /* Controls that wrap under a long description stay on the right, as in Windows Settings. */
+   .card:not(.stack) > :not(.l):not(.s) { margin-left: auto; }
+-  #colorTintRow { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+-  #colorTintRow .swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; padding: 0; flex: none; position: relative; box-sizing: border-box; }
+-  #colorTintRow .swatch.on { box-shadow: 0 0 0 2px var(--sheet), 0 0 0 4px var(--accent); }
+-  #colorTintRow .swatch.clear { background: transparent; border-color: var(--text2); }
+-  #colorTintRow .swatch.clear::after { content: ''; position: absolute; left: 1px; right: 1px; top: 50%; border-top: 2px solid var(--text2); transform: rotate(-45deg); }
++  .rgbaRow { display: flex; gap: 8px; align-items: center; }
++  .rgbaRow .dot { width: 20px; height: 20px; border-radius: 5px; border: 1px solid var(--line); flex: none; background: transparent; }
++  .rgbaRow input[type=text] { width: 96px; font-family: monospace; }
+   .card.disabled .t, .card.disabled .s { color: var(--text-disabled); }
+   /* A master setting and the rows that only matter while it is on share one surface. */
+   .group { display: flex; flex-direction: column; gap: 1px; margin-bottom: 4px; }
+@@ -483,10 +481,27 @@
+         <select id="startMenuStyleSel" data-bind="startMenuStyle" data-str></select></div>
+       <div class="card" id="notificationCenterStyleCard"><div class="l"><span class="ic">&#xE91C;</span><div><div class="t">通知中心样式</div><div class="s">通知中心和操作中心视觉主题；选择后立即生效</div></div></div>
+         <select id="notificationCenterStyleSel" data-bind="notificationCenterStyle" data-str></select></div>
+-      <div class="card" id="fileExplorerStyleCard"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">资源管理器样式</div><div class="s">文件资源管理器视觉主题和窗口背景；选择后立即生效</div></div></div>
+-        <select id="fileExplorerStyleSel" data-bind="fileExplorerStyle" data-str></select></div>
+-      <div class="card" id="colorTintCard"><div class="l"><span class="ic">&#xE790;</span><div><div class="t">主题色叠加</div><div class="s">给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭</div></div></div>
+-        <div class="swatches" id="colorTintRow" role="radiogroup" aria-label="color tint"></div></div>
++      <div class="card" id="feEffectCard"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">资源管理器背景效果</div><div class="s">ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效</div></div></div>
++        <select id="feEffectSel" data-bind="feEffect" data-str>
++          <option value="">Windows 默认</option>
++          <option value="blur">Blur</option>
++          <option value="acrylic">Acrylic</option>
++          <option value="mica">Mica</option>
++          <option value="blurclear">Blur (Clear)</option>
++          <option value="micaalt">Mica Alt</option>
++        </select></div>
++      <div class="card child" data-fe-opt><div class="l"><div><div class="t">清除地址栏背景</div><div class="s">地址栏与搜索框透出背景效果（EBM clearAddress）</div></div></div>
++        <div class="toggle" role="switch" tabindex="0" data-bind="feClearAddress"></div></div>
++      <div class="card child" data-fe-opt><div class="l"><div><div class="t">清除滚动条背景</div><div class="s">滚动条轨道透出背景效果（EBM clearBarBg）</div></div></div>
++        <div class="toggle" role="switch" tabindex="0" data-bind="feClearBarBg"></div></div>
++      <div class="card child" data-fe-opt><div class="l"><div><div class="t">清除 WinUI 工具栏背景</div><div class="s">选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）</div></div></div>
++        <div class="toggle" role="switch" tabindex="0" data-bind="feClearWinuiBg"></div></div>
++      <div class="card child" data-fe-opt><div class="l"><div><div class="t">显示导航窗格分隔线</div><div class="s">在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）</div></div></div>
++        <div class="toggle" role="switch" tabindex="0" data-bind="feShowLine"></div></div>
++      <div class="card child" data-fe-opt><div class="l"><div><div class="t">浅色模式叠加色</div><div class="s">#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）</div></div></div>
++        <div class="rgbaRow"><span class="dot" id="feLightDot"></span><input type="text" id="feLightRgbaIn" data-bind="feLightRgba" data-str spellcheck="false" autocomplete="off" maxlength="9"></div></div>
++      <div class="card child" data-fe-opt><div class="l"><div><div class="t">深色模式叠加色</div><div class="s">#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）</div></div></div>
++        <div class="rgbaRow"><span class="dot" id="feDarkDot"></span><input type="text" id="feDarkRgbaIn" data-bind="feDarkRgba" data-str spellcheck="false" autocomplete="off" maxlength="9"></div></div>
+       <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">重启资源管理器</div><div class="s">出现卡顿或异常时按一下</div></div></div>
+         <div class="actions"><button id="restartExplorer">重启</button></div></div>
+       <h3>行为</h3>
+@@ -868,6 +883,9 @@
+           const v = el.value.trim();
+           if (v !== '') { set(root, p, Number(v)); commit(path); }
+         };
++      } else if (el.type === 'text') {
++        if (document.activeElement !== el) el.value = cur ?? '';
++        el.onchange = () => { set(root, p, el.value.trim()); commit(path); };
+       }
+     });
+   }
+@@ -891,10 +909,29 @@
+     au.closest('.card').classList.toggle('disabled', !hasTheme);
+     au.tabIndex = hasTheme ? 0 : -1;
+     au.setAttribute('aria-disabled', String(!hasTheme));
++    renderFeDependents();
+     renderChameleonDependent();
+     renderPeekHotkey();
+   }
+ 
++  // ExplorerBlurMica section: the option rows and RGBA colors only mean
++  // something while an effect is armed ('' = Windows Default disables them).
++  function renderFeDependents() {
++    const on = !!state.settings.feEffect;
++    document.querySelectorAll('[data-fe-opt]').forEach(card => {
++      card.classList.toggle('disabled', !on);
++      const el = card.querySelector('[data-bind]');
++      if (el) { el.tabIndex = on ? 0 : -1; el.setAttribute('aria-disabled', String(!on)); if (el.tagName === 'INPUT') el.disabled = !on; }
++    });
++    const dot = (id, hex) => {
++      const m = /^#?([0-9a-fA-F]{2})([0-9a-fA-F]{6})$/.exec(hex || '');
++      const el = document.getElementById(id);
++      if (el) el.style.background = m ? `rgba(${parseInt(m[2].slice(0,2),16)},${parseInt(m[2].slice(2,4),16)},${parseInt(m[2].slice(4,6),16)},${(parseInt(m[1],16)/255).toFixed(2)})` : 'transparent';
++    };
++    dot('feLightDot', state.settings.feLightRgba);
++    dot('feDarkDot', state.settings.feDarkRgba);
++  }
++
+   // Start Menu Style options arrive with each state push ({id, label} only -
+   // the converted theme payload never leaves the backend). Rebuilt only when
+   // the id list changes so an in-progress pick isn't clobbered; the native
+@@ -948,55 +985,8 @@
+     }
+   }
+ 
+-  // Color tint — a Windows-style accent row. Swatches are fixed, built
+-  // once; selection writes #RRGGBB ("" = clear) into settings.colorTint and
+-  // the backend re-delivers every surface's wire with the overlay baked in.
+-  const TINT_SWATCHES = ['#7A7574', '#E3008C', '#744DA9', '#0078D4', '#00B7C3', '#107C10', '#FFB900', '#D83B01', '#E74856', '#000000', '#FFFFFF'];
+-  function bindColorTint() {
+-    const row = document.getElementById('colorTintRow');
+-    if (row.dataset.bound) return;
+-    row.dataset.bound = '1';
+-    for (const c of TINT_SWATCHES) {
+-      const b = document.createElement('button');
+-      b.className = 'swatch';
+-      b.dataset.tint = c;
+-      b.style.background = c;
+-      b.setAttribute('role', 'radio');
+-      b.onclick = () => { set(state.settings, 'colorTint', c); commit('colorTint'); renderColorTint(); };
+-      row.appendChild(b);
+-    }
+-    const clear = document.createElement('button');
+-    clear.className = 'swatch clear';
+-    clear.dataset.tint = '';
+-    clear.setAttribute('role', 'radio');
+-    clear.onclick = () => { set(state.settings, 'colorTint', ''); commit('colorTint'); renderColorTint(); };
+-    row.appendChild(clear);
+-  }
+-  function renderColorTint() {
+-    const cur = (state.settings.colorTint || '').toUpperCase();
+-    document.querySelectorAll('#colorTintRow .swatch').forEach(b => {
+-      const on = (b.dataset.tint || '').toUpperCase() === cur;
+-      b.classList.toggle('on', on);
+-      b.setAttribute('aria-checked', String(on));
+-    });
+-  }
+-
+-  // File Explorer Style — same contract; the resident applies it inside
+-  // explorer.exe's WinUI3 (Microsoft.UI.Xaml) diagnostics session.
+-  function renderFileExplorerStyles(m) {
+-    const sel = document.getElementById('fileExplorerStyleSel');
+-    const opts = m.fileExplorerStyles || [];
+-    const sig = opts.map(o => o.id).join('');
+-    if (sel.dataset.opts !== sig) {
+-      sel.dataset.opts = sig;
+-      sel.replaceChildren(...opts.map(o => {
+-        const e = document.createElement('option');
+-        e.value = o.id;
+-        e.textContent = o.label;
+-        return e;
+-      }));
+-    }
+-  }
++  // File Explorer glass (ExplorerBlurMica): the effect select is a plain
++  // data-bind dropdown — no catalog arrives from the backend.
+ 
+   // 速览栅栏 › 快捷键: the box records the next combination, the host checks it, tries
+   // RegisterHotKey and answers with peekHotkeyResult (plus a fresh state once saved). Windows
+@@ -1724,8 +1714,7 @@
+       renderStartMenuStyles(m);
+       renderTaskbarStyles(m);
+       renderNotificationCenterStyles(m);
+-      renderFileExplorerStyles(m);
+-      bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); bindColorTint(); renderColorTint(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
++      bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
+       update = m.update; renderUpdate();
+       // Transitions come on a frame after this state has been drawn: a single frame would style
+       // both changes together and start them after all.
+```
+
+### Request 2 — `cdb66c2 → 4b7c190`
+
+```diff
+diff --git a/crates/platform/src/file_explorer_styler.rs b/crates/platform/src/file_explorer_styler.rs
+index 681c389..10e35f0 100644
+--- a/crates/platform/src/file_explorer_styler.rs
++++ b/crates/platform/src/file_explorer_styler.rs
+@@ -64,6 +64,7 @@ const ACCENT_ACRYLIC: u32 = 4; // EBM "Acrylic"
+ /// wire (must match `fe_glass.rs`).
+ const FEOPT_CLEAR_BAR_BG: u32 = 1 << 0;
+ const FEOPT_SHOW_LINE: u32 = 1 << 1;
++const FEOPT_CLEAR_ADDRESS: u32 = 1 << 2;
+ 
+ /// The `clearAddress` rule set — the address/search bar containers.
+ /// `S Background=Transparent` lets the material show through.
+@@ -106,6 +107,17 @@ pub struct FeGlassConfig<'a> {
+     pub dark_rgba: &'a str,
+ }
+ 
++/// Per-explorer delivery state — cabinet windows can live in a
++/// separate-process explorer, and each pid runs its own resident with its
++/// own hello/wire handshake.
++#[derive(Default)]
++struct Delivered {
++    /// The resident command window the wire was delivered to.
++    cmd_hwnd: usize,
++    /// Whether `CDS_FE_HELLO` reached this pid's resident.
++    hello_sent: bool,
++}
++
+ struct Fe {
+     /// The EBM `effect` string currently stored ("" = off).
+     effect: String,
+@@ -116,10 +128,8 @@ struct Fe {
+     /// The FEST wire last built — cached so `ensure` re-delivers after an
+     /// explorer restart without re-serializing.
+     wire: String,
+-    /// The resident command window the wire was delivered to.
+-    cmd_hwnd: usize,
+-    /// Whether `CDS_FE_HELLO` reached the current DLL residency.
+-    hello_sent: bool,
++    /// Per-explorer-pid delivery state.
++    delivered: std::collections::HashMap<u32, Delivered>,
+     /// The DWM material values currently pushed to cabinets —
+     /// `apply_glass` skips untouched windows unless these change.
+     applied: (i32, u32, u32),
+@@ -271,6 +281,9 @@ fn options_of(cfg: &FeGlassConfig) -> u32 {
+     if cfg.show_line {
+         o |= FEOPT_SHOW_LINE;
+     }
++    if cfg.clear_address {
++        o |= FEOPT_CLEAR_ADDRESS;
++    }
+     o
+ }
+ 
+@@ -311,8 +324,7 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
+         options: 0,
+         gradient: 0,
+         wire: String::new(),
+-        cmd_hwnd: 0,
+-        hello_sent: false,
++        delivered: std::collections::HashMap::new(),
+         applied: (0, 0, 0),
+         seen_hwnds: std::collections::HashSet::new(),
+     });
+@@ -320,28 +332,65 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
+     fe.options = options_of(cfg);
+     fe.gradient = gradient_of(cfg);
+     fe.wire = wire;
++    fe.delivered.clear(); // re-deliver to every pid under the new config
+     ARMED.store(true, Ordering::Release);
+     ensure_transparency_effects();
+-    if let Some((hwnd, _)) = crate::tap::ensure_resident()
+-        && !deliver(hwnd, fe)
+-    {
+-        fe.cmd_hwnd = 0; // delivery pending — `ensure` retries next tick
+-    }
+     drop(guard);
++    deliver_all();
+     apply_glass();
+     true
+ }
+ 
++/// One anchor `CabinetWClass` per owning explorer pid — inject targets
++/// for `ensure_resident_at` (separate-process explorers need their own
++/// resident; the shell explorer's hook can't reach them).
++fn cabinet_anchors() -> Vec<(u32, crate::bindings::HWND)> {
++    let mut seen = std::collections::HashSet::new();
++    let mut out = Vec::new();
++    for hwnd in cabinet_windows() {
++        let mut pid = 0u32;
++        unsafe {
++            let _ = crate::bindings::GetWindowThreadProcessId(hwnd, Some(&mut pid));
++        }
++        if pid != 0 && seen.insert(pid) {
++            out.push((pid, hwnd));
++        }
++    }
++    out
++}
++
++/// Fans the stored wire out to every cabinet-owning explorer pid — each
++/// runs its own resident that needs the hello + FEBD + FEST handshake.
++/// Called from `apply_effect` and the `ensure` tick (a newly-spawned
++/// explorer shows up here on the next pass).
++fn deliver_all() {
++    let anchors = cabinet_anchors();
++    let mut live_pids = Vec::new();
++    for (pid, anchor) in anchors {
++        live_pids.push(pid);
++        let Some(cmd) = crate::tap::ensure_resident_at(anchor) else {
++            continue;
++        };
++        let mut guard = lock();
++        let Some(fe) = guard.as_mut() else {
++            return;
++        };
++        deliver(pid, cmd, fe);
++    }
++    crate::tap::prune_extra_residents(&live_pids);
++}
++
+ /// `Windows Default` — restore originals, return cabinet windows to the
+ /// stock backdrop, stop keeping the DLL alive on our account.
+ pub fn reset() -> bool {
+     let mut guard = lock();
+-    if let Some(hwnd) = crate::tap::resident_window() {
++    for hwnd in crate::tap::resident_windows_all() {
+         let _ = crate::tap::send_copydata(hwnd, CDS_FE_RESET, &[]);
+     }
+     if let Some(fe) = guard.as_mut() {
+         fe.effect.clear();
+         fe.wire.clear();
++        fe.delivered.clear();
+     }
+     ARMED.store(false, Ordering::Release);
+     drop(guard);
+@@ -356,17 +405,7 @@ pub fn ensure() {
+     if !is_armed() {
+         return;
+     }
+-    let Some((hwnd, _)) = crate::tap::ensure_resident() else {
+-        return;
+-    };
+-    let mut guard = lock();
+-    let Some(fe) = guard.as_mut() else {
+-        return;
+-    };
+-    if fe.cmd_hwnd != hwnd.0 as usize {
+-        let _ = deliver(hwnd, fe);
+-    }
+-    drop(guard);
++    deliver_all();
+     apply_glass();
+ }
+ 
+@@ -376,17 +415,18 @@ pub fn shutdown() {
+     let _ = reset();
+ }
+ 
+-/// Sends the stored wire to the resident DLL — FEHI hello, then the FEBD
+-/// material payload (the detours need the desired values BEFORE the
++/// Sends the stored wire to one pid's resident — FEHI hello, then the
++/// FEBD material payload (the detours need the desired values BEFORE the
+ /// theme wire arms them), then the FEST controlStyles wire.
+-fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
+-    if fe.cmd_hwnd != hwnd.0 as usize {
+-        fe.hello_sent = false;
+-    }
+-    if !fe.hello_sent {
+-        let pid = std::process::id();
+-        if crate::tap::send_copydata(hwnd, CDS_FE_HELLO, &pid.to_ne_bytes()) {
+-            fe.hello_sent = true;
++fn deliver(pid: u32, hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
++    let d = fe.delivered.entry(pid).or_default();
++    if d.cmd_hwnd != hwnd.0 as usize {
++        d.hello_sent = false;
++    }
++    if !d.hello_sent {
++        let app_pid = std::process::id();
++        if crate::tap::send_copydata(hwnd, CDS_FE_HELLO, &app_pid.to_ne_bytes()) {
++            d.hello_sent = true;
+         }
+     }
+     let (bd, st) = desired_material(&fe.effect);
+@@ -397,12 +437,12 @@ fn deliver(hwnd: crate::bindings::HWND, fe: &mut Fe) -> bool {
+     payload[12..16].copy_from_slice(&fe.gradient.to_le_bytes());
+     payload[16..20].copy_from_slice(&fe.options.to_le_bytes());
+     let _ = crate::tap::send_copydata(hwnd, CDS_FE_BACKDROP, &payload);
+-    fe.cmd_hwnd = if crate::tap::send_copydata(hwnd, CDS_FE_THEME, fe.wire.as_bytes()) {
++    d.cmd_hwnd = if crate::tap::send_copydata(hwnd, CDS_FE_THEME, fe.wire.as_bytes()) {
+         hwnd.0 as usize
+     } else {
+         0
+     };
+-    fe.cmd_hwnd != 0
++    d.cmd_hwnd != 0
+ }
+ 
+ /// Pushes the DWM material onto every `CabinetWClass` — direct
+diff --git a/crates/platform/src/tap.rs b/crates/platform/src/tap.rs
+index 8cc11d4..9c0f279 100644
+--- a/crates/platform/src/tap.rs
++++ b/crates/platform/src/tap.rs
+@@ -376,6 +376,35 @@ fn resident_windows_for_pid(pid: u32) -> Vec<HWND> {
+     resident_windows_matching(pid, "PecoFenceTAP")
+ }
+ 
++/// Every `PecoFenceTAP`-family command window in ANY explorer process —
++/// for the FESR broadcast on reset, which must reach cabinet-owning
++/// explorers that aren't the shell host.
++pub fn resident_windows_all() -> Vec<HWND> {
++    let base = "PecoFenceTAP";
++    let prefixed = format!("{base}_");
++    let mut out = Vec::new();
++    let mut after = HWND(core::ptr::null_mut());
++    loop {
++        let h = unsafe {
++            FindWindowExW(
++                Some(HWND_MESSAGE),
++                Some(after),
++                PCWSTR::null(),
++                PCWSTR::null(),
++            )
++        };
++        if h.0.is_null() {
++            break;
++        }
++        let name = resident_class_name(h);
++        if name == base || name.starts_with(&prefixed) {
++            out.push(h);
++        }
++        after = h;
++    }
++    out
++}
++
+ /// The resident command window owned by `pid` — the highest protocol build
+ /// wins, so a fresh co-loaded resident beats a stale pinned one whose
+ /// `CmdHwnd` re-stamp may still be winning the prop race.
+@@ -682,6 +711,47 @@ pub fn ensure_resident() -> Option<(HWND, bool)> {
+     ensure_resident_locked(&mut guard, taskbar, pid, TAP_PROTOCOL_VERSION)
+ }
+ 
++/// Extra explorer processes — folder windows can run in a separate-process
++/// explorer (`Launch folder windows in a separate process`), so a
++/// `CabinetWClass` may live where the shell-resident can't see it. Each
++/// such pid gets its own resident slot; `anchor` is any window in the
++/// target process (the resident stamps `PecoFence.TAP.CmdHwnd` on it).
++static EXTRA_TAPS: std::sync::LazyLock<Mutex<std::collections::HashMap<u32, Option<Tap>>>> =
++    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
++
++/// Residency inside `anchor`'s process. Shell-pid anchors route through
++/// the main slot; any other explorer pid gets its own injected resident.
++/// Returns that process's command window — the caller must deliver wires
++/// per pid since each process has its own resident state.
++pub fn ensure_resident_at(anchor: HWND) -> Option<HWND> {
++    let mut pid = 0u32;
++    unsafe {
++        let _ = GetWindowThreadProcessId(anchor, Some(&mut pid));
++    }
++    if pid == 0 {
++        return None;
++    }
++    if find_taskbar().is_some_and(|(_, p)| p == pid) {
++        return ensure_resident().map(|(h, _)| h);
++    }
++    let mut map = EXTRA_TAPS.lock().unwrap_or_else(|p| p.into_inner());
++    let slot = map.entry(pid).or_insert(None);
++    let tap = ensure_resident_locked(slot, anchor, pid, TAP_PROTOCOL_VERSION);
++    // Dead-pid hygiene: if the slot never produced a resident, drop it so
++    // the map doesn't accumulate stale entries.
++    if tap.is_none() && slot.is_none() {
++        map.remove(&pid);
++    }
++    tap.map(|(h, _)| h)
++}
++
++/// Drops extra-explorer slots whose pids vanished — `is_none` slots only;
++/// live residents unload with their process or on the next inject attempt.
++pub fn prune_extra_residents(live_pids: &[u32]) {
++    let mut map = EXTRA_TAPS.lock().unwrap_or_else(|p| p.into_inner());
++    map.retain(|pid, slot| slot.is_some() || live_pids.contains(pid));
++}
++
+ /// The resident command window when the TAP is live in explorer — does
+ /// **not** inject; `reset` paths use this so they can't resurrect a dead
+ /// resident.
+@@ -746,6 +816,13 @@ pub fn shutdown() {
+     if let Some(mut tap) = guard.take() {
+         unload_locked(&mut tap);
+     }
++    drop(guard);
++    let mut map = EXTRA_TAPS.lock().unwrap_or_else(|p| p.into_inner());
++    for (_, slot) in map.drain() {
++        if let Some(mut tap) = slot {
++            unload_locked(&mut tap);
++        }
++    }
+ }
+ 
+ #[cfg(test)]
+diff --git a/crates/tap/src/fe_glass.rs b/crates/tap/src/fe_glass.rs
+index 4278c11..150f0d2 100644
+--- a/crates/tap/src/fe_glass.rs
++++ b/crates/tap/src/fe_glass.rs
+@@ -237,8 +237,18 @@ const BG_CLASSES: &[&str] = &[
+     "Toolbar",
+     "Rebar",
+     "Status",
++];
++
++/// Win32 address-bar theme classes — punched only under
++/// `FEOPT_CLEAR_ADDRESS` (EBM `clearAddress` on the non-XAML path;
++/// `MyDrawThemeBackground_Address` in EBM's terms).
++const ADDRESS_CLASSES: &[&str] = &[
+     "AddressBand",
+     "SearchBox",
++    "SearchEditBox",
++    "BreadcrumbBar",
++    "Address Band",
++    "UniversalSearchBand",
+ ];
+ 
+ /// Theme classes whose text is forced white while the glass is dark —
+@@ -349,6 +359,7 @@ pub fn set_backdrop_params(bytes: &[u8]) {
+ /// can't ride the XAML wire (`file_explorer_styler::FEOPT_*`).
+ const FEOPT_CLEAR_BAR_BG: u32 = 1 << 0;
+ const FEOPT_SHOW_LINE: u32 = 1 << 1;
++const FEOPT_CLEAR_ADDRESS: u32 = 1 << 2;
+ static FE_OPTIONS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+ fn fe_option(bit: u32) -> bool {
+     FE_OPTIONS.load(Ordering::Acquire) & bit != 0
+@@ -1002,10 +1013,21 @@ unsafe extern "system" fn get_theme_color_hook(
+         // matching can miss, and any fill on this thread is a panel
+         // background hiding the glass.
+         if prop == TMT_FILLCOLOR || prop == TMT_FILLCOLORHINT {
+-            // Only CONTAINER backgrounds go transparent — `part >= 1` on
+-            // ItemsView/ListView/TreeView is a row's hover/selection fill,
+-            // which must keep its real color or highlights vanish.
+-            if part == 0 || (part == 1 && state == 0) {
++            // EBM `clearAddress`: the Win32 address/search/breadcrumb bars
++            // keep their stock fill until the flag is set.
++            if class_in(htheme, ADDRESS_CLASSES) && !fe_option(FEOPT_CLEAR_ADDRESS) {
++                // fall through to the original
++            } else if fe_option(FEOPT_CLEAR_BAR_BG)
++                && class_in(htheme, &["ScrollBar"])
++                && (2..=3).contains(&part)
++            {
++                // EBM draws a custom slim thumb — approximate it with a
++                // flat gray fill on the transparent track.
++                unsafe {
++                    *pcolor = 0x0068_6868;
++                }
++                return 0;
++            } else if part == 0 || (part == 1 && state == 0) {
+                 unsafe {
+                     *pcolor = 0;
+                 }
+@@ -1141,11 +1163,16 @@ fn should_punch_part(htheme: HTheme, part: i32, state: i32) -> bool {
+         return part == 0;
+     }
+     // EBM `clearBarBg` — scrollbar TRACK parts (SBP_LOWER/UPPERTRACK*)
+-    // go transparent; thumb/grip keep their stock fill so the control
+-    // stays usable.
++    // go transparent; the thumb gets a flat gray from
++    // `get_theme_color_hook` instead of the stock themed fill.
+     if fe_option(FEOPT_CLEAR_BAR_BG) && class_in(htheme, &["ScrollBar"]) {
+         return (4..=7).contains(&part);
+     }
++    // EBM `clearAddress` — address/search/breadcrumb backgrounds punch
++    // only while the flag is set.
++    if class_in(htheme, ADDRESS_CLASSES) {
++        return fe_option(FEOPT_CLEAR_ADDRESS) && is_bg_part(part, state);
++    }
+     bg_class(htheme) && is_bg_part(part, state)
+ }
+ 
+diff --git a/locales/ar.json b/locales/ar.json
+index 654edbd..4a84d6b 100644
+--- a/locales/ar.json
++++ b/locales/ar.json
+@@ -654,9 +654,22 @@
+   "通知中心样式": "نمط مركز الإشعارات",
+   "通知中心和操作中心视觉主题；选择后立即生效": "سمات مرئية لمركز الإشعارات ومركز الإجراءات؛ تُطبَّق فور الاختيار",
+   "通知中心样式未能更改，请稍后重试。": "تعذّر تغيير نمط مركز الإشعارات — حاول مرة أخرى.",
+-  "资源管理器样式": "نمط مستكشف الملفات",
+-  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "سمات مرئية وخلفية نافذة لمستكشف الملفات — تُطبَّق فور الاختيار.",
+-  "资源管理器样式未能更改，请稍后重试。": "تعذّر تغيير نمط مستكشف الملفات — حاول مرة أخرى.",
+-  "主题色叠加": "تراكب لون التمييز",
+-  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "يُطبِّق اللون المحدد على شريط المهام وقائمة ابدأ ومستكشف الملفات — زر الشرطة المائلة للإلغاء"
++  "资源管理器背景效果": "تأثير خلفية مستكشف الملفات",
++  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "تأثير زجاجي بأسلوب ExplorerBlurMica: ضبابي أو أكريليك أو ميكا؛ يُطبَّق فوراً",
++  "清除地址栏背景": "مسح خلفية شريط العنوان",
++  "地址栏与搜索框透出背景效果（EBM clearAddress）": "يظهر التأثير خلال شريط العنوان ومربع البحث (EBM clearAddress)",
++  "清除滚动条背景": "مسح خلفية شريط التمرير",
++  "滚动条轨道透出背景效果（EBM clearBarBg）": "يظهر التأثير خلال مسار شريط التمرير (EBM clearBarBg)",
++  "清除 WinUI 工具栏背景": "مسح خلفية شريط أدوات WinUI",
++  "选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）": "يظهر التأثير خلال شريط علامات التبويب وشريط الأوامر (EBM clearWinUIBg)",
++  "显示导航窗格分隔线": "إظهار خط فاصل جزء التنقل",
++  "在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）": "رسم خط فاصل رفيع بين عرض الشجرة وعرض الملفات (EBM showLine)",
++  "浅色模式叠加色": "لون المزج للوضع الفاتح",
++  "#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）": "#AARRGGBB — لون مزج الزجاج في النسق الفاتح (EBM [light])",
++  "深色模式叠加色": "لون المزج للوضع الداكن",
++  "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — لون مزج الزجاج في النسق الداكن (EBM [dark])",
++  "Windows 默认": "افتراضي Windows",
++  "资源管理器背景效果未能更改，请稍后重试。": "تعذّر تغيير تأثير خلفية مستكشف الملفات؛ حاول مرة أخرى.",
++  "选择颜色": "اختيار اللون",
++  "恢复默认": "استعادة الافتراضي"
+ }
+diff --git a/locales/de.json b/locales/de.json
+index a6b2f5b..bc0a3cd 100644
+--- a/locales/de.json
++++ b/locales/de.json
+@@ -654,9 +654,22 @@
+   "通知中心样式": "Info-Center-Stil",
+   "通知中心和操作中心视觉主题；选择后立即生效": "Visuelle Designs für Info-Center und Aktionscenter; wird sofort übernommen",
+   "通知中心样式未能更改，请稍后重试。": "Info-Center-Stil konnte nicht geändert werden — bitte erneut versuchen.",
+-  "资源管理器样式": "Explorer-Stil",
+-  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Visuelle Designs und Fensterhintergrund für den Datei-Explorer; gilt sofort nach Auswahl",
+-  "资源管理器样式未能更改，请稍后重试。": "Der Explorer-Stil konnte nicht geändert werden — bitte erneut versuchen.",
+-  "主题色叠加": "Akzentfarben-Overlay",
+-  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Legt die gewählte Farbe über Taskleiste, Startmenü und Datei-Explorer; die Schaltfläche mit Schrägstrich deaktiviert es"
++  "资源管理器背景效果": "Explorer-Hintergrundeffekt",
++  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Mattglaseffekt im ExplorerBlurMica-Stil: Blur, Acryl oder Mica; gilt sofort",
++  "清除地址栏背景": "Adressleisten-Hintergrund entfernen",
++  "地址栏与搜索框透出背景效果（EBM clearAddress）": "Adressleiste und Suchfeld lassen den Effekt durchscheinen (EBM clearAddress)",
++  "清除滚动条背景": "Bildlaufleisten-Hintergrund entfernen",
++  "滚动条轨道透出背景效果（EBM clearBarBg）": "Scrollleisten-Spur lässt den Effekt durchscheinen (EBM clearBarBg)",
++  "清除 WinUI 工具栏背景": "WinUI-Symbolleisten-Hintergrund entfernen",
++  "选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）": "Tab- und Befehlsleiste lassen den Effekt durchscheinen (EBM clearWinUIBg)",
++  "显示导航窗格分隔线": "Trennlinie des Navigationsbereichs anzeigen",
++  "在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）": "Eine dünne Trennlinie zwischen Baumansicht und Dateiansicht zeichnen (EBM showLine)",
++  "浅色模式叠加色": "Mischfarbe für den hellen Modus",
++  "#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）": "#AARRGGBB — Glas-Mischfarbe im hellen Design (EBM [light])",
++  "深色模式叠加色": "Mischfarbe für den dunklen Modus",
++  "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — Glas-Mischfarbe im dunklen Design (EBM [dark])",
++  "Windows 默认": "Windows-Standard",
++  "资源管理器背景效果未能更改，请稍后重试。": "Der Explorer-Hintergrundeffekt konnte nicht geändert werden; bitte erneut versuchen.",
++  "选择颜色": "Farbe wählen",
++  "恢复默认": "Standard wiederherstellen"
+ }
+diff --git a/locales/en.json b/locales/en.json
+index 4298a37..93df506 100644
+--- a/locales/en.json
++++ b/locales/en.json
+@@ -654,9 +654,22 @@
+   "通知中心样式": "Notification Center style",
+   "通知中心和操作中心视觉主题；选择后立即生效": "Visual themes for the Notification and Action Center; applies on selection",
+   "通知中心样式未能更改，请稍后重试。": "Couldn't change the Notification Center style — try again.",
+-  "资源管理器样式": "File Explorer style",
+-  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Visual themes and window backdrop for File Explorer; applies on selection",
+-  "资源管理器样式未能更改，请稍后重试。": "Couldn't change the File Explorer style — try again.",
+-  "主题色叠加": "Color tint overlay",
+-  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Overlays the chosen color onto the taskbar, Start menu and File Explorer; the slash swatch clears it"
++  "资源管理器背景效果": "File Explorer background effect",
++  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "ExplorerBlurMica-style frosted effect: Blur, Acrylic or Mica; applies immediately",
++  "清除地址栏背景": "Clear address bar background",
++  "地址栏与搜索框透出背景效果（EBM clearAddress）": "Address bar and search box show the effect through (EBM clearAddress)",
++  "清除滚动条背景": "Clear scrollbar background",
++  "滚动条轨道透出背景效果（EBM clearBarBg）": "Scrollbar track shows the effect through (EBM clearBarBg)",
++  "清除 WinUI 工具栏背景": "Clear WinUI toolbar background",
++  "选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）": "Tab strip and command bar show the effect through (EBM clearWinUIBg)",
++  "显示导航窗格分隔线": "Show navigation pane divider",
++  "在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）": "Draw a thin divider between the tree pane and the file view (EBM showLine)",
++  "浅色模式叠加色": "Light mode blend color",
++  "#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）": "#AARRGGBB — glass blend color under the light theme (EBM [light])",
++  "深色模式叠加色": "Dark mode blend color",
++  "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — glass blend color under the dark theme (EBM [dark])",
++  "Windows 默认": "Windows default",
++  "资源管理器背景效果未能更改，请稍后重试。": "Couldn't change the File Explorer background effect; try again.",
++  "选择颜色": "Choose color",
++  "恢复默认": "Restore default"
+ }
+diff --git a/locales/es.json b/locales/es.json
+index e8f5851..3519d4c 100644
+--- a/locales/es.json
++++ b/locales/es.json
+@@ -654,9 +654,22 @@
+   "通知中心样式": "Estilo del Centro de notificaciones",
+   "通知中心和操作中心视觉主题；选择后立即生效": "Temas visuales para el Centro de notificaciones y de actividades; se aplican al seleccionar",
+   "通知中心样式未能更改，请稍后重试。": "No se pudo cambiar el estilo del Centro de notificaciones — inténtalo de nuevo.",
+-  "资源管理器样式": "Estilo del Explorador de archivos",
+-  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Temas visuales y fondo de ventana para el Explorador de archivos; se aplica al seleccionar",
+-  "资源管理器样式未能更改，请稍后重试。": "No se pudo cambiar el estilo del Explorador de archivos — inténtalo de nuevo.",
+-  "主题色叠加": "Capa de color de énfasis",
+-  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Superpone el color elegido sobre la barra de tareas, el menú Inicio y el Explorador de archivos; la muestra tachada lo quita"
++  "资源管理器背景效果": "Efecto de fondo del Explorador",
++  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Efecto esmerilado estilo ExplorerBlurMica: Desenfoque, Acrílico o Mica; se aplica al instante",
++  "清除地址栏背景": "Borrar el fondo de la barra de direcciones",
++  "地址栏与搜索框透出背景效果（EBM clearAddress）": "La barra de direcciones y el cuadro de búsqueda dejan ver el efecto (EBM clearAddress)",
++  "清除滚动条背景": "Borrar el fondo de la barra de desplazamiento",
++  "滚动条轨道透出背景效果（EBM clearBarBg）": "La pista de la barra de desplazamiento deja ver el efecto (EBM clearBarBg)",
++  "清除 WinUI 工具栏背景": "Borrar el fondo de la barra de herramientas WinUI",
++  "选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）": "La banda de pestañas y la barra de comandos dejan ver el efecto (EBM clearWinUIBg)",
++  "显示导航窗格分隔线": "Mostrar el divisor del panel de navegación",
++  "在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）": "Trazar un divisor fino entre el árbol y la vista de archivos (EBM showLine)",
++  "浅色模式叠加色": "Color de mezcla del modo claro",
++  "#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）": "#AARRGGBB — color de mezcla del cristal con el tema claro (EBM [light])",
++  "深色模式叠加色": "Color de mezcla del modo oscuro",
++  "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — color de mezcla del cristal con el tema oscuro (EBM [dark])",
++  "Windows 默认": "Predeterminado de Windows",
++  "资源管理器背景效果未能更改，请稍后重试。": "No se pudo cambiar el efecto de fondo del Explorador; inténtelo de nuevo.",
++  "选择颜色": "Elegir color",
++  "恢复默认": "Restaurar valores predeterminados"
+ }
+diff --git a/locales/fr.json b/locales/fr.json
+index 4e57230..2e8d1bb 100644
+--- a/locales/fr.json
++++ b/locales/fr.json
+@@ -654,9 +654,22 @@
+   "通知中心样式": "Style du Centre de notifications",
+   "通知中心和操作中心视觉主题；选择后立即生效": "Thèmes visuels pour le Centre de notifications et le Centre d’action ; appliqués dès la sélection",
+   "通知中心样式未能更改，请稍后重试。": "Impossible de changer le style du Centre de notifications — réessayez.",
+-  "资源管理器样式": "Style de l'Explorateur de fichiers",
+-  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Thèmes visuels et arrière-plan de la fenêtre pour l'Explorateur de fichiers ; s'applique dès la sélection",
+-  "资源管理器样式未能更改，请稍后重试。": "Impossible de changer le style de l'Explorateur de fichiers — réessayez.",
+-  "主题色叠加": "Superposition de teinte",
+-  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Superpose la couleur choisie sur la barre des tâches, le menu Démarrer et l'Explorateur de fichiers ; l'échantillon barré la retire"
++  "资源管理器背景效果": "Effet d'arrière-plan de l'Explorateur",
++  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Effet dépoli façon ExplorerBlurMica : Flou, Acrylique ou Mica ; appliqué aussitôt",
++  "清除地址栏背景": "Effacer l'arrière-plan de la barre d'adresse",
++  "地址栏与搜索框透出背景效果（EBM clearAddress）": "La barre d'adresse et la zone de recherche laissent voir l'effet (EBM clearAddress)",
++  "清除滚动条背景": "Effacer l'arrière-plan de la barre de défilement",
++  "滚动条轨道透出背景效果（EBM clearBarBg）": "La glissière laisse voir l'effet (EBM clearBarBg)",
++  "清除 WinUI 工具栏背景": "Effacer l'arrière-plan de la barre d'outils WinUI",
++  "选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）": "La barre d'onglets et la barre de commandes laissent voir l'effet (EBM clearWinUIBg)",
++  "显示导航窗格分隔线": "Afficher le séparateur du volet de navigation",
++  "在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）": "Tracer un fin séparateur entre l'arborescence et la vue des fichiers (EBM showLine)",
++  "浅色模式叠加色": "Couleur de fusion du mode clair",
++  "#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）": "#AARRGGBB — couleur de fusion du verre en thème clair (EBM [light])",
++  "深色模式叠加色": "Couleur de fusion du mode sombre",
++  "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — couleur de fusion du verre en thème sombre (EBM [dark])",
++  "Windows 默认": "Par défaut Windows",
++  "资源管理器背景效果未能更改，请稍后重试。": "Impossible de modifier l'effet d'arrière-plan de l'Explorateur ; réessayez.",
++  "选择颜色": "Choisir une couleur",
++  "恢复默认": "Restaurer les valeurs par défaut"
+ }
+diff --git a/locales/it.json b/locales/it.json
+index 82fa7f7..405b177 100644
+--- a/locales/it.json
++++ b/locales/it.json
+@@ -654,9 +654,22 @@
+   "通知中心样式": "Stile del Centro notifiche",
+   "通知中心和操作中心视觉主题；选择后立即生效": "Temi visivi per il Centro notifiche e il Centro operativo; si applicano alla selezione",
+   "通知中心样式未能更改，请稍后重试。": "Impossibile cambiare lo stile del Centro notifiche — riprova.",
+-  "资源管理器样式": "Stile di Esplora file",
+-  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Temi visivi e sfondo della finestra per Esplora file; si applica alla selezione",
+-  "资源管理器样式未能更改，请稍后重试。": "Impossibile cambiare lo stile di Esplora file — riprova.",
+-  "主题色叠加": "Sovrapposizione tinta",
+-  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Sovrappone il colore scelto a barra delle applicazioni, menu Start ed Esplora file; il campione barrato lo rimuove"
++  "资源管理器背景效果": "Effetto sfondo di Esplora file",
++  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Effetto satinato in stile ExplorerBlurMica: Sfocatura, Acrilico o Mica; applicato subito",
++  "清除地址栏背景": "Cancella lo sfondo della barra degli indirizzi",
++  "地址栏与搜索框透出背景效果（EBM clearAddress）": "La barra degli indirizzi e la casella di ricerca mostrano l'effetto (EBM clearAddress)",
++  "清除滚动条背景": "Cancella lo sfondo della barra di scorrimento",
++  "滚动条轨道透出背景效果（EBM clearBarBg）": "Il canale della barra di scorrimento mostra l'effetto (EBM clearBarBg)",
++  "清除 WinUI 工具栏背景": "Cancella lo sfondo della barra degli strumenti WinUI",
++  "选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）": "La barra delle schede e la barra dei comandi mostrano l'effetto (EBM clearWinUIBg)",
++  "显示导航窗格分隔线": "Mostra il divisore del riquadro di spostamento",
++  "在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）": "Disegna un divisore sottile tra la visualizzazione albero e quella dei file (EBM showLine)",
++  "浅色模式叠加色": "Colore di miscelazione del modo chiaro",
++  "#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）": "#AARRGGBB — colore di miscelazione del vetro con il tema chiaro (EBM [light])",
++  "深色模式叠加色": "Colore di miscelazione del modo scuro",
++  "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — colore di miscelazione del vetro con il tema scuro (EBM [dark])",
++  "Windows 默认": "Predefinito di Windows",
++  "资源管理器背景效果未能更改，请稍后重试。": "Impossibile modificare l'effetto sfondo di Esplora file; riprova.",
++  "选择颜色": "Scegli colore",
++  "恢复默认": "Ripristina predefinito"
+ }
+diff --git a/locales/ja.json b/locales/ja.json
+index 93126c2..a5496ab 100644
+--- a/locales/ja.json
++++ b/locales/ja.json
+@@ -654,9 +654,22 @@
+   "通知中心样式": "通知センターのスタイル",
+   "通知中心和操作中心视觉主题；选择后立即生效": "通知センターとアクションセンターのビジュアルテーマ。選択するとすぐに適用されます",
+   "通知中心样式未能更改，请稍后重试。": "通知センターのスタイルを変更できませんでした — もう一度お試しください。",
+-  "资源管理器样式": "エクスプローラーのスタイル",
+-  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "エクスプローラーの視覚テーマとウィンドウ背景。選択するとすぐに適用されます",
+-  "资源管理器样式未能更改，请稍后重试。": "エクスプローラーのスタイルを変更できませんでした。もう一度お試しください。",
+-  "主题色叠加": "アクセントカラーオーバーレイ",
+-  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "選択した色をタスクバー、スタートメニュー、エクスプローラーに重ねます。斜線スウォッチで解除"
++  "资源管理器背景效果": "エクスプローラーの背景効果",
++  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "ExplorerBlurMica 式すりガラス効果：ブラー、アクリル、マイカ。選択後すぐに適用",
++  "清除地址栏背景": "アドレスバーの背景をクリア",
++  "地址栏与搜索框透出背景效果（EBM clearAddress）": "アドレスバーと検索ボックスに効果を透過表示（EBM clearAddress）",
++  "清除滚动条背景": "スクロールバーの背景をクリア",
++  "滚动条轨道透出背景效果（EBM clearBarBg）": "スクロールバーのトラックに効果を透過表示（EBM clearBarBg）",
++  "清除 WinUI 工具栏背景": "WinUI ツールバーの背景をクリア",
++  "选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）": "タブストリップとコマンドバーに効果を透過表示（EBM clearWinUIBg）",
++  "显示导航窗格分隔线": "ナビゲーション ペインの分割線を表示",
++  "在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）": "左のツリー ビューとファイル ビューの間に細い分割線を描画（EBM showLine）",
++  "浅色模式叠加色": "ライト モードのブレンド色",
++  "#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）": "#AARRGGBB — ライト テーマ時のガラス ブレンド色（EBM [light]）",
++  "深色模式叠加色": "ダーク モードのブレンド色",
++  "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — ダーク テーマ時のガラス ブレンド色（EBM [dark]）",
++  "Windows 默认": "Windows 既定",
++  "资源管理器背景效果未能更改，请稍后重试。": "エクスプローラーの背景効果を変更できませんでした。後でもう一度お試しください。",
++  "选择颜色": "色を選択",
++  "恢复默认": "既定値に戻す"
+ }
+diff --git a/locales/ko.json b/locales/ko.json
+index b901674..d82c427 100644
+--- a/locales/ko.json
++++ b/locales/ko.json
+@@ -654,9 +654,22 @@
+   "通知中心样式": "알림 센터 스타일",
+   "通知中心和操作中心视觉主题；选择后立即生效": "알림 센터 및 작업 센터의 시각적 테마; 선택하면 바로 적용됩니다",
+   "通知中心样式未能更改，请稍后重试。": "알림 센터 스타일을 변경할 수 없습니다 — 다시 시도하세요.",
+-  "资源管理器样式": "파일 탐색기 스타일",
+-  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "파일 탐색기의 시각 테마와 창 배경; 선택 즉시 적용됩니다",
+-  "资源管理器样式未能更改，请稍后重试。": "파일 탐색기 스타일을 변경할 수 없습니다. 다시 시도하세요.",
+-  "主题色叠加": "강조 색 오버레이",
+-  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "선택한 색을 작업 표시줄, 시작 메뉴, 파일 탐색기에 오버레이합니다. 슬래시 견본은 해제입니다"
++  "资源管理器背景效果": "파일 탐색기 배경 효과",
++  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "ExplorerBlurMica 스타일 반투명 효과: 블러, 아크릴, 마이카. 선택 즉시 적용",
++  "清除地址栏背景": "주소 표시줄 배경 지우기",
++  "地址栏与搜索框透出背景效果（EBM clearAddress）": "주소 표시줄과 검색 상자에 효과 투과 (EBM clearAddress)",
++  "清除滚动条背景": "스크롤 막대 배경 지우기",
++  "滚动条轨道透出背景效果（EBM clearBarBg）": "스크롤 막대 트랙에 효과 투과 (EBM clearBarBg)",
++  "清除 WinUI 工具栏背景": "WinUI 도구 모음 배경 지우기",
++  "选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）": "탭 스트립과 명령 모음에 효과 투과 (EBM clearWinUIBg)",
++  "显示导航窗格分隔线": "탐색 창 구분선 표시",
++  "在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）": "왼쪽 트리 보기와 파일 보기 사이에 가는 구분선 그리기 (EBM showLine)",
++  "浅色模式叠加色": "라이트 모드 혼합 색상",
++  "#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）": "#AARRGGBB — 라이트 테마의 글라스 혼합 색상 (EBM [light])",
++  "深色模式叠加色": "다크 모드 혼합 색상",
++  "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — 다크 테마의 글라스 혼합 색상 (EBM [dark])",
++  "Windows 默认": "Windows 기본값",
++  "资源管理器背景效果未能更改，请稍后重试。": "파일 탐색기 배경 효과를 변경하지 못했습니다. 잠시 후 다시 시도하세요.",
++  "选择颜色": "색 선택",
++  "恢复默认": "기본값 복원"
+ }
+diff --git a/locales/pt-BR.json b/locales/pt-BR.json
+index bfee5a7..969c01d 100644
+--- a/locales/pt-BR.json
++++ b/locales/pt-BR.json
+@@ -654,9 +654,22 @@
+   "通知中心样式": "Estilo da Central de Notificações",
+   "通知中心和操作中心视觉主题；选择后立即生效": "Temas visuais para a Central de Notificações e a Central de Ações; aplicam-se ao selecionar",
+   "通知中心样式未能更改，请稍后重试。": "Não foi possível alterar o estilo da Central de Notificações — tente novamente.",
+-  "资源管理器样式": "Estilo do Explorador de Arquivos",
+-  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Temas visuais e plano de fundo da janela para o Explorador de Arquivos; aplica ao selecionar",
+-  "资源管理器样式未能更改，请稍后重试。": "Não foi possível alterar o estilo do Explorador de Arquivos — tente novamente.",
+-  "主题色叠加": "Sobreposição de tonalidade",
+-  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Sobrepõe a cor escolhida na barra de tarefas, menu Iniciar e Explorador de Arquivos; a amostra cortada remove"
++  "资源管理器背景效果": "Efeito de fundo do Explorador de Arquivos",
++  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Efeito fosco estilo ExplorerBlurMica: Desfoque, Acrílico ou Mica; aplicado na hora",
++  "清除地址栏背景": "Limpar o fundo da barra de endereços",
++  "地址栏与搜索框透出背景效果（EBM clearAddress）": "A barra de endereços e a caixa de pesquisa deixam o efeito aparecer (EBM clearAddress)",
++  "清除滚动条背景": "Limpar o fundo da barra de rolagem",
++  "滚动条轨道透出背景效果（EBM clearBarBg）": "O trilho da barra de rolagem deixa o efeito aparecer (EBM clearBarBg)",
++  "清除 WinUI 工具栏背景": "Limpar o fundo da barra de ferramentas WinUI",
++  "选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）": "A faixa de guias e a barra de comandos deixam o efeito aparecer (EBM clearWinUIBg)",
++  "显示导航窗格分隔线": "Mostrar o divisor do painel de navegação",
++  "在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）": "Desenhar um divisor fino entre a árvore e a exibição de arquivos (EBM showLine)",
++  "浅色模式叠加色": "Cor de mescla do modo claro",
++  "#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）": "#AARRGGBB — cor de mescla do vidro no tema claro (EBM [light])",
++  "深色模式叠加色": "Cor de mescla do modo escuro",
++  "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — cor de mescla do vidro no tema escuro (EBM [dark])",
++  "Windows 默认": "Padrão do Windows",
++  "资源管理器背景效果未能更改，请稍后重试。": "Não foi possível alterar o efeito de fundo do Explorador; tente novamente.",
++  "选择颜色": "Escolher cor",
++  "恢复默认": "Restaurar padrão"
+ }
+diff --git a/locales/ru.json b/locales/ru.json
+index 55d1894..1b2f6dd 100644
+--- a/locales/ru.json
++++ b/locales/ru.json
+@@ -654,9 +654,22 @@
+   "通知中心样式": "Стиль центра уведомлений",
+   "通知中心和操作中心视觉主题；选择后立即生效": "Визуальные темы для центра уведомлений и центра действий; применяются при выборе",
+   "通知中心样式未能更改，请稍后重试。": "Не удалось изменить стиль центра уведомлений — повторите попытку.",
+-  "资源管理器样式": "Стиль Проводника",
+-  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "Визуальные темы и фон окна для Проводника; применяется при выборе",
+-  "资源管理器样式未能更改，请稍后重试。": "Не удалось изменить стиль Проводника — повторите попытку.",
+-  "主题色叠加": "Цветовой оттенок",
+-  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "Накладывает выбранный цвет на панель задач, меню «Пуск» и Проводник; зачёркнутый образец снимает"
++  "资源管理器背景效果": "Эффект фона Проводника",
++  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "Матовый эффект в стиле ExplorerBlurMica: размытие, акрил или слюда; применяется сразу",
++  "清除地址栏背景": "Очистить фон адресной строки",
++  "地址栏与搜索框透出背景效果（EBM clearAddress）": "Адресная строка и поле поиска пропускают эффект (EBM clearAddress)",
++  "清除滚动条背景": "Очистить фон полосы прокрутки",
++  "滚动条轨道透出背景效果（EBM clearBarBg）": "Дорожка полосы прокрутки пропускает эффект (EBM clearBarBg)",
++  "清除 WinUI 工具栏背景": "Очистить фон панели WinUI",
++  "选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）": "Панель вкладок и командная строка пропускают эффект (EBM clearWinUIBg)",
++  "显示导航窗格分隔线": "Показать разделитель панели навигации",
++  "在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）": "Рисовать тонкий разделитель между деревом и списком файлов (EBM showLine)",
++  "浅色模式叠加色": "Цвет наложения для светлого режима",
++  "#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）": "#AARRGGBB — цвет наложения стекла в светлой теме (EBM [light])",
++  "深色模式叠加色": "Цвет наложения для тёмного режима",
++  "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — цвет наложения стекла в тёмной теме (EBM [dark])",
++  "Windows 默认": "По умолчанию (Windows)",
++  "资源管理器背景效果未能更改，请稍后重试。": "Не удалось изменить эффект фона Проводника; повторите попытку.",
++  "选择颜色": "Выбрать цвет",
++  "恢复默认": "Восстановить по умолчанию"
+ }
+diff --git a/locales/zh-TW.json b/locales/zh-TW.json
+index c80e811..c703f75 100644
+--- a/locales/zh-TW.json
++++ b/locales/zh-TW.json
+@@ -654,9 +654,22 @@
+   "通知中心样式": "通知中心樣式",
+   "通知中心和操作中心视觉主题；选择后立即生效": "通知中心和操作中心視覺主題；選擇後立即生效",
+   "通知中心样式未能更改，请稍后重试。": "通知中心樣式未能更改，請稍後重試。",
+-  "资源管理器样式": "檔案總管樣式",
+-  "文件资源管理器视觉主题和窗口背景；选择后立即生效": "檔案總管視覺主題與視窗背景；選擇後立即生效",
+-  "资源管理器样式未能更改，请稍后重试。": "檔案總管樣式未能更改，請稍後重試。",
+-  "主题色叠加": "主題色疊加",
+-  "给任务栏、开始菜单和资源管理器叠加一层所选颜色；斜杠为关闭": "將所選顏色疊加到工作列、開始功能表和檔案總管；斜線按鈕為關閉"
++  "资源管理器背景效果": "檔案總管背景效果",
++  "ExplorerBlurMica 式磨砂效果：模糊、亚克力或云母；选择后立即生效": "ExplorerBlurMica 式磨砂效果：模糊、壓克力或雲母；選擇後立即生效",
++  "清除地址栏背景": "清除網址列背景",
++  "地址栏与搜索框透出背景效果（EBM clearAddress）": "網址列與搜尋框透出背景效果（EBM clearAddress）",
++  "清除滚动条背景": "清除捲軸背景",
++  "滚动条轨道透出背景效果（EBM clearBarBg）": "捲軸軌道透出背景效果（EBM clearBarBg）",
++  "清除 WinUI 工具栏背景": "清除 WinUI 工具列背景",
++  "选项卡栏与命令栏透出背景效果（EBM clearWinUIBg）": "索引標籤列與命令列透出背景效果（EBM clearWinUIBg）",
++  "显示导航窗格分隔线": "顯示導覽窗格分隔線",
++  "在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）": "在左側樹狀檢視與檔案檢視之間繪製一條細分隔線（EBM showLine）",
++  "浅色模式叠加色": "淺色模式疊加色",
++  "#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）": "#AARRGGBB — 系統淺色主題下的玻璃混色（EBM [light]）",
++  "深色模式叠加色": "深色模式疊加色",
++  "#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）": "#AARRGGBB — 系統深色主題下的玻璃混色（EBM [dark]）",
++  "Windows 默认": "Windows 預設",
++  "资源管理器背景效果未能更改，请稍后重试。": "檔案總管背景效果未能更改，請稍後重試。",
++  "选择颜色": "選擇顏色",
++  "恢复默认": "恢復預設"
+ }
+diff --git a/ui/settings.html b/ui/settings.html
+index 1ec49da..47bc0ed 100644
+--- a/ui/settings.html
++++ b/ui/settings.html
+@@ -108,8 +108,16 @@
+   /* Controls that wrap under a long description stay on the right, as in Windows Settings. */
+   .card:not(.stack) > :not(.l):not(.s) { margin-left: auto; }
+   .rgbaRow { display: flex; gap: 8px; align-items: center; }
+-  .rgbaRow .dot { width: 20px; height: 20px; border-radius: 5px; border: 1px solid var(--line); flex: none; background: transparent; }
++  .rgbaRow .dot { width: 20px; height: 20px; border-radius: 5px; border: 1px solid var(--line); flex: none; background: transparent; cursor: pointer; padding: 0; }
+   .rgbaRow input[type=text] { width: 96px; font-family: monospace; }
++  #rgbaPicker { position: fixed; z-index: 50; width: 232px; padding: 12px; background: var(--sheet); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.35); }
++  #rgbaPicker .swatchGrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
++  #rgbaPicker .sw { aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
++  #rgbaPicker .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
++  #rgbaPicker .alphaRow { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--text2); }
++  #rgbaPicker .alphaRow input[type=range] { flex: 1; accent-color: var(--accent); }
++  #rgbaPicker .foot { display: flex; justify-content: flex-end; margin-top: 10px; }
++  #rgbaPicker .foot button { font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+   .card.disabled .t, .card.disabled .s { color: var(--text-disabled); }
+   /* A master setting and the rows that only matter while it is on share one surface. */
+   .group { display: flex; flex-direction: column; gap: 1px; margin-bottom: 4px; }
+@@ -499,9 +507,9 @@
+       <div class="card child" data-fe-opt><div class="l"><div><div class="t">显示导航窗格分隔线</div><div class="s">在左侧树状视图与文件视图之间绘制一条细分隔线（EBM showLine）</div></div></div>
+         <div class="toggle" role="switch" tabindex="0" data-bind="feShowLine"></div></div>
+       <div class="card child" data-fe-opt><div class="l"><div><div class="t">浅色模式叠加色</div><div class="s">#AARRGGBB — 系统浅色主题下的玻璃混色（EBM [light]）</div></div></div>
+-        <div class="rgbaRow"><span class="dot" id="feLightDot"></span><input type="text" id="feLightRgbaIn" data-bind="feLightRgba" data-str spellcheck="false" autocomplete="off" maxlength="9"></div></div>
++        <div class="rgbaRow"><button class="dot" id="feLightDot" type="button" data-rgba="feLightRgba" data-rgba-default="#A0DCDCDC" data-i18n-title="选择颜色" title="选择颜色"></button><input type="text" id="feLightRgbaIn" data-bind="feLightRgba" data-str spellcheck="false" autocomplete="off" maxlength="9"></div></div>
+       <div class="card child" data-fe-opt><div class="l"><div><div class="t">深色模式叠加色</div><div class="s">#AARRGGBB — 系统深色主题下的玻璃混色（EBM [dark]）</div></div></div>
+-        <div class="rgbaRow"><span class="dot" id="feDarkDot"></span><input type="text" id="feDarkRgbaIn" data-bind="feDarkRgba" data-str spellcheck="false" autocomplete="off" maxlength="9"></div></div>
++        <div class="rgbaRow"><button class="dot" id="feDarkDot" type="button" data-rgba="feDarkRgba" data-rgba-default="#78000000" data-i18n-title="选择颜色" title="选择颜色"></button><input type="text" id="feDarkRgbaIn" data-bind="feDarkRgba" data-str spellcheck="false" autocomplete="off" maxlength="9"></div></div>
+       <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">重启资源管理器</div><div class="s">出现卡顿或异常时按一下</div></div></div>
+         <div class="actions"><button id="restartExplorer">重启</button></div></div>
+       <h3>行为</h3>
+@@ -1758,6 +1766,43 @@
+   document.getElementById('tswCancel').onclick = () => tswDecide('cancel');
+   tswVeil.addEventListener('keydown', e => { if (e.key === 'Escape') tswDecide('cancel'); });
+   send({ type: 'ready' });
++  // RGBA color picker — opened from the dot beside each #AARRGGBB field:
++  // preset swatches (EBM-style glass blends), an alpha slider that keeps
++  // the RGB channels, and a restore-default button.
++  const RP_PRESETS = ['#78000000','#A0000000','#50101216','#80404040','#A0DCDCDC','#C8FFFFFF','#80FFFFFF','#96C8C8C8','#780078D4','#78E74856','#78107C10','#78FFB900'];
++  const rpEl = document.createElement('div');
++  rpEl.id = 'rgbaPicker'; rpEl.hidden = true;
++  rpEl.innerHTML = `<div class="swatchGrid"></div>
++    <div class="alphaRow"><span data-i18n="不透明度">不透明度</span><input type="range" min="0" max="255"><span class="aval"></span></div>
++    <div class="foot"><button type="button" data-i18n="恢复默认">恢复默认</button></div>`;
++  document.body.appendChild(rpEl);
++  const rpGrid = rpEl.querySelector('.swatchGrid'), rpAlpha = rpEl.querySelector('input[type=range]'), rpAval = rpEl.querySelector('.aval'), rpReset = rpEl.querySelector('.foot button');
++  const rpParse = s => { const m = /^#?([0-9a-fA-F]{2})([0-9a-fA-F]{6})$/.exec(s || ''); return m ? { a: parseInt(m[1],16), rgb: m[2].toUpperCase() } : null; };
++  const rpCss = s => { const p = rpParse(s); return p ? `rgba(${parseInt(p.rgb.slice(0,2),16)},${parseInt(p.rgb.slice(2,4),16)},${parseInt(p.rgb.slice(4,6),16)},${(p.a/255).toFixed(2)})` : 'transparent'; };
++  for (const c of RP_PRESETS) { const b = document.createElement('button'); b.type='button'; b.className='sw'; b.dataset.c=c; b.style.background=rpCss(c); rpGrid.appendChild(b); }
++  let rpField = null;
++  const rpCur = () => rpField ? (state.settings[rpField] || '') : '';
++  const rpCommit = v => { if (!rpField) return; set(state.settings, rpField, v); commit(rpField); const inp = document.querySelector(`[data-bind="${rpField}"]`); if (inp) inp.value = v; renderFeDependents(); };
++  function rpOpen(btn) {
++    const field = btn.dataset.rgba;
++    if (rpField === field && !rpEl.hidden) { rpEl.hidden = true; rpField = null; return; }
++    rpField = field;
++    const cur = rpParse(rpCur());
++    rpAlpha.value = cur ? cur.a : 255;
++    rpAval.textContent = rpAlpha.value;
++    rpGrid.querySelectorAll('.sw').forEach(s => s.classList.toggle('on', s.dataset.c.toUpperCase() === (rpCur()||'').toUpperCase()));
++    rpEl.hidden = false;
++    const r = btn.getBoundingClientRect();
++    rpEl.style.left = Math.max(8, Math.min(window.innerWidth - rpEl.offsetWidth - 8, r.left + r.width/2 - rpEl.offsetWidth/2)) + 'px';
++    rpEl.style.top = (r.bottom + 8 + rpEl.offsetHeight > window.innerHeight ? r.top - rpEl.offsetHeight - 8 : r.bottom + 8) + 'px';
++    rpReset.onclick = () => rpCommit(btn.dataset.rgbaDefault);
++  }
++  rpGrid.onclick = e => { const s = e.target.closest('.sw'); if (s) rpCommit(s.dataset.c); };
++  rpAlpha.oninput = () => { rpAval.textContent = rpAlpha.value; const cur = rpParse(rpCur()) || { rgb: '000000' }; const hex = Number(rpAlpha.value).toString(16).padStart(2,'0').toUpperCase(); set(state.settings, rpField, '#' + hex + cur.rgb); renderFeDependents(); };
++  rpAlpha.onchange = () => rpCommit(state.settings[rpField]);
++  document.addEventListener('click', e => { if (!rpEl.hidden && !rpEl.contains(e.target) && !e.target.closest('.rgbaRow .dot')) { rpEl.hidden = true; rpField = null; } });
++  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !rpEl.hidden) { rpEl.hidden = true; rpField = null; } });
++  document.querySelectorAll('.rgbaRow .dot').forEach(b => b.onclick = () => rpOpen(b));
+ })();
+ </script>
+ </body>
+```

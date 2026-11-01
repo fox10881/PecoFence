@@ -50,10 +50,6 @@ static CONNECTED_WINUI3: std::sync::LazyLock<Mutex<std::collections::HashSet<u32
 /// Bumped inside `SetSite`'s WinUI3 branch — the endpoint walk attributes
 /// the accepting index to the `ixde` call whose return followed a bump.
 static WINUI3_SETSITE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-/// Last `CabinetWClass` top-window count seen by `ensure_watching_winui3` —
-/// a new File Explorer window hosts a NEW WinUI3 island on a NEW
-/// `WinUIVisualDiagConnection{N}` endpoint, so growth re-arms the walk.
-static LAST_CABINET_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 /// One install pass. Retries are *not* done in a loop here: after a failed
 /// `ixde` the calling thread can never execute a blocking wait again (sleep,
@@ -335,15 +331,6 @@ pub fn ensure_watching_winui3() {
                 }
             }
         }
-    }
-    // A new `CabinetWClass` hosts a NEW WinUI3 island on the NEXT free
-    // `WinUIVisualDiagConnection{N}` — the existing watcher only sees the
-    // first island's tree. `watcher_winui3` being Some must not suppress
-    // the re-probe: growth means the walk has another endpoint to find.
-    let count = crate::fe_glass::cabinet_count();
-    if count > LAST_CABINET_COUNT.swap(count, Ordering::AcqRel) {
-        crate::tap_log!("winui3: cabinet count {count} — re-probing endpoints");
-        std::thread::spawn(install_winui3);
     }
 }
 

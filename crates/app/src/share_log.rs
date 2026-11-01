@@ -637,6 +637,7 @@ mod tests {
         ("class", "%cls"),              // class of the window that ended a peek
         ("command", "name"),            // `Command` variant name
         ("effect", "?effect"),          // DropEffect enum
+        ("effect", "cfg.effect"),       // EBM effect name — enum-validated upstream
         ("family", "%f.family"),        // installed font family
         ("generation", "?generation"),  // DesktopGeneration enum
         ("generation", "generation"),   // GPU device generation (u64)

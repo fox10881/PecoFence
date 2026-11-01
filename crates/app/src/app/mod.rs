@@ -1443,11 +1443,11 @@ impl App {
                 let _ = pecofence_platform::notification_center::apply(&saved_nc_style);
             });
         }
-        // The saved ExplorerBlurMica glass effect rides the same explorer
-        // resident — apply_effect() arms + delivers it, and the ensure
-        // tick re-asserts the accent on cabinet windows.
+        // The saved ExplorerBlurMica effect applies through the resident
+        // relay; an empty effect still runs apply_effect → reset(), which
+        // unloads a stale EBM image left by an unclean shutdown.
         let fe = &app.state.config.settings;
-        if !fe.fe_effect.is_empty() {
+        {
             let (effect, l, d) = (
                 fe.fe_effect.clone(),
                 fe.fe_light_rgba.clone(),

@@ -3946,11 +3946,6 @@ pub fn apply_wire(text: &str) {
         eng.pending_classic = false;
         eng.pending = Some((kind, theme));
     }
-    if kind == WireKind::FileExplorer {
-        // Glass half of the FE styler: DWM/uxtheme detours that punch the
-        // Win32/DirectUI panels transparent. Arms lazily, idempotent.
-        crate::fe_glass::set_armed(true);
-    }
     dispatch_apply();
 }
 
@@ -3959,14 +3954,6 @@ pub fn reset() {
     crate::tap_log!("styler: reset");
     {
         let mut eng = state();
-        // Only the FileExplorer engine owns the glass detours — a taskbar
-        // or start-menu reset on the shared engine body must not disarm
-        // an armed FE theme.
-        if matches!(eng.applied.as_ref(), Some(WireKind::FileExplorer))
-            || matches!(eng.pending.as_ref(), Some((WireKind::FileExplorer, _)))
-        {
-            crate::fe_glass::set_armed(false);
-        }
         eng.pending = None;
         eng.applied = None;
         eng.wire_rules = None;

@@ -87,6 +87,7 @@ windows_core::link!("kernel32.dll" "system" fn GetModuleFileNameW(hmodule: HMODU
 windows_core::link!("kernel32.dll" "system" fn GetModuleHandleW(lpmodulename: PCWSTR) -> HMODULE);
 windows_core::link!("kernel32.dll" "system" fn GetProcAddress(hmodule: HMODULE, lpprocname: PCSTR) -> FARPROC);
 windows_core::link!("kernel32.dll" "system" fn LoadLibraryW(lplibfilename: PCWSTR) -> HMODULE);
+windows_core::link!("kernel32.dll" "system" fn FreeLibrary(hlibmodule: HMODULE) -> BOOL);
 windows_core::link!("kernel32.dll" "system" fn FindFirstFileW(lpfilename: PCWSTR, lpfindfiledata: *mut core::ffi::c_void) -> HANDLE);
 windows_core::link!("kernel32.dll" "system" fn FindNextFileW(hfindfile: HANDLE, lpfindfiledata: *mut core::ffi::c_void) -> BOOL);
 windows_core::link!("kernel32.dll" "system" fn FindClose(hfindfile: HANDLE) -> BOOL);

@@ -88,6 +88,31 @@ fn link_options(out_dir: &Path) {
             manifest.display()
         );
         copy_webview_loader(out_dir);
+        copy_explorer_blur_mica(out_dir);
+    }
+}
+
+/// `ExplorerBlurMica.dll` ships beside the exe (same as `pecofence_tap.dll` and
+/// the WebView2 loader); the FE styler deploys it from there into the
+/// residents dir and the tap resident `LoadLibraryW`s it into each
+/// cabinet-owning explorer when the user enables the effect.
+fn copy_explorer_blur_mica(out_dir: &Path) {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let src = manifest_dir
+        .join("..")
+        .join("..")
+        .join("third_party")
+        .join("ebm")
+        .join("ExplorerBlurMica.dll");
+    println!("cargo:rerun-if-changed={}", src.display());
+    if !src.is_file() {
+        println!("cargo:warning=ExplorerBlurMica.dll not found; skipping");
+        return;
+    }
+    if let Some(profile_dir) = out_dir.ancestors().nth(3)
+        && let Err(e) = std::fs::copy(&src, profile_dir.join("ExplorerBlurMica.dll"))
+    {
+        println!("cargo:warning=could not copy ExplorerBlurMica.dll: {e}");
     }
 }
 

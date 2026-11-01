@@ -274,16 +274,11 @@ const CDS_TB_HELLO: usize = u32::from_be_bytes(*b"TBHI") as usize;
 const CDS_NC_THEME: usize = u32::from_be_bytes(*b"NCST") as usize;
 const CDS_NC_RESET: usize = u32::from_be_bytes(*b"NCSR") as usize;
 const CDS_NC_HELLO: usize = u32::from_be_bytes(*b"NCHI") as usize;
-/// File Explorer (`PECO-FES1`) markers — sent to the explorer
-/// `PecoFenceTAP` window; the wire applies inside the WinUI3 diagnostics
-/// session (the mux engine), not the taskbar's WUX one.
-const CDS_FE_THEME: usize = u32::from_be_bytes(*b"FEST") as usize;
-const CDS_FE_RESET: usize = u32::from_be_bytes(*b"FESR") as usize;
-const CDS_FE_HELLO: usize = u32::from_be_bytes(*b"FEHI") as usize;
-/// Backdrop/accent state for `fe_glass` — `[backdrop:i32, accent_state:u32,
-/// accent_flags:u32, gradient:u32]` LE; tells the resident which
-/// `DWMWA_SYSTEMBACKDROP_TYPE` to substitute and which accent policy to push.
-const CDS_FE_BACKDROP: usize = u32::from_be_bytes(*b"FEBD") as usize;
+/// ExplorerBlurMica relay — `EBML` carries the UTF-16 path to
+/// `ExplorerBlurMica.dll` (LoadLibrary in-process), `EBMU` unloads it.
+/// The vendored EBM DllMain self-installs inside explorer.exe.
+const CDS_EBM_LOAD: usize = u32::from_be_bytes(*b"EBML") as usize;
+const CDS_EBM_UNLOAD: usize = u32::from_be_bytes(*b"EBMU") as usize;
 
 fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
     if msg == UNLOAD_MSG.load(Ordering::Acquire) && msg != 0 {
@@ -299,7 +294,7 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
     if msg == WM_TIMER {
         crate::site::ensure_watching();
         // The mux session's endpoint exists only once a WinUI3 island
-        // registers it — an early FEST can land before any File Explorer
+        // registers it — a theme wire can land before any File Explorer
         // window exists, so keep re-trying while the mux engine wants one.
         if crate::styler::mux::wants_session() {
             crate::site::ensure_watching_winui3();
@@ -339,27 +334,7 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
                 crate::site::ensure_watching();
                 crate::styler::wux::apply_wire(text);
             }
-            CDS_FE_THEME if !cds.lp_data.is_null() && cds.cb_data > 0 => {
-                let bytes = unsafe {
-                    core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
-                };
-                let Ok(text) = core::str::from_utf8(bytes) else {
-                    crate::tap_log!("FE styler wire not UTF-8");
-                    return;
-                };
-                // The WinUI3 session may not exist yet (no File Explorer
-                // window open) — the engine holds the theme as pending and
-                // the timer keeps retrying `ensure_watching_winui3`.
-                crate::site::ensure_watching_winui3();
-                crate::styler::mux::apply_wire(text);
-            }
-            CDS_FE_BACKDROP if !cds.lp_data.is_null() && cds.cb_data >= 16 => {
-                let bytes = unsafe {
-                    core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
-                };
-                crate::fe_glass::set_backdrop_params(bytes);
-            }
-            CDS_HELLO | CDS_TB_HELLO | CDS_NC_HELLO | CDS_FE_HELLO
+            CDS_HELLO | CDS_TB_HELLO | CDS_NC_HELLO
                 if !cds.lp_data.is_null() && cds.cb_data == 4 =>
             {
                 // Host announced itself — arm the death watch so styles
@@ -367,8 +342,14 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
                 let pid = unsafe { *(cds.lp_data as *const u32) };
                 watch_host_process(pid);
             }
+            CDS_EBM_LOAD if !cds.lp_data.is_null() && cds.cb_data >= 4 => {
+                let bytes = unsafe {
+                    core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
+                };
+                crate::ebm::load(bytes);
+            }
+            CDS_EBM_UNLOAD => crate::ebm::unload(),
             CDS_RESET | CDS_TB_RESET | CDS_NC_RESET => crate::styler::wux::reset(),
-            CDS_FE_RESET => crate::styler::mux::reset(),
             _ => {}
         }
     }
@@ -454,6 +435,7 @@ fn unload(hwnd: HWND) {
     crate::tap_log!("unload: inert — timer killed, CmdHwnd unstamped");
     crate::styler::wux::shutdown();
     crate::styler::mux::shutdown();
+    crate::ebm::shutdown();
     // Snapshot the service/watcher under the lock, then release it — the
     // unadvise call marshals to the UI thread and must not race callbacks
     // that take `shared`. Runs on a worker: a dead island pump parks the

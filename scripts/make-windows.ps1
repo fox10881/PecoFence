@@ -78,6 +78,10 @@ try {
   }
   Copy-Item -LiteralPath "third_party/webview2/WebView2Loader.x64.dll" -Destination (Join-Path $common "WebView2Loader.dll")
   Copy-Item -LiteralPath "third_party/webview2/LICENSE.txt" -Destination (Join-Path $common "LICENSE-WebView2Loader.txt")
+  Copy-Item -LiteralPath "third_party/ebm/ExplorerBlurMica.dll" -Destination $common
+  Copy-Item -LiteralPath "third_party/ebm/COPYING.LESSER" -Destination (Join-Path $common "LICENSE-ExplorerBlurMica.txt")
+  Copy-Item -LiteralPath "third_party/ebm/LICENSE" -Destination (Join-Path $common "GPL-ExplorerBlurMica.txt")
+  Copy-Item -LiteralPath "third_party/ebm/README.txt" -Destination (Join-Path $common "README-ExplorerBlurMica.txt")
   Copy-Item -LiteralPath "LICENSE" -Destination $common
   Copy-Item -LiteralPath "docs/UPGRADING.md" -Destination (Join-Path $common "UPGRADING.md")
   Copy-Item -LiteralPath "docs/WALLPAPER_ENGINE.md" -Destination $common
