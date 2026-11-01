@@ -14179,10 +14179,10 @@ index 01ec2c2..becc545 100644
  windows_core::link!("kernel32.dll" "system" fn FindNextFileW(hfindfile: HANDLE, lpfindfiledata: *mut core::ffi::c_void) -> BOOL);
  windows_core::link!("kernel32.dll" "system" fn FindClose(hfindfile: HANDLE) -> BOOL);
 diff --git a/locales/ar.json b/locales/ar.json
-index 654edbd..bcd6b46 100644
+index 654edbd..14f0ea1 100644
 --- a/locales/ar.json
 +++ b/locales/ar.json
-@@ -654,9 +654,36 @@
+@@ -654,9 +654,37 @@
    "通知中心样式": "نمط مركز الإشعارات",
    "通知中心和操作中心视觉主题；选择后立即生效": "سمات مرئية لمركز الإشعارات ومركز الإجراءات؛ تُطبَّق فور الاختيار",
    "通知中心样式未能更改，请稍后重试。": "تعذّر تغيير نمط مركز الإشعارات — حاول مرة أخرى.",
@@ -14222,13 +14222,14 @@ index 654edbd..bcd6b46 100644
 +  "混合色": "لون المزج",
 +  "当前": "الحالي",
 +  "已应用": "تم التطبيق",
-+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "تمويه وأكريليك وميكا من ExplorerBlurMica — عاين وخصّص في نافذة مخصصة"
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "تمويه وأكريليك وميكا من ExplorerBlurMica — عاين وخصّص في نافذة مخصصة",
++  "预览背景": "خلفية المعاينة"
  }
 diff --git a/locales/de.json b/locales/de.json
-index a6b2f5b..fa1596d 100644
+index a6b2f5b..3941c46 100644
 --- a/locales/de.json
 +++ b/locales/de.json
-@@ -654,9 +654,36 @@
+@@ -654,9 +654,37 @@
    "通知中心样式": "Info-Center-Stil",
    "通知中心和操作中心视觉主题；选择后立即生效": "Visuelle Designs für Info-Center und Aktionscenter; wird sofort übernommen",
    "通知中心样式未能更改，请稍后重试。": "Info-Center-Stil konnte nicht geändert werden — bitte erneut versuchen.",
@@ -14268,13 +14269,14 @@ index a6b2f5b..fa1596d 100644
 +  "混合色": "Mischfarbe",
 +  "当前": "Aktuell",
 +  "已应用": "Angewendet",
-+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica-Unschärfe, -Acryl und -Mica – Vorschau und Anpassung in einem eigenen Fenster"
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica-Unschärfe, -Acryl und -Mica – Vorschau und Anpassung in einem eigenen Fenster",
++  "预览背景": "Vorschau-Hintergrund"
  }
 diff --git a/locales/en.json b/locales/en.json
-index 4298a37..78de129 100644
+index 4298a37..022000b 100644
 --- a/locales/en.json
 +++ b/locales/en.json
-@@ -654,9 +654,36 @@
+@@ -654,9 +654,37 @@
    "通知中心样式": "Notification Center style",
    "通知中心和操作中心视觉主题；选择后立即生效": "Visual themes for the Notification and Action Center; applies on selection",
    "通知中心样式未能更改，请稍后重试。": "Couldn't change the Notification Center style — try again.",
@@ -14314,13 +14316,14 @@ index 4298a37..78de129 100644
 +  "混合色": "Blend color",
 +  "当前": "Current",
 +  "已应用": "Applied",
-+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica blur, acrylic and mica — preview and customize in a dedicated window"
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica blur, acrylic and mica — preview and customize in a dedicated window",
++  "预览背景": "Preview background"
  }
 diff --git a/locales/es.json b/locales/es.json
-index e8f5851..2c959cb 100644
+index e8f5851..5e683ad 100644
 --- a/locales/es.json
 +++ b/locales/es.json
-@@ -654,9 +654,36 @@
+@@ -654,9 +654,37 @@
    "通知中心样式": "Estilo del Centro de notificaciones",
    "通知中心和操作中心视觉主题；选择后立即生效": "Temas visuales para el Centro de notificaciones y de actividades; se aplican al seleccionar",
    "通知中心样式未能更改，请稍后重试。": "No se pudo cambiar el estilo del Centro de notificaciones — inténtalo de nuevo.",
@@ -14360,13 +14363,14 @@ index e8f5851..2c959cb 100644
 +  "混合色": "Color de mezcla",
 +  "当前": "Actual",
 +  "已应用": "Aplicado",
-+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Desenfoque, acrílico y mica de ExplorerBlurMica: vista previa y personalización en una ventana dedicada"
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Desenfoque, acrílico y mica de ExplorerBlurMica: vista previa y personalización en una ventana dedicada",
++  "预览背景": "Fondo de vista previa"
  }
 diff --git a/locales/fr.json b/locales/fr.json
-index 4e57230..fcc91d9 100644
+index 4e57230..bc185c7 100644
 --- a/locales/fr.json
 +++ b/locales/fr.json
-@@ -654,9 +654,36 @@
+@@ -654,9 +654,37 @@
    "通知中心样式": "Style du Centre de notifications",
    "通知中心和操作中心视觉主题；选择后立即生效": "Thèmes visuels pour le Centre de notifications et le Centre d’action ; appliqués dès la sélection",
    "通知中心样式未能更改，请稍后重试。": "Impossible de changer le style du Centre de notifications — réessayez.",
@@ -14406,13 +14410,14 @@ index 4e57230..fcc91d9 100644
 +  "混合色": "Couleur de fusion",
 +  "当前": "Actuel",
 +  "已应用": "Appliqué",
-+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Flou, acrylique et mica d'ExplorerBlurMica — aperçu et personnalisation dans une fenêtre dédiée"
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Flou, acrylique et mica d'ExplorerBlurMica — aperçu et personnalisation dans une fenêtre dédiée",
++  "预览背景": "Arrière-plan d'aperçu"
  }
 diff --git a/locales/it.json b/locales/it.json
-index 82fa7f7..3f63bfe 100644
+index 82fa7f7..e7b0b82 100644
 --- a/locales/it.json
 +++ b/locales/it.json
-@@ -654,9 +654,36 @@
+@@ -654,9 +654,37 @@
    "通知中心样式": "Stile del Centro notifiche",
    "通知中心和操作中心视觉主题；选择后立即生效": "Temi visivi per il Centro notifiche e il Centro operativo; si applicano alla selezione",
    "通知中心样式未能更改，请稍后重试。": "Impossibile cambiare lo stile del Centro notifiche — riprova.",
@@ -14452,13 +14457,14 @@ index 82fa7f7..3f63bfe 100644
 +  "混合色": "Colore blend",
 +  "当前": "Corrente",
 +  "已应用": "Applicato",
-+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Sfocatura, acrilico e mica di ExplorerBlurMica — anteprima e personalizzazione in una finestra dedicata"
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Sfocatura, acrilico e mica di ExplorerBlurMica — anteprima e personalizzazione in una finestra dedicata",
++  "预览背景": "Sfondo anteprima"
  }
 diff --git a/locales/ja.json b/locales/ja.json
-index 93126c2..07a5d31 100644
+index 93126c2..518ed7e 100644
 --- a/locales/ja.json
 +++ b/locales/ja.json
-@@ -654,9 +654,36 @@
+@@ -654,9 +654,37 @@
    "通知中心样式": "通知センターのスタイル",
    "通知中心和操作中心视觉主题；选择后立即生效": "通知センターとアクションセンターのビジュアルテーマ。選択するとすぐに適用されます",
    "通知中心样式未能更改，请稍后重试。": "通知センターのスタイルを変更できませんでした — もう一度お試しください。",
@@ -14498,13 +14504,14 @@ index 93126c2..07a5d31 100644
 +  "混合色": "ブレンド色",
 +  "当前": "現在",
 +  "已应用": "適用しました",
-+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica のぼかし・アクリル・マイカ — 専用ウィンドウでプレビューとカスタマイズ"
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica のぼかし・アクリル・マイカ — 専用ウィンドウでプレビューとカスタマイズ",
++  "预览背景": "プレビュー背景"
  }
 diff --git a/locales/ko.json b/locales/ko.json
-index b901674..c3b759e 100644
+index b901674..e8580fe 100644
 --- a/locales/ko.json
 +++ b/locales/ko.json
-@@ -654,9 +654,36 @@
+@@ -654,9 +654,37 @@
    "通知中心样式": "알림 센터 스타일",
    "通知中心和操作中心视觉主题；选择后立即生效": "알림 센터 및 작업 센터의 시각적 테마; 선택하면 바로 적용됩니다",
    "通知中心样式未能更改，请稍后重试。": "알림 센터 스타일을 변경할 수 없습니다 — 다시 시도하세요.",
@@ -14544,13 +14551,14 @@ index b901674..c3b759e 100644
 +  "混合色": "혼합색",
 +  "当前": "현재",
 +  "已应用": "적용됨",
-+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica 블러, 아크릴, 마이카 — 전용 창에서 미리 보기 및 사용자 지정"
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica 블러, 아크릴, 마이카 — 전용 창에서 미리 보기 및 사용자 지정",
++  "预览背景": "미리 보기 배경"
  }
 diff --git a/locales/pt-BR.json b/locales/pt-BR.json
-index bfee5a7..7d7ef1a 100644
+index bfee5a7..5ec50bd 100644
 --- a/locales/pt-BR.json
 +++ b/locales/pt-BR.json
-@@ -654,9 +654,36 @@
+@@ -654,9 +654,37 @@
    "通知中心样式": "Estilo da Central de Notificações",
    "通知中心和操作中心视觉主题；选择后立即生效": "Temas visuais para a Central de Notificações e a Central de Ações; aplicam-se ao selecionar",
    "通知中心样式未能更改，请稍后重试。": "Não foi possível alterar o estilo da Central de Notificações — tente novamente.",
@@ -14590,13 +14598,14 @@ index bfee5a7..7d7ef1a 100644
 +  "混合色": "Cor de mesclagem",
 +  "当前": "Atual",
 +  "已应用": "Aplicado",
-+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Desfoque, acrílico e mica do ExplorerBlurMica — visualize e personalize em uma janela dedicada"
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Desfoque, acrílico e mica do ExplorerBlurMica — visualize e personalize em uma janela dedicada",
++  "预览背景": "Plano de fundo da visualização"
  }
 diff --git a/locales/ru.json b/locales/ru.json
-index 55d1894..91357c9 100644
+index 55d1894..9842449 100644
 --- a/locales/ru.json
 +++ b/locales/ru.json
-@@ -654,9 +654,36 @@
+@@ -654,9 +654,37 @@
    "通知中心样式": "Стиль центра уведомлений",
    "通知中心和操作中心视觉主题；选择后立即生效": "Визуальные темы для центра уведомлений и центра действий; применяются при выборе",
    "通知中心样式未能更改，请稍后重试。": "Не удалось изменить стиль центра уведомлений — повторите попытку.",
@@ -14636,13 +14645,14 @@ index 55d1894..91357c9 100644
 +  "混合色": "Цвет подложки",
 +  "当前": "Текущая",
 +  "已应用": "Применено",
-+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Размытие, акрил и слюда ExplorerBlurMica — предпросмотр и настройка в отдельном окне"
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "Размытие, акрил и слюда ExplorerBlurMica — предпросмотр и настройка в отдельном окне",
++  "预览背景": "Фон предпросмотра"
  }
 diff --git a/locales/zh-TW.json b/locales/zh-TW.json
-index c80e811..45c4dce 100644
+index c80e811..fbca9f3 100644
 --- a/locales/zh-TW.json
 +++ b/locales/zh-TW.json
-@@ -654,9 +654,36 @@
+@@ -654,9 +654,37 @@
    "通知中心样式": "通知中心樣式",
    "通知中心和操作中心视觉主题；选择后立即生效": "通知中心和操作中心視覺主題；選擇後立即生效",
    "通知中心样式未能更改，请稍后重试。": "通知中心樣式未能更改，請稍後重試。",
@@ -14682,7 +14692,8 @@ index c80e811..45c4dce 100644
 +  "混合色": "混合色",
 +  "当前": "目前",
 +  "已应用": "已套用",
-+  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica 模糊、壓克力與雲母 — 在專屬視窗中即時預覽並自訂"
++  "ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义": "ExplorerBlurMica 模糊、壓克力與雲母 — 在專屬視窗中即時預覽並自訂",
++  "预览背景": "預覽背景"
  }
 diff --git a/scripts/make-windows.ps1 b/scripts/make-windows.ps1
 index a50def5..f2c453d 100644
@@ -21467,10 +21478,10 @@ index 0000000..c5ba7ac
 +this path (or already deployed to the residents directory).
 diff --git a/ui/fe_glass.html b/ui/fe_glass.html
 new file mode 100644
-index 0000000..7b1a431
+index 0000000..711e1e6
 --- /dev/null
 +++ b/ui/fe_glass.html
-@@ -0,0 +1,562 @@
+@@ -0,0 +1,644 @@
 +<!doctype html>
 +<html lang="zh-CN">
 +<head>
@@ -21571,6 +21582,7 @@ index 0000000..7b1a431
 +  /* Desktop wallpaper stand-in: layered blobs like the default Win11 bloom. */
 +  .artboard {
 +    position: absolute; inset: 0;
++    transition: filter .18s;
 +    background:
 +      radial-gradient(38% 55% at 22% 30%, rgba(0,90,190,.85), transparent 70%),
 +      radial-gradient(34% 48% at 72% 22%, rgba(30,60,160,.8), transparent 70%),
@@ -21586,14 +21598,19 @@ index 0000000..7b1a431
 +      linear-gradient(160deg, #cfe4fa, #9ec7ef 55%, #74aae2);
 +  }
 +  .taskbar {
-+    position: absolute; left: 0; right: 0; bottom: 0; height: 40px;
++    position: absolute; left: 0; right: 0; bottom: 0; height: 44px;
 +    background: rgba(20,20,24,.72); backdrop-filter: blur(12px);
-+    display: flex; align-items: center; justify-content: center; gap: 14px;
++    display: flex; align-items: center; justify-content: center; gap: 12px;
 +  }
 +  html.light .taskbar { background: rgba(240,244,250,.78); }
-+  .taskbar i { width: 18px; height: 18px; border-radius: 4px; background: #4aa3ff; display: block; }
-+  .taskbar i:nth-child(2) { background: #f2c94c; border-radius: 2px 6px 6px 2px; }
-+  .taskbar i:nth-child(3) { background: #e0609a; border-radius: 50%; }
++  .taskbar .tlabel { font-size: 11px; opacity: .8; }
++  .bgbar { display: flex; align-items: center; gap: 7px; }
++  .bgbar .bg {
++    width: 20px; height: 20px; border-radius: 5px; padding: 0; cursor: pointer;
++    border: 1px solid rgba(128,128,128,.45); background-size: cover; background-position: center;
++  }
++  .bgbar .bg:hover { filter: brightness(1.15); }
++  .bgbar .bg.on { outline: 2px solid var(--accent); outline-offset: 1px; }
 +
 +  /* Mock File Explorer window. Its own bg is nearly invisible — the material
 +     layer (backdrop-filter) + the EBM tint overlay do the work, like the real
@@ -21713,19 +21730,20 @@ index 0000000..7b1a431
 +  }
 +  #toast.on { opacity: 1; }
 +
-+  /* ------------------------------------------------------ color picker */
-+  #rgbaPicker {
-+    position: fixed; z-index: 50; width: 236px; padding: 12px;
-+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-+    box-shadow: 0 8px 28px rgba(0,0,0,.35);
++  /* -------------------------------------- color picker (inline in panel) */
++  .rgbaPick {
++    margin-top: 8px; padding: 12px;
++    background: var(--sheet); border: 1px solid var(--line); border-radius: 10px;
 +  }
-+  #rgbaPicker .swatchGrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-+  #rgbaPicker .sw { aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
-+  #rgbaPicker .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
-+  #rgbaPicker .alphaRow { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--text2); }
-+  #rgbaPicker .alphaRow input[type=range] { flex: 1; accent-color: var(--accent); }
-+  #rgbaPicker .foot { display: flex; justify-content: flex-end; margin-top: 10px; }
-+  #rgbaPicker .foot button {
++  .rgbaPick .pcap { font-size: 12px; color: var(--text2); margin-bottom: 10px; }
++  .rgbaPick .swatchGrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
++  .rgbaPick .sw { aspect-ratio: 1; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
++  .rgbaPick .sw:hover { filter: brightness(1.15); }
++  .rgbaPick .sw.on { outline: 2px solid var(--accent); outline-offset: 1px; }
++  .rgbaPick .alphaRow { display: flex; gap: 8px; align-items: center; margin-top: 12px; font-size: 12px; color: var(--text2); }
++  .rgbaPick .alphaRow input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
++  .rgbaPick .foot { display: flex; justify-content: flex-end; margin-top: 10px; }
++  .rgbaPick .foot button {
 +    font-size: 12px; padding: 4px 10px; border-radius: 6px;
 +    border: 1px solid var(--line); background: var(--control); color: var(--text); cursor: pointer;
 +  }
@@ -21835,7 +21853,7 @@ index 0000000..7b1a431
 +        </div>
 +        <div class="ex-status"><span>6&nbsp;</span><span data-i18n="个项目">个项目</span></div>
 +      </div>
-+      <div class="taskbar"><i></i><i></i><i></i></div>
++      <div class="taskbar"><span class="tlabel" data-i18n="预览背景">预览背景</span><div class="bgbar" id="bgbar"></div></div>
 +    </div>
 +  </section>
 +</div>
@@ -21938,23 +21956,86 @@ index 0000000..7b1a431
 +  $('lightRgbaIn').oninput = () => { s.lightRgba = $('lightRgbaIn').value.trim(); render(); };
 +  $('darkRgbaIn').oninput = () => { s.darkRgba = $('darkRgbaIn').value.trim(); render(); };
 +
-+  // ------------------------------------------------- RGBA picker popup
-+  const RP_PRESETS = ['#78000000', '#A0000000', '#50101216', '#80404040', '#A0DCDCDC', '#C8FFFFFF',
-+    '#80FFFFFF', '#96C8C8C8', '#780078D4', '#78E74856', '#78107C10', '#78FFB900'];
++  // -------------------------------------- preview background switcher bar
++  // The artboard is what .mat's backdrop-filter samples — swapping its
++  // background re-lights the whole simulated glass, like the real desktop.
++  const PREVIEW_BGS = [
++    // 0: Windows 11 dark bloom (default dark wallpaper stand-in)
++    'radial-gradient(38% 55% at 22% 30%, rgba(0,90,190,.85), transparent 70%),' +
++    'radial-gradient(34% 48% at 72% 22%, rgba(30,60,160,.8), transparent 70%),' +
++    'radial-gradient(45% 60% at 60% 78%, rgba(0,120,215,.55), transparent 70%),' +
++    'radial-gradient(30% 40% at 88% 62%, rgba(90,40,160,.5), transparent 70%),' +
++    'linear-gradient(160deg, #0a1e38, #04101f 55%, #020a14)',
++    // 1: Windows 11 light bloom
++    'radial-gradient(38% 55% at 22% 30%, rgba(120,190,255,.9), transparent 70%),' +
++    'radial-gradient(34% 48% at 72% 22%, rgba(160,200,255,.85), transparent 70%),' +
++    'radial-gradient(45% 60% at 60% 78%, rgba(90,160,240,.7), transparent 70%),' +
++    'linear-gradient(160deg, #cfe4fa, #9ec7ef 55%, #74aae2)',
++    // 2: cyberpunk neon
++    'linear-gradient(135deg, #1A0B2E, #6B114D 55%, #00B4D8)',
++    // 3: sunset glow
++    'linear-gradient(135deg, #2B0938, #B5174E 55%, #F77F00)',
++    // 4: emerald aurora
++    'linear-gradient(135deg, #051923, #006466 55%, #38B000)',
++    // 5: midnight gold
++    'linear-gradient(135deg, #0F0F12, #2C221E 55%, #D4AF37)',
++    // 6: crimson dark
++    'linear-gradient(135deg, #0D0208, #4A0E17 55%, #9B111E)',
++    // 7: ocean breeze
++    'linear-gradient(135deg, #003554, #00A6FB 60%, #CAF0F8)',
++    // 8: lavender mist
++    'linear-gradient(135deg, #240046, #7B2CBF 55%, #E0AAFF)',
++    // 9: pure dark
++    '#0D1117',
++    // 10: pure light — readability check over bright windows
++    '#F3F4F6',
++    // 11: glowing orbs — blur diffusion is unmistakable over these
++    'radial-gradient(18% 26% at 20% 30%, rgba(255,60,120,.9), transparent 70%),' +
++    'radial-gradient(20% 28% at 75% 25%, rgba(0,200,255,.85), transparent 70%),' +
++    'radial-gradient(22% 30% at 60% 75%, rgba(120,255,80,.8), transparent 70%),' +
++    'radial-gradient(16% 22% at 88% 60%, rgba(255,200,0,.85), transparent 70%),' +
++    'linear-gradient(160deg, #0b0b10, #15151d)',
++  ];
++  const artboard = document.querySelector('.artboard'), bgbar = $('bgbar');
++  let bgPicked = false;
++  PREVIEW_BGS.forEach((css, i) => {
++    const b = document.createElement('button');
++    b.type = 'button'; b.className = 'bg'; b.style.background = css;
++    b.onclick = () => selectBg(i, true);
++    bgbar.appendChild(b);
++  });
++  function selectBg(i, user) {
++    if (user) bgPicked = true;
++    artboard.style.background = PREVIEW_BGS[i];
++    bgbar.querySelectorAll('.bg').forEach((b, j) => b.classList.toggle('on', j === i));
++  }
++
++  // ------------------------------------- RGBA picker (inline in the panel)
++  // Smoked glass + full Win11 accent palette; the leading 0x78/0xA0 alphas are
++  // each swatch's own default — a click keeps the slider's alpha once the user
++  // touched it, so tuning opacity then auditioning colors never loses the value.
++  const RP_PRESETS = [
++    '#78000000', '#78101216', '#781E1E24', '#782D3238', '#784A5459', '#78FFFFFF', '#A0DCDCDC',
++    '#A0F3F3F3', '#780078D4', '#78005FB8', '#7800B7C3', '#78038387', '#784F6BED',
++    '#785F3F9E', '#78744DA9', '#78881798', '#78B146C2', '#78E3008C', '#78EA005E',
++    '#78E74856', '#78D13438', '#78D83B01', '#78F7630C', '#78FFB900',
++    '#78107C10', '#7800CC6A', '#78498205', '#7810893E',
++  ];
 +  const rpEl = document.createElement('div');
-+  rpEl.id = 'rgbaPicker'; rpEl.hidden = true;
-+  rpEl.innerHTML = `<div class="swatchGrid"></div>
++  rpEl.className = 'rgbaPick'; rpEl.hidden = true;
++  rpEl.innerHTML = `<div class="pcap"></div><div class="swatchGrid"></div>
 +    <div class="alphaRow"><span data-i18n="不透明度">不透明度</span><input type="range" min="0" max="255"><span class="aval"></span></div>
 +    <div class="foot"><button type="button" data-i18n="恢复默认">恢复默认</button></div>`;
-+  document.body.appendChild(rpEl);
++  $('rowLight').after(rpEl);
 +  const rpGrid = rpEl.querySelector('.swatchGrid'), rpAlpha = rpEl.querySelector('input[type=range]'),
-+    rpAval = rpEl.querySelector('.aval'), rpReset = rpEl.querySelector('.foot button');
++    rpAval = rpEl.querySelector('.aval'), rpReset = rpEl.querySelector('.foot button'),
++    rpCap = rpEl.querySelector('.pcap');
 +  for (const c of RP_PRESETS) {
 +    const b = document.createElement('button');
 +    b.type = 'button'; b.className = 'sw'; b.dataset.c = c; b.style.background = rgbaCss(c);
 +    rpGrid.appendChild(b);
 +  }
-+  let rpField = null;
++  let rpField = null, rpTouched = false;
 +  const rpCommit = (v) => {
 +    if (!rpField) return;
 +    s[rpField] = v;
@@ -21965,17 +22046,28 @@ index 0000000..7b1a431
 +    const field = btn.dataset.rgba;
 +    if (rpField === field && !rpEl.hidden) { rpEl.hidden = true; rpField = null; return; }
 +    rpField = field;
++    rpTouched = false;
++    rpCap.textContent = field === 'darkRgba' ? t('深色模式叠加色') : t('浅色模式叠加色');
 +    const cur = parseRgba(s[field]);
 +    rpAlpha.value = cur ? cur.a : 255; rpAval.textContent = rpAlpha.value;
 +    rpGrid.querySelectorAll('.sw').forEach(sw => sw.classList.toggle('on', sw.dataset.c.toUpperCase() === (s[field] || '').toUpperCase()));
 +    rpEl.hidden = false;
-+    const r = btn.getBoundingClientRect();
-+    rpEl.style.left = Math.max(8, Math.min(window.innerWidth - rpEl.offsetWidth - 8, r.left + r.width / 2 - rpEl.offsetWidth / 2)) + 'px';
-+    rpEl.style.top = (r.bottom + 8 + rpEl.offsetHeight > window.innerHeight ? r.top - rpEl.offsetHeight - 8 : r.bottom + 8) + 'px';
-+    rpReset.onclick = () => rpCommit(btn.dataset.rgbaDefault);
++    rpEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
++    rpReset.onclick = () => { rpTouched = false; rpCommit(btn.dataset.rgbaDefault); };
 +  }
-+  rpGrid.onclick = (e) => { const sw = e.target.closest('.sw'); if (sw) rpCommit(sw.dataset.c); };
++  rpGrid.onclick = (e) => {
++    const sw = e.target.closest('.sw');
++    if (!sw) return;
++    // Keep the tuned alpha; untouched sliders take the swatch's own.
++    if (rpTouched) {
++      const p = parseRgba(sw.dataset.c);
++      rpCommit('#' + Number(rpAlpha.value).toString(16).padStart(2, '0').toUpperCase() + (p ? p.rgb : sw.dataset.c.slice(3)));
++    } else {
++      rpCommit(sw.dataset.c);
++    }
++  };
 +  rpAlpha.oninput = () => {
++    rpTouched = true;
 +    rpAval.textContent = rpAlpha.value;
 +    const cur = parseRgba(s[rpField]) || { rgb: '000000' };
 +    s[rpField] = '#' + Number(rpAlpha.value).toString(16).padStart(2, '0').toUpperCase() + cur.rgb;
@@ -22015,6 +22107,7 @@ index 0000000..7b1a431
 +      if (m.type === 'feState') {
 +        i18nSet(m.locale, m.translations);
 +        systemLight = m.systemLight !== false;
++        if (!bgPicked) selectBg(systemLight ? 1 : 0, false);
 +        const fe = m.fe || {};
 +        s.effect = fe.effect || '';
 +        s.clearAddress = !!fe.clearAddress; s.clearBarBg = !!fe.clearBarBg;
