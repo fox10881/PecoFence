@@ -1139,6 +1139,15 @@ impl App {
             }
         }
         let icons_toggled = new.hide_real_icons != old.hide_real_icons;
+        if new.icons.shortcut_arrows != old.icons.shortcut_arrows {
+            // The setting covers the real desktop too (its description says
+            // so): show → drop the `Shell Icons\29` override; hide → write
+            // Microsoft's transparent stock icon.
+            let shown = new.icons.shortcut_arrows;
+            std::thread::spawn(move || {
+                pecofence_platform::shell::set_link_overlay_shown(shown);
+            });
+        }
         if new.quick_hide.enabled != old.quick_hide.enabled
             && let Some(a) = self.anchor.borrow_mut().as_mut()
         {

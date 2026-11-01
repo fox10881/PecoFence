@@ -726,17 +726,22 @@ pub fn is_link(path: &Path) -> bool {
 /// Draws Windows' shortcut arrow over `image` at `size_px`, aligned to its bottom-left like
 /// Explorer's overlay: the icon `SHGetStockIconInfo(SIID_LINK)` names (the user's own arrow, or
 /// a blank one that removes it, when `Shell Icons` value 29 is set). The arrow is extracted once
-/// per size on each worker thread.
+/// per `(size, source)` on each worker thread — the source is part of the key so a `Shell
+/// Icons\29` change (our own toggle/heal included) never serves a stale bitmap.
 pub fn add_link_overlay(image: &mut ShellImage, size_px: u32) {
     thread_local! {
-        static OVERLAYS: std::cell::RefCell<std::collections::HashMap<u32, Option<ShellImage>>> =
-            Default::default();
+        static OVERLAYS: std::cell::RefCell<
+            std::collections::HashMap<(u32, PathBuf, i32), Option<ShellImage>>,
+        > = Default::default();
     }
+    let Some((file, index)) = link_overlay_source() else {
+        return;
+    };
     OVERLAYS.with_borrow_mut(|overlays| {
-        let overlay = overlays.entry(size_px).or_insert_with(|| {
-            let (file, index) = link_overlay_source()?;
-            icon_file_image(&file, index, size_px)
-        });
+        let key = (size_px, file.clone(), index);
+        let overlay = overlays
+            .entry(key)
+            .or_insert_with(|| icon_file_image(&file, index, size_px));
         if let Some(o) = overlay {
             draw_over_bottom_left(image, o);
         }
@@ -758,6 +763,206 @@ fn link_overlay_source() -> Option<(PathBuf, i32)> {
     }
     let path = expand_environment(&info.path[..len]);
     path.map(|p| (PathBuf::from(p), info.icon_index))
+}
+
+// ------------------------------------------------------- overlay override --
+
+/// `Explorer\Shell Icons` value `29` — the override Explorer honours for the
+/// shortcut overlay icon. Both the real desktop and `SHGetStockIconInfo` read
+/// it, so a poisoned entry draws over every `.lnk` twice: once on the desktop
+/// and once inside our own fences.
+const SHELL_ICONS_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons";
+const OVERLAY_VALUE: &str = "29";
+/// Microsoft's own fully-transparent stock icon on Windows 11 — the supported
+/// way to make the overlay draw nothing (`shell32.dll,-50`, a solid black
+/// square on Windows 11, is the poison this replaces).
+const BLANK_OVERLAY: &str = r"%SystemRoot%\System32\imageres.dll,-1015";
+/// The arrow Explorer draws when `29` is absent (`SIID_LINK` resolves to it).
+/// Written to `HKCU` to shadow a poisoned `HKLM` entry when the process is
+/// not elevated enough to delete it — `HKCU` wins the lookup, so the user
+/// gets the real arrow back without needing admin rights.
+const STOCK_ARROW: &str = r"%SystemRoot%\System32\shell32.dll,-16769";
+
+/// `"29"` of `root\Shell Icons`, environment variables expanded — `Some` even
+/// when the entry is unusable so callers can tell set-but-broken from unset.
+fn read_overlay_override(root: HKEY) -> Option<String> {
+    reg_string(root, SHELL_ICONS_KEY, OVERLAY_VALUE).map(|raw| {
+        let wide: Vec<u16> = raw.encode_utf16().collect();
+        expand_environment(&wide).unwrap_or(raw)
+    })
+}
+
+/// Removes value `29` under `root` — the stock arrow comes back. Silently
+/// ignores access/absent errors: `HKLM` rejects non-elevated writers and an
+/// already-absent value is the goal anyway.
+fn delete_overlay_override(root: HKEY) {
+    let key = to_wide(SHELL_ICONS_KEY);
+    let name = to_wide(OVERLAY_VALUE);
+    let mut hkey = HKEY::default();
+    // SAFETY: out-pointer to a local; the key is closed unconditionally.
+    let status = unsafe {
+        RegOpenKeyExW(
+            root,
+            PCWSTR(key.as_ptr()),
+            None,
+            ACCESS_MASK((KEY_SET_VALUE | KEY_QUERY_VALUE) as u32),
+            &mut hkey,
+        )
+    };
+    if status.0 != 0 {
+        return;
+    }
+    unsafe {
+        let _ = RegDeleteValueW(hkey, PCWSTR(name.as_ptr()));
+        let _ = RegCloseKey(hkey);
+    }
+}
+
+/// Writes `value` ("file,index") to `root\Shell Icons\29`; `false` when the
+/// hive rejects us (`HKLM` without elevation).
+fn write_overlay_override(root: HKEY, value: &str) -> bool {
+    const REG_SZ: u32 = 1;
+    let key = to_wide(SHELL_ICONS_KEY);
+    let name = to_wide(OVERLAY_VALUE);
+    let mut hkey = HKEY::default();
+    // SAFETY: out-pointer to a local; buffers outlive the calls.
+    let status = unsafe {
+        RegCreateKeyExW(
+            root,
+            PCWSTR(key.as_ptr()),
+            None,
+            PCWSTR::null(),
+            0,
+            ACCESS_MASK((KEY_SET_VALUE | KEY_QUERY_VALUE) as u32),
+            None,
+            &mut hkey,
+            None,
+        )
+    };
+    if status.0 != 0 {
+        return false;
+    }
+    let wide = to_wide(value);
+    let bytes: Vec<u8> = wide.iter().flat_map(|c| c.to_le_bytes()).collect();
+    // SAFETY: `bytes` is the UTF-16 image of `value`; key closed on all paths.
+    let ok = unsafe {
+        let s = RegSetValueExW(hkey, PCWSTR(name.as_ptr()), None, REG_SZ, Some(&bytes));
+        let _ = RegCloseKey(hkey);
+        s.0 == 0
+    };
+    ok
+}
+
+/// Tells the shell the association icons changed so Explorer and
+/// `SHGetStockIconInfo` re-read `Shell Icons` without a sign-out.
+fn notify_shell_icons_changed() {
+    const SHCNE_ASSOCCHANGED: i32 = 0x0800_0000u32 as i32;
+    const SHCNF_IDLIST: u32 = 0;
+    // SAFETY: notification only; null pidls are valid for this event.
+    unsafe {
+        SHChangeNotify(
+            SHCNE_ASSOCCHANGED,
+            SHCNF_IDLIST,
+            core::ptr::null(),
+            core::ptr::null(),
+        )
+    };
+    // The known no-logoff flush: ie4uinit re-registers icon handlers so the
+    // desktop redraws overlays immediately.
+    for args in ["-show", "-ClearIconCache"] {
+        let _ = std::process::Command::new("ie4uinit.exe").arg(args).spawn();
+    }
+}
+
+windows_core::link!("shell32.dll" "system" fn SHChangeNotify(event: i32, flags: u32, item1: *const core::ffi::c_void, item2: *const core::ffi::c_void));
+
+/// Startup heal: restores the stock arrow by dropping every `29` override
+/// that isn't our own `BLANK_OVERLAY` sentinel or an explicit `STOCK_ARROW`
+/// shadow. Image-level validation is not viable — `shell32.dll,-50` extracts
+/// as a fully-transparent bitmap through WIC yet GDI renders it as the
+/// infamous solid black square, so the only safe policy is: our known values
+/// stay, everything else goes.
+pub fn heal_link_overlay_source() {
+    let mut touched = false;
+    for root in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+        let Some(value) = read_overlay_override(root) else {
+            continue;
+        };
+        if is_known_overlay_override(&value) {
+            continue;
+        }
+        tracing::warn!(%value, "foreign shortcut-overlay override — restoring stock arrow");
+        delete_overlay_override(root);
+        touched = true;
+    }
+    if shadow_poisoned_machine_override() {
+        touched = true;
+    }
+    if touched {
+        notify_shell_icons_changed();
+    }
+}
+
+/// `true` when `value` is an override PecoFence writes itself — the Microsoft
+/// blank that hides arrows, or the explicit stock-arrow shadow. Both the
+/// literal and environment-expanded forms of the references count.
+fn is_known_overlay_override(value: &str) -> bool {
+    [BLANK_OVERLAY, STOCK_ARROW]
+        .iter()
+        .any(|reference| overlay_value_is(value, reference))
+}
+
+/// Case-insensitive `value == reference`, also matching after expanding the
+/// reference's environment variables (`read_overlay_override` already
+/// expanded `value`).
+fn overlay_value_is(value: &str, reference: &str) -> bool {
+    if value.trim().eq_ignore_ascii_case(reference) {
+        return true;
+    }
+    let wide: Vec<u16> = reference.encode_utf16().collect();
+    expand_environment(&wide).is_some_and(|expanded| value.trim().eq_ignore_ascii_case(&expanded))
+}
+
+/// `HKLM` rejects non-elevated deletes, and Explorer falls back to it when
+/// `HKCU` has no `29`. When the machine value stays poisoned after
+/// `heal_link_overlay_source`/`set_link_overlay_shown` tried to remove it,
+/// shadow it per-user with the stock arrow — `HKCU` wins the lookup.
+fn shadow_poisoned_machine_override() -> bool {
+    let poisoned = read_overlay_override(HKEY_LOCAL_MACHINE)
+        .is_some_and(|value| !is_known_overlay_override(&value));
+    // A known `HKCU` value already shadows `HKLM` — leave the user's
+    // hide-arrows blank (or an earlier stock-arrow shadow) untouched.
+    let shadowed = read_overlay_override(HKEY_CURRENT_USER)
+        .is_some_and(|value| is_known_overlay_override(&value));
+    if !poisoned || shadowed {
+        return false;
+    }
+    if write_overlay_override(HKEY_CURRENT_USER, STOCK_ARROW) {
+        tracing::warn!(
+            "machine shortcut-overlay override survived — shadowing with the stock arrow in HKCU"
+        );
+        true
+    } else {
+        false
+    }
+}
+
+/// Mirrors the `show shortcut arrows` setting into Windows: shown → remove the
+/// `29` override everywhere so the stock arrow returns; hidden → write the
+/// transparent-icon override for the current user (and machine-wide when
+/// elevated). The icon caches get the notify either way.
+pub fn set_link_overlay_shown(shown: bool) {
+    if shown {
+        delete_overlay_override(HKEY_CURRENT_USER);
+        delete_overlay_override(HKEY_LOCAL_MACHINE);
+        shadow_poisoned_machine_override();
+    } else {
+        if !write_overlay_override(HKEY_CURRENT_USER, BLANK_OVERLAY) {
+            tracing::warn!("could not write shortcut-overlay override to HKCU");
+        }
+        write_overlay_override(HKEY_LOCAL_MACHINE, BLANK_OVERLAY);
+    }
+    notify_shell_icons_changed();
 }
 
 windows_core::link!("kernel32.dll" "system" fn ExpandEnvironmentStringsW(src: *const u16,
@@ -1722,6 +1927,14 @@ mod link_overlay_tests {
         assert!(!is_link(&dir));
         let _ = std::fs::remove_dir_all(&dir);
         assert!(link_overlay_source().is_some_and(|(file, _)| file.exists()));
+    }
+
+    #[test]
+    fn blank_override_is_microsofts_blank_icon() {
+        // The hide path writes Microsoft's own transparent stock icon — the
+        // only override `heal_link_overlay_source` keeps. `-50` (the black
+        // square on Win11) is deliberately NOT exempted.
+        assert!(BLANK_OVERLAY.ends_with("imageres.dll,-1015"));
     }
 }
 

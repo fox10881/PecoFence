@@ -1455,6 +1455,10 @@ impl App {
                 let _ = pecofence_platform::notification_center::apply(&saved_nc_style);
             });
         }
+        // Heal a poisoned `Shell Icons\29` overlay override — a black-square
+        // resource (e.g. `shell32.dll,-50`) gets stamped on every shortcut by
+        // Explorer AND by our own overlay path. One pass per launch.
+        std::thread::spawn(pecofence_platform::shell::heal_link_overlay_source);
         // The saved ExplorerBlurMica effect applies through the resident
         // relay; an empty effect still runs apply_effect → reset(), which
         // unloads a stale EBM image left by an unclean shutdown.
