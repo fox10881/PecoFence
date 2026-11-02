@@ -147,10 +147,11 @@ impl SettingsHost {
                         // windows behind it. (Measured live — painting
                         // anything else leaves an opaque fill visible
                         // through the transparent WebView.)
-                        msg::WM_ERASEBKGND => {
-                            window::fill_client(hwnd, wparam as *mut core::ffi::c_void, 0);
-                            Some(1)
-                        }
+                        // Never paint the client surface: under the
+                        // composition-hosted transparent WebView an
+                        // unpainted redirection surface composites as
+                        // transparent — any fill makes it opaque.
+                        msg::WM_ERASEBKGND => Some(1),
                         msg::WM_GETMINMAXINFO => {
                             // For the monitor the window is on now, which may have another
                             // scale than the one it opened on.

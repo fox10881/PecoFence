@@ -29,9 +29,10 @@ struct WindowCompositionAttributeData {
 const WCA_ACCENT_POLICY: u32 = 19;
 const ACCENT_DISABLED: u32 = 0;
 const ACCENT_ENABLE_TRANSPARENTGRADIENT: u32 = 2;
+/// Acrylic accent state — kept for the Explorer-mirror path's reference;
+/// our own windows use `TRANSPARENTGRADIENT` (see `sync_app_glass`).
+#[allow(dead_code)]
 const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
-/// `accent_flags` bit normally set for the acrylic recipe.
-const ACCENT_FLAG_ACRYLIC: u32 = 0x2;
 
 /// `#AARRGGBB` → `AABBGGRR` (`AccentPolicy::gradient_color` order).
 fn argb_to_abgr(argb: u32) -> u32 {
@@ -92,15 +93,9 @@ pub fn sync_app_glass(hwnd: HWND, effect: &str, argb: Option<u32>) {
     if !is_composition_enabled() {
         return;
     }
-    // The transparent composition WebView reveals the host window surface,
-    // so the material must live on that surface: extending the DWM frame
-    // across the whole client area turns it into a sheet of glass that
-    // carries the system backdrop / accent material beneath the page.
-    let _ = if effect.is_empty() {
-        retract_frame_from_client_area(hwnd)
-    } else {
-        extend_frame_into_entire_client_area(hwnd)
-    };
+    // NOTE: the client surface must stay untouched — the composition
+    // WebView composites it; glass extension makes it an opaque fill.
+    // Real material lives on the frame only (DWMSBT/accent below).
     let tint = argb.map(argb_to_abgr).unwrap_or(0);
     match effect {
         "mica" => {
@@ -110,12 +105,16 @@ pub fn sync_app_glass(hwnd: HWND, effect: &str, argb: Option<u32>) {
             let _ = set_system_backdrop(hwnd, SystemBackdrop::TabbedWindow);
         }
         "acrylic" | "blur" => {
-            // Acrylic honours GradientColor — the user's chosen RGBA.
+            // The client is already truly see-through — a frosted acrylic
+            // layer would double-dim it. Transparent-gradient carries the
+            // user's tint at a clarity cap (~12%) so the backdrop stays
+            // visible; below the cap the user's own alpha passes through.
+            let clear = argb.map(|a| (a & 0x00ff_ffff) | (u32::min(a >> 24, 0x20) << 24));
             let _ = set_accent_policy(
                 hwnd,
-                ACCENT_ENABLE_ACRYLICBLURBEHIND,
-                ACCENT_FLAG_ACRYLIC,
-                tint,
+                ACCENT_ENABLE_TRANSPARENTGRADIENT,
+                0,
+                clear.map(argb_to_abgr).unwrap_or(0),
             );
         }
         "blurclear" => {
@@ -222,18 +221,6 @@ pub fn extend_frame_into_entire_client_area(hwnd: HWND) -> Result<()> {
         cxRightWidth: -1,
         cyTopHeight: -1,
         cyBottomHeight: -1,
-    };
-    // SAFETY: margins outlives the call.
-    unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins).ok() }
-}
-
-/// Restores the normal DWM frame after `extend_frame_into_entire_client_area`.
-fn retract_frame_from_client_area(hwnd: HWND) -> Result<()> {
-    let margins = MARGINS {
-        cxLeftWidth: 0,
-        cxRightWidth: 0,
-        cyTopHeight: 0,
-        cyBottomHeight: 0,
     };
     // SAFETY: margins outlives the call.
     unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins).ok() }

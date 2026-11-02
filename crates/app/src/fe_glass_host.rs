@@ -89,10 +89,11 @@ impl FeGlassHost {
                         // Black on a glass-extended surface = see-through:
                         // the transparent WebView reveals real windows
                         // behind this one.
-                        msg::WM_ERASEBKGND => {
-                            window::fill_client(hwnd, wparam as *mut core::ffi::c_void, 0);
-                            Some(1)
-                        }
+                        // Never paint the client surface: under the
+                        // composition-hosted transparent WebView an
+                        // unpainted redirection surface composites as
+                        // transparent — any fill makes it opaque.
+                        msg::WM_ERASEBKGND => Some(1),
                         msg::WM_DPICHANGED => {
                             // SAFETY: lParam points to the suggested RECT for
                             // the duration of the message.
