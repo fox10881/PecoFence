@@ -1,914 +1,462 @@
-diff --git a/crates/app/src/anchor.rs b/crates/app/src/anchor.rs
-index 16dc09e..8f0729d 100644
---- a/crates/app/src/anchor.rs
-+++ b/crates/app/src/anchor.rs
-@@ -471,14 +471,21 @@ impl DesktopAnchor {
-             return;
-         }
-         let resolved = desktop::resolve_icon_host(self.generation);
--        if resolved != self.host {
-+        let host_changed = resolved != self.host;
-+        if host_changed {
-             tracing::info!(reason, old = ?self.host, new = ?resolved, "icon host changed");
-             self.host = resolved;
-         } else {
-             tracing::debug!(reason, "reanchor");
-         }
-         let Some(host) = self.host else {
--            tracing::warn!("no icon host found; falling back to HWND_BOTTOM");
-+            // Warn once on the transition into host-less anchoring (e.g. an
-+            // Explorer restart); the steady-state poll would spam it otherwise.
-+            if host_changed {
-+                tracing::warn!("no icon host found; falling back to HWND_BOTTOM");
-+            } else {
-+                tracing::debug!("still no icon host; keeping HWND_BOTTOM placement");
-+            }
-             self.with_anchoring(|s| {
-                 for w in s.all_windows() {
-                     let _ = desktop::send_to_bottom(w);
-diff --git a/crates/app/src/app/mod.rs b/crates/app/src/app/mod.rs
-index 840fd44..fc09e32 100644
---- a/crates/app/src/app/mod.rs
-+++ b/crates/app/src/app/mod.rs
-@@ -347,6 +347,9 @@ pub struct App {
-     live_abandoned: Option<std::thread::JoinHandle<()>>,
-     /// Active Windows Media Foundation (WMF) desktop video wallpaper player (`WorkerW`).
-     wmf_player: Option<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer>,
-+    /// A video-wallpaper swap running on a worker (`stop` join + `start` first-frame
-+    /// wait are seconds-class — the UI thread installs the result once it lands).
-+    video_swap: Option<settings::VideoSwap>,
-     /// The static desktop wallpaper recorded when the video player started. A different
-     /// image reported later means the user applied it over the video (Explorer applies do
-     /// not broadcast `SPI_SETDESKWALLPAPER`) — the image wins and the video retires.
-@@ -1301,6 +1304,7 @@ impl App {
-             live_capture: None,
-             live_abandoned: None,
-             wmf_player: None,
-+            video_swap: None,
-             static_under_video: None,
-             last_theme_meta: None,
-             theme_dirty: std::cell::Cell::new(false),
-@@ -2179,6 +2183,7 @@ impl App {
- 
-     pub fn shutdown(&mut self) {
-         self.end_peek_now();
-+        self.video_swap = None; // the worker self-disposes on the stale epoch
-         self.wmf_player = None;
-         // Restore the taskbar + Start Menu before the TAP's death-watch
-         // would have to. The taskbar styler's reset must reach the resident
 diff --git a/crates/app/src/app/settings.rs b/crates/app/src/app/settings.rs
-index 763c592..a01debb 100644
+index a01debb..2aa9d83 100644
 --- a/crates/app/src/app/settings.rs
 +++ b/crates/app/src/app/settings.rs
-@@ -2,6 +2,7 @@
- //! import / export / restore, settings diff application.
- 
- use super::*;
-+use std::sync::atomic::{AtomicU64, Ordering};
- 
- /// Largest snapping gap honoured, in DIPs; `snapping.gapPx` is clamped to `0..=` this.
- pub(super) const MAX_SNAP_GAP_DIP: i32 = 64;
-@@ -162,6 +163,69 @@ fn remap_theme_monitors(
-         .collect();
- }
- 
-+/// Serializes player teardown vs. the next pipeline's allocation: the join
-+/// before alloc still holds, just paid on a worker thread instead of the UI
-+/// thread that was logging `slow command` for every wallpaper switch.
-+static VIDEO_SWAP_LOCK: Mutex<()> = Mutex::new(());
-+/// Bumped on every wallpaper-intent change; a worker returning with a stale
-+/// epoch disposes its fresh player itself — the UI thread never joins it.
-+static VIDEO_SWAP_EPOCH: AtomicU64 = AtomicU64::new(0);
-+
-+/// A `WmfWallpaperPlayer::start` in flight on a worker; `poll_video_swap`
-+/// installs the result only while the epoch still matches config.
-+pub(super) struct VideoSwap {
-+    epoch: u64,
-+    /// Recovery after shell loss vs. a user pick — the accept path logs/toasts
-+    /// them differently.
-+    reattach: bool,
-+    toast: bool,
-+    rx: std::sync::mpsc::Receiver<
-+        std::result::Result<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer, Option<String>>,
-+    >,
-+}
-+
-+/// Stops a player off the UI thread (stop+join ≈70 ms), serialized with swap
-+/// workers so a teardown never races the next pipeline's allocation.
-+fn reap_video_player(player: pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer) {
-+    let _ = std::thread::Builder::new()
-+        .name("pecofence-video-reap".into())
-+        .spawn(move || {
-+            let _g = VIDEO_SWAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-+            drop(player);
-+        });
-+}
-+
-+/// Worker-side swap: stops the old player (join off the UI thread), starts the
-+/// new one. `Err(None)` marks a superseded request — not a failure to report.
-+fn spawn_video_swap(
-+    old: Option<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer>,
+@@ -175,6 +175,12 @@ static VIDEO_SWAP_EPOCH: AtomicU64 = AtomicU64::new(0);
+ /// installs the result only while the epoch still matches config.
+ pub(super) struct VideoSwap {
+     epoch: u64,
++    /// The swap's full effective target — a pending swap for the identical
++    /// target is kept instead of spawning a duplicate (a theme apply calls
++    /// `sync_video_wallpaper` several times; each spawn used to invalidate the
++    /// previous worker, killing fresh players at `frame_counter=1`).
 +    path: PathBuf,
 +    letterbox: bool,
-+    epoch: u64,
-+) -> std::sync::mpsc::Receiver<
-+    std::result::Result<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer, Option<String>>,
-+> {
-+    let (tx, rx) = std::sync::mpsc::channel();
-+    let _ = std::thread::Builder::new()
-+        .name("pecofence-video-swap".into())
-+        .spawn(move || {
-+            let _g = VIDEO_SWAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-+            drop(old);
-+            let result =
-+                pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path, letterbox)
-+                    .map_err(Some);
-+            let result = match result {
-+                Ok(player) if VIDEO_SWAP_EPOCH.load(Ordering::SeqCst) != epoch => {
-+                    drop(player);
-+                    Err(None)
-+                }
-+                other => other,
-+            };
-+            let _ = tx.send(result);
-+        });
-+    rx
-+}
-+
- impl App {
-     /// Replaces the configuration wholesale (import / backup) and rebuilds everything.
-     pub(super) fn adopt_config(&mut self, cfg: pecofence_core::Config, source: ConfigSource) {
-@@ -418,7 +482,6 @@ impl App {
-         new.fe_dark_rgba = str_of("darkRgba", &old.fe_dark_rgba);
-         let wanted = new.fe_effect.clone();
-         let wanted_layout = new.fe_layout.clone();
--        let changed = new != old;
-         self.apply_settings(new);
-         let applied = self.state.config.settings.fe_effect == wanted
-             && self.state.config.settings.fe_layout == wanted_layout;
-@@ -429,21 +492,16 @@ impl App {
-                         .to_string(),
-                     true,
-                 )
--            } else if changed {
--                (
--                    pecofence_core::i18n::text("正在重启资源管理器…").to_string(),
--                    false,
--                )
-             } else {
-+                // No toast on a no-op; applied changes get a plain confirmation —
-+                // the resident reloads the EBM config live, so no Explorer restart
-+                // is needed (the manual failsafe action below still offers one).
-                 (pecofence_core::i18n::text("已应用").to_string(), false)
-             };
-             h.post_json(
-                 &serde_json::json!({ "type": "feToast", "text": text, "error": error }).to_string(),
-             );
+     /// Recovery after shell loss vs. a user pick — the accept path logs/toasts
+     /// them differently.
+     reattach: bool,
+@@ -241,6 +247,20 @@ impl App {
+         if pecofence_platform::process::is_packaged() {
+             new_settings.autostart = old_settings.autostart;
          }
--        if applied && changed {
--            std::thread::spawn(pecofence_platform::tap::restart_explorer);
--        }
++        if matches!(source, ConfigSource::Theme | ConfigSource::Retune) {
++            // fe_* are local device preferences — a theme never carries them.
++            // Without this preserve, an archive whose `fe_effect=""` (authored
++            // before the feature, or stripped on pack) broadcasts FELR/EBMU
++            // disarm and wipes the user's armed Explorer styling on every apply.
++            new_settings.fe_effect = old_settings.fe_effect.clone();
++            new_settings.fe_clear_address = old_settings.fe_clear_address;
++            new_settings.fe_clear_bar_bg = old_settings.fe_clear_bar_bg;
++            new_settings.fe_clear_winui_bg = old_settings.fe_clear_winui_bg;
++            new_settings.fe_show_line = old_settings.fe_show_line;
++            new_settings.fe_layout = old_settings.fe_layout.clone();
++            new_settings.fe_light_rgba = old_settings.fe_light_rgba.clone();
++            new_settings.fe_dark_rgba = old_settings.fe_dark_rgba.clone();
++        }
+         if !matches!(source, ConfigSource::Theme | ConfigSource::Retune) {
+             // A plain config import/backup restore severs the link to whatever theme
+             // described the old setup — never trust a path a foreign file carried.
+@@ -660,6 +680,9 @@ impl App {
      }
  
-     pub(super) fn settings_state_json(&self) -> String {
-@@ -1294,8 +1352,12 @@ impl App {
-         self.push_settings_state();
-     }
- 
--    /// Starts or stops the WMF desktop video wallpaper player to match `settings.video_wallpaper_path`.
-+    /// Starts or stops the WMF desktop video wallpaper player to match
-+    /// `settings.video_wallpaper_path`. The swap runs on a worker: `stop`'s join
-+    /// and `start`'s first-frame wait are seconds-class calls the UI thread
-+    /// never pays for; `poll_video_swap` installs the result when it lands.
-     pub(super) fn sync_video_wallpaper(&mut self) {
-+        self.poll_video_swap();
-         let wanted = self
-             .state
-             .config
-@@ -1304,37 +1366,97 @@ impl App {
-             .clone()
-             .filter(|s| !s.is_empty());
-         let Some(path_str) = wanted else {
--            self.wmf_player = None;
-+            self.invalidate_video_swap();
-+            if let Some(p) = self.wmf_player.take() {
-+                reap_video_player(p);
-+            }
-             self.static_under_video = None;
-             return;
+     fn settings_error(&self, text: &str) {
++        // The toast is the whole UI surface — without this line a failed write
++        // or rejected apply is undiagnosable in the log.
++        tracing::error!(error = %text, "settings error shown to user");
+         if let Some(h) = &self.settings {
+             h.post_json(
+                 &serde_json::json!({ "type": "toast", "text": text, "error": true }).to_string(),
+@@ -1011,6 +1034,7 @@ impl App {
+                     }
+                 }
+                 Some("openFeGlass") => self.open_fe_glass(),
++                Some("refreshVisual") => self.refresh_visual_state(),
+                 Some("restartExplorer") => {
+                     // Failsafe for a stuck taskbar/desktop: kill the shell and
+                     // let Windows' own respawn (or our detached spawn) bring it
+@@ -1375,11 +1399,17 @@ impl App {
          };
          let path = PathBuf::from(&path_str);
          let letterbox = self.contain_background();
--        if self
--            .wmf_player
--            .as_ref()
--            .is_some_and(|p| p.path() == path && p.is_alive() && p.letterbox() == letterbox)
-+        if self.video_swap.is_none()
-+            && self
-+                .wmf_player
-+                .as_ref()
-+                .is_some_and(|p| p.path() == path && p.is_alive() && p.letterbox() == letterbox)
+-        if self.video_swap.is_none()
+-            && self
+-                .wmf_player
+-                .as_ref()
+-                .is_some_and(|p| p.path() == path && p.is_alive() && p.letterbox() == letterbox)
++        if self
++            .video_swap
++            .as_ref()
++            .is_some_and(|s| s.path == path && s.letterbox == letterbox)
++        {
++            return; // the wanted target is already in flight — keep it
++        }
++        if self
++            .wmf_player
++            .as_ref()
++            .is_some_and(|p| p.path() == path && p.is_alive() && p.letterbox() == letterbox)
          {
              return;
          }
--        self.wmf_player = None;
-+        let old = self.wmf_player.take();
-         self.static_under_video = None;
-         if !path.is_file() {
-+            self.invalidate_video_swap();
-+            if let Some(p) = old {
-+                reap_video_player(p);
-+            }
-             return;
-         }
--        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path, letterbox) {
--            Ok(player) => {
--                self.static_under_video = Self::static_wallpaper_now();
--                self.wmf_player = Some(player);
--                self.capture_live_wallpapers(Duration::ZERO);
-+        let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
-+        self.video_swap = Some(VideoSwap {
-+            epoch,
-+            reattach: false,
-+            toast: false,
-+            rx: spawn_video_swap(old, path, letterbox, epoch),
-+        });
-+    }
-+
-+    /// Wallpaper intent changed again — an in-flight swap's result is now stale:
-+    /// the worker sees the newer epoch and disposes its player itself.
-+    fn invalidate_video_swap(&mut self) {
-+        VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst);
-+        self.video_swap = None;
-+    }
-+
-+    /// Installs a finished swap when it still matches the config. Runs off the
-+    /// `check_wallpaper` poll — a few hundred ms after `sync_video_wallpaper`
-+    /// returned instantly instead of ~200 ms of teardown+start on the UI thread.
-+    pub(super) fn poll_video_swap(&mut self) {
-+        let Some(swap) = &self.video_swap else {
-+            return;
-+        };
-+        match swap.rx.try_recv() {
-+            Ok(Ok(player)) => {
-+                let swap = self.video_swap.take().unwrap();
-+                let still_wanted = self
-+                    .state
-+                    .config
-+                    .settings
-+                    .video_wallpaper_path
-+                    .as_deref()
-+                    .map(PathBuf::from)
-+                    .as_deref()
-+                    == Some(player.path())
-+                    && player.letterbox() == self.contain_background();
-+                if still_wanted && VIDEO_SWAP_EPOCH.load(Ordering::SeqCst) == swap.epoch {
-+                    self.static_under_video = Self::static_wallpaper_now();
-+                    self.wmf_player = Some(player);
-+                    self.capture_live_wallpapers(Duration::ZERO);
-+                    if swap.reattach {
-+                        tracing::info!("wmf video wallpaper re-attached after desktop restart");
-+                    }
-+                    if swap.toast {
-+                        self.settings_toast(pecofence_core::i18n::text("已将视频设为桌面壁纸"));
-+                    }
-+                } else {
-+                    reap_video_player(player);
-+                }
-             }
--            Err(error) => {
--                tracing::error!(path = %path.display(), %error, "WMF video wallpaper failed to start");
-+            Ok(Err(Some(error))) => {
-+                self.video_swap = None;
-+                tracing::error!(%error, "WMF video wallpaper failed to start");
-                 self.settings_error(&pecofence_core::i18n::format(
-                     "无法使用此文件：{0}",
-                     std::slice::from_ref(&error),
-                 ));
-             }
-+            Ok(Err(None)) => {
-+                self.video_swap = None; // superseded by a newer request
-+            }
-+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
-+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-+                self.video_swap = None;
-+            }
-         }
-     }
- 
-@@ -1347,6 +1469,11 @@ impl App {
-     /// recovers without a settings round-trip. Failures stay quiet: a shell that
+@@ -1395,6 +1425,8 @@ impl App {
+         let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
+         self.video_swap = Some(VideoSwap {
+             epoch,
++            path: path.clone(),
++            letterbox,
+             reattach: false,
+             toast: false,
+             rx: spawn_video_swap(old, path, letterbox, epoch),
+@@ -1470,10 +1502,6 @@ impl App {
      /// is mid-boot retries on the next poll.
      pub(super) fn ensure_video_wallpaper(&mut self) {
-+        self.poll_video_swap();
-+        // A swap is already in flight — starting another player here would race it.
-+        if self.video_swap.is_some() {
-+            return;
-+        }
+         self.poll_video_swap();
+-        // A swap is already in flight — starting another player here would race it.
+-        if self.video_swap.is_some() {
+-            return;
+-        }
          let Some(path_str) = self
              .state
              .config
-@@ -1365,24 +1492,23 @@ impl App {
-         if pecofence_platform::desktop::shell_window().0.is_null() {
+@@ -1484,6 +1512,17 @@ impl App {
+         else {
+             return;
+         };
++        // A swap for this exact target is already in flight — keep it; a swap
++        // for a different target gets superseded by the spawn below.
++        let path = PathBuf::from(&path_str);
++        let letterbox = self.contain_background();
++        if self
++            .video_swap
++            .as_ref()
++            .is_some_and(|s| s.path == path && s.letterbox == letterbox)
++        {
++            return;
++        }
+         if self.wmf_player.as_ref().is_some_and(|p| p.is_alive()) {
              return;
          }
--        self.wmf_player = None;
-+        let old = self.wmf_player.take();
+@@ -1494,17 +1533,17 @@ impl App {
+         }
+         let old = self.wmf_player.take();
          self.static_under_video = None;
-         let path = PathBuf::from(&path_str);
+-        let path = PathBuf::from(&path_str);
          if !path.is_file() {
-+            if let Some(p) = old {
-+                reap_video_player(p);
-+            }
+             if let Some(p) = old {
+                 reap_video_player(p);
+             }
              return;
          }
-         let letterbox = self.contain_background();
--        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path, letterbox) {
--            Ok(player) => {
--                self.static_under_video = Self::static_wallpaper_now();
--                self.wmf_player = Some(player);
--                self.capture_live_wallpapers(Duration::ZERO);
--                tracing::info!("wmf video wallpaper re-attached after desktop restart");
--            }
--            Err(error) => {
--                tracing::debug!(%error, "video wallpaper re-attach deferred; shell not ready");
--            }
--        }
-+        let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
-+        self.video_swap = Some(VideoSwap {
-+            epoch,
-+            reattach: true,
-+            toast: false,
-+            rx: spawn_video_swap(old, path, letterbox, epoch),
-+        });
-     }
- 
-     /// Applies a static image as the desktop wallpaper and retires the video engine:
-@@ -1390,7 +1516,10 @@ impl App {
-     /// path so exports and restarts don't resurrect it. Returns `set_desktop_wallpaper`'s
-     /// result.
-     pub(super) fn apply_static_wallpaper(&mut self, path: &str) -> bool {
--        self.wmf_player = None;
-+        self.invalidate_video_swap();
-+        if let Some(p) = self.wmf_player.take() {
-+            reap_video_player(p);
-+        }
-         self.static_under_video = None;
-         if self
-             .state
-@@ -1420,7 +1549,10 @@ impl App {
-             configured = ?self.state.config.settings.video_wallpaper_path,
-             "external wallpaper change; retiring video wallpaper"
-         );
--        self.wmf_player = None;
-+        self.invalidate_video_swap();
-+        if let Some(p) = self.wmf_player.take() {
-+            reap_video_player(p);
-+        }
-         self.static_under_video = None;
-         self.state.config.settings.video_wallpaper_path = None;
-         // `settings_mutated` — not bare `schedule_save` — or the cleared path never
-@@ -1470,7 +1602,10 @@ impl App {
-             video = %self.wmf_player.as_ref().map(|p| p.path().display().to_string()).unwrap_or_default(),
-             "static image applied over video wallpaper; retiring player"
-         );
--        self.wmf_player = None;
-+        self.invalidate_video_swap();
-+        if let Some(p) = self.wmf_player.take() {
-+            reap_video_player(p);
-+        }
-         self.static_under_video = None;
-         self.state.config.settings.video_wallpaper_path = None;
-         self.settings_mutated();
-@@ -1493,27 +1628,20 @@ impl App {
+-        let letterbox = self.contain_background();
+         let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
+         self.video_swap = Some(VideoSwap {
+             epoch,
++            path: path.clone(),
++            letterbox,
+             reattach: true,
+             toast: false,
+             rx: spawn_video_swap(old, path, letterbox, epoch),
+@@ -1628,6 +1667,17 @@ impl App {
  
      pub(super) fn apply_video_wallpaper(&mut self, path: &Path) {
          tracing::info!(path = %path.display(), "applying video wallpaper from settings");
--        self.wmf_player = None;
--        self.static_under_video = None;
--        let letterbox = self.contain_background();
--        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(path, letterbox) {
--            Ok(player) => {
--                self.static_under_video = Self::static_wallpaper_now();
--                self.wmf_player = Some(player);
--                self.state.config.settings.video_wallpaper_path =
--                    Some(path.to_string_lossy().into_owned());
--                self.settings_mutated();
--                self.capture_live_wallpapers(Duration::ZERO);
--                self.settings_toast(pecofence_core::i18n::text("已将视频设为桌面壁纸"));
--            }
--            Err(err) => {
--                tracing::error!(path = %path.display(), %err, "apply_video_wallpaper failed");
--                self.settings_error(&pecofence_core::i18n::format(
--                    "无法使用此文件：{0}",
--                    std::slice::from_ref(&err),
--                ));
--            }
-+        self.invalidate_video_swap();
-+        if let Some(p) = self.wmf_player.take() {
-+            reap_video_player(p);
-         }
-+        self.static_under_video = None;
-+        self.state.config.settings.video_wallpaper_path = Some(path.to_string_lossy().into_owned());
-+        self.settings_mutated();
-+        let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
-+        self.video_swap = Some(VideoSwap {
-+            epoch,
-+            reattach: false,
-+            toast: true,
-+            rx: spawn_video_swap(None, path.to_path_buf(), self.contain_background(), epoch),
-+        });
++        let letterbox = self.contain_background();
++        // The same pick is already in flight (e.g. a theme apply racing a user
++        // pick) — keep it and make sure its completion toasts.
++        if let Some(s) = self
++            .video_swap
++            .as_mut()
++            .filter(|s| s.path == path && s.letterbox == letterbox)
++        {
++            s.toast = true;
++            return;
++        }
+         self.invalidate_video_swap();
+         if let Some(p) = self.wmf_player.take() {
+             reap_video_player(p);
+@@ -1638,9 +1688,11 @@ impl App {
+         let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
+         self.video_swap = Some(VideoSwap {
+             epoch,
++            path: path.to_path_buf(),
++            letterbox,
+             reattach: false,
+             toast: true,
+-            rx: spawn_video_swap(None, path.to_path_buf(), self.contain_background(), epoch),
++            rx: spawn_video_swap(None, path.to_path_buf(), letterbox, epoch),
+         });
      }
  
-     pub(super) fn export_theme(&mut self) {
-@@ -2040,7 +2168,10 @@ impl App {
-     fn apply_adaptive_wallpapers(&mut self, bg: &Path, asset_w: u32, asset_h: u32) {
-         use pecofence_core::adaptive as ad;
-         // Same retirement the plain route performs — the video engine yields to images.
--        self.wmf_player = None;
-+        self.invalidate_video_swap();
-+        if let Some(p) = self.wmf_player.take() {
-+            reap_video_player(p);
+@@ -1687,16 +1739,26 @@ impl App {
+         let player_alive = player.is_some_and(|p| p.is_alive());
+         let player_path = player.map(|p| p.path().to_path_buf());
+         let player_file = player_path.as_ref().is_some_and(|p| p.is_file());
++        // A swap in flight IS the video background — the player handle is None
++        // for its whole duration, so callers deciding "is the background the
++        // video?" (retune, theme pack) must see the pending target, not SPI's
++        // static fallback. Missing this made a mid-swap retune retire the video.
++        let swap_path = self
++            .video_swap
++            .as_ref()
++            .map(|s| s.path.clone())
++            .filter(|p| p.is_file());
+         let chosen = if player_alive && player_file {
+             player_path.clone()
+         } else {
+-            static_src.clone()
++            swap_path.clone().or(static_src.clone())
+         };
+         tracing::info!(
+             player_present = player.is_some(),
+             player_alive,
+             player_path = ?player_path,
+             player_file,
++            swap_pending = ?swap_path,
+             spi_wallpaper = ?spi,
+             idw_wallpaper = ?idw.as_ref().map(|o| o.as_ref().map(|p| p.display().to_string())),
+             static_under_video = ?self.static_under_video,
+@@ -2814,6 +2876,25 @@ impl App {
+         self.theme_dirty.set(false);
+     }
+ 
++    /// The Refresh button: re-delivers the *armed in-memory state* to the shell —
++    /// no taskkill, no theme reload, nothing persisted. Dead resident command
++    /// windows re-inject through `ensure_resident_at`'s `IsWindow` probe, and a
++    /// lost desktop layer re-attaches via `ensure_video_wallpaper`. Safe to
++    /// click repeatedly: every leg is idempotent (epoch/on-change gated).
++    fn refresh_visual_state(&mut self) {
++        pecofence_platform::file_explorer_styler::rearm();
++        pecofence_platform::taskbar_styler::ensure();
++        pecofence_platform::start_menu::ensure();
++        pecofence_platform::notification_center::ensure();
++        self.ensure_video_wallpaper();
++        if let Some(a) = self.anchor.borrow_mut().as_mut() {
++            a.reanchor("manual refresh");
 +        }
-         self.static_under_video = None;
-         if self
++        self.refresh_visuals(true);
++        self.settings_toast(pecofence_core::i18n::text("外观已刷新"));
++        tracing::info!("manual visual refresh: state re-delivered to shell");
++    }
++
+     pub(super) fn refresh_language(&mut self) {
+         let language = self
              .state
+diff --git a/crates/core/src/model.rs b/crates/core/src/model.rs
+index c2ac231..b8808b9 100644
+--- a/crates/core/src/model.rs
++++ b/crates/core/src/model.rs
+@@ -1957,6 +1957,18 @@ impl Config {
+     /// their manifest with the listing's names so a machine without that folder gets a
+     /// graceful virtual fence.
+     pub fn make_theme_portable(&mut self) {
++        // fe_* are local device preferences — themes never carry them (the
++        // apply side preserves the local values, but the archive shouldn't
++        // describe a foreign machine's Explorer styling at all).
++        let defaults = Settings::default();
++        self.settings.fe_effect = defaults.fe_effect;
++        self.settings.fe_clear_address = defaults.fe_clear_address;
++        self.settings.fe_clear_bar_bg = defaults.fe_clear_bar_bg;
++        self.settings.fe_clear_winui_bg = defaults.fe_clear_winui_bg;
++        self.settings.fe_show_line = defaults.fe_show_line;
++        self.settings.fe_layout = defaults.fe_layout;
++        self.settings.fe_light_rgba = defaults.fe_light_rgba;
++        self.settings.fe_dark_rgba = defaults.fe_dark_rgba;
+         for layout in &mut self.layouts {
+             for fence in &mut layout.fences {
+                 if fence.kind == FenceKind::FolderPortal {
 diff --git a/crates/platform/src/file_explorer_styler.rs b/crates/platform/src/file_explorer_styler.rs
-index 060de1e..e44433f 100644
+index e44433f..a9552ef 100644
 --- a/crates/platform/src/file_explorer_styler.rs
 +++ b/crates/platform/src/file_explorer_styler.rs
-@@ -123,6 +123,12 @@ struct Fe {
-     xaml_epoch: u64,
-     /// pid → (cmd window, XAML epoch delivered).
-     xaml_delivered: std::collections::HashMap<u32, (usize, u64)>,
-+    /// The deployed `ExplorerBlurMica.dll` path `EBML` hands to residents
-+    /// (hash-versioned — an engine upgrade reloads through a fresh path).
-+    dll_path: String,
-+    /// Last `deliver_all` fan-out signature — the debug line logs only when
-+    /// pids/readiness/epochs change, not every 2 s `ensure()` tick.
-+    delivery_sig: String,
+@@ -704,6 +704,24 @@ pub fn ensure() {
+     deliver_all();
  }
  
- static FE: Mutex<Option<Fe>> = Mutex::new(None);
-@@ -167,63 +173,93 @@ fn residents_dir() -> Option<PathBuf> {
-     Some(dir)
- }
- 
--/// `ExplorerBlurMica.dll` shipped beside the running exe (build.rs /
--/// `make-windows.ps1` place it there).
--fn ebm_source_path() -> Option<PathBuf> {
--    let exe = std::env::current_exe().ok()?;
--    let p = exe.with_file_name("ExplorerBlurMica.dll");
--    p.is_file().then_some(p)
-+/// The vendored engine compiled into the binary — the canonical source for
-+/// deployment: a next-to-exe file is not part of the contract (installers,
-+/// `--portable` copies and dev layouts stage it differently). The 658 KB
-+/// `include_bytes!` is cheap insurance: on a machine where the sidecar file
-+/// was never staged, the material still deploys.
-+static EBM_DLL: &[u8] = include_bytes!(concat!(
-+    env!("CARGO_MANIFEST_DIR"),
-+    "/../../third_party/ebm/ExplorerBlurMica.dll"
-+));
-+
-+/// Source bytes to deploy. `PECOFENCE_EBM_DLL=<path>` overrides for engine
-+/// development only — anything loaded into explorer.exe must come from an
-+/// explicit opt-in or the bytes this build was tested with.
-+fn ebm_source_bytes() -> Option<Vec<u8>> {
-+    match std::env::var("PECOFENCE_EBM_DLL") {
-+        Ok(p) => match std::fs::read(&p) {
-+            Ok(b) => Some(b),
-+            Err(e) => {
-+                // A set-but-unreadable override must not silently fall back —
-+                // the developer asked for specific bytes.
-+                tracing::warn!(path = %p, error = %e, "PECOFENCE_EBM_DLL unreadable; using vendored engine");
-+                Some(EBM_DLL.to_vec())
-+            }
-+        },
-+        Err(_) => Some(EBM_DLL.to_vec()),
++/// Manual refresh: forces a full re-delivery of the armed state — both epochs
++/// bump, so every live pid gets `EBMU`+`EBML` (fresh config read) and the
++/// XAML wire again. Dead command windows re-inject through
++/// `ensure_resident_at`'s IsWindow probe; nothing restarts Explorer.
++pub fn rearm() {
++    if !is_armed() {
++        return;
 +    }
++    if let Some(fe) = lock().as_mut() {
++        fe.epoch += 1;
++        fe.xaml_epoch += 1;
++        fe.delivered.clear();
++        fe.xaml_delivered.clear();
++    }
++    deliver_all();
++    tracing::info!("ExplorerBlurMica re-armed on manual refresh");
 +}
 +
-+/// FNV-1a over the engine bytes — labels the deploy dir; every content change
-+/// gets a new path (never an overwrite of a DLL a live explorer has mapped).
-+fn fnv1a64(bytes: &[u8]) -> u64 {
-+    let mut h = 0xcbf2_9ce4_8422_2325u64;
-+    for &b in bytes {
-+        h = (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3);
-+    }
-+    h
-+}
-+
-+/// `residents/ebm-<hash>` — the deployed engine's versioned home. A new build
-+/// lands in a NEW path: a running explorer's mapped DLL is never under the
-+/// write target, and `EBMU`+`EBML` swaps engines live in the same pid.
-+fn ebm_deploy_dir(bytes: &[u8]) -> Option<PathBuf> {
-+    Some(residents_dir()?.join(format!("ebm-{:016x}", fnv1a64(bytes))))
+ /// App shutdown — unload EBM everywhere so Explorer returns to stock;
+ /// the deployed files stay for the next run.
+ pub fn shutdown() {
+diff --git a/locales/ar.json b/locales/ar.json
+index b411987..b82f858 100644
+--- a/locales/ar.json
++++ b/locales/ar.json
+@@ -702,5 +702,9 @@
+   "OS26 Merged Top Bar": "OS26 الشريط العلوي المدمج",
+   "ZEUS macOS Single Bar": "ZEUS شريط macOS المفرد",
+   "Compact Explorer 11": "Compact Explorer 11",
+-  "Floating Spaced Bars": "أشرطة عائمة متباعدة"
++  "Floating Spaced Bars": "أشرطة عائمة متباعدة",
++  "刷新外观 / 重启资源管理器": "تحديث المظهر / إعادة تشغيل المستكشف",
++  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "يُعيد التحديث تطبيق المؤثرات الحالية؛ أعد تشغيل المستكشف عند التعليق فقط",
++  "刷新": "تحديث",
++  "外观已刷新": "تم تحديث المظهر"
  }
+diff --git a/locales/de.json b/locales/de.json
+index 6c2f7ab..3d76c43 100644
+--- a/locales/de.json
++++ b/locales/de.json
+@@ -702,5 +702,9 @@
+   "OS26 Merged Top Bar": "OS26 Verschmolzene Titelleiste",
+   "ZEUS macOS Single Bar": "ZEUS macOS-Einzelzeile",
+   "Compact Explorer 11": "Compact Explorer 11",
+-  "Floating Spaced Bars": "Schwebende Leisten"
++  "Floating Spaced Bars": "Schwebende Leisten",
++  "刷新外观 / 重启资源管理器": "Darstellung aktualisieren / Explorer neu starten",
++  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Aktualisieren wendet die aktuellen Effekte erneut an; Explorer nur bei Problemen neu starten",
++  "刷新": "Aktualisieren",
++  "外观已刷新": "Darstellung aktualisiert"
+ }
+diff --git a/locales/en.json b/locales/en.json
+index 96e72cf..a3773c3 100644
+--- a/locales/en.json
++++ b/locales/en.json
+@@ -702,5 +702,9 @@
+   "OS26 Merged Top Bar": "OS26 Merged Top Bar",
+   "ZEUS macOS Single Bar": "ZEUS macOS Single Bar",
+   "Compact Explorer 11": "Compact Explorer 11",
+-  "Floating Spaced Bars": "Floating Spaced Bars"
++  "Floating Spaced Bars": "Floating Spaced Bars",
++  "刷新外观 / 重启资源管理器": "Refresh visuals / Restart Explorer",
++  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Refresh re-applies the current visuals; restart Explorer only if it is stuck",
++  "刷新": "Refresh",
++  "外观已刷新": "Visuals refreshed"
+ }
+diff --git a/locales/es.json b/locales/es.json
+index 480e045..acfa221 100644
+--- a/locales/es.json
++++ b/locales/es.json
+@@ -702,5 +702,9 @@
+   "OS26 Merged Top Bar": "OS26 barra superior fusionada",
+   "ZEUS macOS Single Bar": "ZEUS barra única macOS",
+   "Compact Explorer 11": "Compact Explorer 11",
+-  "Floating Spaced Bars": "Barras flotantes espaciadas"
++  "Floating Spaced Bars": "Barras flotantes espaciadas",
++  "刷新外观 / 重启资源管理器": "Actualizar apariencia / Reiniciar el Explorador",
++  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Actualizar vuelve a aplicar los efectos actuales; reinicia el Explorador solo si se bloquea",
++  "刷新": "Actualizar",
++  "外观已刷新": "Apariencia actualizada"
+ }
+diff --git a/locales/fr.json b/locales/fr.json
+index 45a50e4..006a162 100644
+--- a/locales/fr.json
++++ b/locales/fr.json
+@@ -702,5 +702,9 @@
+   "OS26 Merged Top Bar": "OS26 barre supérieure fusionnée",
+   "ZEUS macOS Single Bar": "ZEUS barre unique macOS",
+   "Compact Explorer 11": "Compact Explorer 11",
+-  "Floating Spaced Bars": "Barres flottantes espacées"
++  "Floating Spaced Bars": "Barres flottantes espacées",
++  "刷新外观 / 重启资源管理器": "Actualiser l’apparence / Redémarrer l’Explorateur",
++  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Actualiser réapplique les effets actuels ; ne redémarrez l’Explorateur qu’en cas de blocage",
++  "刷新": "Actualiser",
++  "外观已刷新": "Apparence actualisée"
+ }
+diff --git a/locales/it.json b/locales/it.json
+index 4f926a8..f15bfe1 100644
+--- a/locales/it.json
++++ b/locales/it.json
+@@ -702,5 +702,9 @@
+   "OS26 Merged Top Bar": "OS26 barra superiore unita",
+   "ZEUS macOS Single Bar": "ZEUS barra singola macOS",
+   "Compact Explorer 11": "Compact Explorer 11",
+-  "Floating Spaced Bars": "Barre fluttuanti spaziate"
++  "Floating Spaced Bars": "Barre fluttuanti spaziate",
++  "刷新外观 / 重启资源管理器": "Aggiorna aspetto / Riavvia Esplora risorse",
++  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Aggiorna riapplica gli effetti correnti; riavvia Esplora risorse solo in caso di problemi",
++  "刷新": "Aggiorna",
++  "外观已刷新": "Aspetto aggiornato"
+ }
+diff --git a/locales/ja.json b/locales/ja.json
+index 86a7b67..b11a1a2 100644
+--- a/locales/ja.json
++++ b/locales/ja.json
+@@ -702,5 +702,9 @@
+   "OS26 Merged Top Bar": "OS26 統合トップバー",
+   "ZEUS macOS Single Bar": "ZEUS macOS シングルバー",
+   "Compact Explorer 11": "Compact Explorer 11",
+-  "Floating Spaced Bars": "フローティングバー"
++  "Floating Spaced Bars": "フローティングバー",
++  "刷新外观 / 重启资源管理器": "外観を更新 / エクスプローラーを再起動",
++  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "更新は現在の視覚効果を再適用します。エクスプローラーの再起動は不具合時のみ",
++  "刷新": "更新",
++  "外观已刷新": "外観を更新しました"
+ }
+diff --git a/locales/ko.json b/locales/ko.json
+index 2e47b78..0cc436c 100644
+--- a/locales/ko.json
++++ b/locales/ko.json
+@@ -702,5 +702,9 @@
+   "OS26 Merged Top Bar": "OS26 병합 상단 바",
+   "ZEUS macOS Single Bar": "ZEUS macOS 단일 바",
+   "Compact Explorer 11": "Compact Explorer 11",
+-  "Floating Spaced Bars": "플로팅 분리 바"
++  "Floating Spaced Bars": "플로팅 분리 바",
++  "刷新外观 / 重启资源管理器": "모양 새로 고침 / 탐색기 다시 시작",
++  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "새로 고침은 현재 시각 효과를 다시 적용합니다. 탐색기는 멈출 때만 다시 시작하세요",
++  "刷新": "새로 고침",
++  "外观已刷新": "모양이 새로 고쳐졌습니다"
+ }
+diff --git a/locales/pt-BR.json b/locales/pt-BR.json
+index af40f3e..13fa69b 100644
+--- a/locales/pt-BR.json
++++ b/locales/pt-BR.json
+@@ -702,5 +702,9 @@
+   "OS26 Merged Top Bar": "OS26 barra superior mesclada",
+   "ZEUS macOS Single Bar": "ZEUS barra única macOS",
+   "Compact Explorer 11": "Compact Explorer 11",
+-  "Floating Spaced Bars": "Barras flutuantes espaçadas"
++  "Floating Spaced Bars": "Barras flutuantes espaçadas",
++  "刷新外观 / 重启资源管理器": "Atualizar aparência / Reiniciar o Explorador",
++  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Atualizar reaplica os efeitos atuais; reinicie o Explorador apenas se travar",
++  "刷新": "Atualizar",
++  "外观已刷新": "Aparência atualizada"
+ }
+diff --git a/locales/ru.json b/locales/ru.json
+index 155d145..4fe8f68 100644
+--- a/locales/ru.json
++++ b/locales/ru.json
+@@ -702,5 +702,9 @@
+   "OS26 Merged Top Bar": "OS26 объединённая верхняя панель",
+   "ZEUS macOS Single Bar": "ZEUS одиночная панель macOS",
+   "Compact Explorer 11": "Compact Explorer 11",
+-  "Floating Spaced Bars": "Плавающие панели"
++  "Floating Spaced Bars": "Плавающие панели",
++  "刷新外观 / 重启资源管理器": "Обновить оформление / Перезапустить Проводник",
++  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Обновление повторно применяет текущие эффекты; перезапускайте Проводник только при сбое",
++  "刷新": "Обновить",
++  "外观已刷新": "Оформление обновлено"
+ }
+diff --git a/locales/zh-TW.json b/locales/zh-TW.json
+index 8cb4ecc..2107858 100644
+--- a/locales/zh-TW.json
++++ b/locales/zh-TW.json
+@@ -702,5 +702,9 @@
+   "OS26 Merged Top Bar": "OS26 合併頂列",
+   "ZEUS macOS Single Bar": "ZEUS macOS 單一列",
+   "Compact Explorer 11": "Compact Explorer 11",
+-  "Floating Spaced Bars": "浮動間隔列"
++  "Floating Spaced Bars": "浮動間隔列",
++  "刷新外观 / 重启资源管理器": "重新整理外觀 / 重新啟動檔案總管",
++  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "重新整理會重新套用目前的視覺效果；檔案總管僅在異常時才需要重新啟動",
++  "刷新": "重新整理",
++  "外观已刷新": "外觀已重新整理"
+ }
+diff --git a/ui/settings.html b/ui/settings.html
+index 08f9119..a5379fc 100644
+--- a/ui/settings.html
++++ b/ui/settings.html
+@@ -480,8 +480,8 @@
+         <select id="notificationCenterStyleSel" data-bind="notificationCenterStyle" data-str></select></div>
+       <div class="card" id="feEffectCard"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">资源管理器背景效果</div><div class="s">ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义</div></div></div>
+         <div class="actions"><button id="feGlassAdvanced">高级设置</button></div></div>
+-      <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">重启资源管理器</div><div class="s">出现卡顿或异常时按一下</div></div></div>
+-        <div class="actions"><button id="restartExplorer">重启</button></div></div>
++      <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">刷新外观 / 重启资源管理器</div><div class="s">刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启</div></div></div>
++        <div class="actions"><button id="refreshVisual">刷新</button><button id="restartExplorer">重启</button></div></div>
+       <h3>行为</h3>
+       <div class="card"><div class="l"><span class="ic">&#xE70D;</span><div><div class="t">收起的栅栏悬停时自动展开</div><div class="s">鼠标移开后自动收起</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.hoverPeek"></div></div>
+       <div class="card"><div class="l"><span class="ic">&#xE7C9;</span><div><div class="t">收起的栅栏需点击标题才展开</div><div class="s">开启后不再悬停展开；拖动标题仍可移动栅栏</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.clickToExpand"></div></div>
+@@ -1530,6 +1530,7 @@
+   document.getElementById('starRepo').onclick = () => send({ type: 'action', name: 'openRepository' });
+   document.getElementById('openManual').onclick = () => send({ type: 'action', name: 'openManual' });
+   document.getElementById('repairIcons').onclick = () => send({ type: 'action', name: 'repairIcons' });
++  document.getElementById('refreshVisual').onclick = () => send({ type: 'action', name: 'refreshVisual' });
+   document.getElementById('restartExplorer').onclick = () => send({ type: 'action', name: 'restartExplorer' });
  
--/// Deploys the vendored DLL into the residents dir. `Some(dst)` is only
--/// returned when the file on disk is byte-identical to the vendored copy —
--/// a locked (loaded-in-explorer) but CORRECT DLL is accepted, a locked
--/// STALE one is a hard failure: LoadLibrary-ing stale bytes would arm an
--/// unknown engine. When the vendored source is missing entirely the
--/// previously-deployed copy is used with a warning (it was written by a
--/// prior run of this same installer), and `None` only when nothing exists.
--fn deploy_dll(dir: &Path) -> Option<PathBuf> {
-+/// Deploys the vendored DLL into its hash-versioned dir. `Some(dst)` is only
-+/// returned when the file on disk is byte-identical to the source — a
-+/// byte-equal destination is accepted without rewriting; a mismatch is
-+/// rewritten (new path ⇒ no live-share lock to fight), and any write/verify
-+/// failure is a hard error: LoadLibrary-ing stale bytes would arm an
-+/// unknown engine.
-+fn deploy_dll() -> Option<PathBuf> {
-+    let src = ebm_source_bytes()?;
-+    let dir = ebm_deploy_dir(&src)?;
-     let dst = dir.join("ExplorerBlurMica.dll");
--    let dst_bytes = std::fs::read(&dst).ok();
--    let src = ebm_source_path().and_then(|src| std::fs::read(&src).ok());
--    match src {
--        Some(src_bytes) => match dst_bytes {
--            Some(d) if d == src_bytes => {
--                tracing::debug!(
-+    match std::fs::read(&dst) {
-+        Ok(d) if d == src => {
-+            tracing::debug!(
-+                dst = %dst.display(),
-+                "deploy_dll: destination already matches the vendored DLL — copy skipped"
-+            );
-+            Some(dst)
-+        }
-+        _ => {
-+            if std::fs::create_dir_all(&dir).is_err() || std::fs::write(&dst, &src).is_err() {
-+                tracing::warn!(
-                     dst = %dst.display(),
--                    "deploy_dll: destination already matches the vendored DLL — copy skipped"
-+                    "ExplorerBlurMica.dll deploy failed — destination cannot be written"
-                 );
--                Some(dst)
-+                return None;
-             }
--            _ => {
--                if let Err(e) = std::fs::write(&dst, &src_bytes) {
-+            match std::fs::read(&dst) {
-+                Ok(d) if d == src => {
-+                    tracing::debug!(
-+                        dst = %dst.display(),
-+                        bytes = src.len(),
-+                        "deploy_dll: destination written"
-+                    );
-+                    Some(dst)
-+                }
-+                _ => {
-                     tracing::warn!(
-                         dst = %dst.display(),
--                        %e,
--                        "ExplorerBlurMica.dll deploy failed — destination differs and cannot be rewritten (locked by a stale load?)"
-+                        "ExplorerBlurMica.dll deploy failed — written bytes failed verification"
-                     );
--                    return None;
-+                    None
-                 }
--                tracing::debug!(
--                    dst = %dst.display(),
--                    bytes = src_bytes.len(),
--                    "deploy_dll: destination written"
--                );
--                Some(dst)
--            }
--        },
--        None => {
--            if dst_bytes.is_some() {
--                tracing::warn!(
--                    "ExplorerBlurMica.dll missing beside pecofence.exe — using previously deployed copy"
--                );
--                Some(dst)
--            } else {
--                tracing::warn!(
--                    dst = %dst.display(),
--                    "ExplorerBlurMica.dll unavailable — not beside pecofence.exe and never deployed"
--                );
--                None
-             }
-         }
-     }
-@@ -404,24 +440,50 @@ fn build_xaml_wire(fe: &Fe) -> Option<String> {
- /// independent: XAML delivery never touches the EBM pipeline and runs
- /// even when `effect=""`.
- fn deliver_all() {
--    let wide: Vec<u8> = residents_dir()
--        .map(|d| d.join("ExplorerBlurMica.dll"))
--        .filter(|p| p.is_file())
-+    let wide: Vec<u8> = lock()
-+        .as_ref()
-+        .map(|fe| fe.dll_path.clone())
-+        .filter(|p| !p.is_empty() && Path::new(p).is_file())
-         .map(|dll| {
--            dll.display()
--                .to_string()
--                .encode_utf16()
-+            dll.encode_utf16()
-                 .chain(core::iter::once(0))
-                 .flat_map(|c| c.to_le_bytes())
-                 .collect()
-         })
-         .unwrap_or_default();
-     let anchors = cabinet_anchors();
--    tracing::debug!(
--        anchors = anchors.len(),
--        dll_ready = !wide.is_empty(),
--        "deliver_all: fanning out to cabinet-owning explorer pids"
--    );
-+    // State-change signature: same pids + same readiness + same epochs means
-+    // this tick delivers nothing new — the debug line repeats otherwise.
-+    {
-+        let mut pids: Vec<u32> = anchors.iter().map(|(pid, _)| *pid).collect();
-+        pids.sort_unstable();
-+        let sig = {
-+            let mut guard = lock();
-+            let Some(fe) = guard.as_mut() else {
-+                return;
-+            };
-+            format!(
-+                "{}|{}|{}|{}|{:?}",
-+                fe.epoch,
-+                fe.xaml_epoch,
-+                !wide.is_empty(),
-+                anchors.len(),
-+                pids
-+            )
-+        };
-+        let mut guard = lock();
-+        if let Some(fe) = guard.as_mut()
-+            && fe.delivery_sig != sig
-+        {
-+            fe.delivery_sig = sig;
-+            drop(guard);
-+            tracing::debug!(
-+                anchors = anchors.len(),
-+                dll_ready = !wide.is_empty(),
-+                "deliver_all: fanning out to cabinet-owning explorer pids"
-+            );
-+        }
-+    }
-     let mut live_pids = Vec::new();
-     for (pid, anchor) in anchors {
-         live_pids.push(pid);
-@@ -443,14 +505,16 @@ fn deliver_all() {
-             }
-         }
-         // XAML leg — a `PECO-FES1` wire through the same resident; the
--        // mux engine applies it to the WinUI3 islands.
--        if let Some(wire) = build_xaml_wire(fe) {
--            let current = (cmd.0 as usize, fe.xaml_epoch);
--            if fe.xaml_delivered.get(&pid) != Some(&current) {
--                let _ = crate::tap::send_copydata(cmd, CDS_FE_LAYOUT, wire.as_bytes());
--                tracing::debug!(pid, bytes = wire.len(), "deliver_all: FELT wire sent");
--                fe.xaml_delivered.insert(pid, current);
--            }
-+        // mux engine applies it to the WinUI3 islands. The wire is built
-+        // only for a pid that actually needs it: the ensure() tick passes
-+        // here every 2 s and the build is not free.
-+        let current = (cmd.0 as usize, fe.xaml_epoch);
-+        if fe.xaml_delivered.get(&pid) != Some(&current)
-+            && let Some(wire) = build_xaml_wire(fe)
-+        {
-+            let _ = crate::tap::send_copydata(cmd, CDS_FE_LAYOUT, wire.as_bytes());
-+            tracing::debug!(pid, bytes = wire.len(), "deliver_all: FELT wire sent");
-+            fe.xaml_delivered.insert(pid, current);
-         }
-     }
-     crate::tap::prune_extra_residents(&live_pids);
-@@ -558,22 +622,19 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
-     };
-     // Deploy + config.ini are committed BEFORE touching shared state: on
-     // failure `fe.effect` still holds the last applied value and the ini
--    // on disk still matches it — no rollback needed.
--    let deploy_ok = deploy_dll(&dir).is_some();
--    let ini_ok = deploy_ok && {
--        match write_config_ini(&dir, cfg) {
--            Ok(()) => true,
--            Err(e) => {
--                tracing::warn!(
--                    ini = %dir.join("config.ini").display(),
--                    %e,
--                    "ExplorerBlurMica apply failed — config.ini write"
--                );
--                false
--            }
--        }
-+    // on disk still matches it — no rollback needed. `config.ini` sits in
-+    // the deployed DLL's own versioned dir — EBM reads its module dir.
-+    let Some(dll_path) = deploy_dll() else {
-+        finish_xaml();
-+        return false;
-     };
--    if !ini_ok {
-+    let ini_dir = dll_path.parent().unwrap_or(&dir).to_path_buf();
-+    if let Err(e) = write_config_ini(&ini_dir, cfg) {
-+        tracing::warn!(
-+            ini = %ini_dir.join("config.ini").display(),
-+            %e,
-+            "ExplorerBlurMica apply failed — config.ini write"
-+        );
-         finish_xaml();
-         return false;
-     }
-@@ -587,6 +648,7 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
-         fe.show_line = cfg.show_line;
-         fe.light_rgba = cfg.light_rgba.to_string();
-         fe.dark_rgba = cfg.dark_rgba.to_string();
-+        fe.dll_path = dll_path.display().to_string();
-         fe.epoch += 1; // every live pid reloads EBM under the new config
-         fe.xaml_epoch += 1; // `clearWinUIBg`/`effect` gate the wire contents
-     }
-diff --git a/crates/platform/src/wmf_wallpaper.rs b/crates/platform/src/wmf_wallpaper.rs
-index 6c0aefa..39002ce 100644
---- a/crates/platform/src/wmf_wallpaper.rs
-+++ b/crates/platform/src/wmf_wallpaper.rs
-@@ -2221,6 +2221,10 @@ unsafe fn run_gpu_attached(
-             // still be reading it.
-             let mut pending_buf: Option<IMFMediaBuffer> = Some(first_buf.clone());
-             let mut dims_changed = false;
-+            // Re-attach in flight: our recreated HWND waiting for the shell's
-+            // desktop layer, plus its deadline (Explorer restarts take ~10 s).
-+            let mut pending_hwnd: Option<HWND> = None;
-+            let mut reattach_deadline: Option<Instant> = None;
- 
-             while !stop.load(Ordering::Relaxed) {
-                 pump_thread_messages();
-@@ -2228,31 +2232,55 @@ unsafe fn run_gpu_attached(
-                 if last_visibility_check.elapsed() >= Duration::from_millis(300) {
-                     last_visibility_check = Instant::now();
-                     // An Explorer restart or shell rebuild can destroy the attached window
--                    // (and the WorkerW host with it). That used to kill the wallpaper for
--                    // good — heal instead: recreate the video HWND, re-attach, and rebind
--                    // the composition target. The swap chain is HWND-agnostic, so only the
--                    // per-HWND DComp target/visual are rebuilt; decoder/device/VP survive.
--                    if !IsWindow(Some(hwnd)).as_bool() {
-+                    // (and the WorkerW host with it). Heal is RETRIED while the shell is
-+                    // down: `attach_to_desktop_worker` re-finds Progman/WorkerW on every
-+                    // attempt — a restart takes ~10 s, the budget is 30 s. The swap chain
-+                    // is HWND-agnostic, so only the per-HWND DComp target/visual rebuild.
-+                    if pending_hwnd.is_none() && !IsWindow(Some(hwnd)).as_bool() {
-                         tracing::warn!(
-                             frame_counter,
-                             "wmf: video window destroyed; re-attaching to desktop layer"
-                         );
-                         let new_hwnd = create_video_window(class_name, 0)
-                             .map_err(|e| format!("recreate video window: {e}"))?;
--                        let (new_host, w, h) = attach_to_desktop_worker(new_hwnd).map_err(|e| {
--                            let _ = DestroyWindow(new_hwnd);
--                            format!("re-attach after window loss: {e}")
--                        })?;
--                        hwnd = new_hwnd;
--                        host = new_host;
--                        gp.rebind_target(hwnd)?;
--                        need_reanchor = true;
--                        tracing::info!(
--                            ?hwnd,
--                            w,
--                            h,
--                            "wmf: video window re-attached; target rebound"
--                        );
-+                        pending_hwnd = Some(new_hwnd);
-+                        reattach_deadline = Some(Instant::now() + Duration::from_secs(30));
-+                    }
-+                    if let Some(cand) = pending_hwnd {
-+                        if !IsWindow(Some(cand)).as_bool() {
-+                            // Our own pending window died too — start it over.
-+                            pending_hwnd = create_video_window(class_name, 0).ok();
-+                        }
-+                        match pending_hwnd.map(|c| attach_to_desktop_worker(c)) {
-+                            Some(Ok((new_host, w, h))) => {
-+                                let cand = pending_hwnd.take().unwrap();
-+                                reattach_deadline = None;
-+                                hwnd = cand;
-+                                host = new_host;
-+                                gp.rebind_target(hwnd)?;
-+                                need_reanchor = true;
-+                                tracing::info!(
-+                                    ?hwnd,
-+                                    w,
-+                                    h,
-+                                    "wmf: video window re-attached; target rebound"
-+                                );
-+                            }
-+                            Some(Err(e)) => {
-+                                if Instant::now() >= reattach_deadline.unwrap() {
-+                                    let _ = DestroyWindow(pending_hwnd.take().unwrap());
-+                                    return Err(format!("re-attach after window loss: {e}"));
-+                                }
-+                                // Shell still down — retry on the next tick.
-+                                tracing::debug!(
-+                                    error = %e,
-+                                    "wmf: re-attach pending; shell layer not back yet"
-+                                );
-+                            }
-+                            None => {
-+                                return Err("recreate video window failed".to_string());
-+                            }
-+                        }
-                     }
-                     let now_paused = should_pause_playback();
-                     if now_paused != paused {
-@@ -2268,7 +2296,7 @@ unsafe fn run_gpu_attached(
-                         // the desktop keeps a static wallpaper while paused.
-                     }
-                 }
--                if paused {
-+                if paused || pending_hwnd.is_some() {
-                     if let Ok(guard) = wake.0.lock() {
-                         let _ = wake.1.wait_timeout(guard, Duration::from_millis(80));
-                     }
-@@ -2542,6 +2570,9 @@ fn run_player_thread(
-         let mut last_visibility_check = Instant::now();
-         let mut next_frame_at = Instant::now() + frame_interval;
-         let mut frame_counter: u64 = 1;
-+        // Re-attach in flight: recreated HWND + its deadline while the shell is down.
-+        let mut pending_hwnd: Option<HWND> = None;
-+        let mut reattach_deadline: Option<Instant> = None;
- 
-         while !stop.load(Ordering::Relaxed) {
-             pump_thread_messages();
-@@ -2551,30 +2582,53 @@ fn run_player_thread(
-                 // An Explorer restart or shell rebuild can destroy the attached
-                 // window; heal by recreating it (the SharedSurface pointer stays
-                 // valid) and repaint the last frame — losing the HWND is
--                // recoverable, losing the wallpaper is not.
--                if !IsWindow(Some(hwnd)).as_bool() {
-+                // recoverable, losing the wallpaper is not. The attach RETRIES
-+                // while the shell is down (a restart takes ~10 s; budget 30 s)
-+                // instead of stopping at the first missing Progman.
-+                if pending_hwnd.is_none() && !IsWindow(Some(hwnd)).as_bool() {
-                     tracing::warn!(
-                         frame_counter,
-                         "wmf: video window destroyed; re-attaching to desktop layer"
-                     );
-                     match create_video_window(&class_name, surface_ptr as isize) {
--                        Ok(new_hwnd) => match attach_to_desktop_worker(new_hwnd) {
--                            Ok((new_host, w, h)) => {
--                                hwnd = new_hwnd;
--                                host = new_host;
--                                win_w = w;
--                                win_h = h;
--                                present_hwnd(hwnd);
--                                tracing::info!(?hwnd, "wmf: video window re-attached (GDI)");
--                            }
--                            Err(e) => {
--                                let _ = DestroyWindow(new_hwnd);
-+                        Ok(new_hwnd) => {
-+                            pending_hwnd = Some(new_hwnd);
-+                            reattach_deadline = Some(Instant::now() + Duration::from_secs(30));
-+                        }
-+                        Err(e) => {
-+                            tracing::error!(error = %e, "wmf: recreate window failed; stopping");
-+                            break;
-+                        }
-+                    }
-+                }
-+                if let Some(cand) = pending_hwnd {
-+                    if !IsWindow(Some(cand)).as_bool() {
-+                        pending_hwnd = create_video_window(&class_name, surface_ptr as isize).ok();
-+                    }
-+                    match pending_hwnd.map(|c| attach_to_desktop_worker(c)) {
-+                        Some(Ok((new_host, w, h))) => {
-+                            let cand = pending_hwnd.take().unwrap();
-+                            reattach_deadline = None;
-+                            hwnd = cand;
-+                            host = new_host;
-+                            win_w = w;
-+                            win_h = h;
-+                            present_hwnd(hwnd);
-+                            tracing::info!(?hwnd, "wmf: video window re-attached (GDI)");
-+                        }
-+                        Some(Err(e)) => {
-+                            if Instant::now() >= reattach_deadline.unwrap() {
-+                                let _ = DestroyWindow(pending_hwnd.take().unwrap());
-                                 tracing::error!(error = %e, "wmf: re-attach failed; stopping");
-                                 break;
-                             }
--                        },
--                        Err(e) => {
--                            tracing::error!(error = %e, "wmf: recreate window failed; stopping");
-+                            tracing::debug!(
-+                                error = %e,
-+                                "wmf: re-attach pending; shell layer not back yet"
-+                            );
-+                        }
-+                        None => {
-+                            tracing::error!("wmf: recreate window failed; stopping");
-                             break;
-                         }
-                     }
-@@ -2590,9 +2644,10 @@ fn run_player_thread(
-                 }
-             }
- 
--            if paused {
-+            if paused || pending_hwnd.is_some() {
-                 // 0% CPU / 0% GPU while desktop is obscured or fullscreen app is active;
-                 // wake every 80ms only to pump WM_NULL/WM_PRINT messages and check visibility.
-+                // While a re-attach is pending there's nothing to present to either.
-                 if let Ok(guard) = wake.0.lock() {
-                     let _ = wake.1.wait_timeout(guard, Duration::from_millis(80));
-                 }
+   // 关于 → 更新: an installed copy downloads and runs the new setup, a ZIP opens the release page.
