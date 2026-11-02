@@ -20,6 +20,14 @@ license = "Apache-2.0"
 
 [workspace.dependencies]
 windows-core = "0.100"
+# Meta-crate: only used for its DirectComposition bindings (not bound by
+# windows-sys/windows-core, and hand-writing the ~50-slot DComp vtables buys
+# nothing). Pinned to the version already in the tree via windows-core 0.62.
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_DirectComposition",
+    "Win32_Graphics_Dxgi",
+] }
 windows-numerics = "0.100"
 windows-window = "0.100"
 windows-canvas = { version = "0.100", features = ["composition"] }

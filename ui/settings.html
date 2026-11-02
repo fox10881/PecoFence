@@ -60,6 +60,10 @@
   html, body { margin: 0; height: 100%; color: var(--text); background: transparent;
     font: 14px/20px "Segoe UI Variable Text", "Segoe UI", var(--font-cjk), sans-serif; user-select: none; }
   html.no-mica body { background: var(--sheet); }
+/* While a real material is armed the sheet is translucent — soften the
+   Fluent surfaces too so it reads through the gaps, WinUI-card style. */
+html.glass { --card: #2b2b2b99; --subtle: #ffffff0f; }
+html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
   button, select, input, textarea { font: inherit; color: inherit; }
   button, select, .toggle, .tile, summary { cursor: pointer; }
   button:disabled, select:disabled { cursor: default; }
@@ -1687,9 +1691,10 @@
     else if (m.type === 'showFeedback') showFeedback(!!m.crash);
     else if (m.type === 'toast') toast(m.text, !!m.error);
     else if (m.type === 'glass' && m.sheet) {
-      // The host frame carries the real material; --sheet takes the blended
-      // tint so the page belongs to the same surface.
+      // The host HWND carries the real DWM material; --sheet is the
+      // translucent layer that lets it show through the client area.
       document.documentElement.style.setProperty('--sheet', m.sheet);
+      document.documentElement.classList.toggle('glass', !!m.armed);
     }
     else if (m.type === 'themeSwitchPrompt') {
       // Dirty-switch dialog: the backend intercepted a gallery Apply; the decision goes

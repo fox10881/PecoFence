@@ -5,16 +5,16 @@
 //! the host pushes `{"type": "state", ...}` / `{"type": "toast", ...}` with `post_json`.
 
 use crate::commands::{Command, CommandQueue};
+use crate::webview_comp::{CompEnvironment, CompWebview};
 use pecofence_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
 use pecofence_platform::{HWND, RECT, dwm, monitors, msg};
 use pecofence_render::ThemeMode;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 use windows_core::Result;
-use windows_webview::{Controller, Environment, EnvironmentOptions, WebView};
 
 pub const SETTINGS_CLASS: &str = "PecoFence.Settings";
 const SETTINGS_HTML: &str = include_str!("../../../ui/settings.html");
@@ -35,7 +35,7 @@ fn profile_name(instance: Option<&str>) -> String {
 /// The WebView2 environment. Kept alive across opens (warm start ≈ 200 ms); the browser
 /// processes exit by themselves when no controller is alive.
 pub struct WebEnvironment {
-    env: Environment,
+    env: CompEnvironment,
 }
 
 impl WebEnvironment {
@@ -51,33 +51,31 @@ impl WebEnvironment {
                     .ok()
                     .as_deref(),
             ));
-        let _ = std::fs::create_dir_all(&user_data);
-        let mut options =
-            EnvironmentOptions::new().user_data_folder(user_data.to_string_lossy().to_string());
         // Debug builds: `PECOFENCE_WEBVIEW_ARGS=--remote-debugging-port=9352` lets a test drive
         // the page (the options always pass browser arguments, so WebView2's own
         // WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS is not honoured).
-        if cfg!(debug_assertions)
-            && let Ok(args) = pecofence_core::brand::var("PECOFENCE_WEBVIEW_ARGS")
-        {
-            options = options.additional_browser_arguments(args);
-        }
+        let browser_args = if cfg!(debug_assertions) {
+            pecofence_core::brand::var("PECOFENCE_WEBVIEW_ARGS").unwrap_or_default()
+        } else {
+            String::new()
+        };
         tracing::debug!("settings: creating WebView2 environment");
-        let env = Environment::with_options(&options)?;
+        let env = CompEnvironment::create(&user_data, &browser_args)?;
         tracing::debug!("settings: WebView2 environment ready");
         Ok(Self { env })
     }
 
     /// Shared with secondary hosts (the FE-glass editor) so one environment
     /// serves every WebView2 window the app opens.
-    pub(crate) fn inner(&self) -> &Environment {
+    pub(crate) fn inner(&self) -> &CompEnvironment {
         &self.env
     }
 }
 
 struct HostState {
-    controller: Option<Controller>,
-    webview: Option<WebView>,
+    comp: Option<CompWebview>,
+    /// `WM_MOUSELEAVE` tracking armed — reset when the leave message fires.
+    mouse_tracked: Cell<bool>,
     /// The app's theme mode — needed to re-blend the sheet on glass/theme changes.
     mode: ThemeMode,
     /// The mirrored EBM effect (`""` = none) + resolved tint for this window.
@@ -92,7 +90,6 @@ pub struct SettingsHost {
     pub ready: bool,
     /// Caption icons (small/big); destroyed with the host.
     icons: Vec<pecofence_platform::tray::OwnedIcon>,
-    _registrations: Vec<windows_webview::EventRegistration>,
 }
 
 impl SettingsHost {
@@ -110,8 +107,8 @@ impl SettingsHost {
         queue: CommandQueue,
     ) -> Result<Self> {
         let state = Rc::new(RefCell::new(HostState {
-            controller: None,
-            webview: None,
+            comp: None,
+            mouse_tracked: Cell::new(false),
             mode,
             glass_effect: String::new(),
             glass_tint: None,
@@ -134,20 +131,31 @@ impl SettingsHost {
                         msg::WM_SIZE => {
                             let w = msg::lo_i16(lparam);
                             let h = msg::hi_i16(lparam);
-                            if let Some(c) = state.borrow().controller.as_ref() {
-                                let _ = c.set_bounds(0, 0, w, h);
-                                let _ = c.set_visible(w > 0 && h > 0);
+                            if let Some(c) = state.borrow().comp.as_ref() {
+                                c.set_bounds(w, h);
                             }
                             Some(0)
                         }
                         msg::WM_MOVE => {
-                            if let Some(c) = state.borrow().controller.as_ref() {
-                                let _ = c.notify_parent_window_position_changed();
+                            if let Some(c) = state.borrow().comp.as_ref() {
+                                c.notify_parent_window_position_changed();
                             }
                             Some(0)
                         }
-                        // Never paint the client area: DWM's Mica shows through (and no grey flash).
-                        msg::WM_ERASEBKGND => Some(1),
+                        // The transparent WebView reveals this surface —
+                        // paint the theme base so the page's translucent
+                        // sheet reads as tinted glass (the real DWM material
+                        // lives on the frame; Win11 cannot materialize the
+                        // client surface behind a covering visual).
+                        msg::WM_ERASEBKGND => {
+                            let dark = matches!(state.borrow().mode, ThemeMode::Dark);
+                            window::fill_client(
+                                hwnd,
+                                wparam as *mut core::ffi::c_void,
+                                if dark { 0x0020_2020 } else { 0x00F3_F3F3 },
+                            );
+                            Some(1)
+                        }
                         msg::WM_GETMINMAXINFO => {
                             // For the monitor the window is on now, which may have another
                             // scale than the one it opened on.
@@ -172,15 +180,35 @@ impl SettingsHost {
                                 r.right - r.left,
                                 r.bottom - r.top,
                             );
+                            if let Some(c) = state.borrow().comp.as_ref() {
+                                c.set_rasterization_scale(window::dpi_of(hwnd));
+                            }
                             Some(0)
                         }
                         msg::WM_SETFOCUS => {
-                            // Keyboard focus belongs to the page, not the host window.
-                            if let Some(c) = state.borrow().controller.as_ref() {
-                                let _ =
-                                    c.move_focus(windows_webview::MoveFocusReason::Programmatic);
+                            // Keyboard focus belongs to the page, not the host
+                            // window — a composition controller has no child
+                            // hwnd, so without MoveFocus it never sees a key.
+                            if let Some(c) = state.borrow().comp.as_ref() {
+                                c.move_focus();
                             }
                             Some(0)
+                        }
+                        msg::WM_SETCURSOR => {
+                            if (lparam & 0xffff) as i64 != msg::HTCLIENT as i64 {
+                                return None;
+                            }
+                            let s = state.borrow();
+                            if let Some(c) = s.comp.as_ref() {
+                                let cursor = c.cursor();
+                                window::set_cursor(if cursor.is_null() {
+                                    let id = c.system_cursor_id();
+                                    window::load_system_cursor(if id == 0 { 32512 } else { id })
+                                } else {
+                                    cursor
+                                });
+                            }
+                            Some(1)
                         }
                         msg::WM_ACTIVATE if wparam & 0xffff != 0 => {
                             queue.push(Command::SettingsActivated);
@@ -188,12 +216,26 @@ impl SettingsHost {
                         }
                         msg::WM_DESTROY => {
                             let mut s = state.borrow_mut();
-                            s.webview = None;
-                            if let Some(c) = s.controller.take() {
-                                let _ = c.close();
+                            if let Some(c) = s.comp.take() {
+                                c.close();
                             }
                             queue.push(Command::WindowGone(hwnd));
                             Some(0)
+                        }
+                        // Composition hosting has no child HWND to receive the
+                        // mouse — forward the messages the WebView cares about.
+                        m if m == msg::WM_MOUSEMOVE
+                            || (0x0201..=0x020E).contains(&m)
+                            || m == msg::WM_MOUSELEAVE =>
+                        {
+                            let s = state.borrow();
+                            match s.comp.as_ref() {
+                                Some(c) => {
+                                    c.forward_wm(hwnd, m, wparam, lparam, &s.mouse_tracked);
+                                    Some(0)
+                                }
+                                None => None,
+                            }
                         }
                         _ => None,
                     }
@@ -218,44 +260,9 @@ impl SettingsHost {
         let _ = dwm::set_immersive_dark_mode(hwnd, matches!(mode, ThemeMode::Dark));
         apply_caption(hwnd, mode, false);
 
-        // SAFETY: `hwnd` is a live window owned by this thread and outlives the controller
-        // (the controller is closed in WM_DESTROY).
-        let controller = unsafe {
-            env.env
-                .create_controller_for_hwnd(pecofence_platform::hwnd_ptr(hwnd))?
-        };
-        tracing::debug!("settings: WebView2 controller ready");
-        let webview = controller.webview()?;
-        // The page is served from memory via `navigate_to_string`, so no URL cache can
-        // serve a stale copy — but clear the profile's browsing data anyway so anything
-        // WebView2 did retain (storage, service workers, a warm renderer) cannot keep an
-        // older UI alive across versions.
-        if let Ok(profile) = webview.profile() {
-            let _ = profile.clear_browsing_data_all(|result| {
-                if let Err(e) = result {
-                    tracing::debug!(%e, "settings: WebView2 cache clear failed");
-                }
-            });
-        }
-        let (cw, ch) = window.client_size();
-        controller.set_bounds(0, 0, cw, ch)?;
-        controller.set_default_background_color(page_background(mode, None))?;
-        if let Ok(settings) = webview.settings() {
-            let _ = settings.set_default_context_menus_enabled(false);
-            let _ = settings.set_status_bar_enabled(false);
-            let _ = settings.set_zoom_control_enabled(false);
-        }
-
-        let mut registrations = Vec::new();
-        {
-            let queue = queue.clone();
-            registrations.push(webview.on_web_message_received(move |args| {
-                queue.push(Command::SettingsMessage(args.web_message_as_json()));
-            })?);
-        }
-        // The HWND-hosted controller cannot composite a transparent page
-        // through to the DWM backdrop, so the sheet always paints opaque
-        // (`no-mica`) — glass is carried by the frame + a tinted sheet.
+        // `no-mica` keeps the body painting `var(--sheet)` — with the
+        // composition host that sheet can be genuinely translucent, and the
+        // DWM material on this HWND shows through it.
         let payload = pecofence_core::i18n::ui_payload()
             .to_string()
             .replace('<', "\\u003c");
@@ -273,26 +280,30 @@ impl SettingsHost {
                 "<html lang=\"zh-CN\" class=\"no-mica\">",
                 1,
             );
-        webview.navigate_to_string(&document)?;
-        tracing::debug!("settings: page navigation submitted");
 
-        {
-            let mut s = state.borrow_mut();
-            s.controller = Some(controller);
-            s.webview = Some(webview);
-        }
-        // The controller is created while the host is still hidden and stays invisible until
-        // told. The host itself is shown once the page reports `ready` (`App::on_settings_message`):
-        // shown at once, it was white until WebView2 painted, even in dark mode.
-        if let Some(c) = state.borrow().controller.as_ref() {
-            let _ = c.set_visible(true);
-        }
+        let (cw, ch) = window.client_size();
+        let comp = {
+            let queue = queue.clone();
+            CompWebview::create(
+                env.inner(),
+                hwnd,
+                window::dpi_of(hwnd),
+                (cw, ch),
+                &document,
+                move |json| queue.push(Command::SettingsMessage(json)),
+            )?
+        };
+        tracing::debug!("settings: composition controller ready");
+
+        state.borrow_mut().comp = Some(comp);
+        // The host itself is shown once the page reports `ready`
+        // (`App::on_settings_message`): shown at once, it was white until
+        // WebView2 painted, even in dark mode.
         Ok(Self {
             window,
             state,
             ready: false,
             icons: Vec::new(),
-            _registrations: registrations,
         })
     }
 
@@ -320,25 +331,23 @@ impl SettingsHost {
         self.icons = icons;
     }
 
-    /// Re-themes the caption and the page background after a light/dark switch —
-    /// re-blending the sheet against the still-armed glass tint.
+    /// Re-themes the caption and the page sheet after a light/dark switch.
     pub fn set_theme(&self, mode: ThemeMode, _liquid_glass: bool) {
         let mut s = self.state.borrow_mut();
         s.mode = mode;
-        let glass_armed = !s.glass_effect.is_empty();
+        let armed = !s.glass_effect.is_empty();
+        let effect = s.glass_effect.clone();
         let tint = s.glass_tint;
         drop(s);
         let _ = dwm::set_immersive_dark_mode(self.window.hwnd(), matches!(mode, ThemeMode::Dark));
-        apply_caption(self.window.hwnd(), mode, glass_armed);
-        if let Some(c) = self.state.borrow().controller.as_ref() {
-            let _ =
-                c.set_default_background_color(page_background(mode, tint.filter(|_| glass_armed)));
-        }
+        apply_caption(self.window.hwnd(), mode, armed);
+        window::invalidate(self.window.hwnd());
+        self.post_json(&glass_message(mode, &effect, tint));
     }
 
     /// Mirrors an EBM `effect` + resolved tint onto this window: the frame
-    /// gets the real DWM material (DWMSBT/accent), the sheet a blended tint,
-    /// and the page a `glass` message so `--sheet` matches the new base.
+    /// gets the real DWM material (DWMSBT/accent) and the page's `--sheet`
+    /// becomes translucent so the material shows through the client area.
     /// `effect=""` restores the stock opaque look.
     pub fn set_glass(&self, effect: &str, tint: Option<(u8, u8, u8, u8)>) {
         {
@@ -350,28 +359,16 @@ impl SettingsHost {
             (u32::from(a) << 24) | (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)
         });
         dwm::sync_app_glass(self.window.hwnd(), effect, argb);
-        let (mode, armed) = {
-            let s = self.state.borrow();
-            (s.mode, !s.glass_effect.is_empty())
-        };
+        window::invalidate(self.window.hwnd());
+        let mode = self.state.borrow().mode;
+        let armed = !effect.is_empty();
         apply_caption(self.window.hwnd(), mode, armed);
-        let tint = tint.filter(|_| armed);
-        if let Some(c) = self.state.borrow().controller.as_ref() {
-            let _ = c.set_default_background_color(page_background(mode, tint));
-        }
-        // The page re-tints its `--sheet` token to the same blended colour —
-        // the HWND-hosted WebView can't composite alpha through, so the
-        // client carries the colour while the frame carries the material.
-        let (r, g, b) = sheet_rgb(mode, tint);
-        self.post_json(&format!(
-            "{{\"type\":\"glass\",\"armed\":{},\"sheet\":\"#{r:02x}{g:02x}{b:02x}\"}}",
-            armed
-        ));
+        self.post_json(&glass_message(mode, effect, tint));
     }
 
     pub fn post_json(&self, json: &str) {
-        if let Some(w) = self.state.borrow().webview.as_ref() {
-            let _ = w.post_web_message_as_json(json);
+        if let Some(c) = self.state.borrow().comp.as_ref() {
+            c.post_json(json);
         }
     }
 
@@ -380,39 +377,59 @@ impl SettingsHost {
     pub fn close(self) {
         {
             let mut s = self.state.borrow_mut();
-            s.webview = None;
-            if let Some(c) = s.controller.take() {
-                let _ = c.close();
+            if let Some(c) = s.comp.take() {
+                c.close();
             }
         }
         drop(self.window);
     }
 }
 
-/// The sheet colour: the theme base blended toward the user's tint. The
-/// HWND-hosted WebView can't composite alpha to the backdrop, so the
-/// material's hue is carried into the client this way — ~45 % of the
-/// tint's alpha, capped, keeps text contrast over the shift.
-fn sheet_rgb(mode: ThemeMode, tint: Option<(u8, u8, u8, u8)>) -> (u8, u8, u8) {
-    // Keep these RGB values in sync with --sheet in the embedded settings document.
-    let (br, bg, bb) = match mode {
-        ThemeMode::Dark => (0x20, 0x20, 0x20),
-        ThemeMode::Light => (0xF3, 0xF3, 0xF3),
+/// The `--sheet` value for a state — now an alpha-carrying colour so the
+/// window's real DWM material shows through the page:
+/// - `effect=""` → the opaque theme base (no material behind the client).
+/// - accent effects (acrylic/blur/blurclear) → a neutral translucent veil;
+///   the accent policy already carries the user's tint on the frame, so
+///   painting it again on the client would double it.
+/// - mica/micaalt → the user's tint at its own alpha, since the DWM system
+///   backdrop can't take a colour and the frame stays untinted mica.
+fn sheet_css(mode: ThemeMode, effect: &str, tint: Option<(u8, u8, u8, u8)>) -> String {
+    let opaque = match mode {
+        ThemeMode::Dark => "#202020",
+        ThemeMode::Light => "#f3f3f3",
     };
-    let Some((a, tr, tg, tb)) = tint else {
-        return (br, bg, bb);
-    };
-    let k = f32::from(a) / 255.0 * 0.45;
-    let blend =
-        |base: u8, t: u8| -> u8 { (f32::from(base) * (1.0 - k) + f32::from(t) * k).round() as u8 };
-    (blend(br, tr), blend(bg, tg), blend(bb, tb))
+    match effect {
+        "" => opaque.to_string(),
+        // Mica can't take a colour: the host surface supplies the real
+        // material and the sheet carries the user's tint at its own alpha.
+        "mica" | "micaalt" => match tint {
+            Some((a, r, g, b)) => format!("rgba({r},{g},{b},{:.2})", f32::from(a) / 255.0),
+            None => opaque.to_string(),
+        },
+        "blurclear" => match mode {
+            ThemeMode::Dark => "rgba(26,26,26,0.30)".to_string(),
+            ThemeMode::Light => "rgba(243,243,243,0.30)".to_string(),
+        },
+        _ => match tint {
+            Some((a, r, g, b)) => format!("rgba({r},{g},{b},{:.2})", f32::from(a) / 255.0),
+            None => match mode {
+                ThemeMode::Dark => "rgba(26,26,26,0.55)".to_string(),
+                ThemeMode::Light => "rgba(243,243,243,0.55)".to_string(),
+            },
+        },
+    }
 }
 
-/// Page background: the theme base, or the tint-blended sheet while glass
-/// is armed. Always opaque — the HWND controller renders alpha as opaque.
-fn page_background(mode: ThemeMode, tint: Option<(u8, u8, u8, u8)>) -> windows_webview::Color {
-    let (r, g, b) = sheet_rgb(mode, tint);
-    windows_webview::Color { a: 255, r, g, b }
+pub(crate) fn glass_message(
+    mode: ThemeMode,
+    effect: &str,
+    tint: Option<(u8, u8, u8, u8)>,
+) -> String {
+    let sheet = sheet_css(mode, effect, tint);
+    format!(
+        "{{\"type\":\"glass\",\"armed\":{},\"sheet\":\"{sheet}\"}}",
+        !effect.is_empty()
+    )
 }
 
 /// Match the page sheet so the native caption belongs to the same surface —
@@ -421,10 +438,12 @@ fn apply_caption(hwnd: HWND, mode: ThemeMode, glass_armed: bool) {
     if glass_armed {
         return;
     }
-    let bg = page_background(mode, None);
+    let (r, g, b) = match mode {
+        ThemeMode::Dark => (0x20u32, 0x20u32, 0x20u32),
+        ThemeMode::Light => (0xF3u32, 0xF3u32, 0xF3u32),
+    };
     // DWM takes COLORREF (0x00BBGGRR).
-    let c = u32::from(bg.r) | (u32::from(bg.g) << 8) | (u32::from(bg.b) << 16);
-    let _ = dwm::set_caption_color(hwnd, c);
+    let _ = dwm::set_caption_color(hwnd, r | (g << 8) | (b << 16));
 }
 
 /// Where the settings window opens on a work area (physical px) at `scale`, and its minimum

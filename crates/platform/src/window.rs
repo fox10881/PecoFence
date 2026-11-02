@@ -374,6 +374,29 @@ pub fn set_layered_alpha(hwnd: HWND, alpha: u8) {
     }
 }
 
+/// Fills the client rect with a solid COLORREF (0x00BBGGRR) — the surface a
+/// composition-hosted client reveals beneath its transparent regions.
+/// `hdc` is the device context `WM_ERASEBKGND` supplies in `wParam`.
+pub fn fill_client(hwnd: HWND, hdc: *mut core::ffi::c_void, colorref: u32) {
+    let mut rect = RECT::default();
+    // SAFETY: valid HWND/HDC; the brush is deleted after the fill.
+    unsafe {
+        let _ = GetClientRect(hwnd, &mut rect);
+        let brush = CreateSolidBrush(COLORREF(colorref));
+        let _ = FillRect(HDC(hdc), &rect, brush);
+        let _ = DeleteObject(HGDIOBJ(brush.0));
+    }
+}
+
+/// Invalidates the whole client area so the next `WM_ERASEBKGND`/`WM_PAINT`
+/// repaints the backing surface (e.g. after a theme or glass switch).
+pub fn invalidate(hwnd: HWND) {
+    // SAFETY: plain FFI call.
+    unsafe {
+        let _ = InvalidateRect(Some(hwnd), None, true);
+    }
+}
+
 /// Synchronous `SendMessageW`.
 pub fn send_message(hwnd: HWND, msg: u32, wparam: usize, lparam: isize) -> isize {
     // SAFETY: plain FFI call.
@@ -412,6 +435,27 @@ pub fn release_capture() {
     unsafe {
         let _ = ReleaseCapture();
     }
+}
+
+/// `SetCursor` with a stock or WebView2-provided cursor handle.
+pub fn set_cursor(cursor: *mut core::ffi::c_void) {
+    // SAFETY: plain FFI call.
+    unsafe {
+        let _ = SetCursor(Some(HICON(cursor)));
+    }
+}
+
+/// `LoadCursorW(NULL, IDC_*)` for a system cursor resource id
+/// (`CoreWebView2.SystemCursorId` reports the IDC_* value, e.g. 32512).
+pub fn load_system_cursor(id: u32) -> *mut core::ffi::c_void {
+    // SAFETY: static resource name, no instance.
+    unsafe { LoadCursorW(None, PCWSTR(id as usize as *const u16)).0 }
+}
+
+/// `GetDpiForWindow` for a live hwnd.
+pub fn dpi_of(hwnd: HWND) -> u32 {
+    // SAFETY: plain FFI call.
+    unsafe { GetDpiForWindow(hwnd) }
 }
 
 /// Requests `WM_MOUSELEAVE` for `hwnd`.

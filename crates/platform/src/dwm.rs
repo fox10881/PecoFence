@@ -92,6 +92,15 @@ pub fn sync_app_glass(hwnd: HWND, effect: &str, argb: Option<u32>) {
     if !is_composition_enabled() {
         return;
     }
+    // The transparent composition WebView reveals the host window surface,
+    // so the material must live on that surface: extending the DWM frame
+    // across the whole client area turns it into a sheet of glass that
+    // carries the system backdrop / accent material beneath the page.
+    let _ = if effect.is_empty() {
+        retract_frame_from_client_area(hwnd)
+    } else {
+        extend_frame_into_entire_client_area(hwnd)
+    };
     let tint = argb.map(argb_to_abgr).unwrap_or(0);
     match effect {
         "mica" => {
@@ -213,6 +222,18 @@ pub fn extend_frame_into_entire_client_area(hwnd: HWND) -> Result<()> {
         cxRightWidth: -1,
         cyTopHeight: -1,
         cyBottomHeight: -1,
+    };
+    // SAFETY: margins outlives the call.
+    unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins).ok() }
+}
+
+/// Restores the normal DWM frame after `extend_frame_into_entire_client_area`.
+fn retract_frame_from_client_area(hwnd: HWND) -> Result<()> {
+    let margins = MARGINS {
+        cxLeftWidth: 0,
+        cxRightWidth: 0,
+        cyTopHeight: 0,
+        cyBottomHeight: 0,
     };
     // SAFETY: margins outlives the call.
     unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins).ok() }

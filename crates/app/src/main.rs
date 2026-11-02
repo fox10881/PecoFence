@@ -22,6 +22,7 @@ mod settings_host;
 mod shadow;
 mod share_log;
 mod state;
+mod webview_comp;
 
 use pecofence_platform::com::OleGuard;
 use pecofence_platform::window;

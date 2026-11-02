@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 windows-core = { workspace = true }
-windows-webview = { workspace = true }
+windows = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

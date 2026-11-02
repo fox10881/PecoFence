@@ -760,6 +760,9 @@ impl App {
                     self.post_show_fence(fence);
                 }
                 self.show_pending_feedback();
+                // The initial `set_glass` post can land before the page's
+                // message listener exists — re-push now that it is live.
+                self.sync_app_glass();
             }
             // The glass editor's own protocol — fe_glass.html is the only page
             // that speaks it, so routing by type stays unambiguous.
@@ -772,6 +775,9 @@ impl App {
                     window::show_maximized(h.hwnd());
                     window::bring_to_front(h.hwnd());
                 }
+                // Same subscription race as the settings page — the first
+                // `set_glass` post can precede the listener.
+                self.sync_app_glass();
             }
             Some("feApply") => self.apply_fe_glass(&v),
             Some("feCancel") => {
