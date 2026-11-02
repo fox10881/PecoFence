@@ -95,7 +95,12 @@ pub fn sync_app_glass(hwnd: HWND, effect: &str, argb: Option<u32>) {
     // NOTE: the client surface must stay untouched — the composition
     // WebView composites it; glass extension makes it an opaque fill.
     // Real material lives on the frame only (DWMSBT/accent below).
-    let tint = argb.map(argb_to_abgr).unwrap_or(0);
+    // Alpha 0x00 in any accent gradient is the DWM "default accent
+    // colour" sentinel, not transparency — floor every tint at 0x01.
+    let tint = argb
+        .map(|a| (a & 0x00ff_ffff) | ((a >> 24).max(1) << 24))
+        .map(argb_to_abgr)
+        .unwrap_or(0x0100_0000);
     match effect {
         "mica" => {
             let _ = set_system_backdrop(hwnd, SystemBackdrop::MainWindow);
@@ -105,11 +110,11 @@ pub fn sync_app_glass(hwnd: HWND, effect: &str, argb: Option<u32>) {
         }
         "acrylic" | "blur" => {
             // The client is already truly see-through, so the accent's
-            // color must stay nearly invisible — 0x05 alpha arms the
-            // acrylic material without painting a visible tint layer
-            // (0x00 is treated as 'disabled' on some builds).
-            let clear =
-                argb.map(|a| (a & 0x00ff_ffff) | (u32::min(a >> 24, 0x05) << 24));
+            // color must stay nearly invisible — alpha clamps to
+            // [0x01, 0x05]: 0x00 is NOT "no tint", it's the DWM sentinel
+            // that falls back to the default accent colour at full
+            // opacity (the solid-blue bug at slider 0).
+            let clear = argb.map(|a| (a & 0x00ff_ffff) | ((a >> 24).clamp(1, 0x05) << 24));
             let _ = set_accent_policy(
                 hwnd,
                 ACCENT_ENABLE_ACRYLICBLURBEHIND,
