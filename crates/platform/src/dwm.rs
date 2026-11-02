@@ -29,10 +29,9 @@ struct WindowCompositionAttributeData {
 const WCA_ACCENT_POLICY: u32 = 19;
 const ACCENT_DISABLED: u32 = 0;
 const ACCENT_ENABLE_TRANSPARENTGRADIENT: u32 = 2;
-/// Acrylic accent state — kept for the Explorer-mirror path's reference;
-/// our own windows use `TRANSPARENTGRADIENT` (see `sync_app_glass`).
-#[allow(dead_code)]
 const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
+/// `accent_flags` bit for the standard acrylic tint path.
+const ACCENT_FLAG_ACRYLIC: u32 = 0x2;
 
 /// `#AARRGGBB` → `AABBGGRR` (`AccentPolicy::gradient_color` order).
 fn argb_to_abgr(argb: u32) -> u32 {
@@ -105,15 +104,16 @@ pub fn sync_app_glass(hwnd: HWND, effect: &str, argb: Option<u32>) {
             let _ = set_system_backdrop(hwnd, SystemBackdrop::TabbedWindow);
         }
         "acrylic" | "blur" => {
-            // The client is already truly see-through — a frosted acrylic
-            // layer would double-dim it. Transparent-gradient carries the
-            // user's tint at a clarity cap (~12%) so the backdrop stays
-            // visible; below the cap the user's own alpha passes through.
-            let clear = argb.map(|a| (a & 0x00ff_ffff) | (u32::min(a >> 24, 0x20) << 24));
+            // The client is already truly see-through, so the accent's
+            // color must stay nearly invisible — 0x05 alpha arms the
+            // acrylic material without painting a visible tint layer
+            // (0x00 is treated as 'disabled' on some builds).
+            let clear =
+                argb.map(|a| (a & 0x00ff_ffff) | (u32::min(a >> 24, 0x05) << 24));
             let _ = set_accent_policy(
                 hwnd,
-                ACCENT_ENABLE_TRANSPARENTGRADIENT,
-                0,
+                ACCENT_ENABLE_ACRYLICBLURBEHIND,
+                ACCENT_FLAG_ACRYLIC,
                 clear.map(argb_to_abgr).unwrap_or(0),
             );
         }
