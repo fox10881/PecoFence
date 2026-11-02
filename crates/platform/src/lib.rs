@@ -73,6 +73,7 @@ pub mod file_explorer_styler;
 pub mod filedialog;
 pub mod fileinfo;
 pub mod fonts;
+pub mod frameless;
 pub mod frameclock;
 pub mod hash;
 pub mod hotkey;

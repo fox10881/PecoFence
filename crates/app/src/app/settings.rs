@@ -763,6 +763,14 @@ impl App {
                 // The initial `set_glass` post can land before the page's
                 // message listener exists — re-push now that it is live.
                 self.sync_app_glass();
+                // Same race for the window state used by the custom
+                // titlebar's maximize/restore glyph.
+                if let Some(h) = self.settings.as_ref() {
+                    h.post_json(&format!(
+                        "{{\"t\":\"wstate\",\"max\":{}}}",
+                        pecofence_platform::frameless::is_zoomed(h.hwnd())
+                    ));
+                }
             }
             // The glass editor's own protocol — fe_glass.html is the only page
             // that speaks it, so routing by type stays unambiguous.
@@ -778,6 +786,12 @@ impl App {
                 // Same subscription race as the settings page — the first
                 // `set_glass` post can precede the listener.
                 self.sync_app_glass();
+                if let Some(h) = self.fe_glass.as_ref() {
+                    h.post_json(&format!(
+                        "{{\"t\":\"wstate\",\"max\":{}}}",
+                        pecofence_platform::frameless::is_zoomed(h.hwnd())
+                    ));
+                }
             }
             Some("feApply") => self.apply_fe_glass(&v),
             Some("feCancel") => {

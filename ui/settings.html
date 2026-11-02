@@ -17,7 +17,7 @@
   })();
 </script>
 <script src="i18n.js"></script>
-<title>PecoFence 设置</title>
+<title data-i18n="PecoFence 设置">PecoFence 设置</title>
 <style>
   /* Self-contained: the WebView document is embedded in the executable and works offline.
      Tokens follow the Windows 11 Fluent palette; keep --sheet in sync with page_background
@@ -72,7 +72,13 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
   :root:not(.ready) *, :root:not(.ready) *::before, :root:not(.ready) *::after { transition: none !important; }
   .ic { font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-weight: 400; font-style: normal; }
   :focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
-  .app { display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; }
+  .app { display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: 32px minmax(0, 1fr); height: 100%; }
+  /* Frameless titlebar — same DIP layout as platform::frameless hit zones:
+     32px strip, right-aligned 3×46px buttons inset by the 6px resize edge. */
+  .tb { grid-column: 1 / -1; display: flex; align-items: stretch; justify-content: space-between; direction: ltr; }
+  .tb-t { display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: var(--text2); }
+  .tb-b { display: flex; margin-right: 6px; }
+  .tb-btn { width: 46px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 10px; }
 
   nav { padding: 12px 8px 16px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
   .brand { display: flex; align-items: center; gap: 12px; padding: 8px 12px 20px; }
@@ -407,6 +413,7 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
 </head>
 <body>
 <div class="app">
+  <header class="tb"><span class="tb-t" id="tbTitle"></span><span class="tb-b"><span class="ic tb-btn">&#xE921;</span><span class="ic tb-btn" id="tbMax">&#xE922;</span><span class="ic tb-btn">&#xE8BB;</span></span></header>
   <nav aria-label="设置导航">
     <div class="brand">
       <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M27 8H14a6 6 0 0 0-6 6v13M37 8h13a6 6 0 0 1 6 6v13M8 37v13a6 6 0 0 0 6 6h13M56 37v13a6 6 0 0 1-6 6H37" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><rect x="22" y="22" width="8" height="8" rx="2" fill="currentColor"/><rect x="35" y="22" width="8" height="8" rx="2" fill="currentColor" opacity=".65"/><rect x="22" y="35" width="8" height="8" rx="2" fill="currentColor" opacity=".65"/><rect x="35" y="35" width="8" height="8" rx="2" fill="currentColor"/></svg>
@@ -712,6 +719,7 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
   });
   const translateStatic = i18n.capture(document);
   translateStatic();
+  document.getElementById('tbTitle').textContent = document.title;
   const switchLabels = () => document.querySelectorAll('.switch-label').forEach(label => {
     label.children[0].textContent = t("开");
     label.children[1].textContent = t("关");
@@ -1695,6 +1703,10 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
       // translucent layer that lets it show through the client area.
       document.documentElement.style.setProperty('--sheet', m.sheet);
       document.documentElement.classList.toggle('glass', !!m.armed);
+    }
+    else if (m.type === 'wstate') {
+      const el = document.getElementById('tbMax');
+      if (el) el.innerHTML = m.max ? '&#xE923;' : '&#xE922;';
     }
     else if (m.type === 'themeSwitchPrompt') {
       // Dirty-switch dialog: the backend intercepted a gallery Apply; the decision goes

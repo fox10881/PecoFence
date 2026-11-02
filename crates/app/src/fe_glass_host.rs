@@ -7,12 +7,12 @@
 //! `feToast` with `post_json`.
 
 use crate::commands::{Command, CommandQueue};
-use crate::settings_host::{WebEnvironment, glass_message};
+use crate::settings_host::{glass_message, WebEnvironment};
 use crate::webview_comp::CompWebview;
 use pecofence_platform::window::{
-    self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
+    self, style, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass,
 };
-use pecofence_platform::{HWND, RECT, dwm, monitors, msg};
+use pecofence_platform::{dwm, frameless, monitors, msg, HWND, RECT};
 use pecofence_render::ThemeMode;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -72,11 +72,19 @@ impl FeGlassHost {
             Box::new(
                 move |hwnd: HWND, message: u32, wparam: usize, lparam: isize| -> Option<isize> {
                     match message {
+                        // Frameless: client covers the whole window; hit
+                        // zones supply drag, resize, and caption buttons.
+                        msg::WM_NCCALCSIZE => Some(frameless::calc_size(hwnd, wparam, lparam)),
+                        msg::WM_NCHITTEST => Some(frameless::hit_test(hwnd, lparam)),
                         msg::WM_SIZE => {
                             let w = msg::lo_i16(lparam);
                             let h = msg::hi_i16(lparam);
                             if let Some(c) = state.borrow().comp.as_ref() {
                                 c.set_bounds(w, h);
+                                c.post_json(&format!(
+                                    "{{\"t\":\"wstate\",\"max\":{}}}",
+                                    frameless::is_zoomed(hwnd)
+                                ));
                             }
                             Some(0)
                         }
@@ -171,6 +179,9 @@ impl FeGlassHost {
             .style(style::OVERLAPPEDWINDOW | style::CLIPCHILDREN)
             .bounds(r.left, r.top, r.right - r.left, r.bottom - r.top)
             .create(handler)?;
+        // The create-time NCCALCSIZE ran before our handler installed —
+        // re-run it so the frameless client actually covers the window.
+        let _ = window.recalculate_frame();
         let hwnd = window.hwnd();
         let _ = dwm::set_immersive_dark_mode(hwnd, matches!(mode, ThemeMode::Dark));
         apply_caption(hwnd, mode, false);

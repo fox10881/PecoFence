@@ -9,7 +9,7 @@ use crate::webview_comp::{CompEnvironment, CompWebview};
 use pecofence_platform::window::{
     self, style, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass,
 };
-use pecofence_platform::{dwm, monitors, msg, HWND, RECT};
+use pecofence_platform::{dwm, frameless, monitors, msg, HWND, RECT};
 use pecofence_render::ThemeMode;
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -128,11 +128,20 @@ impl SettingsHost {
             Box::new(
                 move |hwnd: HWND, message: u32, wparam: usize, lparam: isize| -> Option<isize> {
                     match message {
+                        // Frameless: the client covers the whole window
+                        // (native caption hidden); hit zones supply drag,
+                        // resize, and the page-drawn caption buttons.
+                        msg::WM_NCCALCSIZE => Some(frameless::calc_size(hwnd, wparam, lparam)),
+                        msg::WM_NCHITTEST => Some(frameless::hit_test(hwnd, lparam)),
                         msg::WM_SIZE => {
                             let w = msg::lo_i16(lparam);
                             let h = msg::hi_i16(lparam);
                             if let Some(c) = state.borrow().comp.as_ref() {
                                 c.set_bounds(w, h);
+                                c.post_json(&format!(
+                                    "{{\"t\":\"wstate\",\"max\":{}}}",
+                                    frameless::is_zoomed(hwnd)
+                                ));
                             }
                             Some(0)
                         }
@@ -251,6 +260,9 @@ impl SettingsHost {
             .style(style::OVERLAPPEDWINDOW | style::CLIPCHILDREN)
             .bounds(x, y, w, h)
             .create(handler)?;
+        // The create-time NCCALCSIZE ran before our handler installed —
+        // re-run it so the frameless client actually covers the window.
+        let _ = window.recalculate_frame();
         let hwnd = window.hwnd();
         tracing::debug!(?hwnd, "settings: host window created");
         let _ = dwm::set_immersive_dark_mode(hwnd, matches!(mode, ThemeMode::Dark));
