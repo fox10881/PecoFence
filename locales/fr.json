@@ -702,5 +702,9 @@
   "OS26 Merged Top Bar": "OS26 barre supérieure fusionnée",
   "ZEUS macOS Single Bar": "ZEUS barre unique macOS",
   "Compact Explorer 11": "Compact Explorer 11",
-  "Floating Spaced Bars": "Barres flottantes espacées"
+  "Floating Spaced Bars": "Barres flottantes espacées",
+  "刷新外观 / 重启资源管理器": "Actualiser l’apparence / Redémarrer l’Explorateur",
+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Actualiser réapplique les effets actuels ; ne redémarrez l’Explorateur qu’en cas de blocage",
+  "刷新": "Actualiser",
+  "外观已刷新": "Apparence actualisée"
 }

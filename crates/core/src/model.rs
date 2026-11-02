@@ -1957,6 +1957,18 @@ impl Config {
     /// their manifest with the listing's names so a machine without that folder gets a
     /// graceful virtual fence.
     pub fn make_theme_portable(&mut self) {
+        // fe_* are local device preferences — themes never carry them (the
+        // apply side preserves the local values, but the archive shouldn't
+        // describe a foreign machine's Explorer styling at all).
+        let defaults = Settings::default();
+        self.settings.fe_effect = defaults.fe_effect;
+        self.settings.fe_clear_address = defaults.fe_clear_address;
+        self.settings.fe_clear_bar_bg = defaults.fe_clear_bar_bg;
+        self.settings.fe_clear_winui_bg = defaults.fe_clear_winui_bg;
+        self.settings.fe_show_line = defaults.fe_show_line;
+        self.settings.fe_layout = defaults.fe_layout;
+        self.settings.fe_light_rgba = defaults.fe_light_rgba;
+        self.settings.fe_dark_rgba = defaults.fe_dark_rgba;
         for layout in &mut self.layouts {
             for fence in &mut layout.fences {
                 if fence.kind == FenceKind::FolderPortal {

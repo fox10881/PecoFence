@@ -702,5 +702,9 @@
   "OS26 Merged Top Bar": "OS26 統合トップバー",
   "ZEUS macOS Single Bar": "ZEUS macOS シングルバー",
   "Compact Explorer 11": "Compact Explorer 11",
-  "Floating Spaced Bars": "フローティングバー"
+  "Floating Spaced Bars": "フローティングバー",
+  "刷新外观 / 重启资源管理器": "外観を更新 / エクスプローラーを再起動",
+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "更新は現在の視覚効果を再適用します。エクスプローラーの再起動は不具合時のみ",
+  "刷新": "更新",
+  "外观已刷新": "外観を更新しました"
 }

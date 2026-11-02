@@ -704,6 +704,24 @@ pub fn ensure() {
     deliver_all();
 }
 
+/// Manual refresh: forces a full re-delivery of the armed state — both epochs
+/// bump, so every live pid gets `EBMU`+`EBML` (fresh config read) and the
+/// XAML wire again. Dead command windows re-inject through
+/// `ensure_resident_at`'s IsWindow probe; nothing restarts Explorer.
+pub fn rearm() {
+    if !is_armed() {
+        return;
+    }
+    if let Some(fe) = lock().as_mut() {
+        fe.epoch += 1;
+        fe.xaml_epoch += 1;
+        fe.delivered.clear();
+        fe.xaml_delivered.clear();
+    }
+    deliver_all();
+    tracing::info!("ExplorerBlurMica re-armed on manual refresh");
+}
+
 /// App shutdown — unload EBM everywhere so Explorer returns to stock;
 /// the deployed files stay for the next run.
 pub fn shutdown() {

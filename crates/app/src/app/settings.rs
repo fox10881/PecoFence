@@ -175,6 +175,12 @@ static VIDEO_SWAP_EPOCH: AtomicU64 = AtomicU64::new(0);
 /// installs the result only while the epoch still matches config.
 pub(super) struct VideoSwap {
     epoch: u64,
+    /// The swap's full effective target — a pending swap for the identical
+    /// target is kept instead of spawning a duplicate (a theme apply calls
+    /// `sync_video_wallpaper` several times; each spawn used to invalidate the
+    /// previous worker, killing fresh players at `frame_counter=1`).
+    path: PathBuf,
+    letterbox: bool,
     /// Recovery after shell loss vs. a user pick — the accept path logs/toasts
     /// them differently.
     reattach: bool,
@@ -240,6 +246,20 @@ impl App {
         let mut new_settings = self.state.config.settings.clone();
         if pecofence_platform::process::is_packaged() {
             new_settings.autostart = old_settings.autostart;
+        }
+        if matches!(source, ConfigSource::Theme | ConfigSource::Retune) {
+            // fe_* are local device preferences — a theme never carries them.
+            // Without this preserve, an archive whose `fe_effect=""` (authored
+            // before the feature, or stripped on pack) broadcasts FELR/EBMU
+            // disarm and wipes the user's armed Explorer styling on every apply.
+            new_settings.fe_effect = old_settings.fe_effect.clone();
+            new_settings.fe_clear_address = old_settings.fe_clear_address;
+            new_settings.fe_clear_bar_bg = old_settings.fe_clear_bar_bg;
+            new_settings.fe_clear_winui_bg = old_settings.fe_clear_winui_bg;
+            new_settings.fe_show_line = old_settings.fe_show_line;
+            new_settings.fe_layout = old_settings.fe_layout.clone();
+            new_settings.fe_light_rgba = old_settings.fe_light_rgba.clone();
+            new_settings.fe_dark_rgba = old_settings.fe_dark_rgba.clone();
         }
         if !matches!(source, ConfigSource::Theme | ConfigSource::Retune) {
             // A plain config import/backup restore severs the link to whatever theme
@@ -660,6 +680,9 @@ impl App {
     }
 
     fn settings_error(&self, text: &str) {
+        // The toast is the whole UI surface — without this line a failed write
+        // or rejected apply is undiagnosable in the log.
+        tracing::error!(error = %text, "settings error shown to user");
         if let Some(h) = &self.settings {
             h.post_json(
                 &serde_json::json!({ "type": "toast", "text": text, "error": true }).to_string(),
@@ -1011,6 +1034,7 @@ impl App {
                     }
                 }
                 Some("openFeGlass") => self.open_fe_glass(),
+                Some("refreshVisual") => self.refresh_visual_state(),
                 Some("restartExplorer") => {
                     // Failsafe for a stuck taskbar/desktop: kill the shell and
                     // let Windows' own respawn (or our detached spawn) bring it
@@ -1375,11 +1399,17 @@ impl App {
         };
         let path = PathBuf::from(&path_str);
         let letterbox = self.contain_background();
-        if self.video_swap.is_none()
-            && self
-                .wmf_player
-                .as_ref()
-                .is_some_and(|p| p.path() == path && p.is_alive() && p.letterbox() == letterbox)
+        if self
+            .video_swap
+            .as_ref()
+            .is_some_and(|s| s.path == path && s.letterbox == letterbox)
+        {
+            return; // the wanted target is already in flight — keep it
+        }
+        if self
+            .wmf_player
+            .as_ref()
+            .is_some_and(|p| p.path() == path && p.is_alive() && p.letterbox() == letterbox)
         {
             return;
         }
@@ -1395,6 +1425,8 @@ impl App {
         let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
         self.video_swap = Some(VideoSwap {
             epoch,
+            path: path.clone(),
+            letterbox,
             reattach: false,
             toast: false,
             rx: spawn_video_swap(old, path, letterbox, epoch),
@@ -1470,10 +1502,6 @@ impl App {
     /// is mid-boot retries on the next poll.
     pub(super) fn ensure_video_wallpaper(&mut self) {
         self.poll_video_swap();
-        // A swap is already in flight — starting another player here would race it.
-        if self.video_swap.is_some() {
-            return;
-        }
         let Some(path_str) = self
             .state
             .config
@@ -1484,6 +1512,17 @@ impl App {
         else {
             return;
         };
+        // A swap for this exact target is already in flight — keep it; a swap
+        // for a different target gets superseded by the spawn below.
+        let path = PathBuf::from(&path_str);
+        let letterbox = self.contain_background();
+        if self
+            .video_swap
+            .as_ref()
+            .is_some_and(|s| s.path == path && s.letterbox == letterbox)
+        {
+            return;
+        }
         if self.wmf_player.as_ref().is_some_and(|p| p.is_alive()) {
             return;
         }
@@ -1494,17 +1533,17 @@ impl App {
         }
         let old = self.wmf_player.take();
         self.static_under_video = None;
-        let path = PathBuf::from(&path_str);
         if !path.is_file() {
             if let Some(p) = old {
                 reap_video_player(p);
             }
             return;
         }
-        let letterbox = self.contain_background();
         let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
         self.video_swap = Some(VideoSwap {
             epoch,
+            path: path.clone(),
+            letterbox,
             reattach: true,
             toast: false,
             rx: spawn_video_swap(old, path, letterbox, epoch),
@@ -1628,6 +1667,17 @@ impl App {
 
     pub(super) fn apply_video_wallpaper(&mut self, path: &Path) {
         tracing::info!(path = %path.display(), "applying video wallpaper from settings");
+        let letterbox = self.contain_background();
+        // The same pick is already in flight (e.g. a theme apply racing a user
+        // pick) — keep it and make sure its completion toasts.
+        if let Some(s) = self
+            .video_swap
+            .as_mut()
+            .filter(|s| s.path == path && s.letterbox == letterbox)
+        {
+            s.toast = true;
+            return;
+        }
         self.invalidate_video_swap();
         if let Some(p) = self.wmf_player.take() {
             reap_video_player(p);
@@ -1638,9 +1688,11 @@ impl App {
         let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
         self.video_swap = Some(VideoSwap {
             epoch,
+            path: path.to_path_buf(),
+            letterbox,
             reattach: false,
             toast: true,
-            rx: spawn_video_swap(None, path.to_path_buf(), self.contain_background(), epoch),
+            rx: spawn_video_swap(None, path.to_path_buf(), letterbox, epoch),
         });
     }
 
@@ -1687,16 +1739,26 @@ impl App {
         let player_alive = player.is_some_and(|p| p.is_alive());
         let player_path = player.map(|p| p.path().to_path_buf());
         let player_file = player_path.as_ref().is_some_and(|p| p.is_file());
+        // A swap in flight IS the video background — the player handle is None
+        // for its whole duration, so callers deciding "is the background the
+        // video?" (retune, theme pack) must see the pending target, not SPI's
+        // static fallback. Missing this made a mid-swap retune retire the video.
+        let swap_path = self
+            .video_swap
+            .as_ref()
+            .map(|s| s.path.clone())
+            .filter(|p| p.is_file());
         let chosen = if player_alive && player_file {
             player_path.clone()
         } else {
-            static_src.clone()
+            swap_path.clone().or(static_src.clone())
         };
         tracing::info!(
             player_present = player.is_some(),
             player_alive,
             player_path = ?player_path,
             player_file,
+            swap_pending = ?swap_path,
             spi_wallpaper = ?spi,
             idw_wallpaper = ?idw.as_ref().map(|o| o.as_ref().map(|p| p.display().to_string())),
             static_under_video = ?self.static_under_video,
@@ -2812,6 +2874,25 @@ impl App {
         // The apply's own writes do not count as user edits: whatever the incoming theme
         // normalized is the new baseline the dirty flag measures against.
         self.theme_dirty.set(false);
+    }
+
+    /// The Refresh button: re-delivers the *armed in-memory state* to the shell —
+    /// no taskkill, no theme reload, nothing persisted. Dead resident command
+    /// windows re-inject through `ensure_resident_at`'s `IsWindow` probe, and a
+    /// lost desktop layer re-attaches via `ensure_video_wallpaper`. Safe to
+    /// click repeatedly: every leg is idempotent (epoch/on-change gated).
+    fn refresh_visual_state(&mut self) {
+        pecofence_platform::file_explorer_styler::rearm();
+        pecofence_platform::taskbar_styler::ensure();
+        pecofence_platform::start_menu::ensure();
+        pecofence_platform::notification_center::ensure();
+        self.ensure_video_wallpaper();
+        if let Some(a) = self.anchor.borrow_mut().as_mut() {
+            a.reanchor("manual refresh");
+        }
+        self.refresh_visuals(true);
+        self.settings_toast(pecofence_core::i18n::text("外观已刷新"));
+        tracing::info!("manual visual refresh: state re-delivered to shell");
     }
 
     pub(super) fn refresh_language(&mut self) {

@@ -702,5 +702,9 @@
   "OS26 Merged Top Bar": "OS26 合併頂列",
   "ZEUS macOS Single Bar": "ZEUS macOS 單一列",
   "Compact Explorer 11": "Compact Explorer 11",
-  "Floating Spaced Bars": "浮動間隔列"
+  "Floating Spaced Bars": "浮動間隔列",
+  "刷新外观 / 重启资源管理器": "重新整理外觀 / 重新啟動檔案總管",
+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "重新整理會重新套用目前的視覺效果；檔案總管僅在異常時才需要重新啟動",
+  "刷新": "重新整理",
+  "外观已刷新": "外觀已重新整理"
 }
