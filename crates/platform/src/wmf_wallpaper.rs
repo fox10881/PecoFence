@@ -25,10 +25,10 @@ use crate::wmf_bindings::{
     GUID_WICPixelFormat24bppBGR, GetParent, HALFTONE, ID3D11Device, ID3D11DeviceContext,
     ID3D11Texture2D, ID3D11VideoContext, ID3D11VideoDevice, ID3D11VideoProcessor,
     ID3D11VideoProcessorEnumerator, ID3D11VideoProcessorInputView, ID3D11VideoProcessorOutputView,
-    IDCompositionDesktopDevice, IDCompositionTarget, IDCompositionVisual2, IDXGIAdapter,
-    IDXGIDevice, IDXGIFactory2, IDXGIOutput, IDXGISwapChain1, IMF2DBuffer, IMFAttributes,
-    IMFDXGIBuffer, IMFDXGIDeviceManager, IMFMediaBuffer, IMFSample, IMFSourceReader, IMFTransform,
-    IWICBitmapEncoder, IWICBitmapFrameEncode, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE,
+    IDCompositionDesktopDevice, IDCompositionTarget, IDCompositionVisual, IDCompositionVisual2,
+    IDXGIAdapter, IDXGIDevice, IDXGIFactory2, IDXGIOutput, IDXGISwapChain1, IMF2DBuffer,
+    IMFAttributes, IMFDXGIBuffer, IMFDXGIDeviceManager, IMFMediaBuffer, IMFSample, IMFSourceReader,
+    IMFTransform, IWICBitmapEncoder, IWICBitmapFrameEncode, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE,
     MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READER_ALL_STREAMS,
     MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED,
     MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR, MF_VERSION, MFCreateAttributes,
@@ -833,61 +833,86 @@ unsafe fn attach_to_desktop_worker(
             return Err("Progman window not found".to_string());
         }
 
-        // Spawn WorkerW behind the desktop icons via 0x052C.
-        let r1 = SendMessageTimeoutW(
-            progman,
-            WM_SPAWN_WORKER,
-            WPARAM(0xD),
-            LPARAM(1),
-            SMTO_NORMAL,
-            1000,
-            None,
-        );
-        let r2 = SendMessageTimeoutW(
-            progman,
-            WM_SPAWN_WORKER,
-            WPARAM(0),
-            LPARAM(0),
-            SMTO_NORMAL,
-            1000,
-            None,
-        );
-
         let vw = GetSystemMetrics(SM_CXVIRTUALSCREEN).max(1);
         let vh = GetSystemMetrics(SM_CYVIRTUALSCREEN).max(1);
 
         // Locate SHELLDLL_DefView and WorkerW for both Modern (24H2+) and Legacy (<=23H2) shells.
-        let def_under_progman = FindWindowExW(
-            Some(progman),
-            None,
-            windows_core::w!("SHELLDLL_DefView"),
-            PCWSTR::null(),
-        );
-        let worker_under_progman = FindWindowExW(
-            Some(progman),
-            None,
-            windows_core::w!("WorkerW"),
-            PCWSTR::null(),
-        );
+        // Enumerate BEFORE spawning: 0x052C creates a NEW WorkerW every time, so firing it
+        // on every wallpaper attach leaks zombie WorkerW windows (and their redirection
+        // surfaces) inside explorer.exe — the empty WorkerW from a previous attach is a
+        // perfectly good host and must be reused.
+        let find_hosts = |progman: HWND| -> (HWND, HWND, HWND) {
+            let def_under_progman = FindWindowExW(
+                Some(progman),
+                None,
+                windows_core::w!("SHELLDLL_DefView"),
+                PCWSTR::null(),
+            );
+            let worker_under_progman = FindWindowExW(
+                Some(progman),
+                None,
+                windows_core::w!("WorkerW"),
+                PCWSTR::null(),
+            );
 
-        let mut top_worker = HWND::default();
-        if def_under_progman.0.is_null() {
-            for top in desktop::top_level_windows() {
-                let def = FindWindowExW(
-                    Some(top),
-                    None,
-                    windows_core::w!("SHELLDLL_DefView"),
-                    PCWSTR::null(),
-                );
-                if !def.0.is_null() {
-                    let w =
-                        FindWindowExW(None, Some(top), windows_core::w!("WorkerW"), PCWSTR::null());
-                    if !w.0.is_null() {
-                        top_worker = w;
-                        break;
+            let mut top_worker = HWND::default();
+            if def_under_progman.0.is_null() {
+                for top in desktop::top_level_windows() {
+                    let def = FindWindowExW(
+                        Some(top),
+                        None,
+                        windows_core::w!("SHELLDLL_DefView"),
+                        PCWSTR::null(),
+                    );
+                    if !def.0.is_null() {
+                        let w = FindWindowExW(
+                            None,
+                            Some(top),
+                            windows_core::w!("WorkerW"),
+                            PCWSTR::null(),
+                        );
+                        if !w.0.is_null() {
+                            top_worker = w;
+                            break;
+                        }
                     }
                 }
             }
+            (def_under_progman, worker_under_progman, top_worker)
+        };
+
+        let (mut def_under_progman, mut worker_under_progman, mut top_worker) = find_hosts(progman);
+        let mut spawned = false;
+        if def_under_progman.0.is_null()
+            && worker_under_progman.0.is_null()
+            && top_worker.0.is_null()
+        {
+            // No usable host exists — spawn WorkerW behind the desktop icons via 0x052C.
+            let r1 = SendMessageTimeoutW(
+                progman,
+                WM_SPAWN_WORKER,
+                WPARAM(0xD),
+                LPARAM(1),
+                SMTO_NORMAL,
+                1000,
+                None,
+            );
+            let r2 = SendMessageTimeoutW(
+                progman,
+                WM_SPAWN_WORKER,
+                WPARAM(0),
+                LPARAM(0),
+                SMTO_NORMAL,
+                1000,
+                None,
+            );
+            spawned = true;
+            tracing::debug!(
+                spawn_r1 = r1.0,
+                spawn_r2 = r2.0,
+                "wmf: spawned WorkerW via 0x052C"
+            );
+            (def_under_progman, worker_under_progman, top_worker) = find_hosts(progman);
         }
 
         let host = if !top_worker.0.is_null() {
@@ -937,8 +962,7 @@ unsafe fn attach_to_desktop_worker(
             ?host,
             ?video_hwnd,
             ?prev_parent,
-            spawn_r1 = r1.0,
-            spawn_r2 = r2.0,
+            spawned,
             lwa_ok = lwa_ok.as_bool(),
             swp_ok = swp_ok.as_bool(),
             vw,
@@ -1351,11 +1375,12 @@ struct GpuPipeline {
     vp: ID3D11VideoProcessor,
     swapchain: IDXGISwapChain1,
     out_view: ID3D11VideoProcessorOutputView,
-    // Keeps the DComp device alive for the target's lifetime; swap-chain presents do
-    // not need it (Commit happens once at init).
-    _dcomp: IDCompositionDesktopDevice,
-    _target: IDCompositionTarget,
-    _visual: IDCompositionVisual2,
+    // DComp device/target/visual bind the swap chain to the video HWND. Target and
+    // visual are `Option` so they can be released independently on rebind (HWND
+    // death) and detached before release on teardown (HWND still alive).
+    dcomp: IDCompositionDesktopDevice,
+    target: Option<IDCompositionTarget>,
+    visual: Option<IDCompositionVisual2>,
     staging: ID3D11Texture2D,
     src_rect: crate::wmf_bindings::RECT,
     dst_rect: crate::wmf_bindings::RECT,
@@ -1580,9 +1605,9 @@ impl GpuPipeline {
                 vp,
                 swapchain,
                 out_view,
-                _dcomp: dcomp,
-                _target: target,
-                _visual: visual,
+                dcomp,
+                target: Some(target),
+                visual: Some(visual),
                 staging,
                 src_rect,
                 dst_rect,
@@ -1592,6 +1617,68 @@ impl GpuPipeline {
                 win_h,
                 letterbox,
             })
+        }
+    }
+
+    /// Rebinds the (HWND-agnostic) composition swap chain to a fresh video window
+    /// after the old one died — WorkerW/explorer rebuilds can destroy the attached
+    /// HWND out from under us. `IDCompositionTarget` is per-HWND and cannot be
+    /// retargeted, so the dead-HWND leftovers are released WITHOUT committing (the
+    /// compositor already orphaned them), then a new target/visual pair is created.
+    /// SAFETY: DComp calls on a live device; `hwnd` is a newly attached window.
+    unsafe fn rebind_target(&mut self, hwnd: HWND) -> std::result::Result<(), String> {
+        unsafe {
+            self.visual = None;
+            self.target = None;
+            let target = self
+                .dcomp
+                .CreateTargetForHwnd(crate::wmf_bindings::HWND(hwnd.0), false)
+                .map_err(|e| format!("rebind CreateTargetForHwnd: {e}"))?;
+            let visual = self
+                .dcomp
+                .CreateVisual()
+                .map_err(|e| format!("rebind CreateVisual: {e}"))?;
+            visual
+                .SetContent(&self.swapchain)
+                .ok()
+                .map_err(|e| format!("rebind SetContent: {e}"))?;
+            target
+                .SetRoot(&visual)
+                .ok()
+                .map_err(|e| format!("rebind SetRoot: {e}"))?;
+            self.dcomp
+                .Commit()
+                .ok()
+                .map_err(|e| format!("rebind Commit: {e}"))?;
+            self.target = Some(target);
+            self.visual = Some(visual);
+            Ok(())
+        }
+    }
+
+    /// Releases the DComp composition. While the HWND is still alive this detaches
+    /// the visual tree FIRST — `SetContent(None)` → `SetRoot(None)` → `Commit` →
+    /// `WaitForCommitCompletion` — so DWM provably stops referencing the swap chain
+    /// before its COM objects are released. On a dead HWND the commit is skipped:
+    /// the target is already orphaned and calls on it would just error.
+    /// SAFETY: DComp calls on live interfaces; `hwnd_alive` must reflect `IsWindow`.
+    unsafe fn teardown(&mut self, hwnd_alive: bool) {
+        unsafe {
+            if hwnd_alive && self.target.is_some() {
+                if let Some(visual) = &self.visual {
+                    let _ = visual.SetContent(Option::<&IUnknown>::None);
+                }
+                if let Some(target) = &self.target {
+                    let _ = target.SetRoot(Option::<&IDCompositionVisual>::None);
+                }
+                let _ = self.dcomp.Commit();
+                // Deterministic release: wait for the compositor to consume the
+                // detach before the swap chain's ref is dropped — rapid wallpaper
+                // switches otherwise race DWM's outstanding surface references.
+                let _ = self.dcomp.WaitForCommitCompletion();
+            }
+            self.visual = None;
+            self.target = None;
         }
     }
 
@@ -1900,9 +1987,13 @@ unsafe fn run_gpu_wallpaper(
     };
 
     // Everything after attach runs under `result` so the window is always torn down.
-    let result = unsafe {
+    // The loop returns the FINAL (hwnd, host) pair — it re-attaches mid-flight when
+    // the WorkerW host is rebuilt out from under the video window.
+    let (final_hwnd, final_host, result) = unsafe {
         run_gpu_attached(
             hwnd,
+            host,
+            &class_name,
             letterbox,
             &device,
             &context,
@@ -1924,7 +2015,7 @@ unsafe fn run_gpu_wallpaper(
             startup_tx,
         )
     };
-    unsafe { detach_video_window(hwnd, host) };
+    unsafe { detach_video_window(final_hwnd, final_host) };
     result
 }
 
@@ -2021,10 +2112,15 @@ fn snap_to_vsync_grid(t: Instant, anchor: Instant, period: Duration) -> Instant 
 
 /// The post-attach body of [`run_gpu_wallpaper`]: builds the pipeline, presents frame 0,
 /// then runs the PTS-paced loop until `stop` or an unrecoverable GPU error.
+/// Returns the FINAL `(hwnd, host)` pair alongside the result: the loop re-creates and
+/// re-attaches the video window mid-flight when the WorkerW host dies, so the caller
+/// must detach whatever pair this returns, not the originals.
 /// SAFETY: all calls act on interfaces/windows created on this thread.
 #[allow(clippy::too_many_arguments)]
 unsafe fn run_gpu_attached(
-    hwnd: HWND,
+    mut hwnd: HWND,
+    mut host: HWND,
+    class_name: &[u16],
     letterbox: bool,
     device: &ID3D11Device,
     context: &ID3D11DeviceContext,
@@ -2044,196 +2140,258 @@ unsafe fn run_gpu_attached(
     wake: &(Mutex<()>, Condvar),
     latest_frame: &Mutex<Option<VideoFrame>>,
     startup_tx: &mpsc::SyncSender<std::result::Result<VideoFrame, String>>,
-) -> std::result::Result<(), String> {
+) -> (HWND, HWND, std::result::Result<(), String>) {
     unsafe {
-        let mut gp = GpuPipeline::new(
+        let mut gp = match GpuPipeline::new(
             hwnd, device, context, vid_w, vid_h, win_w, win_h, fps_num, fps_den, letterbox,
-        )?;
+        ) {
+            Ok(gp) => gp,
+            Err(e) => return (hwnd, host, Err(e)),
+        };
 
-        // Frame #0 straight to the screen through the GPU path.
-        gp.present(first_buf, first_tex, first_slice)?;
-        let thumb = gp.capture_thumb(first_tex, first_slice).unwrap_or_default();
-        if letterbox && !thumb.is_empty() {
-            // Blurred backdrop into both buffers: the video processor only writes the
-            // contain rect each frame, so the margins keep this fill forever.
-            let backdrop = crate::wallpaper::blurred_backdrop_bgra(
-                &thumb,
-                THUMB_W,
-                THUMB_H,
-                win_w as usize,
-                win_h as usize,
-            );
-            if let Err(e) = gp.fill_letterbox_backdrop(&backdrop) {
-                tracing::warn!(error = %e, "wmf: letterbox backdrop fill failed; margins show last frame");
+        let result = (|| -> std::result::Result<(), String> {
+            // Frame #0 straight to the screen through the GPU path.
+            gp.present(first_buf, first_tex, first_slice)?;
+            let thumb = gp.capture_thumb(first_tex, first_slice).unwrap_or_default();
+            if letterbox && !thumb.is_empty() {
+                // Blurred backdrop into both buffers: the video processor only writes the
+                // contain rect each frame, so the margins keep this fill forever.
+                let backdrop = crate::wallpaper::blurred_backdrop_bgra(
+                    &thumb,
+                    THUMB_W,
+                    THUMB_H,
+                    win_w as usize,
+                    win_h as usize,
+                );
+                if let Err(e) = gp.fill_letterbox_backdrop(&backdrop) {
+                    tracing::warn!(error = %e, "wmf: letterbox backdrop fill failed; margins show last frame");
+                }
             }
-        }
-        let _ = startup_tx.send(Ok(VideoFrame {
-            width: THUMB_W as u32,
-            height: THUMB_H as u32,
-            bgra: thumb,
-        }));
-        pump_thread_messages();
-
-        // PTS-anchored pacing: `pts0`/`clock0` pair the stream's start timestamp with
-        // the wall clock; each sample is due at clock0 + (pts - pts0). Late frames are
-        // dropped rather than presented, and the decoder's queue is drained on resume
-        // from pause the same way.
-        let mut pts0 = first.GetSampleTime().unwrap_or(0);
-        let mut clock0 = Instant::now();
-        let pacer = FramePacer::new();
-        if pacer.is_none() {
-            tracing::warn!(
-                "wmf: high-res timer unavailable; frame pacing falls back to OS timer resolution"
-            );
-        }
-        // Cadence snapping: measure the real vsync grid once (period + a phase-locked
-        // anchor), then decide whether the media interval is a non-integer multiple of
-        // it (e.g. 33.3 fps on 120 Hz = 3.6 vsyncs). If so the compositor must shorten
-        // one frame every few frames — the periodic hitch reported as "continuous
-        // stutter" in every player. When a whole number of vsyncs stays within ~12% of
-        // the media interval, pace to the snapped interval instead: playback runs a few
-        // percent fast/slow but every frame holds an even vsync count.
-        let vsync_grid = gp.measure_vsync_grid();
-        let cadence_step = vsync_grid.and_then(|(_, period)| {
-            let f = interval.as_secs_f64();
-            let snapped = (f / period.as_secs_f64()).round().max(1.0) * period.as_secs_f64();
-            ((snapped - f).abs() / f <= 0.12).then(|| Duration::from_secs_f64(snapped))
-        });
-        tracing::info!(
-            vsync_ms = vsync_grid.map(|(_, p)| p.as_secs_f64() * 1000.0),
-            media_ms = interval.as_secs_f64() * 1000.0,
-            snapped_ms = cadence_step.map(|s| s.as_secs_f64() * 1000.0),
-            "wmf: vsync grid measured; cadence snap decision"
-        );
-        let mut sample_index: u64 = 0;
-        let mut paused = false;
-        let mut last_visibility_check = Instant::now();
-        let mut frame_counter: u64 = 1;
-        let mut dropped: u64 = 0;
-        // One-frame surface FIFO: the media buffer from the *previous* present is kept
-        // alive so MF can't hand its surface back to the decoder while the GPU may
-        // still be reading it.
-        let mut pending_buf: Option<IMFMediaBuffer> = Some(first_buf.clone());
-        let mut dims_changed = false;
-
-        while !stop.load(Ordering::Relaxed) {
+            let _ = startup_tx.send(Ok(VideoFrame {
+                width: THUMB_W as u32,
+                height: THUMB_H as u32,
+                bgra: thumb,
+            }));
             pump_thread_messages();
 
-            if last_visibility_check.elapsed() >= Duration::from_millis(300) {
-                last_visibility_check = Instant::now();
-                // An Explorer restart or a wallpaper reset can destroy the attached window;
-                // keep decoding to a dead HWND would burn GPU forever on nothing.
-                if !IsWindow(Some(hwnd)).as_bool() {
-                    tracing::info!(
-                        frame_counter,
-                        "wmf: video window destroyed; stopping playback"
-                    );
-                    break;
-                }
-                let now_paused = should_pause_playback();
-                if now_paused != paused {
-                    paused = now_paused;
-                    tracing::info!(paused, frame_counter, "wmf: playback pause state changed");
-                    // The swap chain retains the last presented frame — no flush, no trim:
-                    // the desktop keeps a static wallpaper while paused.
-                }
+            // PTS-anchored pacing: `pts0`/`clock0` pair the stream's start timestamp with
+            // the wall clock; each sample is due at clock0 + (pts - pts0). Briefly-late
+            // frames are dropped rather than presented, while resume/rebind/stall events
+            // re-anchor the clock instead of draining the whole gap.
+            let mut pts0 = first.GetSampleTime().unwrap_or(0);
+            let mut clock0 = Instant::now();
+            let pacer = FramePacer::new();
+            if pacer.is_none() {
+                tracing::warn!(
+                    "wmf: high-res timer unavailable; frame pacing falls back to OS timer resolution"
+                );
             }
-            if paused {
-                if let Ok(guard) = wake.0.lock() {
-                    let _ = wake.1.wait_timeout(guard, Duration::from_millis(80));
-                }
-                continue;
-            }
+            // Cadence snapping: measure the real vsync grid once (period + a phase-locked
+            // anchor), then decide whether the media interval is a non-integer multiple of
+            // it (e.g. 33.3 fps on 120 Hz = 3.6 vsyncs). If so the compositor must shorten
+            // one frame every few frames — the periodic hitch reported as "continuous
+            // stutter" in every player. When a whole number of vsyncs stays within ~12% of
+            // the media interval, pace to the snapped interval instead: playback runs a few
+            // percent fast/slow but every frame holds an even vsync count.
+            let vsync_grid = gp.measure_vsync_grid();
+            let cadence_step = vsync_grid.and_then(|(_, period)| {
+                let f = interval.as_secs_f64();
+                let snapped = (f / period.as_secs_f64()).round().max(1.0) * period.as_secs_f64();
+                ((snapped - f).abs() / f <= 0.12).then(|| Duration::from_secs_f64(snapped))
+            });
+            tracing::info!(
+                vsync_ms = vsync_grid.map(|(_, p)| p.as_secs_f64() * 1000.0),
+                media_ms = interval.as_secs_f64() * 1000.0,
+                snapped_ms = cadence_step.map(|s| s.as_secs_f64() * 1000.0),
+                "wmf: vsync grid measured; cadence snap decision"
+            );
+            let mut sample_index: u64 = 0;
+            let mut paused = false;
+            let mut last_visibility_check = Instant::now();
+            let mut frame_counter: u64 = 1;
+            let mut dropped: u64 = 0;
+            // Set on resume-from-pause and after a host-window rebind: the next decoded
+            // sample re-anchors the pacing clock and presents immediately — while the
+            // stream was stalled it fell arbitrarily behind wall time, and DXGI can
+            // discard a fully-occluded FLIP_SEQUENTIAL swap-chain buffer, so grinding
+            // through the gap frame-by-frame leaves the desktop wallpaper exposed.
+            let mut need_reanchor = false;
+            // One-frame surface FIFO: the media buffer from the *previous* present is kept
+            // alive so MF can't hand its surface back to the decoder while the GPU may
+            // still be reading it.
+            let mut pending_buf: Option<IMFMediaBuffer> = Some(first_buf.clone());
+            let mut dims_changed = false;
 
-            let mut rewound = false;
-            let sample = match read_next_sample(reader, &mut dims_changed, &mut rewound) {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::error!(error = %e, frame_counter, "wmf: GPU playback read failed");
-                    return Err(e);
-                }
-            };
-            if dims_changed {
-                dims_changed = false;
-                if let Ok(m) = query_stream_metrics(reader) {
-                    gp.set_video_dims(m.w, m.h);
-                    tracing::info!(w = m.w, h = m.h, "wmf: media type changed mid-stream (GPU)");
-                }
-            }
+            while !stop.load(Ordering::Relaxed) {
+                pump_thread_messages();
 
-            let pts = sample.GetSampleTime().unwrap_or(0);
-            if rewound || pts < pts0 {
-                // Loop restart (or a mid-stream PTS jump): fully re-anchor the pacing
-                // clock — without this the restarted stream's small PTS values look
-                // `video_length` late and every frame is dropped as overdue.
-                pts0 = pts;
-                clock0 = Instant::now();
-                sample_index = 0;
-            }
-            let step = cadence_step.unwrap_or(interval);
-            // Snapped mode paces by sample index on an even vsync grid; PTS mode paces
-            // each sample to its own timestamp.
-            let raw_due = match cadence_step {
-                Some(step) => clock0 + step.mul_f64(sample_index as f64),
-                None => clock0 + Duration::from_nanos((pts - pts0).max(0) as u64 * 100),
-            };
-            // Phase-lock to the measured vblank grid so every frame gets the same
-            // integer number of vsyncs instead of drifting across boundaries.
-            let due = match (vsync_grid, cadence_step) {
-                (Some((anchor, period)), Some(_)) => snap_to_vsync_grid(raw_due, anchor, period),
-                _ => raw_due,
-            };
-            sample_index = sample_index.wrapping_add(1);
-            let now = Instant::now();
-            if now > due + step * 2 {
-                dropped += 1;
-                continue; // iGPU can't keep up — drop the frame entirely.
-            }
-            if now < due {
-                match &pacer {
-                    Some(p) => p.wait_until(due),
-                    // Legacy fallback: condvar waits are quantized to the OS timer tick.
-                    None => {
-                        if let Ok(guard) = wake.0.lock() {
-                            let _ = wake.1.wait_timeout(guard, due - now);
+                if last_visibility_check.elapsed() >= Duration::from_millis(300) {
+                    last_visibility_check = Instant::now();
+                    // An Explorer restart or shell rebuild can destroy the attached window
+                    // (and the WorkerW host with it). That used to kill the wallpaper for
+                    // good — heal instead: recreate the video HWND, re-attach, and rebind
+                    // the composition target. The swap chain is HWND-agnostic, so only the
+                    // per-HWND DComp target/visual are rebuilt; decoder/device/VP survive.
+                    if !IsWindow(Some(hwnd)).as_bool() {
+                        tracing::warn!(
+                            frame_counter,
+                            "wmf: video window destroyed; re-attaching to desktop layer"
+                        );
+                        let new_hwnd = create_video_window(class_name, 0)
+                            .map_err(|e| format!("recreate video window: {e}"))?;
+                        let (new_host, w, h) = attach_to_desktop_worker(new_hwnd).map_err(|e| {
+                            let _ = DestroyWindow(new_hwnd);
+                            format!("re-attach after window loss: {e}")
+                        })?;
+                        hwnd = new_hwnd;
+                        host = new_host;
+                        gp.rebind_target(hwnd)?;
+                        need_reanchor = true;
+                        tracing::info!(
+                            ?hwnd,
+                            w,
+                            h,
+                            "wmf: video window re-attached; target rebound"
+                        );
+                    }
+                    let now_paused = should_pause_playback();
+                    if now_paused != paused {
+                        paused = now_paused;
+                        tracing::info!(paused, frame_counter, "wmf: playback pause state changed");
+                        if !paused {
+                            // Resume = re-anchor: present the next decoded frame NOW. The
+                            // paused duration is not worth catching up on — the occluded
+                            // buffer may already have been discarded by the compositor.
+                            need_reanchor = true;
+                        }
+                        // The swap chain retains the last presented frame — no flush, no trim:
+                        // the desktop keeps a static wallpaper while paused.
+                    }
+                }
+                if paused {
+                    if let Ok(guard) = wake.0.lock() {
+                        let _ = wake.1.wait_timeout(guard, Duration::from_millis(80));
+                    }
+                    continue;
+                }
+
+                let mut rewound = false;
+                let sample = match read_next_sample(reader, &mut dims_changed, &mut rewound) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!(error = %e, frame_counter, "wmf: GPU playback read failed");
+                        return Err(e);
+                    }
+                };
+                if dims_changed {
+                    dims_changed = false;
+                    if let Ok(m) = query_stream_metrics(reader) {
+                        gp.set_video_dims(m.w, m.h);
+                        tracing::info!(
+                            w = m.w,
+                            h = m.h,
+                            "wmf: media type changed mid-stream (GPU)"
+                        );
+                    }
+                }
+
+                let pts = sample.GetSampleTime().unwrap_or(0);
+                if need_reanchor || rewound || pts < pts0 {
+                    // Loop restart (or a mid-stream PTS jump / resume / rebind): fully
+                    // re-anchor the pacing clock — without this the restarted stream's
+                    // small PTS values look `video_length` late and every frame is
+                    // dropped as overdue.
+                    pts0 = pts;
+                    clock0 = Instant::now();
+                    sample_index = 0;
+                    need_reanchor = false;
+                }
+                let step = cadence_step.unwrap_or(interval);
+                // Snapped mode paces by sample index on an even vsync grid; PTS mode paces
+                // each sample to its own timestamp.
+                let raw_due = match cadence_step {
+                    Some(step) => clock0 + step.mul_f64(sample_index as f64),
+                    None => clock0 + Duration::from_nanos((pts - pts0).max(0) as u64 * 100),
+                };
+                // Phase-lock to the measured vblank grid so every frame gets the same
+                // integer number of vsyncs instead of drifting across boundaries.
+                let due = match (vsync_grid, cadence_step) {
+                    (Some((anchor, period)), Some(_)) => {
+                        snap_to_vsync_grid(raw_due, anchor, period)
+                    }
+                    _ => raw_due,
+                };
+                sample_index = sample_index.wrapping_add(1);
+                let now = Instant::now();
+                if now > due + step * 2 {
+                    // Stall guard: up to ~200 ms of lateness is ordinary scheduling
+                    // jitter — drop the frame. Beyond that (resume race, system sleep,
+                    // GPU hang, debugger break) the stream can never catch up, so
+                    // re-anchor on THIS sample and present it now rather than grinding
+                    // through seconds of dead frames behind a discarded buffer.
+                    if now <= due + step * 2 + Duration::from_millis(200) {
+                        dropped += 1;
+                        continue;
+                    }
+                    pts0 = pts;
+                    clock0 = now;
+                    sample_index = 0;
+                }
+                if now < due {
+                    match &pacer {
+                        Some(p) => p.wait_until(due),
+                        // Legacy fallback: condvar waits are quantized to the OS timer tick.
+                        None => {
+                            if let Ok(guard) = wake.0.lock() {
+                                let _ = wake.1.wait_timeout(guard, due - now);
+                            }
                         }
                     }
                 }
-            }
-            if stop.load(Ordering::Relaxed) {
-                break;
-            }
-
-            let (buf, tex, slice) = match sample_texture(&sample) {
-                Ok(v) => v,
-                Err(e) => {
-                    tracing::warn!(error = %e, "wmf: non-DXGI sample on GPU path; skipping frame");
-                    continue;
+                if stop.load(Ordering::Relaxed) {
+                    break;
                 }
-            };
-            gp.present(&buf, &tex, slice)?;
-            // Release the surface from one frame ago now that a newer frame is on screen.
-            drop(pending_buf.replace(buf));
-            frame_counter = frame_counter.wrapping_add(1);
 
-            if frame_counter.is_multiple_of(30)
-                && let Some(thumb) = gp.capture_thumb(&tex, slice)
-                && let Ok(mut slot) = latest_frame.lock()
-            {
-                *slot = Some(VideoFrame {
-                    width: THUMB_W as u32,
-                    height: THUMB_H as u32,
-                    bgra: thumb,
-                });
+                let (buf, tex, slice) = match sample_texture(&sample) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "wmf: non-DXGI sample on GPU path; skipping frame");
+                        continue;
+                    }
+                };
+                gp.present(&buf, &tex, slice)?;
+                // Release the surface from one frame ago now that a newer frame is on screen.
+                drop(pending_buf.replace(buf));
+                frame_counter = frame_counter.wrapping_add(1);
+
+                if frame_counter.is_multiple_of(30)
+                    && let Some(thumb) = gp.capture_thumb(&tex, slice)
+                    && let Ok(mut slot) = latest_frame.lock()
+                {
+                    *slot = Some(VideoFrame {
+                        width: THUMB_W as u32,
+                        height: THUMB_H as u32,
+                        bgra: thumb,
+                    });
+                }
             }
-        }
 
-        tracing::info!(
-            frame_counter,
-            dropped,
-            "wmf: shutting down zero-copy GPU video wallpaper"
-        );
-        Ok(())
+            tracing::info!(
+                frame_counter,
+                dropped,
+                "wmf: shutting down zero-copy GPU video wallpaper"
+            );
+            Ok(())
+        })();
+
+        // Explicit synchronous DComp teardown while the final HWND is still alive:
+        // SetContent(None) → SetRoot(None) → Commit → WaitForCommitCompletion →
+        // release, so DWM provably stops referencing the swap chain before the COM
+        // objects drop — the difference between a clean switch and GPU memory that
+        // accumulates across rapid wallpaper changes. On a dead HWND the commit is
+        // skipped and the orphaned objects are just released.
+        gp.teardown(IsWindow(Some(hwnd)).as_bool());
+        (hwnd, host, result)
     }
 }
 
@@ -2322,7 +2480,7 @@ fn run_player_thread(
         }));
         let surface_ptr = &*surface as *const Mutex<SharedSurface>;
 
-        let hwnd = match create_video_window(&class_name, surface_ptr as isize) {
+        let mut hwnd = match create_video_window(&class_name, surface_ptr as isize) {
             Ok(h) => h,
             Err(e) => {
                 tracing::error!(error = %e, "wmf: window creation failed");
@@ -2331,7 +2489,7 @@ fn run_player_thread(
             }
         };
 
-        let (host, win_w, win_h) = match attach_to_desktop_worker(hwnd) {
+        let (mut host, mut win_w, mut win_h) = match attach_to_desktop_worker(hwnd) {
             Ok(v) => v,
             Err(e) => {
                 SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
@@ -2390,14 +2548,36 @@ fn run_player_thread(
 
             if last_visibility_check.elapsed() >= Duration::from_millis(300) {
                 last_visibility_check = Instant::now();
-                // An Explorer restart or a wallpaper reset can destroy the attached window;
-                // keep decoding to a dead HWND would burn CPU forever on nothing.
+                // An Explorer restart or shell rebuild can destroy the attached
+                // window; heal by recreating it (the SharedSurface pointer stays
+                // valid) and repaint the last frame — losing the HWND is
+                // recoverable, losing the wallpaper is not.
                 if !IsWindow(Some(hwnd)).as_bool() {
-                    tracing::info!(
+                    tracing::warn!(
                         frame_counter,
-                        "wmf: video window destroyed; stopping playback"
+                        "wmf: video window destroyed; re-attaching to desktop layer"
                     );
-                    break;
+                    match create_video_window(&class_name, surface_ptr as isize) {
+                        Ok(new_hwnd) => match attach_to_desktop_worker(new_hwnd) {
+                            Ok((new_host, w, h)) => {
+                                hwnd = new_hwnd;
+                                host = new_host;
+                                win_w = w;
+                                win_h = h;
+                                present_hwnd(hwnd);
+                                tracing::info!(?hwnd, "wmf: video window re-attached (GDI)");
+                            }
+                            Err(e) => {
+                                let _ = DestroyWindow(new_hwnd);
+                                tracing::error!(error = %e, "wmf: re-attach failed; stopping");
+                                break;
+                            }
+                        },
+                        Err(e) => {
+                            tracing::error!(error = %e, "wmf: recreate window failed; stopping");
+                            break;
+                        }
+                    }
                 }
                 let now_paused = should_pause_playback();
                 if now_paused != paused {
