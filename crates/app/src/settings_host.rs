@@ -7,9 +7,9 @@
 use crate::commands::{Command, CommandQueue};
 use crate::webview_comp::{CompEnvironment, CompWebview};
 use pecofence_platform::window::{
-    self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
+    self, style, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass,
 };
-use pecofence_platform::{HWND, RECT, dwm, monitors, msg};
+use pecofence_platform::{dwm, monitors, msg, HWND, RECT};
 use pecofence_render::ThemeMode;
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -389,16 +389,18 @@ impl SettingsHost {
 ///   painting it again on the client would double it.
 /// - mica/micaalt → the user's tint at its own alpha, since the DWM system
 ///   backdrop can't take a colour and the frame stays untinted mica.
-fn sheet_css(mode: ThemeMode, effect: &str, _tint: Option<(u8, u8, u8, u8)>) -> String {
-    // Armed = the page paints nothing: the host surface is black-painted
-    // glass (real see-through), so any sheet colour — even translucent —
-    // is an unwanted veil over the OS material. Unarmed = stock opaque.
+fn sheet_css(mode: ThemeMode, effect: &str, tint: Option<(u8, u8, u8, u8)>) -> String {
+    // Armed = the user's Explorer RGBA as a translucent veil over the
+    // truly transparent client — alpha passes through 1:1 from their
+    // opacity slider, no clamps. Unarmed = stock opaque base.
     match effect {
         "" => match mode {
             ThemeMode::Dark => "#202020".to_string(),
             ThemeMode::Light => "#f3f3f3".to_string(),
         },
-        _ => "transparent".to_string(),
+        _ => tint.map_or("transparent".to_string(), |(a, r, g, b)| {
+            format!("rgba({r},{g},{b},{:.3})", f32::from(a) / 255.0)
+        }),
     }
 }
 
