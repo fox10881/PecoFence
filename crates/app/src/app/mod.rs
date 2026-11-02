@@ -282,6 +282,9 @@ pub struct App {
     /// The dedicated ExplorerBlurMica customization window (singleton — the
     /// settings card's 高级设置 button opens or foregrounds it).
     fe_glass: Option<crate::fe_glass_host::FeGlassHost>,
+    /// The desktop clock widget (chrome-free singleton — `clock_style`
+    /// `""`/`"none"` keeps it closed).
+    clock: Option<crate::clock_host::ClockHost>,
     /// Signature of the last `feState` pushed to the glass editor — repeat
     /// pushes are skipped so its unsaved draft is never clobbered (empty
     /// forces a push: fresh page, or after close).
@@ -300,6 +303,7 @@ pub struct App {
     web_env: Option<WebEnvironment>,
     settings_class: WindowClass,
     fe_glass_class: WindowClass,
+    clock_class: WindowClass,
     theme_mode: ThemeMode,
     /// The user's accent palette at the last visual refresh (None = built-in default look).
     accent: Option<systheme::AccentPalette>,
@@ -1217,6 +1221,7 @@ impl App {
 
         let settings_class = SettingsHost::register_class()?;
         let fe_glass_class = crate::fe_glass_host::FeGlassHost::register_class()?;
+        let clock_class = crate::clock_host::ClockHost::register_class()?;
         let peek_class = PeekOverlay::register_class()?;
 
         // CLI named pipe: requests land in `ipc_pending`, the control window is poked.
@@ -1277,6 +1282,7 @@ impl App {
             instance: args.instance.clone(),
             settings: None,
             fe_glass: None,
+            clock: None,
             fe_glass_pushed: RefCell::new(String::new()),
             settings_focus_fence: None,
             feedback: Default::default(),
@@ -1287,6 +1293,7 @@ impl App {
             web_env: None,
             settings_class,
             fe_glass_class,
+            clock_class,
             theme_mode,
             accent,
             wallpaper_override: args.wallpaper_override.clone(),
@@ -1344,6 +1351,9 @@ impl App {
             theme_dirty: std::cell::Cell::new(false),
         };
         app.sync_video_wallpaper();
+        // Restores a previously armed clock widget (a no-op while the
+        // style is ""/"none").
+        app.apply_clock_style(&app.state.config.settings.clock_style.clone());
         // Watch both wallpaper settings and virtual-desktop state; either signal starts a
         // bounded burst of fast reads, because the image may arrive after the notification.
         {
@@ -2156,7 +2166,10 @@ impl App {
                 if self.fe_glass.as_ref().is_some_and(|h| h.hwnd() == hwnd) {
                     self.fe_glass = None;
                 }
-                if self.settings.is_none() && self.fe_glass.is_none() {
+                if self.clock.as_ref().is_some_and(|h| h.hwnd() == hwnd) {
+                    self.clock = None;
+                }
+                if self.settings.is_none() && self.fe_glass.is_none() && self.clock.is_none() {
                     // The WebView2 environment only exists for the windows: release it
                     // with the last controller so the browser process manager can shut
                     // down too (reopening costs a cold ~200 ms environment start).

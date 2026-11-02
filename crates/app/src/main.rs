@@ -5,6 +5,7 @@
 
 mod anchor;
 mod app;
+mod clock_host;
 mod commands;
 mod drag_guides;
 mod drop_preview;

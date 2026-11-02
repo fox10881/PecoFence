@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- PECOFENCE_LOCALE -->
+<title data-i18n="桌面时钟小组件">桌面时钟小组件</title>
+<script src="i18n.js"></script>
+<style>
+  :root {
+    --accent: #38bdf8;
+    --accent-glow: rgba(56, 189, 248, 0.45);
+    --glass-bg: rgba(18, 22, 30, 0.55);
+    --glass-border: rgba(255, 255, 255, 0.14);
+    --text-main: #f8fafc;
+    --text-muted: rgba(248, 250, 252, 0.65);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  html, body {
+    width: 100vw; height: 100vh; overflow: hidden;
+    background: transparent !important;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: var(--text-main);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #widget-root {
+    width: 92vw; height: 88vh;
+    display: flex; align-items: center; justify-content: center; position: relative;
+  }
+  /* ===================== Gemini g1–g10 ===================== */
+  /* G1 — الساعة القلابة الزجاجية */
+  .style-g1 { display: flex; flex-direction: column; align-items: center; gap: 4vmin; width: 100%; }
+  .g1-cards { display: flex; align-items: center; gap: 3vmin; direction: ltr; }
+  .g1-card {
+    position: relative;
+    background: linear-gradient(180deg, rgba(35,42,56,0.78) 0%, rgba(18,22,30,0.85) 100%);
+    border: 1px solid var(--glass-border); border-radius: 4vmin;
+    padding: 4vmin 5vmin; font-size: 24vmin; font-weight: 800; line-height: 1;
+    box-shadow: 0 2vmin 5vmin rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.22);
+  }
+  .g1-card::after {
+    content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 2px;
+    background: rgba(0, 0, 0, 0.55); box-shadow: 0 1px 0 rgba(255,255,255,0.08);
+  }
+  .g1-ampm { position: absolute; top: 2.2vmin; right: 2.5vmin; font-size: 4.2vmin; font-weight: 700; color: var(--accent); }
+  .g1-meta {
+    display: flex; align-items: center; gap: 3vmin; background: var(--glass-bg);
+    border: 1px solid var(--glass-border); padding: 2vmin 5vmin; border-radius: 99vmin;
+    font-size: 5.5vmin; font-weight: 600;
+  }
+  .g1-meta .day { color: var(--accent); font-weight: 700; }
+  /* G2 — حلقات النيون الزمنية */
+  .style-g2 { position: relative; width: 85vmin; height: 85vmin; display: flex; align-items: center; justify-content: center; }
+  .g2-svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); filter: drop-shadow(0 0 1.8vmin var(--accent-glow)); }
+  .g2-track { fill: none; stroke: rgba(255,255,255,0.08); }
+  .g2-prog { fill: none; stroke-linecap: round; transition: stroke-dashoffset 0.3s ease; }
+  .g2-center { text-align: center; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 1vmin; }
+  .g2-time { font-size: 15vmin; font-weight: 800; direction: ltr; line-height: 1; }
+  .g2-day { font-size: 5.5vmin; color: var(--accent); font-weight: 700; }
+  .g2-date { font-size: 4.2vmin; color: var(--text-muted); }
+  /* G3 — الخط السويسري العريض */
+  .style-g3 {
+    display: flex; align-items: center; gap: 5vmin; background: rgba(15, 18, 24, 0.5);
+    border: 1px solid var(--glass-border); border-radius: 5vmin; padding: 5vmin 7vmin; direction: ltr;
+  }
+  .g3-stack { display: flex; flex-direction: column; font-size: 26vmin; font-weight: 900; line-height: 0.84; letter-spacing: -0.05em; }
+  .g3-bar { width: 1.4vmin; height: 42vmin; background: linear-gradient(180deg, var(--accent), #818cf8); border-radius: 99vmin; box-shadow: 0 0 2.5vmin var(--accent-glow); }
+  .g3-info { display: flex; flex-direction: column; justify-content: space-between; height: 40vmin; direction: rtl; text-align: right; }
+  .g3-day { font-size: 8.5vmin; font-weight: 800; line-height: 1.1; }
+  .g3-date { font-size: 5.2vmin; color: var(--text-muted); font-weight: 600; }
+  .g3-sec { font-size: 6vmin; font-weight: 700; color: var(--accent); direction: ltr; }
+  /* G4 — شاشة المصفوفة الرقمية */
+  .style-g4 {
+    background: rgba(8, 12, 18, 0.82); border: 1.5px solid rgba(56, 189, 248, 0.35);
+    border-radius: 3.5vmin; padding: 5vmin 7vmin;
+    box-shadow: 0 0 4vmin rgba(56, 189, 248, 0.18), inset 0 0 3vmin rgba(0,0,0,0.8);
+    display: flex; flex-direction: column; gap: 3vmin; font-family: Consolas, monospace;
+  }
+  .g4-lcd { font-size: 21vmin; font-weight: 700; direction: ltr; letter-spacing: 0.06em; color: #38bdf8; text-shadow: 0 0 2vmin rgba(56, 189, 248, 0.75); line-height: 1; }
+  .g4-bottom { display: flex; justify-content: space-between; border-top: 1px dashed rgba(56, 189, 248, 0.3); padding-top: 2.5vmin; font-size: 5vmin; color: #93c5fd; }
+  /* G5 — الكبسولة الهلامية المضيئة */
+  .style-g5 {
+    position: relative; padding: 5vmin 8vmin; border-radius: 99vmin;
+    background: rgba(25, 30, 42, 0.45); border: 1px solid rgba(255,255,255,0.22);
+    box-shadow: 0 2vmin 6vmin rgba(0,0,0,0.4); display: flex; align-items: center; gap: 5vmin; overflow: hidden;
+  }
+  .g5-orb { position: absolute; width: 35vmin; height: 35vmin; border-radius: 50%; filter: blur(6vmin); opacity: 0.45; z-index: 0; }
+  .g5-orb.o1 { background: #38bdf8; top: -10vmin; left: -5vmin; }
+  .g5-orb.o2 { background: #a855f7; bottom: -10vmin; right: -5vmin; }
+  .g5-content { position: relative; z-index: 1; display: flex; align-items: center; gap: 5vmin; }
+  .g5-time { font-size: 19vmin; font-weight: 800; direction: ltr; line-height: 1; }
+  .g5-divider { width: 2px; height: 14vmin; background: rgba(255,255,255,0.25); }
+  .g5-meta { display: flex; flex-direction: column; gap: 1vmin; text-align: right; }
+  .g5-day { font-size: 6.5vmin; font-weight: 700; }
+  .g5-date { font-size: 4.8vmin; color: var(--text-muted); }
+  /* G6 — الساعة العقربية الفاخرة */
+  .style-g6 {
+    width: 84vmin; height: 84vmin; border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, rgba(40,48,64,0.78), rgba(12,15,22,0.88));
+    border: 2px solid rgba(255,255,255,0.18); box-shadow: 0 2vmin 6vmin rgba(0,0,0,0.55);
+    position: relative; display: flex; align-items: center; justify-content: center;
+  }
+  .g6-svg { width: 92%; height: 92%; }
+  .g6-date-box {
+    position: absolute; bottom: 20%; display: flex; flex-direction: column; align-items: center;
+    background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.15); padding: 1vmin 3vmin; border-radius: 2vmin;
+  }
+  .g6-day { font-size: 4.2vmin; color: var(--accent); font-weight: 700; }
+  .g6-date { font-size: 3.6vmin; color: var(--text-muted); }
+  /* G7 — اللوحة الهندسية المقسمة */
+  .style-g7 {
+    display: grid; grid-template-columns: 1.5fr 1fr; width: 90%;
+    background: rgba(14, 17, 23, 0.72); border: 1.5px solid rgba(255,255,255,0.22);
+    border-radius: 2.5vmin; overflow: hidden;
+  }
+  .g7-cell { padding: 3.5vmin 4.5vmin; border: 0.5px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; justify-content: center; }
+  .g7-label { font-size: 3.2vmin; letter-spacing: 0.12em; color: var(--accent); margin-bottom: 1vmin; font-family: Consolas, monospace; }
+  .g7-main-time { grid-row: span 2; font-size: 20vmin; font-weight: 900; direction: ltr; line-height: 1; align-items: center; }
+  .g7-val { font-size: 6vmin; font-weight: 700; }
+  .g7-bar-wrap { grid-column: span 2; height: 1.5vmin; background: rgba(255,255,255,0.08); }
+  .g7-bar-fill { height: 100%; background: var(--accent); transition: width 0.3s linear; }
+  /* G8 — أفق الشمس والقمر */
+  .style-g8 {
+    width: 90%; padding: 5vmin 6vmin; border-radius: 5vmin;
+    background: linear-gradient(160deg, rgba(24,34,56,0.72), rgba(12,16,28,0.82));
+    border: 1px solid var(--glass-border); display: flex; flex-direction: column; align-items: center; gap: 2.5vmin;
+  }
+  .g8-arc { width: 70vmin; height: 22vmin; overflow: visible; }
+  .g8-time { font-size: 19vmin; font-weight: 800; direction: ltr; line-height: 1; }
+  .g8-sub { font-size: 5.2vmin; color: var(--text-muted); display: flex; gap: 2.5vmin; }
+  .g8-sub b { color: #fbbf24; }
+  /* G9 — الطبقات ثلاثية الأبعاد */
+  .style-g9 { position: relative; display: flex; flex-direction: column; align-items: center; }
+  .g9-time {
+    font-size: 27vmin; font-weight: 900; direction: ltr; line-height: 0.9; color: #ffffff;
+    text-shadow: 0 0.6vmin 0 #cbd5e1, 0 1.2vmin 0 #94a3b8, 0 1.8vmin 0 #64748b, 0 2.4vmin 0 #334155, 0 4vmin 6vmin rgba(0,0,0,0.65);
+  }
+  .g9-badge {
+    margin-top: -2vmin; background: rgba(15, 23, 42, 0.78); border: 1px solid rgba(56, 189, 248, 0.45);
+    padding: 1.8vmin 5vmin; border-radius: 2.5vmin; transform: rotate(-2deg);
+    box-shadow: 0 1.5vmin 3.5vmin rgba(0,0,0,0.45); font-size: 5.5vmin; font-weight: 700;
+  }
+  .g9-badge span { color: var(--accent); margin-left: 2vmin; }
+  /* G10 — الشريط النصي الانسيابي */
+  .style-g10 { display: flex; align-items: center; gap: 4.5vmin; direction: ltr; text-shadow: 0 0.8vmin 2.5vmin rgba(0,0,0,0.65); }
+  .g10-time { font-size: 25vmin; font-weight: 300; letter-spacing: -0.04em; line-height: 1; }
+  .g10-time b { font-weight: 800; }
+  .g10-pulse-track { width: 1vmin; height: 22vmin; background: rgba(255,255,255,0.18); border-radius: 99vmin; display: flex; align-items: flex-end; overflow: hidden; }
+  .g10-pulse-fill { width: 100%; background: var(--accent); box-shadow: 0 0 1.5vmin var(--accent); border-radius: 99vmin; }
+  .g10-meta { display: flex; flex-direction: column; direction: rtl; text-align: right; gap: 1vmin; }
+  .g10-day { font-size: 7.5vmin; font-weight: 800; color: var(--accent); line-height: 1; }
+  .g10-date { font-size: 4.8vmin; font-weight: 600; color: var(--text-main); }
+
+  /* ===================== Devin d1–d10 ===================== */
+  /* D1 — الشفق القطبي: aurora-lit frost panel with a seconds ring */
+  .style-d1 {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    width: 88%; height: 78%; border-radius: 6vmin; overflow: hidden;
+    background: rgba(13, 18, 28, 0.6); border: 1px solid rgba(255,255,255,0.16);
+    box-shadow: 0 3vmin 8vmin rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15);
+  }
+  .d1-aurora { position: absolute; width: 60vmin; height: 60vmin; border-radius: 50%; filter: blur(9vmin); opacity: .5; }
+  .d1-aurora.a1 { background: conic-gradient(#22d3ee, #818cf8, #22d3ee); top: -22vmin; left: -12vmin; }
+  .d1-aurora.a2 { background: conic-gradient(#f472b6, #a855f7, #f472b6); bottom: -26vmin; right: -14vmin; opacity: .38; }
+  .d1-inner { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 2vmin; }
+  .d1-time { font-size: 23vmin; font-weight: 200; direction: ltr; line-height: 1; letter-spacing: -0.02em; }
+  .d1-time b { font-weight: 700; }
+  .d1-row { display: flex; align-items: center; gap: 4vmin; font-size: 6vmin; font-weight: 600; }
+  .d1-row .day { color: #a5f3fc; }
+  .d1-row .sep { width: 6vmin; height: 1px; background: rgba(255,255,255,0.35); }
+  /* D2 — طرفية النيون: CRT terminal readout */
+  .style-d2 {
+    display: flex; flex-direction: column; gap: 2.2vmin; padding: 5vmin 6vmin; width: 88%;
+    background: rgba(5, 10, 8, 0.8); border: 1px solid rgba(74, 222, 128, 0.4); border-radius: 2vmin;
+    font-family: Consolas, "Cascadia Mono", monospace; color: #4ade80;
+    box-shadow: 0 0 4vmin rgba(74, 222, 128, 0.16), inset 0 0 6vmin rgba(0,0,0,0.85);
+    position: relative; overflow: hidden;
+  }
+  .style-d2::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,0.22) 2px 4px);
+  }
+  .d2-line { direction: ltr; font-size: 5.4vmin; line-height: 1.2; }
+  .d2-line.big { font-size: 17vmin; font-weight: 700; text-shadow: 0 0 2vmin rgba(74,222,128,0.7); }
+  .d2-line .prompt { color: #22d3ee; }
+  .d2-cursor { display: inline-block; width: 0.55em; height: 1em; background: #4ade80; vertical-align: -0.12em; animation: d2blink 1.1s steps(1) infinite; }
+  @keyframes d2blink { 50% { opacity: 0; } }
+  /* D3 — المدار الزمني: second-dot orbiting a calm center */
+  .style-d3 { position: relative; width: 84vmin; height: 84vmin; display: flex; align-items: center; justify-content: center; }
+  .d3-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .d3-ring { fill: none; stroke: rgba(255,255,255,0.12); stroke-width: 1.5; }
+  .d3-tick { stroke: rgba(255,255,255,0.35); stroke-width: 1.4; }
+  .d3-dot { fill: var(--accent); filter: drop-shadow(0 0 1.6vmin var(--accent-glow)); }
+  .d3-dot-trail { fill: rgba(56,189,248,0.28); }
+  .d3-center { position: relative; z-index: 1; text-align: center; display: flex; flex-direction: column; gap: 0.8vmin; }
+  .d3-time { font-size: 16vmin; font-weight: 700; direction: ltr; line-height: 1; }
+  .d3-meta { font-size: 5vmin; color: var(--text-muted); }
+  .d3-meta b { color: var(--accent); font-weight: 700; }
+  /* D4 — البطاقة الأنيقة: editorial serif on a hairline frame */
+  .style-d4 {
+    display: flex; flex-direction: column; align-items: center; gap: 2.8vmin; padding: 6vmin 8vmin;
+    background: rgba(22, 25, 33, 0.52); border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent);
+    text-align: center;
+  }
+  .d4-eyebrow { font-size: 3.8vmin; letter-spacing: 0.42em; text-transform: uppercase; color: var(--text-muted); font-family: Consolas, monospace; }
+  .d4-time { font-family: Georgia, "Times New Roman", serif; font-size: 26vmin; font-weight: 400; direction: ltr; line-height: 0.95; }
+  .d4-time i { font-style: italic; color: var(--accent); }
+  .d4-meta { display: flex; gap: 4vmin; font-size: 5.4vmin; font-weight: 600; letter-spacing: 0.08em; }
+  .d4-meta .day { color: var(--accent); }
+  /* D5 — القرص الناعم: neumorphic dial with minute gauge */
+  .style-d5 {
+    position: relative; width: 78vmin; height: 78vmin; border-radius: 50%;
+    background: linear-gradient(145deg, rgba(38,44,58,0.85), rgba(16,20,28,0.9));
+    box-shadow: 1.6vmin 1.6vmin 4vmin rgba(0,0,0,0.6), -1vmin -1vmin 3vmin rgba(255,255,255,0.09),
+      inset 0.8vmin 0.8vmin 2vmin rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .d5-svg { position: absolute; inset: 4%; width: 92%; height: 92%; transform: rotate(-90deg); }
+  .d5-track { fill: none; stroke: rgba(0,0,0,0.4); stroke-width: 5; }
+  .d5-prog { fill: none; stroke: url(#d5grad); stroke-width: 5; stroke-linecap: round; }
+  .d5-center { position: relative; z-index: 1; text-align: center; display: flex; flex-direction: column; gap: 1vmin; }
+  .d5-time { font-size: 15vmin; font-weight: 600; direction: ltr; line-height: 1; }
+  .d5-meta { font-size: 4.6vmin; color: var(--text-muted); }
+  .d5-meta .day { color: var(--accent); font-weight: 700; }
+  /* D6 — لوحة التحكم: corner-bracket HUD */
+  .style-d6 { position: relative; width: 86%; padding: 6vmin 7vmin; }
+  .d6-corner { position: absolute; width: 5vmin; height: 5vmin; border: 2px solid var(--accent); opacity: .9; }
+  .d6-corner.tl { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+  .d6-corner.tr { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+  .d6-corner.bl { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+  .d6-corner.br { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+  .d6-grid { display: grid; grid-template-columns: auto 1fr; gap: 1.4vmin 4vmin; font-family: Consolas, monospace; }
+  .d6-lbl { font-size: 3.6vmin; color: var(--text-muted); letter-spacing: 0.2em; align-self: center; }
+  .d6-val { font-size: 6vmin; font-weight: 700; direction: ltr; }
+  .d6-val.huge { font-size: 17vmin; line-height: 1; color: var(--accent); text-shadow: 0 0 2.4vmin var(--accent-glow); }
+  .d6-bar { grid-column: span 2; height: 1vmin; background: rgba(255,255,255,0.1); margin-top: 1vmin; }
+  .d6-fill { height: 100%; background: var(--accent); }
+  /* D7 — صفحة التقويم: torn calendar page beside the time */
+  .style-d7 {
+    display: flex; gap: 5vmin; align-items: stretch;
+    background: rgba(20, 24, 33, 0.62); border: 1px solid var(--glass-border);
+    border-radius: 4vmin; padding: 4.5vmin 5.5vmin; box-shadow: 0 2.4vmin 6vmin rgba(0,0,0,0.45);
+  }
+  .d7-page {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%); color: #1e293b;
+    border-radius: 2.6vmin; padding: 2.5vmin 4.5vmin; min-width: 24vmin;
+    box-shadow: 0 1vmin 3vmin rgba(0,0,0,0.35), inset 0 -1vmin 0 rgba(0,0,0,0.08);
+  }
+  .d7-page .dom { font-size: 17vmin; font-weight: 900; line-height: 0.95; }
+  .d7-page .mon { font-size: 4.6vmin; font-weight: 800; color: #e11d48; letter-spacing: 0.1em; }
+  .d7-right { display: flex; flex-direction: column; justify-content: center; gap: 1.4vmin; }
+  .d7-time { font-size: 19vmin; font-weight: 800; direction: ltr; line-height: 1; }
+  .d7-day { font-size: 7vmin; font-weight: 700; color: var(--accent); }
+  .d7-year { font-size: 4.4vmin; color: var(--text-muted); font-family: Consolas, monospace; }
+  /* D8 — الشريط المتدرج: full-bleed gradient slab */
+  .style-d8 {
+    width: 90%; padding: 6vmin 7vmin; border-radius: 6vmin;
+    background: linear-gradient(135deg, rgba(56,189,248,0.75) 0%, rgba(99,102,241,0.7) 55%, rgba(168,85,247,0.7) 100%);
+    box-shadow: 0 3vmin 9vmin rgba(99,102,241,0.4), inset 0 1px 0 rgba(255,255,255,0.35);
+    display: flex; flex-direction: column; align-items: center; gap: 2.6vmin; text-align: center;
+  }
+  .d8-time { font-size: 26vmin; font-weight: 900; direction: ltr; line-height: 0.95; text-shadow: 0 1vmin 3vmin rgba(0,0,0,0.35); }
+  .d8-chips { display: flex; gap: 3vmin; }
+  .d8-chip {
+    background: rgba(0,0,0,0.32); border: 1px solid rgba(255,255,255,0.28); border-radius: 99vmin;
+    padding: 1.2vmin 4vmin; font-size: 5.6vmin; font-weight: 700;
+  }
+  /* D9 — ساعة اليوم الكبيرة: poster date, quiet time */
+  .style-d9 { display: flex; flex-direction: column; align-items: center; gap: 1vmin; text-align: center; }
+  .d9-dom {
+    font-size: 52vmin; font-weight: 900; line-height: 0.8;
+    background: linear-gradient(180deg, #f8fafc 30%, #38bdf8 130%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 1.5vmin 4vmin rgba(0,0,0,0.55));
+  }
+  .d9-sub { display: flex; gap: 3.5vmin; font-size: 6.4vmin; font-weight: 700; }
+  .d9-sub .day { color: var(--accent); }
+  .d9-time { font-size: 11vmin; font-weight: 300; direction: ltr; letter-spacing: 0.04em; color: var(--text-muted); margin-top: 1vmin; }
+  .d9-time b { font-weight: 700; color: var(--text-main); }
+  /* D10 — الشريحة المضغوطة: minimal single-line chip */
+  .style-d10 {
+    display: flex; align-items: center; gap: 3.6vmin; direction: ltr;
+    background: rgba(15, 19, 26, 0.66); border: 1px solid var(--glass-border);
+    padding: 3vmin 5vmin; border-radius: 99vmin; box-shadow: 0 1.6vmin 4.5vmin rgba(0,0,0,0.45);
+  }
+  .d10-time { font-size: 15vmin; font-weight: 800; line-height: 1; }
+  .d10-dot { width: 1.6vmin; height: 1.6vmin; border-radius: 50%; background: var(--accent); box-shadow: 0 0 1.6vmin var(--accent); }
+  .d10-meta { display: flex; flex-direction: column; direction: rtl; text-align: right; }
+  .d10-day { font-size: 6vmin; font-weight: 800; color: var(--accent); line-height: 1.15; }
+  .d10-date { font-size: 4.4vmin; color: var(--text-muted); }
+  .d10-secline { position: absolute; left: 12%; right: 12%; bottom: 6%; height: 2px; background: rgba(255,255,255,0.12); border-radius: 2px; overflow: hidden; }
+  .d10-secline i { display: block; height: 100%; background: var(--accent); }
+  .style-d10-wrap { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="widget-root"></div>
+<script>
+(() => {
+  const root = document.getElementById('widget-root');
+  const wv = window.chrome && window.chrome.webview;
+  let locale = (window.PECOFENCE_LOCALE && PECOFENCE_LOCALE.locale) || 'en';
+  let dayFmt, monFmt, ampmFmt;
+  function applyLocale(tag) {
+    locale = tag || 'en';
+    dayFmt = new Intl.DateTimeFormat(locale, { weekday: 'long' });
+    monFmt = new Intl.DateTimeFormat(locale, { month: 'long' });
+    ampmFmt = new Intl.DateTimeFormat(locale, { hour: 'numeric', hour12: true });
+  }
+  applyLocale(locale);
+  const TAU = Math.PI * 2;
+  const pad = (n) => String(n).padStart(2, '0');
+  const ampm = (d) => {
+    const p = ampmFmt.formatToParts(d).find((x) => x.type === 'dayPeriod');
+    return p ? p.value : '';
+  };
+  // ring circumference helpers for SVG progress strokes
+  const circ = (r) => 2 * Math.PI * r;
+  const dash = (frac, r) => `${circ(r) * frac} ${circ(r)}`;
+
+  const BUILDS = {
+    /* ---------- Gemini g1–g10 ---------- */
+    g1: () => `
+      <div class="g1-cards">
+        <div class="g1-card"><span class="g1-ampm js-ap"></span><span class="js-hh"></span></div>
+        <div class="g1-card"><span class="js-mm"></span></div>
+      </div>
+      <div class="g1-meta"><span class="day js-day"></span><span class="js-date"></span></div>`,
+    g2: () => {
+      const ring = (r, id, w, col) =>
+        `<circle class="g2-track" cx="160" cy="160" r="${r}" stroke-width="${w}"/>` +
+        `<circle class="g2-prog" id="${id}" cx="160" cy="160" r="${r}" stroke="${col}" stroke-width="${w}" stroke-dasharray="${circ(r)} 9999" stroke-dashoffset="${circ(r)}"/>`;
+      return `<svg class="g2-svg" viewBox="0 0 320 320">
+        ${ring(150, 'g2h', 8, '#38bdf8')}${ring(132, 'g2m', 6, '#818cf8')}${ring(114, 'g2s', 4, '#f472b6')}
+      </svg>
+      <div class="g2-center"><div class="g2-time js-t"></div><div class="g2-day js-day"></div><div class="g2-date js-date"></div></div>`;
+    },
+    g3: () => `
+      <div class="g3-stack"><span class="js-hh"></span><span class="js-mm"></span></div>
+      <div class="g3-bar"></div>
+      <div class="g3-info"><div><div class="g3-day js-day"></div><div class="g3-date js-date"></div></div>
+      <div class="g3-sec js-ss"></div></div>`,
+    g4: () => `
+      <div class="g4-lcd"><span class="js-hh"></span>:<span class="js-mm"></span>:<span class="js-ss"></span></div>
+      <div class="g4-bottom"><span class="js-day"></span><span class="js-date"></span></div>`,
+    g5: () => `
+      <div class="g5-orb o1"></div><div class="g5-orb o2"></div>
+      <div class="g5-content"><div class="g5-time js-t"></div><div class="g5-divider"></div>
+      <div class="g5-meta"><div class="g5-day js-day"></div><div class="g5-date js-date"></div></div></div>`,
+    g6: () => {
+      let ticks = '';
+      for (let i = 0; i < 60; i++) {
+        const a = (i / 60) * TAU, big = i % 5 === 0;
+        const r1 = big ? 84 : 90, r2 = 96;
+        ticks += `<line x1="${160 + r1 * Math.sin(a)}" y1="${160 - r1 * Math.cos(a)}" x2="${160 + r2 * Math.sin(a)}" y2="${160 - r2 * Math.cos(a)}" stroke="rgba(255,255,255,${big ? 0.75 : 0.3})" stroke-width="${big ? 3 : 1.2}"/>`;
+      }
+      return `<svg class="g6-svg" viewBox="0 0 320 320">${ticks}
+        <line id="g6h" x1="160" y1="160" x2="160" y2="88" stroke="#f8fafc" stroke-width="7" stroke-linecap="round"/>
+        <line id="g6m" x1="160" y1="160" x2="160" y2="62" stroke="#cbd5e1" stroke-width="4.5" stroke-linecap="round"/>
+        <line id="g6s" x1="160" y1="172" x2="160" y2="54" stroke="#38bdf8" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="160" cy="160" r="6" fill="#38bdf8" stroke="#0f172a" stroke-width="2.5"/>
+      </svg>
+      <div class="g6-date-box"><div class="g6-day js-day"></div><div class="g6-date js-date"></div></div>`;
+    },
+    g7: () => `
+      <div class="g7-cell g7-main-time"><span class="js-t"></span></div>
+      <div class="g7-cell"><div class="g7-label">DAY</div><div class="g7-val js-day"></div></div>
+      <div class="g7-cell"><div class="g7-label">DATE</div><div class="g7-val js-date"></div></div>
+      <div class="g7-bar-wrap"><div class="g7-bar-fill js-secfill"></div></div>`,
+    g8: () => `<svg class="g8-arc" viewBox="0 0 320 110">
+        <path d="M20 100 A140 140 0 0 1 300 100" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="3" stroke-linecap="round"/>
+        <path id="g8path" d="M20 100 A140 140 0 0 1 300 100" fill="none" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
+        <circle id="g8orb" r="9" fill="#fbbf24" style="filter:drop-shadow(0 0 8px #fbbf24)"/>
+        <circle id="g8moon" r="8" fill="#cbd5e1" style="display:none"/>
+      </svg>
+      <div class="g8-time js-t"></div>
+      <div class="g8-sub"><b class="js-day"></b><span class="js-date"></span></div>`,
+    g9: () => `<div class="g9-time js-t"></div>
+      <div class="g9-badge"><span class="js-day"></span><span class="js-date"></span></div>`,
+    g10: () => `
+      <div class="g10-time"><span class="js-hh"></span><b>:<span class="js-mm"></span></b></div>
+      <div class="g10-pulse-track"><div class="g10-pulse-fill js-pulse"></div></div>
+      <div class="g10-meta"><div class="g10-day js-day"></div><div class="g10-date js-date"></div></div>`,
+    /* ---------- Devin d1–d10 ---------- */
+    d1: () => `
+      <div class="d1-aurora a1"></div><div class="d1-aurora a2"></div>
+      <div class="d1-inner"><div class="d1-time"><span class="js-hh"></span><b>:<span class="js-mm"></span></b></div>
+      <div class="d1-row"><span class="day js-day"></span><span class="sep"></span><span class="js-date"></span></div></div>`,
+    d2: () => `
+      <div class="d2-line"><span class="prompt">&gt;</span> peco.clock --now</div>
+      <div class="d2-line big"><span class="js-hh"></span>:<span class="js-mm"></span>:<span class="js-ss"></span><span class="d2-cursor"></span></div>
+      <div class="d2-line"><span class="prompt">&gt;</span> <span class="js-day"></span> | <span class="js-date"></span></div>`,
+    d3: () => {
+      let t = '';
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * TAU;
+        t += `<line class="d3-tick" x1="${160 + 138 * Math.sin(a)}" y1="${160 - 138 * Math.cos(a)}" x2="${160 + 150 * Math.sin(a)}" y2="${160 - 150 * Math.cos(a)}"/>`;
+      }
+      return `<svg class="d3-svg" viewBox="0 0 320 320"><circle class="d3-ring" cx="160" cy="160" r="144"/>${t}
+        <circle id="d3trail" class="d3-dot-trail" r="10" cx="160" cy="16"/>
+        <circle id="d3dot" class="d3-dot" r="6.5" cx="160" cy="16"/></svg>
+      <div class="d3-center"><div class="d3-time js-t"></div>
+      <div class="d3-meta"><b class="js-day"></b> · <span class="js-date"></span></div></div>`;
+    },
+    d4: () => `
+      <div class="d4-eyebrow">PECOFENCE · CLOCK</div>
+      <div class="d4-time"><span class="js-hh"></span><i>:</i><span class="js-mm"></span></div>
+      <div class="d4-meta"><span class="day js-day"></span><span class="js-date"></span></div>`,
+    d5: () => `<svg class="d5-svg" viewBox="0 0 320 320">
+        <defs><linearGradient id="d5grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs>
+        <circle class="d5-track" cx="160" cy="160" r="146"/>
+        <circle class="d5-prog" id="d5m" cx="160" cy="160" r="146" stroke-dasharray="${circ(146)} 9999" stroke-dashoffset="${circ(146)}"/>
+        <circle class="d5-track" cx="160" cy="160" r="128" stroke-width="2.5"/>
+        <circle class="d5-prog" id="d5s" cx="160" cy="160" r="128" stroke-width="2.5" stroke-dasharray="${circ(128)} 9999" stroke-dashoffset="${circ(128)}"/>
+      </svg>
+      <div class="d5-center"><div class="d5-time js-t"></div>
+      <div class="d5-meta"><span class="day js-day"></span> · <span class="js-date"></span></div></div>`,
+    d6: () => `
+      <div class="d6-corner tl"></div><div class="d6-corner tr"></div><div class="d6-corner bl"></div><div class="d6-corner br"></div>
+      <div class="d6-grid">
+        <div class="d6-lbl">TIME</div><div class="d6-val huge"><span class="js-hh"></span>:<span class="js-mm"></span></div>
+        <div class="d6-lbl">DAY</div><div class="d6-val js-day"></div>
+        <div class="d6-lbl">DATE</div><div class="d6-val js-date"></div>
+        <div class="d6-bar"><div class="d6-fill js-secfill"></div></div>
+      </div>`,
+    d7: () => `
+      <div class="d7-page"><div class="dom js-dom"></div><div class="mon js-mon"></div></div>
+      <div class="d7-right"><div class="d7-time js-t"></div><div class="d7-day js-day"></div><div class="d7-year js-year"></div></div>`,
+    d8: () => `
+      <div class="d8-time js-t"></div>
+      <div class="d8-chips"><div class="d8-chip js-day"></div><div class="d8-chip js-date"></div></div>`,
+    d9: () => `
+      <div class="d9-dom js-dom"></div>
+      <div class="d9-sub"><span class="day js-day"></span><span class="js-mon"></span><span class="js-year"></span></div>
+      <div class="d9-time"><span class="js-hh"></span><b>:<span class="js-mm"></span></b></div>`,
+    d10: () => `<div class="d10-time js-t"></div><div class="d10-dot"></div>
+      <div class="d10-meta"><div class="d10-day js-day"></div><div class="d10-date js-date"></div></div>
+      <div class="d10-secline"><i class="js-secfill"></i></div>`,
+  };
+
+  let style = '';
+  const $ = (sel) => root.querySelector(sel);
+  const $$ = (sel) => root.querySelectorAll(sel);
+
+  function setDesign(id) {
+    style = id;
+    root.className = 'style-' + id + (id === 'd10' ? ' style-d10-wrap' : '');
+    root.innerHTML = BUILDS[id] ? BUILDS[id]() : '';
+    tick();
+  }
+
+  function tick() {
+    const d = new Date();
+    const h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
+    const hh = pad(h), mm = pad(m), ss = pad(s);
+    const day = dayFmt.format(d), date = d.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
+    const setText = (sel, txt) => $$('.js-' + sel).forEach((e) => (e.textContent = txt));
+    setText('t', hh + ':' + mm); setText('hh', hh); setText('mm', mm); setText('ss', ss);
+    setText('ap', ampm(d)); setText('day', day); setText('date', date);
+    setText('dom', d.getDate()); setText('mon', monFmt.format(d)); setText('year', d.getFullYear());
+    const sf = s / 60;
+    $$('.js-secfill').forEach((e) => { e.style.width = sf * 100 + '%'; e.style.height = sf * 100 + '%'; });
+    const pulse = $('.js-pulse'); if (pulse) pulse.style.height = sf * 100 + '%';
+    // g2 concentric rings: hour/12, minute, second
+    const g2h = $('#g2h'); if (g2h) {
+      g2h.setAttribute('stroke-dasharray', dash((h % 12) / 12, 150));
+      $('#g2m').setAttribute('stroke-dasharray', dash(m / 60, 132));
+      $('#g2s').setAttribute('stroke-dasharray', dash(sf, 114));
+      return;
+    }
+    // g6 analog hands
+    const gh = $('#g6h'); if (gh) {
+      const rot = (el, a) => el.setAttribute('transform', `rotate(${a} 160 160)`);
+      rot(gh, (h % 12) * 30 + m * 0.5); rot($('#g6m'), m * 6 + s * 0.1); rot($('#g6s'), s * 6);
+      return;
+    }
+    // g8 sun arc (day) / moon (night): position along the semicircle
+    const orb = $('#g8orb'); if (orb) {
+      const day = h >= 6 && h < 18;
+      const frac = day ? (h - 6 + m / 60) / 12 : ((h + 24 - 18) % 24 + m / 60) / 12;
+      const a = Math.PI - Math.PI * Math.min(Math.max(frac, 0), 1);
+      const el = day ? orb : $('#g8moon');
+      const other = day ? $('#g8moon') : orb;
+      el.style.display = ''; other.style.display = 'none';
+      el.setAttribute('cx', 160 + 140 * Math.cos(a)); el.setAttribute('cy', 100 - 90 * Math.sin(a));
+      if (!day) el.setAttribute('fill', '#cbd5e1');
+      return;
+    }
+    // d3 orbiting second dot + ghost trail
+    const dot = $('#d3dot'); if (dot) {
+      const a = (s / 60) * TAU;
+      dot.setAttribute('cx', 160 + 144 * Math.sin(a)); dot.setAttribute('cy', 160 - 144 * Math.cos(a));
+      const a2 = ((s - 2 + 60) / 60) % 60 * TAU / 1;
+      $('#d3trail').setAttribute('cx', 160 + 144 * Math.sin(a2)); $('#d3trail').setAttribute('cy', 160 - 144 * Math.cos(a2));
+      return;
+    }
+    // d5 gauges: minutes + seconds
+    const d5m = $('#d5m'); if (d5m) {
+      d5m.setAttribute('stroke-dasharray', dash((m + s / 60) / 60, 146));
+      $('#d5s').setAttribute('stroke-dasharray', dash(sf, 128));
+    }
+  }
+
+  if (wv) {
+    wv.addEventListener('message', (e) => {
+      const m = e.data || {};
+      if (m.t === 'clockStyle' && BUILDS[m.style]) setDesign(m.style);
+      else if (m.t === 'clockLocale') {
+        window.PECOFENCE_LOCALE = { locale: m.locale, translations: m.translations };
+        if (window.PecoFenceI18n) PecoFenceI18n.set(m.locale, m.translations);
+        applyLocale(m.locale);
+        tick();
+      }
+    });
+    wv.postMessage({ type: 'clockReady' });
+  }
+  setInterval(tick, 500);
+})();
+</script>
+</body>
+</html>

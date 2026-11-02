@@ -425,6 +425,37 @@ impl App {
         }
     }
 
+    /// Desktop clock widget: `""`/`"none"` closes it; any other design id
+    /// swaps the page's design in place on the single widget window — its
+    /// position and size are untouched. Called from `apply_settings`' diff
+    /// and once at startup for a persisted style.
+    pub(super) fn apply_clock_style(&mut self, style: &str) {
+        let s = style.trim();
+        if s.is_empty() || s == "none" {
+            if let Some(h) = self.clock.take() {
+                h.close();
+            }
+            return;
+        }
+        if let Some(h) = &self.clock {
+            h.post_json(&serde_json::json!({ "t": "clockStyle", "style": s }).to_string());
+            return;
+        }
+        if !self.ensure_web_env() {
+            return;
+        }
+        let bounds = self.state.config.settings.clock_bounds;
+        match crate::clock_host::ClockHost::open(
+            &self.clock_class,
+            self.web_env.as_ref().unwrap(),
+            bounds,
+            self.queue.clone(),
+        ) {
+            Ok(host) => self.clock = Some(host),
+            Err(e) => tracing::error!(error = %e, "clock widget failed"),
+        }
+    }
+
     /// The dedicated ExplorerBlurMica editor (settings card's 高级设置 button):
     /// a singleton — a second click foregrounds the open window, maximized or not.
     pub(super) fn open_fe_glass(&mut self) {
@@ -792,6 +823,21 @@ impl App {
                         pecofence_platform::frameless::is_zoomed(h.hwnd())
                     ));
                 }
+            }
+            // The clock widget page is live: arm its design, then reveal.
+            Some("clockReady") => {
+                if let Some(h) = &self.clock {
+                    let s = self.state.config.settings.clock_style.clone();
+                    h.post_json(&serde_json::json!({ "t": "clockStyle", "style": s }).to_string());
+                    window::show_normal(h.hwnd());
+                }
+            }
+            // Drag/resize ended — persist the widget's new bounds.
+            Some("clockMoved") => {
+                let get = |k: &str| v.get(k).and_then(|n| n.as_i64()).unwrap_or(0) as i32;
+                self.state.config.settings.clock_bounds =
+                    Some([get("x"), get("y"), get("w"), get("h")]);
+                self.schedule_save();
             }
             Some("feApply") => self.apply_fe_glass(&v),
             Some("feCancel") => {
@@ -1297,6 +1343,9 @@ impl App {
                     "资源管理器背景效果未能更改，请稍后重试。",
                 ));
             }
+        }
+        if new.clock_style != old.clock_style {
+            self.apply_clock_style(&new.clock_style);
         }
         let icons_toggled = new.hide_real_icons != old.hide_real_icons;
         if new.icons.shortcut_arrows != old.icons.shortcut_arrows {
@@ -3025,6 +3074,9 @@ impl App {
             host.update_language();
         }
         if let Some(host) = &self.fe_glass {
+            host.update_language();
+        }
+        if let Some(host) = &self.clock {
             host.update_language();
         }
         for window in self.fences.values() {

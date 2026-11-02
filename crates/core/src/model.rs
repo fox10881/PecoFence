@@ -230,6 +230,15 @@ pub struct Settings {
     /// place with the current layout — no versions, no extra files.
     #[serde(default)]
     pub theme_auto_update_daily: bool,
+    /// Desktop clock widget design: `"none"` = hidden (default);
+    /// `"g1".."g10"` and `"d1".."d10"` pick a design. Local device
+    /// preference — themes never carry it.
+    #[serde(default = "clock_style_default")]
+    pub clock_style: String,
+    /// Widget window bounds in physical pixels `[x, y, w, h]`; `None` until
+    /// the user first moves/resizes it (first spawn centres on primary).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock_bounds: Option<[i32; 4]>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -344,6 +353,8 @@ impl Default for Settings {
             stretch_tolerance_pct: 0,
             active_theme_path: None,
             theme_auto_update_daily: false,
+            clock_style: "none".to_string(),
+            clock_bounds: None,
         }
     }
 }
@@ -2002,6 +2013,10 @@ impl Config {
 
 fn default_chameleon_intensity() -> u8 {
     55
+}
+
+fn clock_style_default() -> String {
+    "none".to_string()
 }
 
 fn fe_light_rgba_default() -> String {

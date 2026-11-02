@@ -9,8 +9,8 @@
 //! `HTMINBUTTON` get SC_* behaviour and the snap flyout from DefWindowProc).
 
 use crate::bindings::{
-    self as b, GetClientRect, GetWindowLongPtrW, GetWindowRect, ScreenToClient, GWL_STYLE, HWND,
-    POINT, RECT,
+    self as b, GWL_STYLE, GetClientRect, GetWindowLongPtrW, GetWindowRect, HWND, POINT, RECT,
+    ScreenToClient,
 };
 use crate::window::dpi_of;
 
@@ -178,4 +178,52 @@ pub fn hit_test(hwnd: HWND, lparam: isize) -> isize {
         return HTCAPTION;
     }
     HTCLIENT
+}
+
+const WIDGET_EDGE_DIP: i32 = 8;
+
+/// Widget variant for chrome-free surfaces (the desktop clock): the `8px`
+/// perimeter resizes and *every* interior point drags — `HTCAPTION` makes
+/// `DefWindowProc` run the `SC_MOVE` loop, no title bar needed. Corners
+/// first, then edges; a `WS_POPUP` has no frame to subtract.
+pub fn widget_hit_test(hwnd: HWND, lparam: isize) -> isize {
+    let mut pt = POINT {
+        x: (lparam & 0xffff) as u16 as i16 as i32,
+        y: ((lparam >> 16) & 0xffff) as u16 as i16 as i32,
+    };
+    // SAFETY: in/out pointer to a local on a live HWND.
+    unsafe {
+        let _ = ScreenToClient(hwnd, &mut pt);
+    }
+    let mut rc = RECT::default();
+    // SAFETY: out-pointer to a local on a live HWND.
+    unsafe {
+        let _ = GetClientRect(hwnd, &mut rc);
+    }
+    let border = dip(hwnd, WIDGET_EDGE_DIP);
+    if pt.x < border && pt.y < border {
+        return HTTOPLEFT;
+    }
+    if pt.x >= rc.right - border && pt.y < border {
+        return HTTOPRIGHT;
+    }
+    if pt.x < border && pt.y >= rc.bottom - border {
+        return HTBOTTOMLEFT;
+    }
+    if pt.x >= rc.right - border && pt.y >= rc.bottom - border {
+        return HTBOTTOMRIGHT;
+    }
+    if pt.x < border {
+        return HTLEFT;
+    }
+    if pt.x >= rc.right - border {
+        return HTRIGHT;
+    }
+    if pt.y < border {
+        return HTTOP;
+    }
+    if pt.y >= rc.bottom - border {
+        return HTBOTTOM;
+    }
+    HTCAPTION
 }

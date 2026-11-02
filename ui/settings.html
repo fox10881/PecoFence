@@ -493,6 +493,8 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
         <div class="actions"><button id="feGlassAdvanced">高级设置</button></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">刷新外观</div><div class="s">重启资源管理器以获得全新状态 — 视觉效果与视频壁纸会自动恢复</div></div></div>
         <div class="actions"><button id="restartExplorer">刷新</button></div></div>
+      <div class="card"><div class="l"><span class="ic">&#xE917;</span><div><div class="t">桌面时钟小组件</div><div class="s">无边框时钟、日期与星期 — 拖动移动，从边缘调整大小</div></div></div>
+        <select id="clockStyleSel" data-bind="clockStyle" data-str></select></div>
       <h3>行为</h3>
       <div class="card"><div class="l"><span class="ic">&#xE70D;</span><div><div class="t">收起的栅栏悬停时自动展开</div><div class="s">鼠标移开后自动收起</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.hoverPeek"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE7C9;</span><div><div class="t">收起的栅栏需点击标题才展开</div><div class="s">开启后不再悬停展开；拖动标题仍可移动栅栏</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.clickToExpand"></div></div>
@@ -958,6 +960,30 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
 
   // File Explorer glass (ExplorerBlurMica): the effect select is a plain
   // data-bind dropdown — no catalog arrives from the backend.
+
+  // 桌面时钟小组件: none + g1..g10 (Gemini) + d1..d10 (Devin). The brand and
+  // number stay literal; each design's name localizes through its own key.
+  const CLOCK_DESIGNS = [
+    ['none', '', '无（关闭）'],
+    ['g1', 'Gemini 1', '玻璃翻页'], ['g2', 'Gemini 2', '霓虹时环'], ['g3', 'Gemini 3', '瑞士粗体'],
+    ['g4', 'Gemini 4', '点阵数码'], ['g5', 'Gemini 5', '流光胶囊'], ['g6', 'Gemini 6', '奢华指针'],
+    ['g7', 'Gemini 7', '分割网格'], ['g8', 'Gemini 8', '日月地平线'], ['g9', 'Gemini 9', '立体堆叠'],
+    ['g10', 'Gemini 10', '禅意缎带'],
+    ['d1', 'Devin 1', '极光霜面'], ['d2', 'Devin 2', '霓虹终端'], ['d3', 'Devin 3', '时间轨道'],
+    ['d4', 'Devin 4', '衬线卡片'], ['d5', 'Devin 5', '柔和表盘'], ['d6', 'Devin 6', '全息面板'],
+    ['d7', 'Devin 7', '日历页'], ['d8', 'Devin 8', '渐变块'], ['d9', 'Devin 9', '日期海报'],
+    ['d10', 'Devin 10', '紧凑胶囊'],
+  ];
+  function renderClockStyles() {
+    const sel = document.getElementById('clockStyleSel');
+    if (!sel) return;
+    sel.replaceChildren(...CLOCK_DESIGNS.map(([v, brand, name]) => {
+      const e = document.createElement('option');
+      e.value = v;
+      e.textContent = brand ? `${brand} · ${t(name)}` : t(name);
+      return e;
+    }));
+  }
 
   // 速览栅栏 › 快捷键: the box records the next combination, the host checks it, tries
   // RegisterHotKey and answers with peekHotkeyResult (plus a fresh state once saved). Windows
@@ -1685,6 +1711,7 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
       renderStartMenuStyles(m);
       renderTaskbarStyles(m);
       renderNotificationCenterStyles(m);
+      renderClockStyles();
       bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
       update = m.update; renderUpdate();
       // Transitions come on a frame after this state has been drawn: a single frame would style
