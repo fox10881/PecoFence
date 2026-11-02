@@ -1,462 +1,545 @@
 diff --git a/crates/app/src/app/settings.rs b/crates/app/src/app/settings.rs
-index a01debb..2aa9d83 100644
+index 2aa9d83..e60fec4 100644
 --- a/crates/app/src/app/settings.rs
 +++ b/crates/app/src/app/settings.rs
-@@ -175,6 +175,12 @@ static VIDEO_SWAP_EPOCH: AtomicU64 = AtomicU64::new(0);
- /// installs the result only while the epoch still matches config.
- pub(super) struct VideoSwap {
-     epoch: u64,
-+    /// The swap's full effective target — a pending swap for the identical
-+    /// target is kept instead of spawning a duplicate (a theme apply calls
-+    /// `sync_video_wallpaper` several times; each spawn used to invalidate the
-+    /// previous worker, killing fresh players at `frame_counter=1`).
-+    path: PathBuf,
-+    letterbox: bool,
-     /// Recovery after shell loss vs. a user pick — the accept path logs/toasts
-     /// them differently.
-     reattach: bool,
-@@ -241,6 +247,20 @@ impl App {
-         if pecofence_platform::process::is_packaged() {
-             new_settings.autostart = old_settings.autostart;
-         }
-+        if matches!(source, ConfigSource::Theme | ConfigSource::Retune) {
-+            // fe_* are local device preferences — a theme never carries them.
-+            // Without this preserve, an archive whose `fe_effect=""` (authored
-+            // before the feature, or stripped on pack) broadcasts FELR/EBMU
-+            // disarm and wipes the user's armed Explorer styling on every apply.
-+            new_settings.fe_effect = old_settings.fe_effect.clone();
-+            new_settings.fe_clear_address = old_settings.fe_clear_address;
-+            new_settings.fe_clear_bar_bg = old_settings.fe_clear_bar_bg;
-+            new_settings.fe_clear_winui_bg = old_settings.fe_clear_winui_bg;
-+            new_settings.fe_show_line = old_settings.fe_show_line;
-+            new_settings.fe_layout = old_settings.fe_layout.clone();
-+            new_settings.fe_light_rgba = old_settings.fe_light_rgba.clone();
-+            new_settings.fe_dark_rgba = old_settings.fe_dark_rgba.clone();
-+        }
-         if !matches!(source, ConfigSource::Theme | ConfigSource::Retune) {
-             // A plain config import/backup restore severs the link to whatever theme
-             // described the old setup — never trust a path a foreign file carried.
-@@ -660,6 +680,9 @@ impl App {
-     }
- 
-     fn settings_error(&self, text: &str) {
-+        // The toast is the whole UI surface — without this line a failed write
-+        // or rejected apply is undiagnosable in the log.
-+        tracing::error!(error = %text, "settings error shown to user");
-         if let Some(h) = &self.settings {
-             h.post_json(
-                 &serde_json::json!({ "type": "toast", "text": text, "error": true }).to_string(),
-@@ -1011,6 +1034,7 @@ impl App {
-                     }
-                 }
+@@ -1036,9 +1036,10 @@ impl App {
                  Some("openFeGlass") => self.open_fe_glass(),
-+                Some("refreshVisual") => self.refresh_visual_state(),
+                 Some("refreshVisual") => self.refresh_visual_state(),
                  Some("restartExplorer") => {
-                     // Failsafe for a stuck taskbar/desktop: kill the shell and
-                     // let Windows' own respawn (or our detached spawn) bring it
-@@ -1375,11 +1399,17 @@ impl App {
-         };
-         let path = PathBuf::from(&path_str);
-         let letterbox = self.contain_background();
--        if self.video_swap.is_none()
--            && self
--                .wmf_player
--                .as_ref()
--                .is_some_and(|p| p.path() == path && p.is_alive() && p.letterbox() == letterbox)
-+        if self
-+            .video_swap
-+            .as_ref()
-+            .is_some_and(|s| s.path == path && s.letterbox == letterbox)
-+        {
-+            return; // the wanted target is already in flight — keep it
-+        }
-+        if self
-+            .wmf_player
-+            .as_ref()
-+            .is_some_and(|p| p.path() == path && p.is_alive() && p.letterbox() == letterbox)
-         {
+-                    // Failsafe for a stuck taskbar/desktop: kill the shell and
+-                    // let Windows' own respawn (or our detached spawn) bring it
+-                    // back — the anchor tick then re-injects and re-styles it.
++                    // Failsafe for a stuck shell (no UI button — refresh is the
++                    // daily action). Kill the shell and let Windows' own
++                    // respawn (or our detached spawn) bring it back; the video
++                    // player's pending-reattach loop rides out the gap.
+                     self.settings_toast(pecofence_core::i18n::text("正在重启资源管理器…"));
+                     std::thread::spawn(pecofence_platform::tap::restart_explorer);
+                 }
+@@ -1579,10 +1580,35 @@ impl App {
+     /// An outside change means wallpaper intent moved to the image, so a running or
+     /// configured video yields — otherwise it keeps covering the image and exports keep
+     /// bundling it.
++    /// `SPI_SETDESKWALLPAPER` broadcast — a static image took the desktop.
++    /// The video yields only when the reported image genuinely differs from
++    /// the baseline recorded at player start: a shell restart can re-assert
++    /// the same wallpaper, and clearing `video_wallpaper_path` on that
++    /// transient made restart kill the video permanently. With no baseline
++    /// recorded the broadcast itself is the evidence (a real apply).
+     pub(super) fn on_wallpaper_changed(&mut self) {
+         if self.wmf_player.is_none() && self.state.config.settings.video_wallpaper_path.is_none() {
              return;
          }
-@@ -1395,6 +1425,8 @@ impl App {
-         let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
-         self.video_swap = Some(VideoSwap {
-             epoch,
-+            path: path.clone(),
-+            letterbox,
-             reattach: false,
-             toast: false,
-             rx: spawn_video_swap(old, path, letterbox, epoch),
-@@ -1470,10 +1502,6 @@ impl App {
-     /// is mid-boot retries on the next poll.
-     pub(super) fn ensure_video_wallpaper(&mut self) {
-         self.poll_video_swap();
--        // A swap is already in flight — starting another player here would race it.
--        if self.video_swap.is_some() {
--            return;
--        }
-         let Some(path_str) = self
-             .state
-             .config
-@@ -1484,6 +1512,17 @@ impl App {
-         else {
-             return;
-         };
-+        // A swap for this exact target is already in flight — keep it; a swap
-+        // for a different target gets superseded by the spawn below.
-+        let path = PathBuf::from(&path_str);
-+        let letterbox = self.contain_background();
-+        if self
-+            .video_swap
-+            .as_ref()
-+            .is_some_and(|s| s.path == path && s.letterbox == letterbox)
-+        {
++        let now = Self::static_wallpaper_now();
++        let differs = match (self.static_under_video.as_ref(), now.as_ref()) {
++            (Some(b), Some(n)) => b != n,
++            _ => true,
++        };
++        if !differs {
++            tracing::debug!(
++                wallpaper = ?now,
++                "wallpaper signal re-asserted the same image; keeping video intent"
++            );
 +            return;
 +        }
-         if self.wmf_player.as_ref().is_some_and(|p| p.is_alive()) {
-             return;
-         }
-@@ -1494,17 +1533,17 @@ impl App {
-         }
-         let old = self.wmf_player.take();
-         self.static_under_video = None;
--        let path = PathBuf::from(&path_str);
-         if !path.is_file() {
-             if let Some(p) = old {
-                 reap_video_player(p);
-             }
-             return;
-         }
--        let letterbox = self.contain_background();
-         let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
-         self.video_swap = Some(VideoSwap {
-             epoch,
-+            path: path.clone(),
-+            letterbox,
-             reattach: true,
-             toast: false,
-             rx: spawn_video_swap(old, path, letterbox, epoch),
-@@ -1628,6 +1667,17 @@ impl App {
- 
-     pub(super) fn apply_video_wallpaper(&mut self, path: &Path) {
-         tracing::info!(path = %path.display(), "applying video wallpaper from settings");
-+        let letterbox = self.contain_background();
-+        // The same pick is already in flight (e.g. a theme apply racing a user
-+        // pick) — keep it and make sure its completion toasts.
-+        if let Some(s) = self
-+            .video_swap
-+            .as_mut()
-+            .filter(|s| s.path == path && s.letterbox == letterbox)
-+        {
-+            s.toast = true;
++        if pecofence_platform::wallpaper::desktops_differ() {
++            tracing::debug!(
++                applied = ?now,
++                "wallpaper signal differs but virtual desktops differ; keeping video"
++            );
 +            return;
 +        }
-         self.invalidate_video_swap();
-         if let Some(p) = self.wmf_player.take() {
-             reap_video_player(p);
-@@ -1638,9 +1688,11 @@ impl App {
-         let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
-         self.video_swap = Some(VideoSwap {
-             epoch,
-+            path: path.to_path_buf(),
-+            letterbox,
-             reattach: false,
-             toast: true,
--            rx: spawn_video_swap(None, path.to_path_buf(), self.contain_background(), epoch),
-+            rx: spawn_video_swap(None, path.to_path_buf(), letterbox, epoch),
-         });
-     }
- 
-@@ -1687,16 +1739,26 @@ impl App {
-         let player_alive = player.is_some_and(|p| p.is_alive());
-         let player_path = player.map(|p| p.path().to_path_buf());
-         let player_file = player_path.as_ref().is_some_and(|p| p.is_file());
-+        // A swap in flight IS the video background — the player handle is None
-+        // for its whole duration, so callers deciding "is the background the
-+        // video?" (retune, theme pack) must see the pending target, not SPI's
-+        // static fallback. Missing this made a mid-swap retune retire the video.
-+        let swap_path = self
-+            .video_swap
-+            .as_ref()
-+            .map(|s| s.path.clone())
-+            .filter(|p| p.is_file());
-         let chosen = if player_alive && player_file {
-             player_path.clone()
-         } else {
--            static_src.clone()
-+            swap_path.clone().or(static_src.clone())
-         };
          tracing::info!(
-             player_present = player.is_some(),
-             player_alive,
-             player_path = ?player_path,
-             player_file,
-+            swap_pending = ?swap_path,
-             spi_wallpaper = ?spi,
-             idw_wallpaper = ?idw.as_ref().map(|o| o.as_ref().map(|p| p.display().to_string())),
-             static_under_video = ?self.static_under_video,
-@@ -2814,6 +2876,25 @@ impl App {
-         self.theme_dirty.set(false);
-     }
- 
-+    /// The Refresh button: re-delivers the *armed in-memory state* to the shell —
-+    /// no taskkill, no theme reload, nothing persisted. Dead resident command
-+    /// windows re-inject through `ensure_resident_at`'s `IsWindow` probe, and a
-+    /// lost desktop layer re-attaches via `ensure_video_wallpaper`. Safe to
-+    /// click repeatedly: every leg is idempotent (epoch/on-change gated).
-+    fn refresh_visual_state(&mut self) {
-+        pecofence_platform::file_explorer_styler::rearm();
-+        pecofence_platform::taskbar_styler::ensure();
-+        pecofence_platform::start_menu::ensure();
-+        pecofence_platform::notification_center::ensure();
-+        self.ensure_video_wallpaper();
-+        if let Some(a) = self.anchor.borrow_mut().as_mut() {
-+            a.reanchor("manual refresh");
-+        }
-+        self.refresh_visuals(true);
-+        self.settings_toast(pecofence_core::i18n::text("外观已刷新"));
-+        tracing::info!("manual visual refresh: state re-delivered to shell");
-+    }
-+
-     pub(super) fn refresh_language(&mut self) {
-         let language = self
-             .state
-diff --git a/crates/core/src/model.rs b/crates/core/src/model.rs
-index c2ac231..b8808b9 100644
---- a/crates/core/src/model.rs
-+++ b/crates/core/src/model.rs
-@@ -1957,6 +1957,18 @@ impl Config {
-     /// their manifest with the listing's names so a machine without that folder gets a
-     /// graceful virtual fence.
-     pub fn make_theme_portable(&mut self) {
-+        // fe_* are local device preferences — themes never carry them (the
-+        // apply side preserves the local values, but the archive shouldn't
-+        // describe a foreign machine's Explorer styling at all).
-+        let defaults = Settings::default();
-+        self.settings.fe_effect = defaults.fe_effect;
-+        self.settings.fe_clear_address = defaults.fe_clear_address;
-+        self.settings.fe_clear_bar_bg = defaults.fe_clear_bar_bg;
-+        self.settings.fe_clear_winui_bg = defaults.fe_clear_winui_bg;
-+        self.settings.fe_show_line = defaults.fe_show_line;
-+        self.settings.fe_layout = defaults.fe_layout;
-+        self.settings.fe_light_rgba = defaults.fe_light_rgba;
-+        self.settings.fe_dark_rgba = defaults.fe_dark_rgba;
-         for layout in &mut self.layouts {
-             for fence in &mut layout.fences {
-                 if fence.kind == FenceKind::FolderPortal {
+             player_alive = self.wmf_player.as_ref().is_some_and(|p| p.is_alive()),
+             configured = ?self.state.config.settings.video_wallpaper_path,
 diff --git a/crates/platform/src/file_explorer_styler.rs b/crates/platform/src/file_explorer_styler.rs
-index e44433f..a9552ef 100644
+index a9552ef..2e5b424 100644
 --- a/crates/platform/src/file_explorer_styler.rs
 +++ b/crates/platform/src/file_explorer_styler.rs
-@@ -704,6 +704,24 @@ pub fn ensure() {
+@@ -111,8 +111,10 @@ struct Fe {
+     show_line: bool,
+     light_rgba: String,
+     dark_rgba: String,
+-    /// Bumped every `apply_effect` — a pid whose delivery epoch trails
+-    /// gets `EBMU`+`EBML` (fresh config read) rather than a skip.
++    /// Ini-generation counter — bumps ONLY when a `config.ini`-relevant
++    /// field changes (effect/flags/rgba). A trailing pid gets `EBMU`+`EBML`
++    /// (fresh config read); layout-only and identical applies bump nothing,
++    /// so routine delivery never unloads the live module.
+     epoch: u64,
+     /// pid → (cmd window, epoch delivered). `ensure()` only wires pids
+     /// that are new, stale-epoch, or whose resident restarted.
+@@ -523,7 +525,8 @@ fn deliver_all() {
+ /// Stores the layout preset id — validation only. Arming/delivery runs in
+ /// `sync_xaml_leg` + `deliver_all`, which the caller runs once every field
+ /// the wire depends on (`layout`, `effect`, `clear_winui_bg`) is settled;
+-/// wiring mid-apply would send a stale `clearWinUIBg` gate.
++/// wiring mid-apply would send a stale `clearWinUIBg` gate. The XAML epoch
++/// bumps only on a real preset change: an identical apply sends no wire.
+ fn apply_layout(layout: &str) {
+     let valid = layout.is_empty() || pecofence_core::fe_layouts::layout_wire(layout).is_some();
+     if !valid {
+@@ -532,8 +535,10 @@ fn apply_layout(layout: &str) {
+     let layout = if valid { layout } else { "" };
+     let mut guard = lock();
+     let fe = guard.get_or_insert_with(Fe::default);
+-    fe.layout = layout.to_string();
+-    fe.xaml_epoch += 1;
++    if fe.layout != layout {
++        fe.layout = layout.to_string();
++        fe.xaml_epoch += 1;
++    }
+     tracing::debug!(layout, "apply_layout: stored");
+ }
+ 
+@@ -580,6 +585,14 @@ fn disarm_legacy() {
+ /// `layout`. The XAML leg runs unconditionally (`effect=""` still gets the
+ /// layout wire — minus the clear rules, which need material behind them);
+ /// `effect=""` additionally unloads EBM everywhere.
++///
++/// EBM lifecycle rule: `config.ini` is read once per `LoadLibrary`, so a
++/// real config change reaches an already-loaded pid only through
++/// `EBMU`+`EBML` — a mid-session `FreeLibrary` whose detach races live
++/// detours. That unload is therefore confined to the pids whose ini-
++/// generation trails: `epoch` bumps only when effect/flags/rgba actually
++/// change. A layout-only or identical apply delivers at most a `FELT`
++/// wire and never disturbs the material.
+ /// Returns `false` when the deploy or the `config.ini` write failed so
+ /// settings can revert.
+ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
+@@ -615,6 +628,34 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
+         finish_xaml();
+         return false;
+     }
++    // What the ini would actually change. `clear_winui_bg`/`effect`-empty
++    // also gate the XAML wire's clear rules — tracked here so the single
++    // bump below covers both legs.
++    let (ini_changed, wire_changed) = {
++        let guard = lock();
++        match guard.as_ref() {
++            Some(fe) => (
++                fe.effect != cfg.effect
++                    || fe.clear_address != cfg.clear_address
++                    || fe.clear_bar_bg != cfg.clear_bar_bg
++                    || fe.clear_winui_bg != cfg.clear_winui_bg
++                    || fe.show_line != cfg.show_line
++                    || fe.light_rgba != cfg.light_rgba
++                    || fe.dark_rgba != cfg.dark_rgba,
++                fe.clear_winui_bg != cfg.clear_winui_bg
++                    || fe.effect.is_empty() != cfg.effect.is_empty(),
++            ),
++            None => (true, true),
++        }
++    };
++    if !ini_changed && ARMED.load(Ordering::Acquire) {
++        // The material config is already what the pid runs — no deploy, no
++        // ini write, no unload+reload. The XAML leg still syncs/delivers
++        // (a layout change lands here).
++        tracing::debug!("apply_effect: EBM config unchanged — material leg skipped");
++        finish_xaml();
++        return true;
++    }
+     let Some(dir) = residents_dir() else {
+         tracing::warn!("ExplorerBlurMica apply failed — %LOCALAPPDATA% residents dir unavailable");
+         finish_xaml();
+@@ -649,8 +690,10 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
+         fe.light_rgba = cfg.light_rgba.to_string();
+         fe.dark_rgba = cfg.dark_rgba.to_string();
+         fe.dll_path = dll_path.display().to_string();
+-        fe.epoch += 1; // every live pid reloads EBM under the new config
+-        fe.xaml_epoch += 1; // `clearWinUIBg`/`effect` gate the wire contents
++        fe.epoch += 1; // pids whose generation trails reload EBM once
++        if ini_changed || wire_changed {
++            fe.xaml_epoch += 1; // clear rules track effect/clearWinUIBg
++        }
+     }
+     ARMED.store(true, Ordering::Release);
+     finish_xaml();
+@@ -704,18 +747,19 @@ pub fn ensure() {
      deliver_all();
  }
  
-+/// Manual refresh: forces a full re-delivery of the armed state — both epochs
-+/// bump, so every live pid gets `EBMU`+`EBML` (fresh config read) and the
-+/// XAML wire again. Dead command windows re-inject through
-+/// `ensure_resident_at`'s IsWindow probe; nothing restarts Explorer.
-+pub fn rearm() {
-+    if !is_armed() {
-+        return;
-+    }
-+    if let Some(fe) = lock().as_mut() {
-+        fe.epoch += 1;
-+        fe.xaml_epoch += 1;
-+        fe.delivered.clear();
-+        fe.xaml_delivered.clear();
-+    }
-+    deliver_all();
-+    tracing::info!("ExplorerBlurMica re-armed on manual refresh");
-+}
-+
- /// App shutdown — unload EBM everywhere so Explorer returns to stock;
- /// the deployed files stay for the next run.
- pub fn shutdown() {
+-/// Manual refresh: forces a full re-delivery of the armed state — both epochs
+-/// bump, so every live pid gets `EBMU`+`EBML` (fresh config read) and the
+-/// XAML wire again. Dead command windows re-inject through
++/// Manual refresh: re-delivers the XAML wire to every pid and re-injects
++/// `EBML` into pids whose coverage trails — new cabinets and restarted
++/// residents get the module, already-covered pids see only `FELT`. The EBM
++/// epoch is deliberately NOT bumped: a mid-session `EBMU` unload races live
++/// detours and took Explorer down in the field, so refresh never unloads a
++/// healthy module. Dead command windows re-inject through
+ /// `ensure_resident_at`'s IsWindow probe; nothing restarts Explorer.
+ pub fn rearm() {
+     if !is_armed() {
+         return;
+     }
+     if let Some(fe) = lock().as_mut() {
+-        fe.epoch += 1;
+         fe.xaml_epoch += 1;
+-        fe.delivered.clear();
+         fe.xaml_delivered.clear();
+     }
+     deliver_all();
+diff --git a/crates/platform/src/wmf_wallpaper.rs b/crates/platform/src/wmf_wallpaper.rs
+index 39002ce..0c0a547 100644
+--- a/crates/platform/src/wmf_wallpaper.rs
++++ b/crates/platform/src/wmf_wallpaper.rs
+@@ -2267,15 +2267,23 @@ unsafe fn run_gpu_attached(
+                                 );
+                             }
+                             Some(Err(e)) => {
+-                                if Instant::now() >= reattach_deadline.unwrap() {
+-                                    let _ = DestroyWindow(pending_hwnd.take().unwrap());
+-                                    return Err(format!("re-attach after window loss: {e}"));
++                                if reattach_deadline.is_some_and(|d| Instant::now() >= d) {
++                                    // No hard give-up: the shell may take far longer than
++                                    // 30 s to rebuild (or be mid-restart again), and a dead
++                                    // player made restart kill the video permanently. The
++                                    // 300 ms tick retry is a few FindWindow calls — cheap.
++                                    reattach_deadline = None;
++                                    tracing::warn!(
++                                        "wmf: desktop layer still missing after 30 s; \
++                                         retrying attach in the background until the shell returns"
++                                    );
++                                } else if reattach_deadline.is_some() {
++                                    // Shell still down — retry on the next tick.
++                                    tracing::debug!(
++                                        error = %e,
++                                        "wmf: re-attach pending; shell layer not back yet"
++                                    );
+                                 }
+-                                // Shell still down — retry on the next tick.
+-                                tracing::debug!(
+-                                    error = %e,
+-                                    "wmf: re-attach pending; shell layer not back yet"
+-                                );
+                             }
+                             None => {
+                                 return Err("recreate video window failed".to_string());
+@@ -2617,15 +2625,20 @@ fn run_player_thread(
+                             tracing::info!(?hwnd, "wmf: video window re-attached (GDI)");
+                         }
+                         Some(Err(e)) => {
+-                            if Instant::now() >= reattach_deadline.unwrap() {
+-                                let _ = DestroyWindow(pending_hwnd.take().unwrap());
+-                                tracing::error!(error = %e, "wmf: re-attach failed; stopping");
+-                                break;
++                            if reattach_deadline.is_some_and(|d| Instant::now() >= d) {
++                                // Same rule as the GPU path: never stop on a long shell
++                                // outage — the stop flag is the only exit.
++                                reattach_deadline = None;
++                                tracing::warn!(
++                                    "wmf: desktop layer still missing after 30 s; \
++                                     retrying attach in the background until the shell returns"
++                                );
++                            } else if reattach_deadline.is_some() {
++                                tracing::debug!(
++                                    error = %e,
++                                    "wmf: re-attach pending; shell layer not back yet"
++                                );
+                             }
+-                            tracing::debug!(
+-                                error = %e,
+-                                "wmf: re-attach pending; shell layer not back yet"
+-                            );
+                         }
+                         None => {
+                             tracing::error!("wmf: recreate window failed; stopping");
 diff --git a/locales/ar.json b/locales/ar.json
-index b411987..b82f858 100644
+index b82f858..8e1b5a3 100644
 --- a/locales/ar.json
 +++ b/locales/ar.json
-@@ -702,5 +702,9 @@
-   "OS26 Merged Top Bar": "OS26 الشريط العلوي المدمج",
+@@ -646,9 +646,7 @@
+   "开始菜单视觉主题；选择后立即生效": "سمات مرئية لقائمة ابدأ؛ تُطبَّق فور الاختيار",
+   "开始菜单样式未能更改，请稍后重试。": "تعذّر تغيير نمط قائمة ابدأ — حاول مرة أخرى.",
+   "任务栏视觉主题；选择后立即生效": "سمات مرئية لشريط المهام؛ تُطبَّق فور الاختيار",
+-  "重启资源管理器": "تحديث",
+   "出现卡顿或异常时按一下": "قم بضغط الزر في حال حدوث اي تعليق او تصرف غريب",
+-  "重启": "تحديث",
+   "正在重启资源管理器…": "جارٍ تحديث مستكشف ويندوز…",
+   "任务栏样式未能更改，请稍后重试。": "تعذّر تغيير نمط شريط المهام — حاول مرة أخرى.",
+   "通知中心样式": "نمط مركز الإشعارات",
+@@ -703,8 +701,8 @@
    "ZEUS macOS Single Bar": "ZEUS شريط macOS المفرد",
    "Compact Explorer 11": "Compact Explorer 11",
--  "Floating Spaced Bars": "أشرطة عائمة متباعدة"
-+  "Floating Spaced Bars": "أشرطة عائمة متباعدة",
-+  "刷新外观 / 重启资源管理器": "تحديث المظهر / إعادة تشغيل المستكشف",
-+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "يُعيد التحديث تطبيق المؤثرات الحالية؛ أعد تشغيل المستكشف عند التعليق فقط",
-+  "刷新": "تحديث",
-+  "外观已刷新": "تم تحديث المظهر"
+   "Floating Spaced Bars": "أشرطة عائمة متباعدة",
+-  "刷新外观 / 重启资源管理器": "تحديث المظهر / إعادة تشغيل المستكشف",
+-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "يُعيد التحديث تطبيق المؤثرات الحالية؛ أعد تشغيل المستكشف عند التعليق فقط",
++  "刷新外观": "تحديث المظهر",
++  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "يعيد حقن التأثيرات المرئية وإعادة إرسال تخطيط المستكشف — دون إعادة تشغيل المستكشف أو المساس بخلفية الفيديو",
+   "刷新": "تحديث",
+   "外观已刷新": "تم تحديث المظهر"
  }
 diff --git a/locales/de.json b/locales/de.json
-index 6c2f7ab..3d76c43 100644
+index 3d76c43..0d29167 100644
 --- a/locales/de.json
 +++ b/locales/de.json
-@@ -702,5 +702,9 @@
-   "OS26 Merged Top Bar": "OS26 Verschmolzene Titelleiste",
+@@ -646,9 +646,7 @@
+   "开始菜单视觉主题；选择后立即生效": "Visuelle Designs für das Startmenü; wirken sofort bei Auswahl",
+   "开始菜单样式未能更改，请稍后重试。": "Startmenü-Stil konnte nicht geändert werden — bitte erneut versuchen.",
+   "任务栏视觉主题；选择后立即生效": "Visuelle Designs für die Taskleiste; wirken sofort bei Auswahl",
+-  "重启资源管理器": "Explorer neu starten",
+   "出现卡顿或异常时按一下": "Bei Hängern oder ungewöhnlichem Verhalten drücken",
+-  "重启": "Neu starten",
+   "正在重启资源管理器…": "Explorer wird neu gestartet…",
+   "任务栏样式未能更改，请稍后重试。": "Der Taskleistenstil konnte nicht geändert werden — bitte erneut versuchen.",
+   "通知中心样式": "Info-Center-Stil",
+@@ -703,8 +701,8 @@
    "ZEUS macOS Single Bar": "ZEUS macOS-Einzelzeile",
    "Compact Explorer 11": "Compact Explorer 11",
--  "Floating Spaced Bars": "Schwebende Leisten"
-+  "Floating Spaced Bars": "Schwebende Leisten",
-+  "刷新外观 / 重启资源管理器": "Darstellung aktualisieren / Explorer neu starten",
-+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Aktualisieren wendet die aktuellen Effekte erneut an; Explorer nur bei Problemen neu starten",
-+  "刷新": "Aktualisieren",
-+  "外观已刷新": "Darstellung aktualisiert"
+   "Floating Spaced Bars": "Schwebende Leisten",
+-  "刷新外观 / 重启资源管理器": "Darstellung aktualisieren / Explorer neu starten",
+-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Aktualisieren wendet die aktuellen Effekte erneut an; Explorer nur bei Problemen neu starten",
++  "刷新外观": "Darstellung aktualisieren",
++  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "Injiziert die Optik neu und sendet das Explorer-Layout erneut — kein Explorer-Neustart, Video-Hintergrund bleibt unberührt",
+   "刷新": "Aktualisieren",
+   "外观已刷新": "Darstellung aktualisiert"
  }
 diff --git a/locales/en.json b/locales/en.json
-index 96e72cf..a3773c3 100644
+index a3773c3..df7e484 100644
 --- a/locales/en.json
 +++ b/locales/en.json
-@@ -702,5 +702,9 @@
-   "OS26 Merged Top Bar": "OS26 Merged Top Bar",
+@@ -646,9 +646,7 @@
+   "开始菜单视觉主题；选择后立即生效": "Visual themes for the Start menu; applies on selection",
+   "开始菜单样式未能更改，请稍后重试。": "Couldn't change the Start Menu style — try again.",
+   "任务栏视觉主题；选择后立即生效": "Visual themes for the taskbar; applies on selection",
+-  "重启资源管理器": "Restart Explorer",
+   "出现卡顿或异常时按一下": "Press if the shell hangs or misbehaves",
+-  "重启": "Restart",
+   "正在重启资源管理器…": "Restarting Explorer…",
+   "任务栏样式未能更改，请稍后重试。": "Couldn't change the taskbar style — try again.",
+   "通知中心样式": "Notification Center style",
+@@ -703,8 +701,8 @@
    "ZEUS macOS Single Bar": "ZEUS macOS Single Bar",
    "Compact Explorer 11": "Compact Explorer 11",
--  "Floating Spaced Bars": "Floating Spaced Bars"
-+  "Floating Spaced Bars": "Floating Spaced Bars",
-+  "刷新外观 / 重启资源管理器": "Refresh visuals / Restart Explorer",
-+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Refresh re-applies the current visuals; restart Explorer only if it is stuck",
-+  "刷新": "Refresh",
-+  "外观已刷新": "Visuals refreshed"
+   "Floating Spaced Bars": "Floating Spaced Bars",
+-  "刷新外观 / 重启资源管理器": "Refresh visuals / Restart Explorer",
+-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Refresh re-applies the current visuals; restart Explorer only if it is stuck",
++  "刷新外观": "Refresh visuals",
++  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "Re-injects the visuals and re-delivers the Explorer layout — no Explorer restart, video wallpaper untouched",
+   "刷新": "Refresh",
+   "外观已刷新": "Visuals refreshed"
  }
 diff --git a/locales/es.json b/locales/es.json
-index 480e045..acfa221 100644
+index acfa221..685a920 100644
 --- a/locales/es.json
 +++ b/locales/es.json
-@@ -702,5 +702,9 @@
-   "OS26 Merged Top Bar": "OS26 barra superior fusionada",
+@@ -646,9 +646,7 @@
+   "开始菜单视觉主题；选择后立即生效": "Temas visuales para el menú Inicio; se aplican al elegirlos",
+   "开始菜单样式未能更改，请稍后重试。": "No se pudo cambiar el estilo del menú Inicio — inténtalo de nuevo.",
+   "任务栏视觉主题；选择后立即生效": "Temas visuales para la barra de tareas; se aplican al elegirlos",
+-  "重启资源管理器": "Reiniciar el Explorador",
+   "出现卡顿或异常时按一下": "Púlsalo si algo se bloquea o se comporta de forma extraña",
+-  "重启": "Reiniciar",
+   "正在重启资源管理器…": "Reiniciando el Explorador…",
+   "任务栏样式未能更改，请稍后重试。": "No se pudo cambiar el estilo de la barra de tareas — inténtalo de nuevo.",
+   "通知中心样式": "Estilo del Centro de notificaciones",
+@@ -703,8 +701,8 @@
    "ZEUS macOS Single Bar": "ZEUS barra única macOS",
    "Compact Explorer 11": "Compact Explorer 11",
--  "Floating Spaced Bars": "Barras flotantes espaciadas"
-+  "Floating Spaced Bars": "Barras flotantes espaciadas",
-+  "刷新外观 / 重启资源管理器": "Actualizar apariencia / Reiniciar el Explorador",
-+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Actualizar vuelve a aplicar los efectos actuales; reinicia el Explorador solo si se bloquea",
-+  "刷新": "Actualizar",
-+  "外观已刷新": "Apariencia actualizada"
+   "Floating Spaced Bars": "Barras flotantes espaciadas",
+-  "刷新外观 / 重启资源管理器": "Actualizar apariencia / Reiniciar el Explorador",
+-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Actualizar vuelve a aplicar los efectos actuales; reinicia el Explorador solo si se bloquea",
++  "刷新外观": "Actualizar apariencia",
++  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "Reinyecta los efectos visuales y reenvía la disposición del Explorador — sin reiniciar el Explorador ni tocar el fondo de vídeo",
+   "刷新": "Actualizar",
+   "外观已刷新": "Apariencia actualizada"
  }
 diff --git a/locales/fr.json b/locales/fr.json
-index 45a50e4..006a162 100644
+index 006a162..44392e8 100644
 --- a/locales/fr.json
 +++ b/locales/fr.json
-@@ -702,5 +702,9 @@
-   "OS26 Merged Top Bar": "OS26 barre supérieure fusionnée",
+@@ -646,9 +646,7 @@
+   "开始菜单视觉主题；选择后立即生效": "Thèmes visuels pour le menu Démarrer ; appliqués dès la sélection",
+   "开始菜单样式未能更改，请稍后重试。": "Impossible de changer le style du menu Démarrer — réessayez.",
+   "任务栏视觉主题；选择后立即生效": "Thèmes visuels pour la barre des tâches ; appliqués dès la sélection",
+-  "重启资源管理器": "Redémarrer l’Explorateur",
+   "出现卡顿或异常时按一下": "Appuyez en cas de blocage ou de comportement anormal",
+-  "重启": "Redémarrer",
+   "正在重启资源管理器…": "Redémarrage de l’Explorateur…",
+   "任务栏样式未能更改，请稍后重试。": "Impossible de changer le style de la barre des tâches — réessayez.",
+   "通知中心样式": "Style du Centre de notifications",
+@@ -703,8 +701,8 @@
    "ZEUS macOS Single Bar": "ZEUS barre unique macOS",
    "Compact Explorer 11": "Compact Explorer 11",
--  "Floating Spaced Bars": "Barres flottantes espacées"
-+  "Floating Spaced Bars": "Barres flottantes espacées",
-+  "刷新外观 / 重启资源管理器": "Actualiser l’apparence / Redémarrer l’Explorateur",
-+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Actualiser réapplique les effets actuels ; ne redémarrez l’Explorateur qu’en cas de blocage",
-+  "刷新": "Actualiser",
-+  "外观已刷新": "Apparence actualisée"
+   "Floating Spaced Bars": "Barres flottantes espacées",
+-  "刷新外观 / 重启资源管理器": "Actualiser l’apparence / Redémarrer l’Explorateur",
+-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Actualiser réapplique les effets actuels ; ne redémarrez l’Explorateur qu’en cas de blocage",
++  "刷新外观": "Actualiser l'apparence",
++  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "Réinjecte les visuels et renvoie la disposition de l'Explorateur — sans redémarrer l'Explorateur ni toucher au fond d'écran vidéo",
+   "刷新": "Actualiser",
+   "外观已刷新": "Apparence actualisée"
  }
 diff --git a/locales/it.json b/locales/it.json
-index 4f926a8..f15bfe1 100644
+index f15bfe1..9faa2fd 100644
 --- a/locales/it.json
 +++ b/locales/it.json
-@@ -702,5 +702,9 @@
-   "OS26 Merged Top Bar": "OS26 barra superiore unita",
+@@ -646,9 +646,7 @@
+   "开始菜单视觉主题；选择后立即生效": "Temi visivi per il menu Start; si applicano alla selezione",
+   "开始菜单样式未能更改，请稍后重试。": "Impossibile cambiare lo stile del menu Start — riprova.",
+   "任务栏视觉主题；选择后立即生效": "Temi visivi per la barra delle applicazioni; si applicano alla selezione",
+-  "重启资源管理器": "Riavvia Esplora risorse",
+   "出现卡顿或异常时按一下": "Premi in caso di blocchi o comportamenti anomali",
+-  "重启": "Riavvia",
+   "正在重启资源管理器…": "Riavvio di Esplora risorse…",
+   "任务栏样式未能更改，请稍后重试。": "Impossibile cambiare lo stile della barra delle applicazioni — riprova.",
+   "通知中心样式": "Stile del Centro notifiche",
+@@ -703,8 +701,8 @@
    "ZEUS macOS Single Bar": "ZEUS barra singola macOS",
    "Compact Explorer 11": "Compact Explorer 11",
--  "Floating Spaced Bars": "Barre fluttuanti spaziate"
-+  "Floating Spaced Bars": "Barre fluttuanti spaziate",
-+  "刷新外观 / 重启资源管理器": "Aggiorna aspetto / Riavvia Esplora risorse",
-+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Aggiorna riapplica gli effetti correnti; riavvia Esplora risorse solo in caso di problemi",
-+  "刷新": "Aggiorna",
-+  "外观已刷新": "Aspetto aggiornato"
+   "Floating Spaced Bars": "Barre fluttuanti spaziate",
+-  "刷新外观 / 重启资源管理器": "Aggiorna aspetto / Riavvia Esplora risorse",
+-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Aggiorna riapplica gli effetti correnti; riavvia Esplora risorse solo in caso di problemi",
++  "刷新外观": "Aggiorna aspetto",
++  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "Reinietta gli effetti visivi e riconsegna il layout di Explorer — senza riavviare Explorer e senza toccare lo sfondo video",
+   "刷新": "Aggiorna",
+   "外观已刷新": "Aspetto aggiornato"
  }
 diff --git a/locales/ja.json b/locales/ja.json
-index 86a7b67..b11a1a2 100644
+index b11a1a2..0dd8118 100644
 --- a/locales/ja.json
 +++ b/locales/ja.json
-@@ -702,5 +702,9 @@
-   "OS26 Merged Top Bar": "OS26 統合トップバー",
+@@ -646,9 +646,7 @@
+   "开始菜单视觉主题；选择后立即生效": "スタート メニューのビジュアル テーマ。選択するとすぐ適用されます",
+   "开始菜单样式未能更改，请稍后重试。": "スタート メニューのスタイルを変更できませんでした。もう一度お試しください。",
+   "任务栏视觉主题；选择后立即生效": "タスクバーのビジュアル テーマ。選択するとすぐ適用されます",
+-  "重启资源管理器": "エクスプローラーを再起動",
+   "出现卡顿或异常时按一下": "固まったり異常な動作をしたときに押してください",
+-  "重启": "再起動",
+   "正在重启资源管理器…": "エクスプローラーを再起動しています…",
+   "任务栏样式未能更改，请稍后重试。": "タスクバーのスタイルを変更できませんでした。もう一度お試しください。",
+   "通知中心样式": "通知センターのスタイル",
+@@ -703,8 +701,8 @@
    "ZEUS macOS Single Bar": "ZEUS macOS シングルバー",
    "Compact Explorer 11": "Compact Explorer 11",
--  "Floating Spaced Bars": "フローティングバー"
-+  "Floating Spaced Bars": "フローティングバー",
-+  "刷新外观 / 重启资源管理器": "外観を更新 / エクスプローラーを再起動",
-+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "更新は現在の視覚効果を再適用します。エクスプローラーの再起動は不具合時のみ",
-+  "刷新": "更新",
-+  "外观已刷新": "外観を更新しました"
+   "Floating Spaced Bars": "フローティングバー",
+-  "刷新外观 / 重启资源管理器": "外観を更新 / エクスプローラーを再起動",
+-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "更新は現在の視覚効果を再適用します。エクスプローラーの再起動は不具合時のみ",
++  "刷新外观": "外観を更新",
++  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "ビジュアルを再注入し、Explorerレイアウトを再送信します — Explorerの再起動なし、動画壁紙にも影響しません",
+   "刷新": "更新",
+   "外观已刷新": "外観を更新しました"
  }
 diff --git a/locales/ko.json b/locales/ko.json
-index 2e47b78..0cc436c 100644
+index 0cc436c..4787d19 100644
 --- a/locales/ko.json
 +++ b/locales/ko.json
-@@ -702,5 +702,9 @@
-   "OS26 Merged Top Bar": "OS26 병합 상단 바",
+@@ -646,9 +646,7 @@
+   "开始菜单视觉主题；选择后立即生效": "시작 메뉴 시각 테마 — 선택하는 즉시 적용됩니다",
+   "开始菜单样式未能更改，请稍后重试。": "시작 메뉴 스타일을 변경하지 못했습니다. 다시 시도해 주세요.",
+   "任务栏视觉主题；选择后立即生效": "작업 표시줄 시각 테마 — 선택하는 즉시 적용됩니다",
+-  "重启资源管理器": "탐색기 다시 시작",
+   "出现卡顿或异常时按一下": "멈춤이나 이상 동작이 있을 때 누르세요",
+-  "重启": "다시 시작",
+   "正在重启资源管理器…": "탐색기를 다시 시작하는 중…",
+   "任务栏样式未能更改，请稍后重试。": "작업 표시줄 스타일을 변경하지 못했습니다. 다시 시도해 주세요.",
+   "通知中心样式": "알림 센터 스타일",
+@@ -703,8 +701,8 @@
    "ZEUS macOS Single Bar": "ZEUS macOS 단일 바",
    "Compact Explorer 11": "Compact Explorer 11",
--  "Floating Spaced Bars": "플로팅 분리 바"
-+  "Floating Spaced Bars": "플로팅 분리 바",
-+  "刷新外观 / 重启资源管理器": "모양 새로 고침 / 탐색기 다시 시작",
-+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "새로 고침은 현재 시각 효과를 다시 적용합니다. 탐색기는 멈출 때만 다시 시작하세요",
-+  "刷新": "새로 고침",
-+  "外观已刷新": "모양이 새로 고쳐졌습니다"
+   "Floating Spaced Bars": "플로팅 분리 바",
+-  "刷新外观 / 重启资源管理器": "모양 새로 고침 / 탐색기 다시 시작",
+-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "새로 고침은 현재 시각 효과를 다시 적용합니다. 탐색기는 멈출 때만 다시 시작하세요",
++  "刷新外观": "외관 새로 고침",
++  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "시각 효과를 다시 주입하고 Explorer 레이아웃을 다시 전달합니다 — Explorer 재시작 없음, 비디오 배경화면은 그대로",
+   "刷新": "새로 고침",
+   "外观已刷新": "모양이 새로 고쳐졌습니다"
  }
 diff --git a/locales/pt-BR.json b/locales/pt-BR.json
-index af40f3e..13fa69b 100644
+index 13fa69b..1300f01 100644
 --- a/locales/pt-BR.json
 +++ b/locales/pt-BR.json
-@@ -702,5 +702,9 @@
-   "OS26 Merged Top Bar": "OS26 barra superior mesclada",
+@@ -646,9 +646,7 @@
+   "开始菜单视觉主题；选择后立即生效": "Temas visuais para o menu Iniciar; aplicados na seleção",
+   "开始菜单样式未能更改，请稍后重试。": "Não foi possível alterar o estilo do menu Iniciar — tente novamente.",
+   "任务栏视觉主题；选择后立即生效": "Temas visuais para a barra de tarefas; aplicados na seleção",
+-  "重启资源管理器": "Reiniciar o Explorador",
+   "出现卡顿或异常时按一下": "Pressione se algo travar ou se comportar estranhamente",
+-  "重启": "Reiniciar",
+   "正在重启资源管理器…": "Reiniciando o Explorador…",
+   "任务栏样式未能更改，请稍后重试。": "Não foi possível alterar o estilo da barra de tarefas — tente novamente.",
+   "通知中心样式": "Estilo da Central de Notificações",
+@@ -703,8 +701,8 @@
    "ZEUS macOS Single Bar": "ZEUS barra única macOS",
    "Compact Explorer 11": "Compact Explorer 11",
--  "Floating Spaced Bars": "Barras flutuantes espaçadas"
-+  "Floating Spaced Bars": "Barras flutuantes espaçadas",
-+  "刷新外观 / 重启资源管理器": "Atualizar aparência / Reiniciar o Explorador",
-+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Atualizar reaplica os efeitos atuais; reinicie o Explorador apenas se travar",
-+  "刷新": "Atualizar",
-+  "外观已刷新": "Aparência atualizada"
+   "Floating Spaced Bars": "Barras flutuantes espaçadas",
+-  "刷新外观 / 重启资源管理器": "Atualizar aparência / Reiniciar o Explorador",
+-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Atualizar reaplica os efeitos atuais; reinicie o Explorador apenas se travar",
++  "刷新外观": "Atualizar aparência",
++  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "Reinjeta os visuais e reenvia o layout do Explorer — sem reiniciar o Explorer e sem tocar no papel de parede de vídeo",
+   "刷新": "Atualizar",
+   "外观已刷新": "Aparência atualizada"
  }
 diff --git a/locales/ru.json b/locales/ru.json
-index 155d145..4fe8f68 100644
+index 4fe8f68..3da4335 100644
 --- a/locales/ru.json
 +++ b/locales/ru.json
-@@ -702,5 +702,9 @@
-   "OS26 Merged Top Bar": "OS26 объединённая верхняя панель",
+@@ -646,9 +646,7 @@
+   "开始菜单视觉主题；选择后立即生效": "Визуальные темы меню «Пуск»; применяются при выборе",
+   "开始菜单样式未能更改，请稍后重试。": "Не удалось изменить стиль меню «Пуск» — повторите попытку.",
+   "任务栏视觉主题；选择后立即生效": "Визуальные темы панели задач; применяются при выборе",
+-  "重启资源管理器": "Перезапустить Проводник",
+   "出现卡顿或异常时按一下": "Нажмите, если что-то зависло или ведёт себя странно",
+-  "重启": "Перезапустить",
+   "正在重启资源管理器…": "Перезапуск Проводника…",
+   "任务栏样式未能更改，请稍后重试。": "Не удалось изменить стиль панели задач — повторите попытку.",
+   "通知中心样式": "Стиль центра уведомлений",
+@@ -703,8 +701,8 @@
    "ZEUS macOS Single Bar": "ZEUS одиночная панель macOS",
    "Compact Explorer 11": "Compact Explorer 11",
--  "Floating Spaced Bars": "Плавающие панели"
-+  "Floating Spaced Bars": "Плавающие панели",
-+  "刷新外观 / 重启资源管理器": "Обновить оформление / Перезапустить Проводник",
-+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Обновление повторно применяет текущие эффекты; перезапускайте Проводник только при сбое",
-+  "刷新": "Обновить",
-+  "外观已刷新": "Оформление обновлено"
+   "Floating Spaced Bars": "Плавающие панели",
+-  "刷新外观 / 重启资源管理器": "Обновить оформление / Перезапустить Проводник",
+-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Обновление повторно применяет текущие эффекты; перезапускайте Проводник только при сбое",
++  "刷新外观": "Обновить оформление",
++  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "Заново внедряет визуальные эффекты и повторно отправляет макет Проводника — без перезапуска Проводника и не затрагивая видеообои",
+   "刷新": "Обновить",
+   "外观已刷新": "Оформление обновлено"
  }
 diff --git a/locales/zh-TW.json b/locales/zh-TW.json
-index 8cb4ecc..2107858 100644
+index 2107858..8b6056c 100644
 --- a/locales/zh-TW.json
 +++ b/locales/zh-TW.json
-@@ -702,5 +702,9 @@
-   "OS26 Merged Top Bar": "OS26 合併頂列",
+@@ -646,9 +646,7 @@
+   "开始菜单视觉主题；选择后立即生效": "開始功能表視覺主題；選擇後立即生效",
+   "开始菜单样式未能更改，请稍后重试。": "開始功能表樣式未能更改，請稍後重試。",
+   "任务栏视觉主题；选择后立即生效": "工作列視覺主題；選擇後立即生效",
+-  "重启资源管理器": "重新啟動檔案總管",
+   "出现卡顿或异常时按一下": "出現卡頓或異常時按一下",
+-  "重启": "重新啟動",
+   "正在重启资源管理器…": "正在重新啟動檔案總管…",
+   "任务栏样式未能更改，请稍后重试。": "工作列樣式未能更改，請稍後重試。",
+   "通知中心样式": "通知中心樣式",
+@@ -703,8 +701,8 @@
    "ZEUS macOS Single Bar": "ZEUS macOS 單一列",
    "Compact Explorer 11": "Compact Explorer 11",
--  "Floating Spaced Bars": "浮動間隔列"
-+  "Floating Spaced Bars": "浮動間隔列",
-+  "刷新外观 / 重启资源管理器": "重新整理外觀 / 重新啟動檔案總管",
-+  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "重新整理會重新套用目前的視覺效果；檔案總管僅在異常時才需要重新啟動",
-+  "刷新": "重新整理",
-+  "外观已刷新": "外觀已重新整理"
+   "Floating Spaced Bars": "浮動間隔列",
+-  "刷新外观 / 重启资源管理器": "重新整理外觀 / 重新啟動檔案總管",
+-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "重新整理會重新套用目前的視覺效果；檔案總管僅在異常時才需要重新啟動",
++  "刷新外观": "重新整理外觀",
++  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "重新注入視覺效果並重新傳送檔案總管版面配置 — 不重新啟動檔案總管，不影響影片桌布",
+   "刷新": "重新整理",
+   "外观已刷新": "外觀已重新整理"
  }
 diff --git a/ui/settings.html b/ui/settings.html
-index 08f9119..a5379fc 100644
+index a5379fc..a5c8216 100644
 --- a/ui/settings.html
 +++ b/ui/settings.html
 @@ -480,8 +480,8 @@
          <select id="notificationCenterStyleSel" data-bind="notificationCenterStyle" data-str></select></div>
        <div class="card" id="feEffectCard"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">资源管理器背景效果</div><div class="s">ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义</div></div></div>
          <div class="actions"><button id="feGlassAdvanced">高级设置</button></div></div>
--      <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">重启资源管理器</div><div class="s">出现卡顿或异常时按一下</div></div></div>
--        <div class="actions"><button id="restartExplorer">重启</button></div></div>
-+      <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">刷新外观 / 重启资源管理器</div><div class="s">刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启</div></div></div>
-+        <div class="actions"><button id="refreshVisual">刷新</button><button id="restartExplorer">重启</button></div></div>
+-      <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">刷新外观 / 重启资源管理器</div><div class="s">刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启</div></div></div>
+-        <div class="actions"><button id="refreshVisual">刷新</button><button id="restartExplorer">重启</button></div></div>
++      <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">刷新外观</div><div class="s">重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸</div></div></div>
++        <div class="actions"><button id="refreshVisual">刷新</button></div></div>
        <h3>行为</h3>
        <div class="card"><div class="l"><span class="ic">&#xE70D;</span><div><div class="t">收起的栅栏悬停时自动展开</div><div class="s">鼠标移开后自动收起</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.hoverPeek"></div></div>
        <div class="card"><div class="l"><span class="ic">&#xE7C9;</span><div><div class="t">收起的栅栏需点击标题才展开</div><div class="s">开启后不再悬停展开；拖动标题仍可移动栅栏</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.clickToExpand"></div></div>
-@@ -1530,6 +1530,7 @@
-   document.getElementById('starRepo').onclick = () => send({ type: 'action', name: 'openRepository' });
+@@ -1531,7 +1531,6 @@
    document.getElementById('openManual').onclick = () => send({ type: 'action', name: 'openManual' });
    document.getElementById('repairIcons').onclick = () => send({ type: 'action', name: 'repairIcons' });
-+  document.getElementById('refreshVisual').onclick = () => send({ type: 'action', name: 'refreshVisual' });
-   document.getElementById('restartExplorer').onclick = () => send({ type: 'action', name: 'restartExplorer' });
+   document.getElementById('refreshVisual').onclick = () => send({ type: 'action', name: 'refreshVisual' });
+-  document.getElementById('restartExplorer').onclick = () => send({ type: 'action', name: 'restartExplorer' });
  
    // 关于 → 更新: an installed copy downloads and runs the new setup, a ZIP opens the release page.
+   let update = null;
