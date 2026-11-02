@@ -393,30 +393,39 @@ impl SettingsHost {
 ///   painting it again on the client would double it.
 /// - mica/micaalt → the user's tint at its own alpha, since the DWM system
 ///   backdrop can't take a colour and the frame stays untinted mica.
+/// The sheet must never reach alpha 1.0 — a full-opacity veil paints an
+/// opaque solid over the transparent WebView (the "solid colour" bug the
+/// clamp guards against). Above the cap the tint saturates; below it the
+/// user's own alpha passes through unchanged. 0 is honoured ("no tint").
+const MAX_SHEET_ALPHA: f32 = 0.45;
+
+fn veil(mode: ThemeMode, alpha: f32) -> String {
+    match mode {
+        ThemeMode::Dark => format!("rgba(26,26,26,{alpha:.2})"),
+        ThemeMode::Light => format!("rgba(243,243,243,{alpha:.2})"),
+    }
+}
+
 fn sheet_css(mode: ThemeMode, effect: &str, tint: Option<(u8, u8, u8, u8)>) -> String {
     let opaque = match mode {
         ThemeMode::Dark => "#202020",
         ThemeMode::Light => "#f3f3f3",
     };
+    // A tint's alpha is capped: at 100% the veil still has to let the
+    // painted surface beneath it show, never a solid fill.
+    let tinted = |(a, r, g, b): (u8, u8, u8, u8)| {
+        format!(
+            "rgba({r},{g},{b},{:.2})",
+            (f32::from(a) / 255.0).min(MAX_SHEET_ALPHA)
+        )
+    };
     match effect {
         "" => opaque.to_string(),
         // Mica can't take a colour: the host surface supplies the real
         // material and the sheet carries the user's tint at its own alpha.
-        "mica" | "micaalt" => match tint {
-            Some((a, r, g, b)) => format!("rgba({r},{g},{b},{:.2})", f32::from(a) / 255.0),
-            None => opaque.to_string(),
-        },
-        "blurclear" => match mode {
-            ThemeMode::Dark => "rgba(26,26,26,0.30)".to_string(),
-            ThemeMode::Light => "rgba(243,243,243,0.30)".to_string(),
-        },
-        _ => match tint {
-            Some((a, r, g, b)) => format!("rgba({r},{g},{b},{:.2})", f32::from(a) / 255.0),
-            None => match mode {
-                ThemeMode::Dark => "rgba(26,26,26,0.55)".to_string(),
-                ThemeMode::Light => "rgba(243,243,243,0.55)".to_string(),
-            },
-        },
+        "mica" | "micaalt" => tint.map(tinted).unwrap_or_else(|| veil(mode, 0.30)),
+        "blurclear" => veil(mode, 0.30),
+        _ => tint.map(tinted).unwrap_or_else(|| veil(mode, 0.55)),
     }
 }
 
