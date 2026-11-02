@@ -347,6 +347,9 @@ pub struct App {
     live_abandoned: Option<std::thread::JoinHandle<()>>,
     /// Active Windows Media Foundation (WMF) desktop video wallpaper player (`WorkerW`).
     wmf_player: Option<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer>,
+    /// A video-wallpaper swap running on a worker (`stop` join + `start` first-frame
+    /// wait are seconds-class — the UI thread installs the result once it lands).
+    video_swap: Option<settings::VideoSwap>,
     /// The static desktop wallpaper recorded when the video player started. A different
     /// image reported later means the user applied it over the video (Explorer applies do
     /// not broadcast `SPI_SETDESKWALLPAPER`) — the image wins and the video retires.
@@ -1301,6 +1304,7 @@ impl App {
             live_capture: None,
             live_abandoned: None,
             wmf_player: None,
+            video_swap: None,
             static_under_video: None,
             last_theme_meta: None,
             theme_dirty: std::cell::Cell::new(false),
@@ -2179,6 +2183,7 @@ impl App {
 
     pub fn shutdown(&mut self) {
         self.end_peek_now();
+        self.video_swap = None; // the worker self-disposes on the stale epoch
         self.wmf_player = None;
         // Restore the taskbar + Start Menu before the TAP's death-watch
         // would have to. The taskbar styler's reset must reach the resident

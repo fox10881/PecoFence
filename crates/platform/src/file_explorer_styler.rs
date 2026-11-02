@@ -123,6 +123,12 @@ struct Fe {
     xaml_epoch: u64,
     /// pid → (cmd window, XAML epoch delivered).
     xaml_delivered: std::collections::HashMap<u32, (usize, u64)>,
+    /// The deployed `ExplorerBlurMica.dll` path `EBML` hands to residents
+    /// (hash-versioned — an engine upgrade reloads through a fresh path).
+    dll_path: String,
+    /// Last `deliver_all` fan-out signature — the debug line logs only when
+    /// pids/readiness/epochs change, not every 2 s `ensure()` tick.
+    delivery_sig: String,
 }
 
 static FE: Mutex<Option<Fe>> = Mutex::new(None);
@@ -167,63 +173,93 @@ fn residents_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
-/// `ExplorerBlurMica.dll` shipped beside the running exe (build.rs /
-/// `make-windows.ps1` place it there).
-fn ebm_source_path() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let p = exe.with_file_name("ExplorerBlurMica.dll");
-    p.is_file().then_some(p)
-}
+/// The vendored engine compiled into the binary — the canonical source for
+/// deployment: a next-to-exe file is not part of the contract (installers,
+/// `--portable` copies and dev layouts stage it differently). The 658 KB
+/// `include_bytes!` is cheap insurance: on a machine where the sidecar file
+/// was never staged, the material still deploys.
+static EBM_DLL: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../third_party/ebm/ExplorerBlurMica.dll"
+));
 
-/// Deploys the vendored DLL into the residents dir. `Some(dst)` is only
-/// returned when the file on disk is byte-identical to the vendored copy —
-/// a locked (loaded-in-explorer) but CORRECT DLL is accepted, a locked
-/// STALE one is a hard failure: LoadLibrary-ing stale bytes would arm an
-/// unknown engine. When the vendored source is missing entirely the
-/// previously-deployed copy is used with a warning (it was written by a
-/// prior run of this same installer), and `None` only when nothing exists.
-fn deploy_dll(dir: &Path) -> Option<PathBuf> {
-    let dst = dir.join("ExplorerBlurMica.dll");
-    let dst_bytes = std::fs::read(&dst).ok();
-    let src = ebm_source_path().and_then(|src| std::fs::read(&src).ok());
-    match src {
-        Some(src_bytes) => match dst_bytes {
-            Some(d) if d == src_bytes => {
-                tracing::debug!(
-                    dst = %dst.display(),
-                    "deploy_dll: destination already matches the vendored DLL — copy skipped"
-                );
-                Some(dst)
-            }
-            _ => {
-                if let Err(e) = std::fs::write(&dst, &src_bytes) {
-                    tracing::warn!(
-                        dst = %dst.display(),
-                        %e,
-                        "ExplorerBlurMica.dll deploy failed — destination differs and cannot be rewritten (locked by a stale load?)"
-                    );
-                    return None;
-                }
-                tracing::debug!(
-                    dst = %dst.display(),
-                    bytes = src_bytes.len(),
-                    "deploy_dll: destination written"
-                );
-                Some(dst)
+/// Source bytes to deploy. `PECOFENCE_EBM_DLL=<path>` overrides for engine
+/// development only — anything loaded into explorer.exe must come from an
+/// explicit opt-in or the bytes this build was tested with.
+fn ebm_source_bytes() -> Option<Vec<u8>> {
+    match std::env::var("PECOFENCE_EBM_DLL") {
+        Ok(p) => match std::fs::read(&p) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                // A set-but-unreadable override must not silently fall back —
+                // the developer asked for specific bytes.
+                tracing::warn!(path = %p, error = %e, "PECOFENCE_EBM_DLL unreadable; using vendored engine");
+                Some(EBM_DLL.to_vec())
             }
         },
-        None => {
-            if dst_bytes.is_some() {
-                tracing::warn!(
-                    "ExplorerBlurMica.dll missing beside pecofence.exe — using previously deployed copy"
-                );
-                Some(dst)
-            } else {
+        Err(_) => Some(EBM_DLL.to_vec()),
+    }
+}
+
+/// FNV-1a over the engine bytes — labels the deploy dir; every content change
+/// gets a new path (never an overwrite of a DLL a live explorer has mapped).
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    for &b in bytes {
+        h = (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
+/// `residents/ebm-<hash>` — the deployed engine's versioned home. A new build
+/// lands in a NEW path: a running explorer's mapped DLL is never under the
+/// write target, and `EBMU`+`EBML` swaps engines live in the same pid.
+fn ebm_deploy_dir(bytes: &[u8]) -> Option<PathBuf> {
+    Some(residents_dir()?.join(format!("ebm-{:016x}", fnv1a64(bytes))))
+}
+
+/// Deploys the vendored DLL into its hash-versioned dir. `Some(dst)` is only
+/// returned when the file on disk is byte-identical to the source — a
+/// byte-equal destination is accepted without rewriting; a mismatch is
+/// rewritten (new path ⇒ no live-share lock to fight), and any write/verify
+/// failure is a hard error: LoadLibrary-ing stale bytes would arm an
+/// unknown engine.
+fn deploy_dll() -> Option<PathBuf> {
+    let src = ebm_source_bytes()?;
+    let dir = ebm_deploy_dir(&src)?;
+    let dst = dir.join("ExplorerBlurMica.dll");
+    match std::fs::read(&dst) {
+        Ok(d) if d == src => {
+            tracing::debug!(
+                dst = %dst.display(),
+                "deploy_dll: destination already matches the vendored DLL — copy skipped"
+            );
+            Some(dst)
+        }
+        _ => {
+            if std::fs::create_dir_all(&dir).is_err() || std::fs::write(&dst, &src).is_err() {
                 tracing::warn!(
                     dst = %dst.display(),
-                    "ExplorerBlurMica.dll unavailable — not beside pecofence.exe and never deployed"
+                    "ExplorerBlurMica.dll deploy failed — destination cannot be written"
                 );
-                None
+                return None;
+            }
+            match std::fs::read(&dst) {
+                Ok(d) if d == src => {
+                    tracing::debug!(
+                        dst = %dst.display(),
+                        bytes = src.len(),
+                        "deploy_dll: destination written"
+                    );
+                    Some(dst)
+                }
+                _ => {
+                    tracing::warn!(
+                        dst = %dst.display(),
+                        "ExplorerBlurMica.dll deploy failed — written bytes failed verification"
+                    );
+                    None
+                }
             }
         }
     }
@@ -404,24 +440,50 @@ fn build_xaml_wire(fe: &Fe) -> Option<String> {
 /// independent: XAML delivery never touches the EBM pipeline and runs
 /// even when `effect=""`.
 fn deliver_all() {
-    let wide: Vec<u8> = residents_dir()
-        .map(|d| d.join("ExplorerBlurMica.dll"))
-        .filter(|p| p.is_file())
+    let wide: Vec<u8> = lock()
+        .as_ref()
+        .map(|fe| fe.dll_path.clone())
+        .filter(|p| !p.is_empty() && Path::new(p).is_file())
         .map(|dll| {
-            dll.display()
-                .to_string()
-                .encode_utf16()
+            dll.encode_utf16()
                 .chain(core::iter::once(0))
                 .flat_map(|c| c.to_le_bytes())
                 .collect()
         })
         .unwrap_or_default();
     let anchors = cabinet_anchors();
-    tracing::debug!(
-        anchors = anchors.len(),
-        dll_ready = !wide.is_empty(),
-        "deliver_all: fanning out to cabinet-owning explorer pids"
-    );
+    // State-change signature: same pids + same readiness + same epochs means
+    // this tick delivers nothing new — the debug line repeats otherwise.
+    {
+        let mut pids: Vec<u32> = anchors.iter().map(|(pid, _)| *pid).collect();
+        pids.sort_unstable();
+        let sig = {
+            let mut guard = lock();
+            let Some(fe) = guard.as_mut() else {
+                return;
+            };
+            format!(
+                "{}|{}|{}|{}|{:?}",
+                fe.epoch,
+                fe.xaml_epoch,
+                !wide.is_empty(),
+                anchors.len(),
+                pids
+            )
+        };
+        let mut guard = lock();
+        if let Some(fe) = guard.as_mut()
+            && fe.delivery_sig != sig
+        {
+            fe.delivery_sig = sig;
+            drop(guard);
+            tracing::debug!(
+                anchors = anchors.len(),
+                dll_ready = !wide.is_empty(),
+                "deliver_all: fanning out to cabinet-owning explorer pids"
+            );
+        }
+    }
     let mut live_pids = Vec::new();
     for (pid, anchor) in anchors {
         live_pids.push(pid);
@@ -443,14 +505,16 @@ fn deliver_all() {
             }
         }
         // XAML leg — a `PECO-FES1` wire through the same resident; the
-        // mux engine applies it to the WinUI3 islands.
-        if let Some(wire) = build_xaml_wire(fe) {
-            let current = (cmd.0 as usize, fe.xaml_epoch);
-            if fe.xaml_delivered.get(&pid) != Some(&current) {
-                let _ = crate::tap::send_copydata(cmd, CDS_FE_LAYOUT, wire.as_bytes());
-                tracing::debug!(pid, bytes = wire.len(), "deliver_all: FELT wire sent");
-                fe.xaml_delivered.insert(pid, current);
-            }
+        // mux engine applies it to the WinUI3 islands. The wire is built
+        // only for a pid that actually needs it: the ensure() tick passes
+        // here every 2 s and the build is not free.
+        let current = (cmd.0 as usize, fe.xaml_epoch);
+        if fe.xaml_delivered.get(&pid) != Some(&current)
+            && let Some(wire) = build_xaml_wire(fe)
+        {
+            let _ = crate::tap::send_copydata(cmd, CDS_FE_LAYOUT, wire.as_bytes());
+            tracing::debug!(pid, bytes = wire.len(), "deliver_all: FELT wire sent");
+            fe.xaml_delivered.insert(pid, current);
         }
     }
     crate::tap::prune_extra_residents(&live_pids);
@@ -558,22 +622,19 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
     };
     // Deploy + config.ini are committed BEFORE touching shared state: on
     // failure `fe.effect` still holds the last applied value and the ini
-    // on disk still matches it — no rollback needed.
-    let deploy_ok = deploy_dll(&dir).is_some();
-    let ini_ok = deploy_ok && {
-        match write_config_ini(&dir, cfg) {
-            Ok(()) => true,
-            Err(e) => {
-                tracing::warn!(
-                    ini = %dir.join("config.ini").display(),
-                    %e,
-                    "ExplorerBlurMica apply failed — config.ini write"
-                );
-                false
-            }
-        }
+    // on disk still matches it — no rollback needed. `config.ini` sits in
+    // the deployed DLL's own versioned dir — EBM reads its module dir.
+    let Some(dll_path) = deploy_dll() else {
+        finish_xaml();
+        return false;
     };
-    if !ini_ok {
+    let ini_dir = dll_path.parent().unwrap_or(&dir).to_path_buf();
+    if let Err(e) = write_config_ini(&ini_dir, cfg) {
+        tracing::warn!(
+            ini = %ini_dir.join("config.ini").display(),
+            %e,
+            "ExplorerBlurMica apply failed — config.ini write"
+        );
         finish_xaml();
         return false;
     }
@@ -587,6 +648,7 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
         fe.show_line = cfg.show_line;
         fe.light_rgba = cfg.light_rgba.to_string();
         fe.dark_rgba = cfg.dark_rgba.to_string();
+        fe.dll_path = dll_path.display().to_string();
         fe.epoch += 1; // every live pid reloads EBM under the new config
         fe.xaml_epoch += 1; // `clearWinUIBg`/`effect` gate the wire contents
     }

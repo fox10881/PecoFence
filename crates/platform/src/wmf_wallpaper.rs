@@ -2221,6 +2221,10 @@ unsafe fn run_gpu_attached(
             // still be reading it.
             let mut pending_buf: Option<IMFMediaBuffer> = Some(first_buf.clone());
             let mut dims_changed = false;
+            // Re-attach in flight: our recreated HWND waiting for the shell's
+            // desktop layer, plus its deadline (Explorer restarts take ~10 s).
+            let mut pending_hwnd: Option<HWND> = None;
+            let mut reattach_deadline: Option<Instant> = None;
 
             while !stop.load(Ordering::Relaxed) {
                 pump_thread_messages();
@@ -2228,31 +2232,55 @@ unsafe fn run_gpu_attached(
                 if last_visibility_check.elapsed() >= Duration::from_millis(300) {
                     last_visibility_check = Instant::now();
                     // An Explorer restart or shell rebuild can destroy the attached window
-                    // (and the WorkerW host with it). That used to kill the wallpaper for
-                    // good — heal instead: recreate the video HWND, re-attach, and rebind
-                    // the composition target. The swap chain is HWND-agnostic, so only the
-                    // per-HWND DComp target/visual are rebuilt; decoder/device/VP survive.
-                    if !IsWindow(Some(hwnd)).as_bool() {
+                    // (and the WorkerW host with it). Heal is RETRIED while the shell is
+                    // down: `attach_to_desktop_worker` re-finds Progman/WorkerW on every
+                    // attempt — a restart takes ~10 s, the budget is 30 s. The swap chain
+                    // is HWND-agnostic, so only the per-HWND DComp target/visual rebuild.
+                    if pending_hwnd.is_none() && !IsWindow(Some(hwnd)).as_bool() {
                         tracing::warn!(
                             frame_counter,
                             "wmf: video window destroyed; re-attaching to desktop layer"
                         );
                         let new_hwnd = create_video_window(class_name, 0)
                             .map_err(|e| format!("recreate video window: {e}"))?;
-                        let (new_host, w, h) = attach_to_desktop_worker(new_hwnd).map_err(|e| {
-                            let _ = DestroyWindow(new_hwnd);
-                            format!("re-attach after window loss: {e}")
-                        })?;
-                        hwnd = new_hwnd;
-                        host = new_host;
-                        gp.rebind_target(hwnd)?;
-                        need_reanchor = true;
-                        tracing::info!(
-                            ?hwnd,
-                            w,
-                            h,
-                            "wmf: video window re-attached; target rebound"
-                        );
+                        pending_hwnd = Some(new_hwnd);
+                        reattach_deadline = Some(Instant::now() + Duration::from_secs(30));
+                    }
+                    if let Some(cand) = pending_hwnd {
+                        if !IsWindow(Some(cand)).as_bool() {
+                            // Our own pending window died too — start it over.
+                            pending_hwnd = create_video_window(class_name, 0).ok();
+                        }
+                        match pending_hwnd.map(|c| attach_to_desktop_worker(c)) {
+                            Some(Ok((new_host, w, h))) => {
+                                let cand = pending_hwnd.take().unwrap();
+                                reattach_deadline = None;
+                                hwnd = cand;
+                                host = new_host;
+                                gp.rebind_target(hwnd)?;
+                                need_reanchor = true;
+                                tracing::info!(
+                                    ?hwnd,
+                                    w,
+                                    h,
+                                    "wmf: video window re-attached; target rebound"
+                                );
+                            }
+                            Some(Err(e)) => {
+                                if Instant::now() >= reattach_deadline.unwrap() {
+                                    let _ = DestroyWindow(pending_hwnd.take().unwrap());
+                                    return Err(format!("re-attach after window loss: {e}"));
+                                }
+                                // Shell still down — retry on the next tick.
+                                tracing::debug!(
+                                    error = %e,
+                                    "wmf: re-attach pending; shell layer not back yet"
+                                );
+                            }
+                            None => {
+                                return Err("recreate video window failed".to_string());
+                            }
+                        }
                     }
                     let now_paused = should_pause_playback();
                     if now_paused != paused {
@@ -2268,7 +2296,7 @@ unsafe fn run_gpu_attached(
                         // the desktop keeps a static wallpaper while paused.
                     }
                 }
-                if paused {
+                if paused || pending_hwnd.is_some() {
                     if let Ok(guard) = wake.0.lock() {
                         let _ = wake.1.wait_timeout(guard, Duration::from_millis(80));
                     }
@@ -2542,6 +2570,9 @@ fn run_player_thread(
         let mut last_visibility_check = Instant::now();
         let mut next_frame_at = Instant::now() + frame_interval;
         let mut frame_counter: u64 = 1;
+        // Re-attach in flight: recreated HWND + its deadline while the shell is down.
+        let mut pending_hwnd: Option<HWND> = None;
+        let mut reattach_deadline: Option<Instant> = None;
 
         while !stop.load(Ordering::Relaxed) {
             pump_thread_messages();
@@ -2551,30 +2582,53 @@ fn run_player_thread(
                 // An Explorer restart or shell rebuild can destroy the attached
                 // window; heal by recreating it (the SharedSurface pointer stays
                 // valid) and repaint the last frame — losing the HWND is
-                // recoverable, losing the wallpaper is not.
-                if !IsWindow(Some(hwnd)).as_bool() {
+                // recoverable, losing the wallpaper is not. The attach RETRIES
+                // while the shell is down (a restart takes ~10 s; budget 30 s)
+                // instead of stopping at the first missing Progman.
+                if pending_hwnd.is_none() && !IsWindow(Some(hwnd)).as_bool() {
                     tracing::warn!(
                         frame_counter,
                         "wmf: video window destroyed; re-attaching to desktop layer"
                     );
                     match create_video_window(&class_name, surface_ptr as isize) {
-                        Ok(new_hwnd) => match attach_to_desktop_worker(new_hwnd) {
-                            Ok((new_host, w, h)) => {
-                                hwnd = new_hwnd;
-                                host = new_host;
-                                win_w = w;
-                                win_h = h;
-                                present_hwnd(hwnd);
-                                tracing::info!(?hwnd, "wmf: video window re-attached (GDI)");
-                            }
-                            Err(e) => {
-                                let _ = DestroyWindow(new_hwnd);
+                        Ok(new_hwnd) => {
+                            pending_hwnd = Some(new_hwnd);
+                            reattach_deadline = Some(Instant::now() + Duration::from_secs(30));
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "wmf: recreate window failed; stopping");
+                            break;
+                        }
+                    }
+                }
+                if let Some(cand) = pending_hwnd {
+                    if !IsWindow(Some(cand)).as_bool() {
+                        pending_hwnd = create_video_window(&class_name, surface_ptr as isize).ok();
+                    }
+                    match pending_hwnd.map(|c| attach_to_desktop_worker(c)) {
+                        Some(Ok((new_host, w, h))) => {
+                            let cand = pending_hwnd.take().unwrap();
+                            reattach_deadline = None;
+                            hwnd = cand;
+                            host = new_host;
+                            win_w = w;
+                            win_h = h;
+                            present_hwnd(hwnd);
+                            tracing::info!(?hwnd, "wmf: video window re-attached (GDI)");
+                        }
+                        Some(Err(e)) => {
+                            if Instant::now() >= reattach_deadline.unwrap() {
+                                let _ = DestroyWindow(pending_hwnd.take().unwrap());
                                 tracing::error!(error = %e, "wmf: re-attach failed; stopping");
                                 break;
                             }
-                        },
-                        Err(e) => {
-                            tracing::error!(error = %e, "wmf: recreate window failed; stopping");
+                            tracing::debug!(
+                                error = %e,
+                                "wmf: re-attach pending; shell layer not back yet"
+                            );
+                        }
+                        None => {
+                            tracing::error!("wmf: recreate window failed; stopping");
                             break;
                         }
                     }
@@ -2590,9 +2644,10 @@ fn run_player_thread(
                 }
             }
 
-            if paused {
+            if paused || pending_hwnd.is_some() {
                 // 0% CPU / 0% GPU while desktop is obscured or fullscreen app is active;
                 // wake every 80ms only to pump WM_NULL/WM_PRINT messages and check visibility.
+                // While a re-attach is pending there's nothing to present to either.
                 if let Ok(guard) = wake.0.lock() {
                     let _ = wake.1.wait_timeout(guard, Duration::from_millis(80));
                 }

@@ -2,6 +2,7 @@
 //! import / export / restore, settings diff application.
 
 use super::*;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Largest snapping gap honoured, in DIPs; `snapping.gapPx` is clamped to `0..=` this.
 pub(super) const MAX_SNAP_GAP_DIP: i32 = 64;
@@ -160,6 +161,69 @@ fn remap_theme_monitors(
         .iter()
         .map(pecofence_core::MonitorIdentity::of)
         .collect();
+}
+
+/// Serializes player teardown vs. the next pipeline's allocation: the join
+/// before alloc still holds, just paid on a worker thread instead of the UI
+/// thread that was logging `slow command` for every wallpaper switch.
+static VIDEO_SWAP_LOCK: Mutex<()> = Mutex::new(());
+/// Bumped on every wallpaper-intent change; a worker returning with a stale
+/// epoch disposes its fresh player itself — the UI thread never joins it.
+static VIDEO_SWAP_EPOCH: AtomicU64 = AtomicU64::new(0);
+
+/// A `WmfWallpaperPlayer::start` in flight on a worker; `poll_video_swap`
+/// installs the result only while the epoch still matches config.
+pub(super) struct VideoSwap {
+    epoch: u64,
+    /// Recovery after shell loss vs. a user pick — the accept path logs/toasts
+    /// them differently.
+    reattach: bool,
+    toast: bool,
+    rx: std::sync::mpsc::Receiver<
+        std::result::Result<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer, Option<String>>,
+    >,
+}
+
+/// Stops a player off the UI thread (stop+join ≈70 ms), serialized with swap
+/// workers so a teardown never races the next pipeline's allocation.
+fn reap_video_player(player: pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer) {
+    let _ = std::thread::Builder::new()
+        .name("pecofence-video-reap".into())
+        .spawn(move || {
+            let _g = VIDEO_SWAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            drop(player);
+        });
+}
+
+/// Worker-side swap: stops the old player (join off the UI thread), starts the
+/// new one. `Err(None)` marks a superseded request — not a failure to report.
+fn spawn_video_swap(
+    old: Option<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer>,
+    path: PathBuf,
+    letterbox: bool,
+    epoch: u64,
+) -> std::sync::mpsc::Receiver<
+    std::result::Result<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer, Option<String>>,
+> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = std::thread::Builder::new()
+        .name("pecofence-video-swap".into())
+        .spawn(move || {
+            let _g = VIDEO_SWAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            drop(old);
+            let result =
+                pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path, letterbox)
+                    .map_err(Some);
+            let result = match result {
+                Ok(player) if VIDEO_SWAP_EPOCH.load(Ordering::SeqCst) != epoch => {
+                    drop(player);
+                    Err(None)
+                }
+                other => other,
+            };
+            let _ = tx.send(result);
+        });
+    rx
 }
 
 impl App {
@@ -418,7 +482,6 @@ impl App {
         new.fe_dark_rgba = str_of("darkRgba", &old.fe_dark_rgba);
         let wanted = new.fe_effect.clone();
         let wanted_layout = new.fe_layout.clone();
-        let changed = new != old;
         self.apply_settings(new);
         let applied = self.state.config.settings.fe_effect == wanted
             && self.state.config.settings.fe_layout == wanted_layout;
@@ -429,20 +492,15 @@ impl App {
                         .to_string(),
                     true,
                 )
-            } else if changed {
-                (
-                    pecofence_core::i18n::text("正在重启资源管理器…").to_string(),
-                    false,
-                )
             } else {
+                // No toast on a no-op; applied changes get a plain confirmation —
+                // the resident reloads the EBM config live, so no Explorer restart
+                // is needed (the manual failsafe action below still offers one).
                 (pecofence_core::i18n::text("已应用").to_string(), false)
             };
             h.post_json(
                 &serde_json::json!({ "type": "feToast", "text": text, "error": error }).to_string(),
             );
-        }
-        if applied && changed {
-            std::thread::spawn(pecofence_platform::tap::restart_explorer);
         }
     }
 
@@ -1294,8 +1352,12 @@ impl App {
         self.push_settings_state();
     }
 
-    /// Starts or stops the WMF desktop video wallpaper player to match `settings.video_wallpaper_path`.
+    /// Starts or stops the WMF desktop video wallpaper player to match
+    /// `settings.video_wallpaper_path`. The swap runs on a worker: `stop`'s join
+    /// and `start`'s first-frame wait are seconds-class calls the UI thread
+    /// never pays for; `poll_video_swap` installs the result when it lands.
     pub(super) fn sync_video_wallpaper(&mut self) {
+        self.poll_video_swap();
         let wanted = self
             .state
             .config
@@ -1304,36 +1366,96 @@ impl App {
             .clone()
             .filter(|s| !s.is_empty());
         let Some(path_str) = wanted else {
-            self.wmf_player = None;
+            self.invalidate_video_swap();
+            if let Some(p) = self.wmf_player.take() {
+                reap_video_player(p);
+            }
             self.static_under_video = None;
             return;
         };
         let path = PathBuf::from(&path_str);
         let letterbox = self.contain_background();
-        if self
-            .wmf_player
-            .as_ref()
-            .is_some_and(|p| p.path() == path && p.is_alive() && p.letterbox() == letterbox)
+        if self.video_swap.is_none()
+            && self
+                .wmf_player
+                .as_ref()
+                .is_some_and(|p| p.path() == path && p.is_alive() && p.letterbox() == letterbox)
         {
             return;
         }
-        self.wmf_player = None;
+        let old = self.wmf_player.take();
         self.static_under_video = None;
         if !path.is_file() {
+            self.invalidate_video_swap();
+            if let Some(p) = old {
+                reap_video_player(p);
+            }
             return;
         }
-        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path, letterbox) {
-            Ok(player) => {
-                self.static_under_video = Self::static_wallpaper_now();
-                self.wmf_player = Some(player);
-                self.capture_live_wallpapers(Duration::ZERO);
+        let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
+        self.video_swap = Some(VideoSwap {
+            epoch,
+            reattach: false,
+            toast: false,
+            rx: spawn_video_swap(old, path, letterbox, epoch),
+        });
+    }
+
+    /// Wallpaper intent changed again — an in-flight swap's result is now stale:
+    /// the worker sees the newer epoch and disposes its player itself.
+    fn invalidate_video_swap(&mut self) {
+        VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst);
+        self.video_swap = None;
+    }
+
+    /// Installs a finished swap when it still matches the config. Runs off the
+    /// `check_wallpaper` poll — a few hundred ms after `sync_video_wallpaper`
+    /// returned instantly instead of ~200 ms of teardown+start on the UI thread.
+    pub(super) fn poll_video_swap(&mut self) {
+        let Some(swap) = &self.video_swap else {
+            return;
+        };
+        match swap.rx.try_recv() {
+            Ok(Ok(player)) => {
+                let swap = self.video_swap.take().unwrap();
+                let still_wanted = self
+                    .state
+                    .config
+                    .settings
+                    .video_wallpaper_path
+                    .as_deref()
+                    .map(PathBuf::from)
+                    .as_deref()
+                    == Some(player.path())
+                    && player.letterbox() == self.contain_background();
+                if still_wanted && VIDEO_SWAP_EPOCH.load(Ordering::SeqCst) == swap.epoch {
+                    self.static_under_video = Self::static_wallpaper_now();
+                    self.wmf_player = Some(player);
+                    self.capture_live_wallpapers(Duration::ZERO);
+                    if swap.reattach {
+                        tracing::info!("wmf video wallpaper re-attached after desktop restart");
+                    }
+                    if swap.toast {
+                        self.settings_toast(pecofence_core::i18n::text("已将视频设为桌面壁纸"));
+                    }
+                } else {
+                    reap_video_player(player);
+                }
             }
-            Err(error) => {
-                tracing::error!(path = %path.display(), %error, "WMF video wallpaper failed to start");
+            Ok(Err(Some(error))) => {
+                self.video_swap = None;
+                tracing::error!(%error, "WMF video wallpaper failed to start");
                 self.settings_error(&pecofence_core::i18n::format(
                     "无法使用此文件：{0}",
                     std::slice::from_ref(&error),
                 ));
+            }
+            Ok(Err(None)) => {
+                self.video_swap = None; // superseded by a newer request
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.video_swap = None;
             }
         }
     }
@@ -1347,6 +1469,11 @@ impl App {
     /// recovers without a settings round-trip. Failures stay quiet: a shell that
     /// is mid-boot retries on the next poll.
     pub(super) fn ensure_video_wallpaper(&mut self) {
+        self.poll_video_swap();
+        // A swap is already in flight — starting another player here would race it.
+        if self.video_swap.is_some() {
+            return;
+        }
         let Some(path_str) = self
             .state
             .config
@@ -1365,24 +1492,23 @@ impl App {
         if pecofence_platform::desktop::shell_window().0.is_null() {
             return;
         }
-        self.wmf_player = None;
+        let old = self.wmf_player.take();
         self.static_under_video = None;
         let path = PathBuf::from(&path_str);
         if !path.is_file() {
+            if let Some(p) = old {
+                reap_video_player(p);
+            }
             return;
         }
         let letterbox = self.contain_background();
-        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path, letterbox) {
-            Ok(player) => {
-                self.static_under_video = Self::static_wallpaper_now();
-                self.wmf_player = Some(player);
-                self.capture_live_wallpapers(Duration::ZERO);
-                tracing::info!("wmf video wallpaper re-attached after desktop restart");
-            }
-            Err(error) => {
-                tracing::debug!(%error, "video wallpaper re-attach deferred; shell not ready");
-            }
-        }
+        let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
+        self.video_swap = Some(VideoSwap {
+            epoch,
+            reattach: true,
+            toast: false,
+            rx: spawn_video_swap(old, path, letterbox, epoch),
+        });
     }
 
     /// Applies a static image as the desktop wallpaper and retires the video engine:
@@ -1390,7 +1516,10 @@ impl App {
     /// path so exports and restarts don't resurrect it. Returns `set_desktop_wallpaper`'s
     /// result.
     pub(super) fn apply_static_wallpaper(&mut self, path: &str) -> bool {
-        self.wmf_player = None;
+        self.invalidate_video_swap();
+        if let Some(p) = self.wmf_player.take() {
+            reap_video_player(p);
+        }
         self.static_under_video = None;
         if self
             .state
@@ -1420,7 +1549,10 @@ impl App {
             configured = ?self.state.config.settings.video_wallpaper_path,
             "external wallpaper change; retiring video wallpaper"
         );
-        self.wmf_player = None;
+        self.invalidate_video_swap();
+        if let Some(p) = self.wmf_player.take() {
+            reap_video_player(p);
+        }
         self.static_under_video = None;
         self.state.config.settings.video_wallpaper_path = None;
         // `settings_mutated` — not bare `schedule_save` — or the cleared path never
@@ -1470,7 +1602,10 @@ impl App {
             video = %self.wmf_player.as_ref().map(|p| p.path().display().to_string()).unwrap_or_default(),
             "static image applied over video wallpaper; retiring player"
         );
-        self.wmf_player = None;
+        self.invalidate_video_swap();
+        if let Some(p) = self.wmf_player.take() {
+            reap_video_player(p);
+        }
         self.static_under_video = None;
         self.state.config.settings.video_wallpaper_path = None;
         self.settings_mutated();
@@ -1493,27 +1628,20 @@ impl App {
 
     pub(super) fn apply_video_wallpaper(&mut self, path: &Path) {
         tracing::info!(path = %path.display(), "applying video wallpaper from settings");
-        self.wmf_player = None;
-        self.static_under_video = None;
-        let letterbox = self.contain_background();
-        match pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(path, letterbox) {
-            Ok(player) => {
-                self.static_under_video = Self::static_wallpaper_now();
-                self.wmf_player = Some(player);
-                self.state.config.settings.video_wallpaper_path =
-                    Some(path.to_string_lossy().into_owned());
-                self.settings_mutated();
-                self.capture_live_wallpapers(Duration::ZERO);
-                self.settings_toast(pecofence_core::i18n::text("已将视频设为桌面壁纸"));
-            }
-            Err(err) => {
-                tracing::error!(path = %path.display(), %err, "apply_video_wallpaper failed");
-                self.settings_error(&pecofence_core::i18n::format(
-                    "无法使用此文件：{0}",
-                    std::slice::from_ref(&err),
-                ));
-            }
+        self.invalidate_video_swap();
+        if let Some(p) = self.wmf_player.take() {
+            reap_video_player(p);
         }
+        self.static_under_video = None;
+        self.state.config.settings.video_wallpaper_path = Some(path.to_string_lossy().into_owned());
+        self.settings_mutated();
+        let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
+        self.video_swap = Some(VideoSwap {
+            epoch,
+            reattach: false,
+            toast: true,
+            rx: spawn_video_swap(None, path.to_path_buf(), self.contain_background(), epoch),
+        });
     }
 
     pub(super) fn export_theme(&mut self) {
@@ -2040,7 +2168,10 @@ impl App {
     fn apply_adaptive_wallpapers(&mut self, bg: &Path, asset_w: u32, asset_h: u32) {
         use pecofence_core::adaptive as ad;
         // Same retirement the plain route performs — the video engine yields to images.
-        self.wmf_player = None;
+        self.invalidate_video_swap();
+        if let Some(p) = self.wmf_player.take() {
+            reap_video_player(p);
+        }
         self.static_under_video = None;
         if self
             .state

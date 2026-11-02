@@ -471,14 +471,21 @@ impl DesktopAnchor {
             return;
         }
         let resolved = desktop::resolve_icon_host(self.generation);
-        if resolved != self.host {
+        let host_changed = resolved != self.host;
+        if host_changed {
             tracing::info!(reason, old = ?self.host, new = ?resolved, "icon host changed");
             self.host = resolved;
         } else {
             tracing::debug!(reason, "reanchor");
         }
         let Some(host) = self.host else {
-            tracing::warn!("no icon host found; falling back to HWND_BOTTOM");
+            // Warn once on the transition into host-less anchoring (e.g. an
+            // Explorer restart); the steady-state poll would spam it otherwise.
+            if host_changed {
+                tracing::warn!("no icon host found; falling back to HWND_BOTTOM");
+            } else {
+                tracing::debug!("still no icon host; keeping HWND_BOTTOM placement");
+            }
             self.with_anchoring(|s| {
                 for w in s.all_windows() {
                     let _ = desktop::send_to_bottom(w);
