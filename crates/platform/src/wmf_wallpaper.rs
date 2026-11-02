@@ -2254,17 +2254,33 @@ unsafe fn run_gpu_attached(
                         match pending_hwnd.map(|c| attach_to_desktop_worker(c)) {
                             Some(Ok((new_host, w, h))) => {
                                 let cand = pending_hwnd.take().unwrap();
-                                reattach_deadline = None;
-                                hwnd = cand;
-                                host = new_host;
-                                gp.rebind_target(hwnd)?;
-                                need_reanchor = true;
-                                tracing::info!(
-                                    ?hwnd,
-                                    w,
-                                    h,
-                                    "wmf: video window re-attached; target rebound"
-                                );
+                                match gp.rebind_target(cand) {
+                                    Ok(()) => {
+                                        reattach_deadline = None;
+                                        hwnd = cand;
+                                        host = new_host;
+                                        need_reanchor = true;
+                                        tracing::info!(
+                                            ?hwnd,
+                                            w,
+                                            h,
+                                            "wmf: video window re-attached; target rebound"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        // Same rule as a missing host: a rebind
+                                        // failure during the rebuild is retryable,
+                                        // never player-fatal. The half-bound
+                                        // window is dropped — the next tick
+                                        // recreates it and revalidates the host.
+                                        tracing::warn!(
+                                            error = %e,
+                                            "wmf: DComp rebind failed; retrying attach"
+                                        );
+                                        let _ = DestroyWindow(cand);
+                                        pending_hwnd = create_video_window(class_name, 0).ok();
+                                    }
+                                }
                             }
                             Some(Err(e)) => {
                                 if reattach_deadline.is_some_and(|d| Instant::now() >= d) {

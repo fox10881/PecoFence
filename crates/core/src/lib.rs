@@ -6,7 +6,6 @@ pub mod base64;
 pub mod brand;
 pub mod config_store;
 pub mod date_group;
-pub mod fe_layouts;
 pub mod geometry;
 pub mod hotkey;
 pub mod i18n;

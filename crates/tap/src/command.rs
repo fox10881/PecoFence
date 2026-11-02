@@ -282,10 +282,10 @@ const CDS_NC_HELLO: usize = u32::from_be_bytes(*b"NCHI") as usize;
 /// The vendored EBM DllMain self-installs inside explorer.exe.
 const CDS_EBM_LOAD: usize = u32::from_be_bytes(*b"EBML") as usize;
 const CDS_EBM_UNLOAD: usize = u32::from_be_bytes(*b"EBMU") as usize;
-/// File Explorer layout (`PECO-FES1`) — pure positioning rules only,
-/// applied by the mux (WinUI3) engine; `FELR` restores stock layout.
-/// Independent of EBM: the material pipeline owns every surface brush.
-const CDS_FE_LAYOUT: usize = u32::from_be_bytes(*b"FELT") as usize;
+/// Retired File Explorer mux wire — the `FELT` layout/clear-wire command
+/// is gone (layout presets + `clearWinUIBg` XAML rules removed). `FELR`
+/// stays: a resident that already applied an older wire restores stock
+/// chrome on it.
 const CDS_FE_LAYOUT_RESET: usize = u32::from_be_bytes(*b"FELR") as usize;
 /// In-process shortcut-overlay override (`SLNK`, 1 byte: `1` = stock arrow,
 /// `0` = blank). `windows.storage.dll` reads `Shell Icons\29` from `HKLM`
@@ -364,20 +364,6 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
                 crate::ebm::load(bytes);
             }
             CDS_EBM_UNLOAD => crate::ebm::unload(),
-            CDS_FE_LAYOUT if !cds.lp_data.is_null() && cds.cb_data > 0 => {
-                let bytes = unsafe {
-                    core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
-                };
-                let Ok(text) = core::str::from_utf8(bytes) else {
-                    crate::tap_log!("fe layout wire not UTF-8");
-                    return;
-                };
-                // The mux engine styles the WinUI3 islands — arm that
-                // watcher (cheap no-op once advised; the 2s retry timer
-                // re-pokes while `wants_session`).
-                crate::site::ensure_watching_winui3();
-                crate::styler::mux::apply_wire(text);
-            }
             CDS_FE_LAYOUT_RESET => crate::styler::mux::reset(),
             CDS_LINK_OVERLAY if !cds.lp_data.is_null() && cds.cb_data >= 1 => {
                 let shown = unsafe { *(cds.lp_data as *const u8) } != 0;

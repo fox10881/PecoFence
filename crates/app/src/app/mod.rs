@@ -151,6 +151,11 @@ const TIMER_LIVE_CAPTURED: usize = 61;
 /// `TaskbarCreated` arrived while the App was borrowed: renew the shell change registration
 /// shortly.
 const TIMER_SHELL_WATCH_RETRY: usize = 62;
+/// Explorer respawned (`TaskbarCreated`): poke styler delivery + desktop re-attach
+/// shortly — deferred, never inside the `TaskbarCreated` handler itself
+/// (`WM_COPYDATA` delivery can block/re-enter a still-starting shell).
+const TIMER_SHELL_RECOVERY: usize = 68;
+const SHELL_RECOVERY_MS: u32 = 600;
 /// The startup wallpaper worker finished late (see `StartupBackdrops`).
 const TIMER_STARTUP_BACKDROPS: usize = 63;
 /// The Store edition's startup switch was read (`WM_APP_STARTUP_TASK`); retried while the App
@@ -353,7 +358,15 @@ pub struct App {
     /// The static desktop wallpaper recorded when the video player started. A different
     /// image reported later means the user applied it over the video (Explorer applies do
     /// not broadcast `SPI_SETDESKWALLPAPER`) — the image wins and the video retires.
-    static_under_video: Option<std::path::PathBuf>,
+    /// Baseline static wallpaper under a playing video — `(path, file mtime)`.
+    /// The mtime distinguishes a shell-restart re-assert (the same already-
+    /// existing file) from a user picking an image, which updates the file
+    /// record. `None` when no video has run.
+    static_under_video: Option<(std::path::PathBuf, Option<std::time::SystemTime>)>,
+    /// Wall clock of the last `TaskbarCreated` (Explorer respawn). Wallpaper
+    /// signals inside the rebuild window that only re-assert an already-
+    /// existing file are the shell restoring the desktop, not a user change.
+    shell_respawn_wall: Option<std::time::SystemTime>,
     /// The `theme.json` canvas of the last applied `.peco` — kept so the contain/cover
     /// toggle can re-place fences and re-composite the wallpaper without importing
     /// the theme again. `None` after plain config imports/backup restores and legacy
@@ -679,6 +692,7 @@ impl App {
                                 | TIMER_PREWARM_FINISH
                                 | TIMER_LIVE_CAPTURED
                                 | TIMER_SHELL_WATCH_RETRY
+                                | TIMER_SHELL_RECOVERY
                                 | TIMER_STARTUP_TASK
                                 | TIMER_TMP_SETTLE
                                 | TIMER_STARTUP_BACKDROPS => {
@@ -690,6 +704,7 @@ impl App {
                                             TIMER_PREWARM_FINISH => app.finish_prewarm(),
                                             TIMER_LIVE_CAPTURED => app.finish_live_capture(),
                                             TIMER_SHELL_WATCH_RETRY => app.renew_shell_watch(),
+                                            TIMER_SHELL_RECOVERY => app.on_shell_recovery(),
                                             TIMER_STARTUP_TASK => app.finish_store_startup(),
                                             TIMER_TMP_SETTLE => app.sync_settled_tmp(),
                                             TIMER_STARTUP_BACKDROPS => {
@@ -966,9 +981,17 @@ impl App {
                                 && let Some(app) = guard.as_mut()
                             {
                                 app.renew_shell_watch();
+                                // Wallpaper-signal suppression window starts at the
+                                // respawn, not the deferred poke.
+                                app.shell_respawn_wall = Some(std::time::SystemTime::now());
                             } else {
                                 window::set_timer(hwnd, TIMER_SHELL_WATCH_RETRY, 250);
                             }
+                            // Styler delivery + desktop re-attach are deferred, never
+                            // run inside TaskbarCreated: WM_COPYDATA delivery can
+                            // synchronously block while the new shell is still coming
+                            // up. The 2 s ensure tick is the backup either way.
+                            window::set_timer(hwnd, TIMER_SHELL_RECOVERY, SHELL_RECOVERY_MS);
                             Some(0)
                         }
                         msg::WM_QUERYENDSESSION => {
@@ -1306,6 +1329,7 @@ impl App {
             wmf_player: None,
             video_swap: None,
             static_under_video: None,
+            shell_respawn_wall: None,
             last_theme_meta: None,
             theme_dirty: std::cell::Cell::new(false),
         };
@@ -1474,11 +1498,10 @@ impl App {
         // unloads a stale EBM image left by an unclean shutdown.
         let fe = &app.state.config.settings;
         {
-            let (effect, l, d, layout) = (
+            let (effect, l, d) = (
                 fe.fe_effect.clone(),
                 fe.fe_light_rgba.clone(),
                 fe.fe_dark_rgba.clone(),
-                fe.fe_layout.clone(),
             );
             let flags = (
                 fe.fe_clear_address,
@@ -1495,7 +1518,6 @@ impl App {
                     show_line: flags.3,
                     light_rgba: &l,
                     dark_rgba: &d,
-                    layout: &layout,
                 };
                 let _ = pecofence_platform::file_explorer_styler::apply_effect(&cfg);
             });
@@ -2165,6 +2187,25 @@ impl App {
             ShellChangeWatch::register_desktop(self.control.hwnd(), WM_APP_SHELL_CHANGED)
                 .map_err(|e| tracing::warn!(error = %e, "shell change notifications unavailable"))
                 .ok();
+    }
+
+    /// Deferred `TaskbarCreated` follow-up (`TIMER_SHELL_RECOVERY`, ~600 ms):
+    /// re-pokes every styler delivery path now that the new Explorer process
+    /// exists — resident injection + `EBML` for new cabinet pids, the armed
+    /// taskbar/Start/Notification-Center themes, and the WMF desktop layer's
+    /// re-attach. Deferred because `WM_COPYDATA` delivery would synchronously
+    /// block inside a still-starting shell; the periodic `ensure()` tick is
+    /// the independent backstop either way.
+    fn on_shell_recovery(&mut self) {
+        pecofence_platform::file_explorer_styler::ensure();
+        pecofence_platform::taskbar_styler::ensure();
+        pecofence_platform::start_menu::ensure();
+        pecofence_platform::notification_center::ensure();
+        self.ensure_video_wallpaper();
+        if let Some(a) = self.anchor.borrow_mut().as_mut() {
+            a.reanchor("shell respawn");
+        }
+        tracing::info!("shell recovery poke: stylers + desktop layer re-ensured");
     }
 
     /// (Re)adds the notification icon; false while the taskbar does not take it.

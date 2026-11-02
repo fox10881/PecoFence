@@ -480,8 +480,8 @@
         <select id="notificationCenterStyleSel" data-bind="notificationCenterStyle" data-str></select></div>
       <div class="card" id="feEffectCard"><div class="l"><span class="ic">&#xE8B7;</span><div><div class="t">资源管理器背景效果</div><div class="s">ExplorerBlurMica 模糊、亚克力与云母 — 在专属窗口中实时预览并自定义</div></div></div>
         <div class="actions"><button id="feGlassAdvanced">高级设置</button></div></div>
-      <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">刷新外观</div><div class="s">重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸</div></div></div>
-        <div class="actions"><button id="refreshVisual">刷新</button></div></div>
+      <div class="card"><div class="l"><span class="ic">&#xE777;</span><div><div class="t">刷新外观</div><div class="s">重启资源管理器以获得全新状态 — 视觉效果与视频壁纸会自动恢复</div></div></div>
+        <div class="actions"><button id="restartExplorer">刷新</button></div></div>
       <h3>行为</h3>
       <div class="card"><div class="l"><span class="ic">&#xE70D;</span><div><div class="t">收起的栅栏悬停时自动展开</div><div class="s">鼠标移开后自动收起</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.hoverPeek"></div></div>
       <div class="card"><div class="l"><span class="ic">&#xE7C9;</span><div><div class="t">收起的栅栏需点击标题才展开</div><div class="s">开启后不再悬停展开；拖动标题仍可移动栅栏</div></div></div><div class="toggle" role="switch" tabindex="0" data-bind="rollUp.clickToExpand"></div></div>
@@ -1530,7 +1530,7 @@
   document.getElementById('starRepo').onclick = () => send({ type: 'action', name: 'openRepository' });
   document.getElementById('openManual').onclick = () => send({ type: 'action', name: 'openManual' });
   document.getElementById('repairIcons').onclick = () => send({ type: 'action', name: 'repairIcons' });
-  document.getElementById('refreshVisual').onclick = () => send({ type: 'action', name: 'refreshVisual' });
+  document.getElementById('restartExplorer').onclick = () => send({ type: 'action', name: 'restartExplorer' });
 
   // 关于 → 更新: an installed copy downloads and runs the new setup, a ZIP opens the release page.
   let update = null;

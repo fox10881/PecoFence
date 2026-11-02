@@ -32,6 +32,14 @@ windows_core::link!("user32.dll" "system" fn IsWindow(hwnd: HWND) -> BOOL);
 windows_core::link!("user32.dll" "system" fn RegisterWindowMessageW(lpstring: PCWSTR) -> u32);
 windows_core::link!("user32.dll" "system" fn SetWindowsHookExW(idhook: i32, lpfn: *const core::ffi::c_void, hmod: *mut core::ffi::c_void, dwthreadid: u32) -> *mut core::ffi::c_void);
 windows_core::link!("user32.dll" "system" fn UnhookWindowsHookEx(hhk: *mut core::ffi::c_void) -> BOOL);
+windows_core::link!("kernel32.dll" "system" fn CloseHandle(hobject: *mut core::ffi::c_void) -> BOOL);
+windows_core::link!("kernel32.dll" "system" fn CreateToolhelp32Snapshot(dwflags: u32, th32processid: u32) -> *mut core::ffi::c_void);
+windows_core::link!("kernel32.dll" "system" fn GetCurrentProcessId() -> u32);
+windows_core::link!("kernel32.dll" "system" fn OpenProcess(dwdesiredaccess: u32, binherithandle: BOOL, dwprocessid: u32) -> *mut core::ffi::c_void);
+windows_core::link!("kernel32.dll" "system" fn Process32FirstW(hsnapshot: *mut core::ffi::c_void, lppe: *mut core::ffi::c_void) -> BOOL);
+windows_core::link!("kernel32.dll" "system" fn Process32NextW(hsnapshot: *mut core::ffi::c_void, lppe: *mut core::ffi::c_void) -> BOOL);
+windows_core::link!("kernel32.dll" "system" fn ProcessIdToSessionId(dwprocessid: u32, psessionid: *mut u32) -> BOOL);
+windows_core::link!("kernel32.dll" "system" fn TerminateProcess(hprocess: *mut core::ffi::c_void, uexitcode: u32) -> BOOL);
 
 /// `EXPLICIT_ACCESS_W` + `TRUSTEE_W` — DACL merge for the AppContainer ACE.
 #[repr(C)]
@@ -772,43 +780,137 @@ pub fn resident_window() -> Option<HWND> {
 ///
 /// Everything re-arms itself afterwards: the next anchor tick sees the new
 /// pid, `ensure_resident` re-injects, the resident's own `WM_TIMER` retries
-/// `InitializeXamlDiagnosticsEx` until the XAML island is up, and
-/// `taskbar_styler::ensure` re-delivers the armed theme.
-pub fn restart_explorer() -> bool {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let old_pid = find_taskbar().map(|(_, pid)| pid);
-    if old_pid.is_some() {
-        let _ = std::process::Command::new("taskkill.exe")
-            .args(["/F", "/IM", "explorer.exe"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .status();
+/// `PROCESSENTRY32W` — the fields `session_explorer_pids` reads (`szExeFile`
+/// tail is MAX_PATH).
+#[repr(C)]
+struct ProcessEntry32 {
+    size: u32,
+    usage: u32,
+    pid: u32,
+    heap: usize,
+    module: u32,
+    threads: u32,
+    parent_pid: u32,
+    base_pri: i32,
+    flags: u32,
+    exe_file: [u16; 260],
+}
+
+/// `explorer.exe` pids running in THIS session. `taskkill /f /im
+/// explorer.exe` is session-blind — an elevated run would kill the shell of
+/// every logged-on user — so the victim list is built from a process
+/// snapshot filtered by `ProcessIdToSessionId`. `None` = the snapshot or
+/// the session query failed, in which case there is no safe kill list.
+fn session_explorer_pids() -> Option<Vec<u32>> {
+    const TH32CS_SNAPPROCESS: u32 = 0x2;
+    let mut session = u32::MAX;
+    if unsafe { ProcessIdToSessionId(GetCurrentProcessId(), &mut session) } == BOOL(0) {
+        return None;
     }
-    // Only a different explorer pid counts as "back": `taskkill` returns as
-    // soon as the kill is signaled, and the dying tray window lingers during
-    // teardown. The shell sometimes respawns on its own — give it a few
-    // seconds before starting a second instance (a bare `explorer.exe`
-    // launched while the shell runs opens a stray file window instead).
-    for _ in 0..40 {
+    let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snap.is_null() || snap as isize == -1 {
+        return None;
+    }
+    let mut pe = ProcessEntry32 {
+        size: core::mem::size_of::<ProcessEntry32>() as u32,
+        usage: 0,
+        pid: 0,
+        heap: 0,
+        module: 0,
+        threads: 0,
+        parent_pid: 0,
+        base_pri: 0,
+        flags: 0,
+        exe_file: [0; 260],
+    };
+    let mut found = Vec::new();
+    let mut cur = unsafe { Process32FirstW(snap, (&mut pe as *mut ProcessEntry32).cast()) };
+    while cur.0 != 0 {
+        let len = pe
+            .exe_file
+            .iter()
+            .position(|&c| c == 0)
+            .unwrap_or(pe.exe_file.len());
+        let name = String::from_utf16_lossy(&pe.exe_file[..len]);
+        if name.eq_ignore_ascii_case("explorer.exe") {
+            let mut pid_session = u32::MAX;
+            if unsafe { ProcessIdToSessionId(pe.pid, &mut pid_session) } != BOOL(0)
+                && pid_session == session
+            {
+                found.push(pe.pid);
+            }
+        }
+        cur = unsafe { Process32NextW(snap, (&mut pe as *mut ProcessEntry32).cast()) };
+    }
+    unsafe {
+        let _ = CloseHandle(snap);
+    }
+    Some(found)
+}
+
+/// Session-scoped hard restart of the shell: terminates every
+/// `explorer.exe` in this session (the old `taskkill /f /im` form would
+/// also kill other sessions' shells when elevated), waits for the old
+/// pids to die and the new `Shell_TrayWnd` to appear — the shell often
+/// respawns on its own — and only launches a replacement `explorer.exe`
+/// when no same-session process survived. `TaskbarCreated` then tells the
+/// app layer to defer its recovery poke (see `TIMER_SHELL_RECOVERY`).
+/// Returns `false` when the kill list could not be scoped (snapshot
+/// unavailable — never falls back to an unscoped kill) or no shell came
+/// back within the window.
+pub fn restart_explorer() -> bool {
+    const PROCESS_TERMINATE: u32 = 0x0001;
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    let Some(victims) = session_explorer_pids() else {
+        tracing::error!("restart_explorer aborted: process snapshot unavailable");
+        return false;
+    };
+    tracing::info!(pids = ?victims, "restarting same-session explorer processes");
+    for pid in &victims {
+        let h = unsafe {
+            OpenProcess(
+                PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION,
+                BOOL(0),
+                *pid,
+            )
+        };
+        if h.is_null() {
+            continue;
+        }
+        unsafe {
+            let _ = TerminateProcess(h, 0);
+            let _ = CloseHandle(h);
+        }
+    }
+    // Only a pid that was NOT killed counts as "back": TerminateProcess
+    // returns as soon as the kill is signaled and the dying tray window
+    // lingers during teardown. The shell sometimes respawns on its own —
+    // give it a few seconds before starting a replacement (a bare
+    // `explorer.exe` launched while the shell runs opens a stray file
+    // window instead).
+    for _ in 0..60 {
         if let Some((_, pid)) = find_taskbar()
-            && Some(pid) != old_pid
+            && !victims.contains(&pid)
         {
             return true;
         }
         std::thread::sleep(std::time::Duration::from_millis(250));
     }
     match find_taskbar() {
-        // `spawn_detached` passes lpApplicationName — which skips the PATH
-        // search entirely; `Command` puts the name in lpCommandLine where
-        // %SystemRoot% is on the path. Null stdio keeps the child from
-        // inheriting our pipes (same call `openConfigFolder` uses).
-        None => std::process::Command::new("explorer.exe")
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .is_ok(),
-        Some((_, pid)) => Some(pid) != old_pid, // still the old shell = kill failed
+        // A replacement shell already appeared (auto-respawn won the race):
+        // never spawn a second one. `spawn` passes the name on the command
+        // line where %SystemRoot% is on the path; null stdio keeps the
+        // child from inheriting our pipes.
+        Some((_, pid)) => !victims.contains(&pid),
+        None => {
+            session_explorer_pids().is_some_and(|p| p.is_empty())
+                && std::process::Command::new("explorer.exe")
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .is_ok()
+        }
     }
 }
 

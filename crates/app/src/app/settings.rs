@@ -257,7 +257,6 @@ impl App {
             new_settings.fe_clear_bar_bg = old_settings.fe_clear_bar_bg;
             new_settings.fe_clear_winui_bg = old_settings.fe_clear_winui_bg;
             new_settings.fe_show_line = old_settings.fe_show_line;
-            new_settings.fe_layout = old_settings.fe_layout.clone();
             new_settings.fe_light_rgba = old_settings.fe_light_rgba.clone();
             new_settings.fe_dark_rgba = old_settings.fe_dark_rgba.clone();
         }
@@ -431,10 +430,6 @@ impl App {
                 "clearBarBg": s.fe_clear_bar_bg,
                 "clearWinuiBg": s.fe_clear_winui_bg,
                 "showLine": s.fe_show_line,
-                "layout": s.fe_layout,
-                "layouts": pecofence_core::fe_layouts::options()
-                    .map(|(id, label)| serde_json::json!({"id": id, "label": label}))
-                    .collect::<Vec<_>>(),
                 "lightRgba": s.fe_light_rgba,
                 "darkRgba": s.fe_dark_rgba,
             },
@@ -448,9 +443,8 @@ impl App {
     fn fe_glass_sig(&self) -> String {
         let s = &self.state.config.settings;
         format!(
-            "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
             s.fe_effect,
-            s.fe_layout,
             s.fe_clear_address,
             s.fe_clear_bar_bg,
             s.fe_clear_winui_bg,
@@ -497,14 +491,11 @@ impl App {
         new.fe_clear_bar_bg = bool_of("clearBarBg", old.fe_clear_bar_bg);
         new.fe_clear_winui_bg = bool_of("clearWinuiBg", old.fe_clear_winui_bg);
         new.fe_show_line = bool_of("showLine", old.fe_show_line);
-        new.fe_layout = str_of("layout", &old.fe_layout);
         new.fe_light_rgba = str_of("lightRgba", &old.fe_light_rgba);
         new.fe_dark_rgba = str_of("darkRgba", &old.fe_dark_rgba);
         let wanted = new.fe_effect.clone();
-        let wanted_layout = new.fe_layout.clone();
         self.apply_settings(new);
-        let applied = self.state.config.settings.fe_effect == wanted
-            && self.state.config.settings.fe_layout == wanted_layout;
+        let applied = self.state.config.settings.fe_effect == wanted;
         if let Some(h) = &self.fe_glass {
             let (text, error) = if !applied {
                 (
@@ -1034,7 +1025,6 @@ impl App {
                     }
                 }
                 Some("openFeGlass") => self.open_fe_glass(),
-                Some("refreshVisual") => self.refresh_visual_state(),
                 Some("restartExplorer") => {
                     // Failsafe for a stuck shell (no UI button — refresh is the
                     // daily action). Kill the shell and let Windows' own
@@ -1203,21 +1193,9 @@ impl App {
             || new.fe_clear_bar_bg != old.fe_clear_bar_bg
             || new.fe_clear_winui_bg != old.fe_clear_winui_bg
             || new.fe_show_line != old.fe_show_line
-            || new.fe_layout != old.fe_layout
             || new.fe_light_rgba != old.fe_light_rgba
             || new.fe_dark_rgba != old.fe_dark_rgba;
         if fe_changed {
-            // The dropdown only offers catalog ids; an unknown id here means
-            // a hand-edited feApply — same revert treatment as the style
-            // dropdowns above.
-            if !new.fe_layout.is_empty()
-                && pecofence_core::fe_layouts::layout_wire(&new.fe_layout).is_none()
-            {
-                new.fe_layout.clone_from(&old.fe_layout);
-                self.settings_error(pecofence_core::i18n::text(
-                    "工具栏和图标布局未能更改，请稍后重试。",
-                ));
-            }
             let applied = pecofence_platform::file_explorer_styler::apply_effect(
                 &pecofence_platform::file_explorer_styler::FeGlassConfig {
                     effect: new.fe_effect.as_str(),
@@ -1227,13 +1205,11 @@ impl App {
                     show_line: new.fe_show_line,
                     light_rgba: new.fe_light_rgba.as_str(),
                     dark_rgba: new.fe_dark_rgba.as_str(),
-                    layout: new.fe_layout.as_str(),
                 },
             );
             if !applied {
-                // Only the material leg can fail (deploy/config.ini). The
-                // layout leg is independent — `apply_effect` still delivers
-                // it on the failure path — so fe_layout stays applied.
+                // Deploy/config.ini failure — revert so the page shows
+                // what is actually running.
                 new.fe_effect.clone_from(&old.fe_effect);
                 self.settings_error(pecofence_core::i18n::text(
                     "资源管理器背景效果未能更改，请稍后重试。",
@@ -1602,6 +1578,13 @@ impl App {
             );
             return;
         }
+        if self.is_shell_reassert(&now) {
+            tracing::debug!(
+                wallpaper = ?now,
+                "wallpaper signal inside shell-rebuild window; keeping video"
+            );
+            return;
+        }
         if pecofence_platform::wallpaper::desktops_differ() {
             tracing::debug!(
                 applied = ?now,
@@ -1626,10 +1609,32 @@ impl App {
         self.settings_mutated();
     }
 
-    /// The static wallpaper path as `IDesktopWallpaper` resolves it — the same provider
-    /// `follow_snapshot` compares `static_under_video` against, so a SPI↔IDW divergence
-    /// (`TranscodedWallpaper` vs the source path) cannot look like a user apply.
-    fn static_wallpaper_now() -> Option<PathBuf> {
+    /// Inside the shell-rebuild window after `TaskbarCreated`, a wallpaper
+    /// signal resolving to a file that already existed at respawn time is
+    /// the shell re-asserting the desktop — not a user apply. Only a file
+    /// written after the respawn counts as a genuine new change. `None`
+    /// mtime / unresolvable paths err on keeping the video.
+    fn is_shell_reassert(&self, now: &Option<(PathBuf, Option<std::time::SystemTime>)>) -> bool {
+        let Some(respawn) = self.shell_respawn_wall else {
+            return false;
+        };
+        let Ok(since) = respawn.elapsed() else {
+            return false;
+        };
+        if since > Duration::from_secs(60) {
+            return false;
+        }
+        match now {
+            Some((_, Some(mtime))) => mtime.duration_since(respawn).is_err(),
+            _ => true,
+        }
+    }
+
+    /// The static wallpaper `(path, file mtime)` as `IDesktopWallpaper` resolves it —
+    /// the same provider `follow_snapshot` compares `static_under_video` against, so a
+    /// SPI↔IDW divergence (`TranscodedWallpaper` vs the source path) cannot look like a
+    /// user apply. The mtime tells a shell re-assert (pre-existing file) from a user pick.
+    fn static_wallpaper_now() -> Option<(PathBuf, Option<std::time::SystemTime>)> {
         pecofence_platform::wallpaper::query()
             .ok()
             .and_then(|q| q.monitors.into_iter().find_map(|m| m.path))
@@ -1639,31 +1644,47 @@ impl App {
                     .map(PathBuf::from)
                     .filter(|p| p.is_file())
             })
+            .map(|p| {
+                let mtime = std::fs::metadata(&p).and_then(|m| m.modified()).ok();
+                (p, mtime)
+            })
     }
 
     /// A static image applied over a running video retires it — for applies the
     /// `SPI_SETDESKWALLPAPER` broadcast misses (Explorer's "Set as desktop background"
     /// goes through `IDesktopWallpaper`). Detected by the reported static path differing
     /// from `static_under_video`, recorded when the player started. `desktops_differ`
-    /// guards virtual-desktop switches, which legitimately report another image.
+    /// guards virtual-desktop switches, which legitimately report another image;
+    /// `is_shell_reassert` covers the transient inside a shell-rebuild window.
     pub(super) fn retire_video_for_static(&mut self, static_path: Option<&Path>) {
         let player_alive = self.wmf_player.as_ref().is_some_and(|p| p.is_alive());
-        let (Some(baseline), Some(now)) = (self.static_under_video.as_ref(), static_path) else {
+        let (Some(baseline), Some(path)) = (self.static_under_video.as_ref(), static_path) else {
             return;
         };
-        if !player_alive || now == baseline {
+        let now = (
+            path.to_path_buf(),
+            std::fs::metadata(path).and_then(|m| m.modified()).ok(),
+        );
+        if !player_alive || &now == baseline {
+            return;
+        }
+        if self.is_shell_reassert(&Some(now.clone())) {
+            tracing::debug!(
+                applied = %now.0.display(),
+                "static wallpaper differs but inside shell-rebuild window; keeping video"
+            );
             return;
         }
         if pecofence_platform::wallpaper::desktops_differ() {
             tracing::debug!(
-                applied = %now.display(),
+                applied = %now.0.display(),
                 "static wallpaper changed but virtual desktops differ; keeping video"
             );
             return;
         }
         tracing::info!(
-            applied = %now.display(),
-            was = %baseline.display(),
+            applied = %now.0.display(),
+            was = %baseline.0.display(),
             video = %self.wmf_player.as_ref().map(|p| p.path().display().to_string()).unwrap_or_default(),
             "static image applied over video wallpaper; retiring player"
         );
@@ -1760,7 +1781,11 @@ impl App {
         // A static image applied after the video started overrides it — including
         // Explorer applies that broadcast nothing. The comparison uses the same
         // IDW-resolved provider as the recorded baseline (`static_wallpaper_now`).
-        self.retire_video_for_static(Self::static_wallpaper_now().as_deref());
+        self.retire_video_for_static(
+            Self::static_wallpaper_now()
+                .as_ref()
+                .map(|(p, _)| p.as_path()),
+        );
         let player = self.wmf_player.as_ref();
         let player_alive = player.is_some_and(|p| p.is_alive());
         let player_path = player.map(|p| p.path().to_path_buf());
@@ -2900,25 +2925,6 @@ impl App {
         // The apply's own writes do not count as user edits: whatever the incoming theme
         // normalized is the new baseline the dirty flag measures against.
         self.theme_dirty.set(false);
-    }
-
-    /// The Refresh button: re-delivers the *armed in-memory state* to the shell —
-    /// no taskkill, no theme reload, nothing persisted. Dead resident command
-    /// windows re-inject through `ensure_resident_at`'s `IsWindow` probe, and a
-    /// lost desktop layer re-attaches via `ensure_video_wallpaper`. Safe to
-    /// click repeatedly: every leg is idempotent (epoch/on-change gated).
-    fn refresh_visual_state(&mut self) {
-        pecofence_platform::file_explorer_styler::rearm();
-        pecofence_platform::taskbar_styler::ensure();
-        pecofence_platform::start_menu::ensure();
-        pecofence_platform::notification_center::ensure();
-        self.ensure_video_wallpaper();
-        if let Some(a) = self.anchor.borrow_mut().as_mut() {
-            a.reanchor("manual refresh");
-        }
-        self.refresh_visuals(true);
-        self.settings_toast(pecofence_core::i18n::text("外观已刷新"));
-        tracing::info!("manual visual refresh: state re-delivered to shell");
     }
 
     pub(super) fn refresh_language(&mut self) {
