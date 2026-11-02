@@ -185,9 +185,16 @@ fn ebm_source_path() -> Option<PathBuf> {
 fn deploy_dll(dir: &Path) -> Option<PathBuf> {
     let dst = dir.join("ExplorerBlurMica.dll");
     let dst_bytes = std::fs::read(&dst).ok();
-    match ebm_source_path().and_then(|src| std::fs::read(&src).ok()) {
+    let src = ebm_source_path().and_then(|src| std::fs::read(&src).ok());
+    match src {
         Some(src_bytes) => match dst_bytes {
-            Some(d) if d == src_bytes => Some(dst), // already deployed — skip the copy
+            Some(d) if d == src_bytes => {
+                tracing::debug!(
+                    dst = %dst.display(),
+                    "deploy_dll: destination already matches the vendored DLL — copy skipped"
+                );
+                Some(dst)
+            }
             _ => {
                 if let Err(e) = std::fs::write(&dst, &src_bytes) {
                     tracing::warn!(
@@ -197,6 +204,11 @@ fn deploy_dll(dir: &Path) -> Option<PathBuf> {
                     );
                     return None;
                 }
+                tracing::debug!(
+                    dst = %dst.display(),
+                    bytes = src_bytes.len(),
+                    "deploy_dll: destination written"
+                );
                 Some(dst)
             }
         },
@@ -265,8 +277,19 @@ fn write_config_ini(dir: &Path, cfg: &FeGlassConfig) -> std::io::Result<()> {
     let path = dir.join("config.ini");
     let ini = config_ini_contents(cfg);
     match std::fs::read(&path) {
-        Ok(existing) if existing == ini.as_bytes() => Ok(()),
-        Ok(_) | Err(_) => std::fs::write(&path, ini),
+        Ok(existing) if existing == ini.as_bytes() => {
+            tracing::debug!(
+                ini = %path.display(),
+                "config.ini already matches the requested config — write skipped"
+            );
+            Ok(())
+        }
+        Ok(_) | Err(_) => {
+            let bytes = ini.len();
+            std::fs::write(&path, ini).inspect(|_| {
+                tracing::debug!(ini = %path.display(), bytes, "config.ini written");
+            })
+        }
     }
 }
 
@@ -394,10 +417,16 @@ fn deliver_all() {
         })
         .unwrap_or_default();
     let anchors = cabinet_anchors();
+    tracing::debug!(
+        anchors = anchors.len(),
+        dll_ready = !wide.is_empty(),
+        "deliver_all: fanning out to cabinet-owning explorer pids"
+    );
     let mut live_pids = Vec::new();
     for (pid, anchor) in anchors {
         live_pids.push(pid);
         let Some(cmd) = crate::tap::ensure_resident_at(anchor) else {
+            tracing::debug!(pid, "deliver_all: no resident for cabinet pid — skipped");
             continue;
         };
         let mut guard = lock();
@@ -409,6 +438,7 @@ fn deliver_all() {
             let current = (cmd.0 as usize, fe.epoch);
             if fe.delivered.get(&pid) != Some(&current) {
                 deliver_ebm(cmd, &wide);
+                tracing::debug!(pid, epoch = fe.epoch, "deliver_all: EBML sent");
                 fe.delivered.insert(pid, current);
             }
         }
@@ -418,6 +448,7 @@ fn deliver_all() {
             let current = (cmd.0 as usize, fe.xaml_epoch);
             if fe.xaml_delivered.get(&pid) != Some(&current) {
                 let _ = crate::tap::send_copydata(cmd, CDS_FE_LAYOUT, wire.as_bytes());
+                tracing::debug!(pid, bytes = wire.len(), "deliver_all: FELT wire sent");
                 fe.xaml_delivered.insert(pid, current);
             }
         }
@@ -439,6 +470,7 @@ fn apply_layout(layout: &str) {
     let fe = guard.get_or_insert_with(Fe::default);
     fe.layout = layout.to_string();
     fe.xaml_epoch += 1;
+    tracing::debug!(layout, "apply_layout: stored");
 }
 
 /// Recomputes the XAML leg after `layout`/`effect`/`clear_winui_bg`
@@ -452,12 +484,19 @@ fn sync_xaml_leg() {
         .is_some_and(|fe| !fe.layout.is_empty() || (fe.clear_winui_bg && !fe.effect.is_empty()));
     XAML_ARMED.store(armed, Ordering::Release);
     if !armed {
-        for hwnd in crate::tap::resident_windows_all() {
+        let residents = crate::tap::resident_windows_all();
+        tracing::debug!(
+            residents = residents.len(),
+            "sync_xaml_leg: disarmed, FELR broadcast"
+        );
+        for hwnd in residents {
             let _ = crate::tap::send_copydata(hwnd, CDS_FE_LAYOUT_RESET, &[]);
         }
         if let Some(fe) = lock().as_mut() {
             fe.xaml_delivered.clear();
         }
+    } else {
+        tracing::debug!("sync_xaml_leg: armed");
     }
 }
 
@@ -480,6 +519,15 @@ fn disarm_legacy() {
 /// Returns `false` when the deploy or the `config.ini` write failed so
 /// settings can revert.
 pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
+    tracing::debug!(
+        effect = cfg.effect,
+        layout = cfg.layout,
+        clear_address = cfg.clear_address,
+        clear_bar_bg = cfg.clear_bar_bg,
+        clear_winui_bg = cfg.clear_winui_bg,
+        show_line = cfg.show_line,
+        "apply_effect"
+    );
     // The layout leg is committed first and is INDEPENDENT of the EBM
     // material below — a deploy/config failure must not take it down.
     apply_layout(cfg.layout);
@@ -556,7 +604,9 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
 /// still-selected layout re-wires WITHOUT the clear rules (no material
 /// behind them anymore); with no layout it fully disarms via `FELR`.
 fn reset_ebm() -> bool {
-    for hwnd in crate::tap::resident_windows_all() {
+    let residents = crate::tap::resident_windows_all();
+    tracing::debug!(residents = residents.len(), "reset_ebm: EBMU broadcast");
+    for hwnd in residents {
         let _ = crate::tap::send_copydata(hwnd, CDS_EBM_UNLOAD, &[]);
     }
     disarm_legacy();

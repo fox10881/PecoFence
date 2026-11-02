@@ -91,12 +91,88 @@ fn start_log(
     std::fs::File::create(path).ok()
 }
 
+/// A run's `pecofence.log` grows to this before rotating into `pecofence.prev.log` — the
+/// same file `start_log` keeps from the previous run, so the lines before a crash survive
+/// either way.
+const MAX_LOG_BYTES: u64 = 1024 * 1024;
+
+/// The `pecofence.log` writer: rotates into `pecofence.prev.log` once past [`MAX_LOG_BYTES`].
+struct Rotate {
+    file: std::fs::File,
+    path: std::path::PathBuf,
+    previous: std::path::PathBuf,
+    written: u64,
+}
+
+impl Rotate {
+    fn open(dir: &std::path::Path, instance: Option<&str>) -> Option<Self> {
+        use pecofence_core::brand::{LOG, PREVIOUS_LOG, log_file_name};
+        let file = start_log(dir, instance, LOG, PREVIOUS_LOG)?;
+        // `start_log` may hand back the last run's file appended to: count from its size.
+        let written = file.metadata().map(|m| m.len()).unwrap_or(0);
+        Some(Self {
+            file,
+            path: dir.join(log_file_name(instance, LOG)),
+            previous: dir.join(log_file_name(instance, PREVIOUS_LOG)),
+            written,
+        })
+    }
+
+    /// The file outgrew the limit: it becomes the `previous` log and a fresh one starts. A
+    /// viewer holding the log without delete sharing blocks the rename, so the fallback
+    /// copies the contents over and truncates through the handle we already hold.
+    fn rotate(&mut self) {
+        use std::io::{Seek, SeekFrom};
+        if std::fs::rename(&self.path, &self.previous).is_ok() {
+            match std::fs::File::create(&self.path) {
+                Ok(file) => {
+                    self.file = file;
+                    self.written = 0;
+                }
+                Err(_) => {
+                    // No fresh file: the handle now names the previous log. Put it back so
+                    // the run keeps one current file, and let the next limit retry rotate.
+                    let _ = std::fs::rename(&self.previous, &self.path);
+                    self.written = 0;
+                }
+            }
+            return;
+        }
+        if std::fs::copy(&self.path, &self.previous).is_ok() && self.file.set_len(0).is_ok() {
+            let _ = self.file.seek(SeekFrom::Start(0));
+            self.written = 0;
+        } else {
+            // Both moves failed (say the previous log itself is held open): keep writing and
+            // try again after another MAX_LOG_BYTES rather than fail on every line.
+            self.written = self.written.saturating_sub(MAX_LOG_BYTES);
+        }
+    }
+}
+
+impl std::io::Write for Rotate {
+    /// The fmt layer delivers one formatted event per call: rotate first, then write the
+    /// buffer whole so a line is never split across the two files.
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.written.saturating_add(buf.len() as u64) > MAX_LOG_BYTES {
+            self.rotate();
+        }
+        self.file.write_all(buf)?;
+        self.written += buf.len() as u64;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.file.flush()
+    }
+}
+
 /// `RUST_LOG` takes `level` and `target=level` directives, e.g. `pecofence=debug` (default
-/// `info`). `Targets` instead of `EnvFilter` keeps the regex engine out of the binary; span and
-/// field filters are not supported. Output goes to the log file and to stderr; the latter only
-/// shows up when a console is attached. The shareable log (`share_log`) runs beside them.
+/// `info`, plus `debug` for the File Explorer styler and the settings code driving it so a
+/// failure report needs no extra setup). `Targets` instead of `EnvFilter` keeps the regex
+/// engine out of the binary; span and field filters are not supported. Output goes to the
+/// log file and to stderr; the latter only shows up when a console is attached. The
+/// shareable log (`share_log`) collects in memory beside them.
 fn init_logging(instance: Option<&str>) {
-    use pecofence_core::brand;
     use tracing_subscriber::filter::Targets;
     use tracing_subscriber::fmt::writer::MakeWriterExt;
     use tracing_subscriber::prelude::*;
@@ -104,15 +180,18 @@ fn init_logging(instance: Option<&str>) {
         .ok()
         .filter(|s| !s.trim().is_empty())
         .and_then(|s| s.parse::<Targets>().ok())
-        .unwrap_or_else(|| Targets::new().with_default(tracing::Level::INFO));
+        .unwrap_or_else(|| {
+            Targets::new()
+                .with_default(tracing::Level::INFO)
+                .with_target(
+                    "pecofence_platform::file_explorer_styler",
+                    tracing::Level::DEBUG,
+                )
+                .with_target("pecofence::app::settings", tracing::Level::DEBUG)
+        });
     let dir = log_dir();
-    let file = dir
-        .as_deref()
-        .and_then(|d| start_log(d, instance, brand::LOG, brand::PREVIOUS_LOG));
-    let share = dir
-        .as_deref()
-        .and_then(|d| start_log(d, instance, brand::SHARE_LOG, brand::PREVIOUS_SHARE_LOG))
-        .map(share_log::ShareLayer::new);
+    let file = dir.as_deref().and_then(|d| Rotate::open(d, instance));
+    let share = share_log::ShareLayer::new(share_log::SharedSink);
     match file {
         Some(file) => {
             let file = std::sync::Mutex::new(file);
@@ -243,4 +322,58 @@ fn main() -> Result<()> {
     }
     drop(cell);
     std::process::exit(code);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn test_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("pecofence-log-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn rotate_moves_the_full_log_to_previous_and_starts_fresh() {
+        let dir = test_dir("rotate");
+        let mut log = Rotate::open(&dir, None).unwrap();
+        // A first event starts the current file; a run of them pushes it past the limit.
+        log.write_all(b"startup line\n").unwrap();
+        let filler = "x".repeat(1024);
+        while log.written + 1100 <= MAX_LOG_BYTES {
+            writeln!(log, "{filler}").unwrap();
+        }
+        assert!(!dir.join("pecofence.prev.log").is_file());
+        writeln!(log, "{filler}").unwrap(); // crosses 1 MiB
+        writeln!(log, "after rotation").unwrap();
+        drop(log);
+        let prev = std::fs::read_to_string(dir.join("pecofence.prev.log")).unwrap();
+        assert!(prev.starts_with("startup line\n"));
+        assert!(prev.len() > MAX_LOG_BYTES as usize - 2048);
+        let current = std::fs::read_to_string(dir.join("pecofence.log")).unwrap();
+        assert!(current.ends_with("after rotation\n"));
+        assert!(current.len() < 2048, "{current:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn start_log_keeps_the_previous_run_as_prev() {
+        let dir = test_dir("keep");
+        std::fs::write(dir.join("pecofence.log"), "last run's line\n").unwrap();
+        let mut log = Rotate::open(&dir, None).unwrap();
+        log.write_all(b"this run\n").unwrap();
+        drop(log);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("pecofence.prev.log")).unwrap(),
+            "last run's line\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("pecofence.log")).unwrap(),
+            "this run\n"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

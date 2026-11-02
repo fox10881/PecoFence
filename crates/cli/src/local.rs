@@ -65,14 +65,12 @@ impl Paths {
             "log": self.log,
             "logExists": self.log.is_file(),
             "previousLog": self.sibling_log(brand::PREVIOUS_LOG),
-            "shareLog": self.sibling_log(brand::SHARE_LOG),
             "logDir": self.log_dir,
             "crashDumps": self.crash_dumps(),
         })
     }
 
-    /// Another log of the same instance: the previous run's, or the shareable log (what the
-    /// feedback page may send).
+    /// The rotated-out part of this instance's log (the previous run's, or the previous 1 MiB).
     fn sibling_log(&self, suffix: &str) -> PathBuf {
         self.log_dir
             .join(brand::log_file_name(self.instance.as_deref(), suffix))

@@ -49,12 +49,10 @@ pub fn ipc_pipe_name(user_sid: &str, instance: Option<&str>) -> String {
     )
 }
 
-/// [`log_file_name`] suffixes: this run's log, the previous run's, and the shareable log (only
-/// what may be sent with feedback) of this and the previous run.
+/// [`log_file_name`] suffixes: this run's log and the rotated-out part before it (the
+/// previous run's, or the previous 1 MiB when a run outgrows the file).
 pub const LOG: &str = "";
 pub const PREVIOUS_LOG: &str = ".prev";
-pub const SHARE_LOG: &str = ".share";
-pub const PREVIOUS_SHARE_LOG: &str = ".share.prev";
 
 /// Log file in `%LOCALAPPDATA%\PecoFence`: `pecofence[.name]<suffix>.log`, one set per instance.
 pub fn log_file_name(instance: Option<&str>, suffix: &str) -> String {
@@ -131,12 +129,8 @@ mod tests {
         assert_eq!(log_file_name(None, LOG), "pecofence.log");
         assert_eq!(log_file_name(Some(" "), PREVIOUS_LOG), "pecofence.prev.log");
         assert_eq!(
-            log_file_name(Some("test"), SHARE_LOG),
-            "pecofence.test.share.log"
-        );
-        assert_eq!(
-            log_file_name(Some("test"), PREVIOUS_SHARE_LOG),
-            "pecofence.test.share.prev.log"
+            log_file_name(Some("test"), PREVIOUS_LOG),
+            "pecofence.test.prev.log"
         );
     }
 }

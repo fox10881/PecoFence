@@ -1,5 +1,6 @@
 //! The shareable log: a second `tracing` layer beside the file log that keeps only what may
 //! leave the machine with feedback (「附带诊断日志（不含个人信息）」 on the settings page).
+//! It collects in memory ([`SHARED`]) — the only log file on disk is `pecofence.log`.
 //!
 //! Nothing user-provided reaches it, by construction rather than by scrubbing afterwards:
 //! - messages are the literals written in the code (`tests::callsites_are_shareable` rejects
@@ -391,6 +392,33 @@ impl ShareLayer {
             }),
         }
     }
+}
+
+/// Where the shareable log collects instead of a file of its own. Bounded the same way the
+/// file was — `Sink` stops non-error output at `MAX_BYTES` — so even DEBUG-heavy targets
+/// cannot grow it past that (and `shared()` drops debug/trace events entirely anyway).
+static SHARED: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+
+/// `Write` end of [`SHARED`], the `ShareLayer` sink for the running process.
+pub struct SharedSink;
+
+impl Write for SharedSink {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut shared = SHARED.lock().unwrap_or_else(|e| e.into_inner());
+        shared.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// The shareable text collected this run; the feedback form attaches an excerpt of it (the
+/// head of the run plus its tail — `Sink` keeps the beginning by stopping at `MAX_BYTES`).
+pub fn shared_text() -> String {
+    let shared = SHARED.lock().unwrap_or_else(|e| e.into_inner());
+    String::from_utf8_lossy(&shared[..]).into_owned()
 }
 
 impl<S: Subscriber> Layer<S> for ShareLayer {

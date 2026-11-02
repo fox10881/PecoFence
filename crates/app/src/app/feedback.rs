@@ -1,6 +1,7 @@
 //! The 「反馈」 section of the settings page's 「关于」 page: what it may send along with the user's text (system facts
-//! and the shareable log, see `crate::share_log`) and the offer to report a crash on the next
-//! start. The page itself posts to the feedback service; nothing here touches the network.
+//! and the shareable log excerpt the `crate::share_log` layer collects in memory) and the
+//! offer to report a crash on the next start. The page itself posts to the feedback service;
+//! nothing here touches the network.
 
 use super::*;
 
@@ -21,13 +22,13 @@ const FACT_MAX: usize = 200;
 pub(super) struct FeedbackState {
     /// The page to show once the freshly opened settings page is ready (`Some(crash)`).
     pub(super) focus: Option<bool>,
-    /// The previous run ended in a panic or an unhandled exception (its shareable log says so).
+    /// The previous run ended in a panic or an unhandled exception (its raw log says so).
     previous_run_crashed: bool,
     /// The crash balloon is up; clicking it opens the feedback form.
     crash_offer_pending: bool,
 }
 
-/// Whether a shareable log records a crash: the panic hook's `PANIC` or crashlog's line.
+/// Whether a run's log records a crash: the panic hook's `PANIC` or crashlog's line.
 fn log_records_crash(log: &str) -> bool {
     log.lines().any(|line| {
         line.contains(": PANIC location=") || line.contains(": CRASH (unhandled exception)")
@@ -90,7 +91,9 @@ fn on_off(on: bool) -> &'static str {
 }
 
 impl App {
-    fn share_log(&self, suffix: &str) -> Option<String> {
+    /// A log file of this instance, when it exists. Local checks only: the raw log may hold
+    /// user paths, so none of it ever goes out with a report — the shareable excerpt does.
+    fn raw_log(&self, suffix: &str) -> Option<String> {
         let dir = crate::log_dir()?;
         let name = pecofence_core::brand::log_file_name(self.instance.as_deref(), suffix);
         std::fs::read(dir.join(name))
@@ -101,7 +104,7 @@ impl App {
     /// At startup: if the last run crashed, offer to report it from a tray balloon.
     pub(super) fn offer_crash_feedback(&mut self) {
         let crashed = self
-            .share_log(pecofence_core::brand::PREVIOUS_SHARE_LOG)
+            .raw_log(pecofence_core::brand::PREVIOUS_LOG)
             .is_some_and(|log| log_records_crash(&log));
         self.feedback.previous_run_crashed = crashed;
         if !crashed {
@@ -265,17 +268,16 @@ impl App {
             "memory": memory,
             "gpu": fact(self.ctx.stack.adapter().unwrap_or_else(|| "unknown".to_string())),
         });
+        // The crashed run's raw log stays on the machine (it may hold user paths); the
+        // report carries the flag and this run's sanitized excerpt only.
         let mut log = String::new();
-        if self.feedback.previous_run_crashed
-            && let Some(previous) = self.share_log(pecofence_core::brand::PREVIOUS_SHARE_LOG)
-        {
-            log.push_str("--- previous run (crashed) ---\n");
-            log.push_str(&excerpt(&previous, LOG_EXCERPT_BYTES));
-            log.push_str("\n--- this run ---\n");
+        if self.feedback.previous_run_crashed {
+            log.push_str("--- previous run crashed (its log was not attached) ---\n");
         }
-        if let Some(current) = self.share_log(pecofence_core::brand::SHARE_LOG) {
-            log.push_str(&excerpt(&current, LOG_EXCERPT_BYTES));
-        }
+        log.push_str(&excerpt(
+            &crate::share_log::shared_text(),
+            LOG_EXCERPT_BYTES,
+        ));
         let url = pecofence_core::brand::var("PECOFENCE_FEEDBACK_URL")
             .ok()
             .filter(|u| u.starts_with("https://") || u.starts_with("http://127.0.0.1:"))

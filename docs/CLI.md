@@ -313,8 +313,8 @@ Everything talks to the running app except `describe`, `skill`, `paths`, `log` a
 - `paths` prints where the files are: `config` (from the running instance when one answers,
   `"source": "status"`; else the default `%APPDATA%\PecoFence\config.json`, `"source": "default"`),
   `configDir`, `backupsDir`, `log` (`%LOCALAPPDATA%\PecoFence\pecofence[.<instance>].log`),
-  `previousLog` (the last run's, `pecofence[.<instance>].prev.log`), `shareLog` (what the
-  feedback page may send, `pecofence[.<instance>].share.log`), `logDir`, and the `crashDumps`
+  `previousLog` (the rotated-out part: the last run's, or the previous 1 MiB when a run
+  outgrows the file, `pecofence[.<instance>].prev.log`), `logDir`, and the `crashDumps`
   (`crash-*.dmp`) found there.
 - `log [-n N] [-f]` prints the last `N` lines of that log as plain text (the one command whose
   stdout is not JSON) and, with `-f`, follows it like `tail -f` until Ctrl+C. A restarted app

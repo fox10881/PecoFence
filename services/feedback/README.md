@@ -18,5 +18,6 @@ Tests: `node --test` (no dependencies). Deploy: `npx wrangler deploy`. The token
 repository only).
 
 The app side: `crates/app/src/app/feedback.rs` (what may be sent), `crates/app/src/share_log.rs`
-(the log that is safe to send) and the 「反馈」 page in `ui/settings.html`. A test instance can
+(the in-memory sanitized log excerpt that is safe to send) and the 「反馈」 page in
+`ui/settings.html`. A test instance can
 post elsewhere with `PECOFENCE_FEEDBACK_URL` (an `https://` URL or `http://127.0.0.1:<port>`).
