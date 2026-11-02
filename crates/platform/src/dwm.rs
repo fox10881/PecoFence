@@ -105,7 +105,12 @@ pub fn sync_app_glass(hwnd: HWND, effect: &str, argb: Option<u32>) {
     // acrylic path. Acrylic honours alpha as tint strength; the cap at
     // 0x80 keeps the slider from reaching a near-opaque fill.
     let tint = argb
-        .map(|a| (a & 0x00ff_ffff) | ((a >> 24).clamp(1, 0x80) << 24))
+        .map(|a| {
+            // Lighter than Explorer's own tint — slider alpha minus 70,
+            // bounded [0x01, 0x80]: 0x00 is the DWM "default accent colour"
+            // sentinel and 0xFF+ would near-opaque the whole window.
+            (a & 0x00ff_ffff) | ((a >> 24).saturating_sub(70).clamp(1, 0x80) << 24)
+        })
         .map(argb_to_abgr)
         .unwrap_or(0x0100_0000);
     match effect {

@@ -411,6 +411,9 @@ fn sheet_css(mode: ThemeMode, effect: &str, tint: Option<(u8, u8, u8, u8)>) -> S
             ThemeMode::Light => "#f3f3f3".to_string(),
         },
         _ => tint.map_or("transparent".to_string(), |(a, r, g, b)| {
+            // Our windows run lighter than Explorer's own tint: the user's
+            // alpha minus 70, floored at 1 — 0 is never emitted.
+            let a = a.saturating_sub(70).max(1);
             format!("rgba({r},{g},{b},{:.3})", f32::from(a) / 255.0)
         }),
     }
