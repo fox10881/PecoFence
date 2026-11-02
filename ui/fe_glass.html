@@ -632,6 +632,10 @@
         render();
       } else if (m.type === 'feToast') {
         showToast(m.text || '');
+      } else if (m.type === 'glass' && m.sheet) {
+        // The host frame carries the real material; the sheet takes the
+        // blended tint so the page belongs to the same surface.
+        document.documentElement.style.setProperty('--sheet', m.sheet);
       }
     });
     send({ type: 'feReady' });

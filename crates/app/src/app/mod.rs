@@ -967,6 +967,16 @@ impl App {
                             window::set_timer(hwnd, TIMER_WORKAREA, DISPLAY_SETTLE_MS);
                             Some(0)
                         }
+                        msg::WM_DWMCOMPOSITIONCHANGED => {
+                            // DWM tore down + recreated composition surfaces:
+                            // the window frame materials must be re-applied.
+                            if let Ok(mut guard) = cell.try_borrow_mut()
+                                && let Some(app) = guard.as_mut()
+                            {
+                                app.sync_app_glass();
+                            }
+                            Some(0)
+                        }
                         m if m == taskbar_created && m != 0 => {
                             // Explorer (re)started: its new taskbar has no notification icons.
                             tracing::info!("TaskbarCreated: adding the tray icon again");

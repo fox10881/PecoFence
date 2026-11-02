@@ -1271,6 +1271,11 @@ impl App {
             h.set_theme(mode);
             self.push_fe_glass_state();
         }
+        if theme_changed {
+            // A light/dark switch picks the other EBM palette and re-blends
+            // the sheets; the frame material itself is theme-agnostic.
+            self.sync_app_glass();
+        }
         for w in self.fences.values().chain(self.desktop_windows.values()) {
             w.set_theme(theme, backdrops.clone(), shadow);
         }

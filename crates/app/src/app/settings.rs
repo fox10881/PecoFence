@@ -339,11 +339,12 @@ impl App {
         if !self.ensure_web_env() {
             return;
         }
+        let liquid_glass = self.ctx.theme.borrow().liquid_glass;
         match SettingsHost::open(
             &self.settings_class,
             self.web_env.as_ref().unwrap(),
             self.theme_mode,
-            self.ctx.theme.borrow().liquid_glass,
+            liquid_glass,
             self.queue.clone(),
         ) {
             Ok(mut host) => {
@@ -358,6 +359,7 @@ impl App {
                     (big, tray_icon_image(big, accent, dark)),
                 );
                 self.settings = Some(host);
+                self.sync_app_glass();
             }
             Err(_) if window::quit_posted() => window::post_quit(0),
             Err(e) => {
@@ -370,6 +372,56 @@ impl App {
                     );
                 }
             }
+        }
+    }
+
+    /// `#AARRGGBB` → `(a, r, g, b)` — the settings model's stored form;
+    /// `dwm::sync_app_glass` repacks it for the accent policy.
+    fn parse_argb(s: &str) -> Option<(u8, u8, u8, u8)> {
+        let h = s.trim().strip_prefix('#').unwrap_or(s.trim());
+        let v = u32::from_str_radix(h, 16).ok()?;
+        match h.len() {
+            8 => Some(((v >> 24) as u8, (v >> 16) as u8, (v >> 8) as u8, v as u8)),
+            6 => Some((0xFF, (v >> 16) as u8, (v >> 8) as u8, v as u8)),
+            _ => None,
+        }
+    }
+
+    /// Mirrors the armed ExplorerBlurMica look onto our own windows: the host
+    /// HWND frame gets the real DWM material (DWMSBT for mica/micaalt, the
+    /// accent policy for acrylic/blur/blurclear) and each WebView's sheet is
+    /// re-blended toward the tint — an HWND-hosted WebView can't composite
+    /// alpha through to the backdrop, so the client carries the colour.
+    /// Called whenever `fe_*` lands, on theme-mode switches (the light/dark
+    /// palette differs), and on `WM_DWMCOMPOSITIONCHANGED`.
+    pub(super) fn sync_app_glass(&mut self) {
+        let s = &self.state.config.settings;
+        let rgba = if systheme::apps_use_light_theme() {
+            s.fe_light_rgba.clone()
+        } else {
+            s.fe_dark_rgba.clone()
+        };
+        let effect = s.fe_effect.clone();
+        self.apply_glass(&effect, &rgba);
+    }
+
+    /// The piece `sync_app_glass` splits out so `apply_settings` can feed it
+    /// the *incoming* values — the committed config still holds the old
+    /// material while the diff is being applied.
+    fn apply_glass(&self, effect: &str, rgba: &str) {
+        let tint = Self::parse_argb(rgba);
+        tracing::debug!(
+            effect,
+            tint = rgba,
+            settings_open = self.settings.is_some(),
+            fe_glass_open = self.fe_glass.is_some(),
+            "app glass: mirroring EBM material onto own windows"
+        );
+        if let Some(h) = &self.settings {
+            h.set_glass(effect, tint);
+        }
+        if let Some(h) = &self.fe_glass {
+            h.set_glass(effect, tint);
         }
     }
 
@@ -402,6 +454,7 @@ impl App {
                     (big, tray_icon_image(big, accent, dark)),
                 );
                 self.fe_glass = Some(host);
+                self.sync_app_glass();
             }
             Err(_) if window::quit_posted() => window::post_quit(0),
             Err(e) => {
@@ -1207,6 +1260,15 @@ impl App {
                     dark_rgba: new.fe_dark_rgba.as_str(),
                 },
             );
+            // The same material now mirrors onto our own windows — feed the
+            // incoming values: `self.state.config.settings` still holds the
+            // old material until the diff lands below.
+            let rgba = if systheme::apps_use_light_theme() {
+                &new.fe_light_rgba
+            } else {
+                &new.fe_dark_rgba
+            };
+            self.apply_glass(&new.fe_effect, rgba);
             if !applied {
                 // Deploy/config.ini failure — revert so the page shows
                 // what is actually running.

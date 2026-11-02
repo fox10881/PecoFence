@@ -1686,6 +1686,11 @@
     else if (m.type === 'feedbackInfo') { fbInfo = m; fbCrash ||= !!m.crashed; renderFeedback(); }
     else if (m.type === 'showFeedback') showFeedback(!!m.crash);
     else if (m.type === 'toast') toast(m.text, !!m.error);
+    else if (m.type === 'glass' && m.sheet) {
+      // The host frame carries the real material; --sheet takes the blended
+      // tint so the page belongs to the same surface.
+      document.documentElement.style.setProperty('--sheet', m.sheet);
+    }
     else if (m.type === 'themeSwitchPrompt') {
       // Dirty-switch dialog: the backend intercepted a gallery Apply; the decision goes
       // back as themeSwitchDecision {save|discard|cancel}.

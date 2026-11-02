@@ -25,6 +25,11 @@ const I18N_JS: &str = include_str!("../../../ui/i18n.js");
 struct HostState {
     controller: Option<Controller>,
     webview: Option<WebView>,
+    /// The app's theme mode — needed to re-blend the sheet on glass/theme changes.
+    mode: ThemeMode,
+    /// The mirrored EBM effect (`""` = none) + resolved tint for this window.
+    glass_effect: String,
+    glass_tint: Option<(u8, u8, u8, u8)>,
 }
 
 pub struct FeGlassHost {
@@ -52,6 +57,9 @@ impl FeGlassHost {
         let state = Rc::new(RefCell::new(HostState {
             controller: None,
             webview: None,
+            mode,
+            glass_effect: String::new(),
+            glass_tint: None,
         }));
 
         let mons = monitors::enumerate();
@@ -130,7 +138,7 @@ impl FeGlassHost {
             .create(handler)?;
         let hwnd = window.hwnd();
         let _ = dwm::set_immersive_dark_mode(hwnd, matches!(mode, ThemeMode::Dark));
-        apply_caption(hwnd, mode);
+        apply_caption(hwnd, mode, false);
 
         // SAFETY: `hwnd` is a live window owned by this thread and outlives the
         // controller (closed in WM_DESTROY).
@@ -141,7 +149,7 @@ impl FeGlassHost {
         let webview = controller.webview()?;
         let (cw, ch) = window.client_size();
         controller.set_bounds(0, 0, cw, ch)?;
-        controller.set_default_background_color(page_background(mode))?;
+        controller.set_default_background_color(page_background(mode, None))?;
         if let Ok(settings) = webview.settings() {
             let _ = settings.set_default_context_menus_enabled(false);
             let _ = settings.set_status_bar_enabled(false);
@@ -211,13 +219,48 @@ impl FeGlassHost {
         self.icons = icons;
     }
 
-    /// Re-themes the caption and the page background after a light/dark switch.
+    /// Re-themes the caption and the page background after a light/dark
+    /// switch — re-blending the sheet against the still-armed glass tint.
     pub fn set_theme(&self, mode: ThemeMode) {
+        let (armed, tint) = {
+            let mut s = self.state.borrow_mut();
+            s.mode = mode;
+            (!s.glass_effect.is_empty(), s.glass_tint)
+        };
         let _ = dwm::set_immersive_dark_mode(self.window.hwnd(), matches!(mode, ThemeMode::Dark));
-        apply_caption(self.window.hwnd(), mode);
+        apply_caption(self.window.hwnd(), mode, armed);
         if let Some(c) = self.state.borrow().controller.as_ref() {
-            let _ = c.set_default_background_color(page_background(mode));
+            let _ = c.set_default_background_color(page_background(mode, tint.filter(|_| armed)));
         }
+    }
+
+    /// Mirrors an EBM `effect` + resolved tint onto this window — the frame
+    /// gets the real DWM material, the sheet a blended tint, and the page a
+    /// `glass` message so its `--sheet` token matches. `effect=""` resets.
+    pub fn set_glass(&self, effect: &str, tint: Option<(u8, u8, u8, u8)>) {
+        {
+            let mut s = self.state.borrow_mut();
+            s.glass_effect = effect.to_string();
+            s.glass_tint = tint;
+        }
+        let argb = tint.map(|(a, r, g, b)| {
+            (u32::from(a) << 24) | (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)
+        });
+        dwm::sync_app_glass(self.window.hwnd(), effect, argb);
+        let (mode, armed, tint) = {
+            let s = self.state.borrow();
+            (s.mode, !s.glass_effect.is_empty(), s.glass_tint)
+        };
+        apply_caption(self.window.hwnd(), mode, armed);
+        let tint = tint.filter(|_| armed);
+        if let Some(c) = self.state.borrow().controller.as_ref() {
+            let _ = c.set_default_background_color(page_background(mode, tint));
+        }
+        let (r, g, b) = sheet_rgb(mode, tint);
+        self.post_json(&format!(
+            "{{\"type\":\"glass\",\"armed\":{},\"sheet\":\"#{r:02x}{g:02x}{b:02x}\"}}",
+            armed
+        ));
     }
 
     pub fn post_json(&self, json: &str) {
@@ -239,19 +282,37 @@ impl FeGlassHost {
     }
 }
 
-/// Page background: the theme's solid base colour (the preview paints its own
-/// artboard; Mica behind a maximized editor would only fight it).
-fn page_background(mode: ThemeMode) -> windows_webview::Color {
-    let (r, g, b) = match mode {
+/// The sheet colour: theme base blended toward the user's tint (the HWND
+/// controller can't composite alpha to the backdrop, so the material's hue
+/// is carried into the client — ~45 % of the tint's alpha keeps contrast).
+fn sheet_rgb(mode: ThemeMode, tint: Option<(u8, u8, u8, u8)>) -> (u8, u8, u8) {
+    let (br, bg, bb) = match mode {
         ThemeMode::Dark => (0x20, 0x20, 0x20),
         ThemeMode::Light => (0xF3, 0xF3, 0xF3),
     };
+    let Some((a, tr, tg, tb)) = tint else {
+        return (br, bg, bb);
+    };
+    let k = f32::from(a) / 255.0 * 0.45;
+    let blend =
+        |base: u8, t: u8| -> u8 { (f32::from(base) * (1.0 - k) + f32::from(t) * k).round() as u8 };
+    (blend(br, tr), blend(bg, tg), blend(bb, tb))
+}
+
+/// Page background: the theme base, or the tint-blended sheet while glass
+/// is armed. Always opaque — the HWND controller renders alpha as opaque.
+fn page_background(mode: ThemeMode, tint: Option<(u8, u8, u8, u8)>) -> windows_webview::Color {
+    let (r, g, b) = sheet_rgb(mode, tint);
     windows_webview::Color { a: 255, r, g, b }
 }
 
-/// Match the page sheet so the native caption belongs to the same surface.
-fn apply_caption(hwnd: HWND, mode: ThemeMode) {
-    let bg = page_background(mode);
+/// Match the page sheet so the native caption belongs to the same surface —
+/// skipped while a real material covers the frame (it owns the caption).
+fn apply_caption(hwnd: HWND, mode: ThemeMode, glass_armed: bool) {
+    if glass_armed {
+        return;
+    }
+    let bg = page_background(mode, None);
     // DWM takes COLORREF (0x00BBGGRR).
     let c = u32::from(bg.r) | (u32::from(bg.g) << 8) | (u32::from(bg.b) << 16);
     let _ = dwm::set_caption_color(hwnd, c);

@@ -78,13 +78,16 @@ impl WebEnvironment {
 struct HostState {
     controller: Option<Controller>,
     webview: Option<WebView>,
+    /// The app's theme mode — needed to re-blend the sheet on glass/theme changes.
+    mode: ThemeMode,
+    /// The mirrored EBM effect (`""` = none) + resolved tint for this window.
+    glass_effect: String,
+    glass_tint: Option<(u8, u8, u8, u8)>,
 }
 
 pub struct SettingsHost {
     window: Window,
     state: Rc<RefCell<HostState>>,
-    /// DWM Mica is active behind a transparent page.
-    mica: bool,
     /// The page reported `ready`: messages posted from now on reach its script.
     pub ready: bool,
     /// Caption icons (small/big); destroyed with the host.
@@ -109,6 +112,9 @@ impl SettingsHost {
         let state = Rc::new(RefCell::new(HostState {
             controller: None,
             webview: None,
+            mode,
+            glass_effect: String::new(),
+            glass_tint: None,
         }));
 
         let mons = monitors::enumerate();
@@ -211,12 +217,6 @@ impl SettingsHost {
         tracing::debug!(?hwnd, "settings: host window created");
         let _ = dwm::set_immersive_dark_mode(hwnd, matches!(mode, ThemeMode::Dark));
         apply_caption(hwnd, mode, false);
-        // A transparent page needs the WebView2 *composition* controller (HWND children cannot be
-        // per-pixel transparent); windows-webview 0.100 only wraps the HWND controller, so the
-        // Mica sheet stays behind an experiment flag and the page paints the theme's base colour.
-        let mica = pecofence_core::brand::var_os("PECOFENCE_SETTINGS_MICA").is_some()
-            && dwm::set_system_backdrop(hwnd, dwm::SystemBackdrop::MainWindow).is_ok();
-        apply_caption(hwnd, mode, mica);
 
         // SAFETY: `hwnd` is a live window owned by this thread and outlives the controller
         // (the controller is closed in WM_DESTROY).
@@ -239,8 +239,7 @@ impl SettingsHost {
         }
         let (cw, ch) = window.client_size();
         controller.set_bounds(0, 0, cw, ch)?;
-        // Transparent page over DWM Mica; opaque theme colour when Mica is unavailable.
-        controller.set_default_background_color(page_background(mode, mica))?;
+        controller.set_default_background_color(page_background(mode, None))?;
         if let Ok(settings) = webview.settings() {
             let _ = settings.set_default_context_menus_enabled(false);
             let _ = settings.set_status_bar_enabled(false);
@@ -254,7 +253,9 @@ impl SettingsHost {
                 queue.push(Command::SettingsMessage(args.web_message_as_json()));
             })?);
         }
-        // Tell the page whether it sits on Mica before it renders (opaque fallback class).
+        // The HWND-hosted controller cannot composite a transparent page
+        // through to the DWM backdrop, so the sheet always paints opaque
+        // (`no-mica`) — glass is carried by the frame + a tinted sheet.
         let payload = pecofence_core::i18n::ui_payload()
             .to_string()
             .replace('<', "\\u003c");
@@ -266,17 +267,13 @@ impl SettingsHost {
             .replace(
                 "<script src=\"i18n.js\"></script>",
                 &format!("<script>{I18N_JS}</script>"),
-            );
-        let html = if mica {
-            document
-        } else {
-            document.replacen(
+            )
+            .replacen(
                 "<html lang=\"zh-CN\">",
                 "<html lang=\"zh-CN\" class=\"no-mica\">",
                 1,
-            )
-        };
-        webview.navigate_to_string(&html)?;
+            );
+        webview.navigate_to_string(&document)?;
         tracing::debug!("settings: page navigation submitted");
 
         {
@@ -293,7 +290,6 @@ impl SettingsHost {
         Ok(Self {
             window,
             state,
-            mica,
             ready: false,
             icons: Vec::new(),
             _registrations: registrations,
@@ -324,14 +320,53 @@ impl SettingsHost {
         self.icons = icons;
     }
 
-    /// Re-themes the caption and the page background after a light/dark switch. The sheet is
-    /// the same for both materials: an opaque window has nothing for Liquid Glass to refract.
+    /// Re-themes the caption and the page background after a light/dark switch —
+    /// re-blending the sheet against the still-armed glass tint.
     pub fn set_theme(&self, mode: ThemeMode, _liquid_glass: bool) {
+        let mut s = self.state.borrow_mut();
+        s.mode = mode;
+        let glass_armed = !s.glass_effect.is_empty();
+        let tint = s.glass_tint;
+        drop(s);
         let _ = dwm::set_immersive_dark_mode(self.window.hwnd(), matches!(mode, ThemeMode::Dark));
-        apply_caption(self.window.hwnd(), mode, self.mica);
+        apply_caption(self.window.hwnd(), mode, glass_armed);
         if let Some(c) = self.state.borrow().controller.as_ref() {
-            let _ = c.set_default_background_color(page_background(mode, self.mica));
+            let _ =
+                c.set_default_background_color(page_background(mode, tint.filter(|_| glass_armed)));
         }
+    }
+
+    /// Mirrors an EBM `effect` + resolved tint onto this window: the frame
+    /// gets the real DWM material (DWMSBT/accent), the sheet a blended tint,
+    /// and the page a `glass` message so `--sheet` matches the new base.
+    /// `effect=""` restores the stock opaque look.
+    pub fn set_glass(&self, effect: &str, tint: Option<(u8, u8, u8, u8)>) {
+        {
+            let mut s = self.state.borrow_mut();
+            s.glass_effect = effect.to_string();
+            s.glass_tint = tint;
+        }
+        let argb = tint.map(|(a, r, g, b)| {
+            (u32::from(a) << 24) | (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)
+        });
+        dwm::sync_app_glass(self.window.hwnd(), effect, argb);
+        let (mode, armed) = {
+            let s = self.state.borrow();
+            (s.mode, !s.glass_effect.is_empty())
+        };
+        apply_caption(self.window.hwnd(), mode, armed);
+        let tint = tint.filter(|_| armed);
+        if let Some(c) = self.state.borrow().controller.as_ref() {
+            let _ = c.set_default_background_color(page_background(mode, tint));
+        }
+        // The page re-tints its `--sheet` token to the same blended colour —
+        // the HWND-hosted WebView can't composite alpha through, so the
+        // client carries the colour while the frame carries the material.
+        let (r, g, b) = sheet_rgb(mode, tint);
+        self.post_json(&format!(
+            "{{\"type\":\"glass\",\"armed\":{},\"sheet\":\"#{r:02x}{g:02x}{b:02x}\"}}",
+            armed
+        ));
     }
 
     pub fn post_json(&self, json: &str) {
@@ -354,30 +389,39 @@ impl SettingsHost {
     }
 }
 
-/// Page background: fully transparent over Mica, else the theme's solid base colour.
-fn page_background(mode: ThemeMode, mica: bool) -> windows_webview::Color {
-    if mica {
-        return windows_webview::Color {
-            a: 0,
-            r: 0,
-            g: 0,
-            b: 0,
-        };
-    }
+/// The sheet colour: the theme base blended toward the user's tint. The
+/// HWND-hosted WebView can't composite alpha to the backdrop, so the
+/// material's hue is carried into the client this way — ~45 % of the
+/// tint's alpha, capped, keeps text contrast over the shift.
+fn sheet_rgb(mode: ThemeMode, tint: Option<(u8, u8, u8, u8)>) -> (u8, u8, u8) {
     // Keep these RGB values in sync with --sheet in the embedded settings document.
-    let (r, g, b) = match mode {
+    let (br, bg, bb) = match mode {
         ThemeMode::Dark => (0x20, 0x20, 0x20),
         ThemeMode::Light => (0xF3, 0xF3, 0xF3),
     };
+    let Some((a, tr, tg, tb)) = tint else {
+        return (br, bg, bb);
+    };
+    let k = f32::from(a) / 255.0 * 0.45;
+    let blend =
+        |base: u8, t: u8| -> u8 { (f32::from(base) * (1.0 - k) + f32::from(t) * k).round() as u8 };
+    (blend(br, tr), blend(bg, tg), blend(bb, tb))
+}
+
+/// Page background: the theme base, or the tint-blended sheet while glass
+/// is armed. Always opaque — the HWND controller renders alpha as opaque.
+fn page_background(mode: ThemeMode, tint: Option<(u8, u8, u8, u8)>) -> windows_webview::Color {
+    let (r, g, b) = sheet_rgb(mode, tint);
     windows_webview::Color { a: 255, r, g, b }
 }
 
-/// Match the page sheet so the native caption belongs to the same surface.
-fn apply_caption(hwnd: HWND, mode: ThemeMode, mica: bool) {
-    if mica {
+/// Match the page sheet so the native caption belongs to the same surface —
+/// skipped while a real material covers the frame (it owns the caption).
+fn apply_caption(hwnd: HWND, mode: ThemeMode, glass_armed: bool) {
+    if glass_armed {
         return;
     }
-    let bg = page_background(mode, false);
+    let bg = page_background(mode, None);
     // DWM takes COLORREF (0x00BBGGRR).
     let c = u32::from(bg.r) | (u32::from(bg.g) << 8) | (u32::from(bg.b) << 16);
     let _ = dwm::set_caption_color(hwnd, c);

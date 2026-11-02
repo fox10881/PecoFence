@@ -3,6 +3,119 @@
 use crate::bindings::*;
 use windows_core::Result;
 
+windows_core::link!("user32.dll" "system" fn SetWindowCompositionAttribute(hwnd: HWND, data: *const core::ffi::c_void) -> i32);
+
+/// `ACCENT_POLICY` for `SetWindowCompositionAttribute` — the legacy DWM
+/// accent path (undocumented but stable since Windows 8). `gradient_color`
+/// is `AABBGGRR`: the high byte is alpha and red/blue are swapped vs the
+/// `AARRGGBB` strings the settings model stores — see `argb_to_abgr`.
+#[repr(C)]
+struct AccentPolicy {
+    accent_state: u32,
+    accent_flags: u32,
+    gradient_color: u32,
+    animation_id: u32,
+}
+
+/// `WINCOMPATTRDATA` — `attrib = WCA_ACCENT_POLICY (19)` carries an
+/// `AccentPolicy` by pointer.
+#[repr(C)]
+struct WindowCompositionAttributeData {
+    attrib: u32,
+    data: *const core::ffi::c_void,
+    size: usize,
+}
+
+const WCA_ACCENT_POLICY: u32 = 19;
+const ACCENT_DISABLED: u32 = 0;
+const ACCENT_ENABLE_TRANSPARENTGRADIENT: u32 = 2;
+const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
+/// `accent_flags` bit normally set for the acrylic recipe.
+const ACCENT_FLAG_ACRYLIC: u32 = 0x2;
+
+/// `#AARRGGBB` → `AABBGGRR` (`AccentPolicy::gradient_color` order).
+fn argb_to_abgr(argb: u32) -> u32 {
+    (argb & 0xff00_0000)
+        | ((argb & 0x00ff_0000) >> 16)
+        | (argb & 0x0000_ff00)
+        | ((argb & 0x0000_00ff) << 16)
+}
+
+/// Applies the legacy accent state to `hwnd`. `accent_state` is one of the
+/// `ACCENT_*` values; `gradient` is already in `AABBGGRR` order
+/// (`argb_to_abgr` converts). Returns `false` when the call rejects —
+/// non-fatal: the window just keeps its previous backdrop.
+fn set_accent_policy(hwnd: HWND, accent_state: u32, accent_flags: u32, gradient: u32) -> bool {
+    let policy = AccentPolicy {
+        accent_state,
+        accent_flags,
+        gradient_color: gradient,
+        animation_id: 0,
+    };
+    let data = WindowCompositionAttributeData {
+        attrib: WCA_ACCENT_POLICY,
+        data: (&policy as *const AccentPolicy).cast(),
+        size: size_of::<AccentPolicy>(),
+    };
+    // SAFETY: `policy`/`data` outlive the call.
+    unsafe {
+        SetWindowCompositionAttribute(
+            hwnd,
+            &data as *const WindowCompositionAttributeData as *const core::ffi::c_void,
+        ) != 0
+    }
+}
+
+/// Clears BOTH backdrop mechanisms — `DWMWA_SYSTEMBACKDROP_TYPE` and the
+/// accent policy do not safely coexist, and neither reset clears the other,
+/// so every effect transition starts from a clean slate.
+fn clear_backdrops(hwnd: HWND) {
+    let _ = set_accent_policy(hwnd, ACCENT_DISABLED, 0, 0);
+    let _ = set_system_backdrop(hwnd, SystemBackdrop::None);
+}
+
+/// The app-UI mirror of an ExplorerBlurMica `effect` id — the host HWND
+/// frame (caption + borders) renders the real material; the client is the
+/// WebView's responsibility (`page_background` blends the tint in).
+///
+/// Mapping notes (per design review):
+/// - `blur` maps to acrylic: `ACCENT_ENABLE_BLURBEHIND` is dead on
+///   Windows 11 22H2+ (flat tint, no blur), while acrylic honours the
+///   user's RGBA tint — the closest usable blur.
+/// - `acrylic` uses the accent path because `DWMSBT_TRANSIENTWINDOW`
+///   (documented acrylic) cannot take a per-window tint colour.
+/// - `mica`/`micaalt` have no OS tint API: `DWMWA_SYSTEMBACKDROP_TYPE`
+///   samples the desktop wallpaper; the tint shows up via the page sheet.
+/// - `blurclear` is the fully-transparent gradient (no tint).
+pub fn sync_app_glass(hwnd: HWND, effect: &str, argb: Option<u32>) {
+    clear_backdrops(hwnd);
+    if !is_composition_enabled() {
+        return;
+    }
+    let tint = argb.map(argb_to_abgr).unwrap_or(0);
+    match effect {
+        "mica" => {
+            let _ = set_system_backdrop(hwnd, SystemBackdrop::MainWindow);
+        }
+        "micaalt" => {
+            let _ = set_system_backdrop(hwnd, SystemBackdrop::TabbedWindow);
+        }
+        "acrylic" | "blur" => {
+            // Acrylic honours GradientColor — the user's chosen RGBA.
+            let _ = set_accent_policy(
+                hwnd,
+                ACCENT_ENABLE_ACRYLICBLURBEHIND,
+                ACCENT_FLAG_ACRYLIC,
+                tint,
+            );
+        }
+        "blurclear" => {
+            let _ = set_accent_policy(hwnd, ACCENT_ENABLE_TRANSPARENTGRADIENT, 0, tint);
+        }
+        _ => {}
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CornerPreference {
     Default,
