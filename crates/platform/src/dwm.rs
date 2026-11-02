@@ -28,6 +28,9 @@ struct WindowCompositionAttributeData {
 
 const WCA_ACCENT_POLICY: u32 = 19;
 const ACCENT_DISABLED: u32 = 0;
+/// Kept for reference — unusable: its gradient alpha is ignored on
+/// Windows 11, so it floods the window with a solid colour.
+#[allow(dead_code)]
 const ACCENT_ENABLE_TRANSPARENTGRADIENT: u32 = 2;
 const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
 /// `accent_flags` bit for the standard acrylic tint path.
@@ -95,10 +98,14 @@ pub fn sync_app_glass(hwnd: HWND, effect: &str, argb: Option<u32>) {
     // NOTE: the client surface must stay untouched — the composition
     // WebView composites it; glass extension makes it an opaque fill.
     // Real material lives on the frame only (DWMSBT/accent below).
-    // Alpha 0x00 in any accent gradient is the DWM "default accent
-    // colour" sentinel, not transparency — floor every tint at 0x01.
+    // Gradient alpha bounds: 0x00 is the DWM "default accent colour"
+    // sentinel (paints solid blue, not transparent), so floor at 0x01.
+    // TRANSPARENTGRADIENT ignores its alpha byte entirely on Win11 and
+    // floods solid at any value — every accent effect therefore uses the
+    // acrylic path. Acrylic honours alpha as tint strength; the cap at
+    // 0x80 keeps the slider from reaching a near-opaque fill.
     let tint = argb
-        .map(|a| (a & 0x00ff_ffff) | ((a >> 24).max(1) << 24))
+        .map(|a| (a & 0x00ff_ffff) | ((a >> 24).clamp(1, 0x80) << 24))
         .map(argb_to_abgr)
         .unwrap_or(0x0100_0000);
     match effect {
@@ -108,22 +115,13 @@ pub fn sync_app_glass(hwnd: HWND, effect: &str, argb: Option<u32>) {
         "micaalt" => {
             let _ = set_system_backdrop(hwnd, SystemBackdrop::TabbedWindow);
         }
-        "acrylic" | "blur" => {
-            // The client is already truly see-through, so the accent's
-            // color must stay nearly invisible — alpha clamps to
-            // [0x01, 0x05]: 0x00 is NOT "no tint", it's the DWM sentinel
-            // that falls back to the default accent colour at full
-            // opacity (the solid-blue bug at slider 0).
-            let clear = argb.map(|a| (a & 0x00ff_ffff) | ((a >> 24).clamp(1, 0x05) << 24));
+        "acrylic" | "blur" | "blurclear" => {
             let _ = set_accent_policy(
                 hwnd,
                 ACCENT_ENABLE_ACRYLICBLURBEHIND,
                 ACCENT_FLAG_ACRYLIC,
-                clear.map(argb_to_abgr).unwrap_or(0),
+                tint,
             );
-        }
-        "blurclear" => {
-            let _ = set_accent_policy(hwnd, ACCENT_ENABLE_TRANSPARENTGRADIENT, 0, tint);
         }
         _ => {}
     }
