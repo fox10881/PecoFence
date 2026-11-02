@@ -1148,8 +1148,10 @@ impl App {
                 },
             );
             if !applied {
+                // Only the material leg can fail (deploy/config.ini). The
+                // layout leg is independent — `apply_effect` still delivers
+                // it on the failure path — so fe_layout stays applied.
                 new.fe_effect.clone_from(&old.fe_effect);
-                new.fe_layout.clone_from(&old.fe_layout);
                 self.settings_error(pecofence_core::i18n::text(
                     "资源管理器背景效果未能更改，请稍后重试。",
                 ));

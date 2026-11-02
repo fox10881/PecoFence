@@ -175,21 +175,46 @@ fn ebm_source_path() -> Option<PathBuf> {
     p.is_file().then_some(p)
 }
 
-/// Copies the vendored DLL into the residents dir when missing or
-/// different. A copy failure is only fatal when no deployed copy exists
-/// at all — a loaded (locked) DLL is already a working EBM.
+/// Deploys the vendored DLL into the residents dir. `Some(dst)` is only
+/// returned when the file on disk is byte-identical to the vendored copy —
+/// a locked (loaded-in-explorer) but CORRECT DLL is accepted, a locked
+/// STALE one is a hard failure: LoadLibrary-ing stale bytes would arm an
+/// unknown engine. When the vendored source is missing entirely the
+/// previously-deployed copy is used with a warning (it was written by a
+/// prior run of this same installer), and `None` only when nothing exists.
 fn deploy_dll(dir: &Path) -> Option<PathBuf> {
     let dst = dir.join("ExplorerBlurMica.dll");
-    if let Some(src) = ebm_source_path() {
-        let same = match (std::fs::read(&src), std::fs::read(&dst)) {
-            (Ok(a), Ok(b)) => a == b,
-            _ => false,
-        };
-        if !same && let Err(e) = std::fs::copy(&src, &dst) {
-            tracing::warn!(%e, "ExplorerBlurMica.dll deploy failed (locked?)");
+    let dst_bytes = std::fs::read(&dst).ok();
+    match ebm_source_path().and_then(|src| std::fs::read(&src).ok()) {
+        Some(src_bytes) => match dst_bytes {
+            Some(d) if d == src_bytes => Some(dst), // already deployed — skip the copy
+            _ => {
+                if let Err(e) = std::fs::write(&dst, &src_bytes) {
+                    tracing::warn!(
+                        dst = %dst.display(),
+                        %e,
+                        "ExplorerBlurMica.dll deploy failed — destination differs and cannot be rewritten (locked by a stale load?)"
+                    );
+                    return None;
+                }
+                Some(dst)
+            }
+        },
+        None => {
+            if dst_bytes.is_some() {
+                tracing::warn!(
+                    "ExplorerBlurMica.dll missing beside pecofence.exe — using previously deployed copy"
+                );
+                Some(dst)
+            } else {
+                tracing::warn!(
+                    dst = %dst.display(),
+                    "ExplorerBlurMica.dll unavailable — not beside pecofence.exe and never deployed"
+                );
+                None
+            }
         }
     }
-    dst.is_file().then_some(dst)
 }
 
 /// `#AARRGGBB` (or `#RRGGBB`) → `(r, g, b, a)` for `config.ini`.
@@ -208,15 +233,15 @@ fn parse_rgba(s: &str) -> Option<(u8, u8, u8, u8)> {
     ))
 }
 
-/// Writes `config.ini` beside the deployed DLL — byte-format identical
+/// Builds the `config.ini` contents for `cfg` — byte-format identical
 /// to upstream's `[config]` + `[light]` + `[dark]` layout.
-fn write_config_ini(dir: &Path, cfg: &Fe) -> std::io::Result<()> {
-    let l = parse_rgba(&cfg.light_rgba).unwrap_or((220, 220, 220, 160));
-    let d = parse_rgba(&cfg.dark_rgba).unwrap_or((0, 0, 0, 120));
+fn config_ini_contents(cfg: &FeGlassConfig) -> String {
+    let l = parse_rgba(cfg.light_rgba).unwrap_or((220, 220, 220, 160));
+    let d = parse_rgba(cfg.dark_rgba).unwrap_or((0, 0, 0, 120));
     let b = |v: bool| if v { "true" } else { "false" };
-    let ini = format!(
+    format!(
         "[config]\r\neffect={}\r\nclearAddress={}\r\nclearBarBg={}\r\nclearWinUIBg={}\r\nshowLine={}\r\n[light]\r\nr={}\r\ng={}\r\nb={}\r\na={}\r\n[dark]\r\nr={}\r\ng={}\r\nb={}\r\na={}\r\n",
-        effect_id(&cfg.effect).unwrap_or(1),
+        effect_id(cfg.effect).unwrap_or(1),
         b(cfg.clear_address),
         b(cfg.clear_bar_bg),
         b(cfg.clear_winui_bg),
@@ -229,8 +254,20 @@ fn write_config_ini(dir: &Path, cfg: &Fe) -> std::io::Result<()> {
         d.1,
         d.2,
         d.3,
-    );
-    std::fs::write(dir.join("config.ini"), ini)
+    )
+}
+
+/// Writes `config.ini` beside the deployed DLL. Identical existing bytes
+/// are skipped (EBM may hold the file open read-only — a skipped write
+/// can never hit a sharing violation); a real write failure surfaces the
+/// io error to the caller with the path attached.
+fn write_config_ini(dir: &Path, cfg: &FeGlassConfig) -> std::io::Result<()> {
+    let path = dir.join("config.ini");
+    let ini = config_ini_contents(cfg);
+    match std::fs::read(&path) {
+        Ok(existing) if existing == ini.as_bytes() => Ok(()),
+        Ok(_) | Err(_) => std::fs::write(&path, ini),
+    }
 }
 
 // ------------------------------------------------------------- cabinets ----
@@ -443,11 +480,53 @@ fn disarm_legacy() {
 /// Returns `false` when the deploy or the `config.ini` write failed so
 /// settings can revert.
 pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
+    // The layout leg is committed first and is INDEPENDENT of the EBM
+    // material below — a deploy/config failure must not take it down.
     apply_layout(cfg.layout);
+    // Runs the XAML leg sync + delivery — used by every path, including
+    // effect-leg failures, so a valid layout change always lands.
+    fn finish_xaml() {
+        // Legacy resident disarm BEFORE delivery — an older armed
+        // `fe_glass` would otherwise fight the wires.
+        disarm_legacy();
+        sync_xaml_leg();
+        deliver_all();
+    }
     if cfg.effect.is_empty() {
         return reset_ebm();
     }
     if effect_id(cfg.effect).is_none() {
+        tracing::warn!(
+            effect = cfg.effect,
+            "ExplorerBlurMica apply failed — unknown effect id"
+        );
+        finish_xaml();
+        return false;
+    }
+    let Some(dir) = residents_dir() else {
+        tracing::warn!("ExplorerBlurMica apply failed — %LOCALAPPDATA% residents dir unavailable");
+        finish_xaml();
+        return false;
+    };
+    // Deploy + config.ini are committed BEFORE touching shared state: on
+    // failure `fe.effect` still holds the last applied value and the ini
+    // on disk still matches it — no rollback needed.
+    let deploy_ok = deploy_dll(&dir).is_some();
+    let ini_ok = deploy_ok && {
+        match write_config_ini(&dir, cfg) {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::warn!(
+                    ini = %dir.join("config.ini").display(),
+                    %e,
+                    "ExplorerBlurMica apply failed — config.ini write"
+                );
+                false
+            }
+        }
+    };
+    if !ini_ok {
+        finish_xaml();
         return false;
     }
     {
@@ -462,21 +541,9 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
         fe.dark_rgba = cfg.dark_rgba.to_string();
         fe.epoch += 1; // every live pid reloads EBM under the new config
         fe.xaml_epoch += 1; // `clearWinUIBg`/`effect` gate the wire contents
-        let dir = match residents_dir() {
-            Some(d) => d,
-            None => return false,
-        };
-        if deploy_dll(&dir).is_none() || write_config_ini(&dir, fe).is_err() {
-            tracing::warn!("ExplorerBlurMica apply failed (deploy/config)");
-            return false;
-        }
     }
     ARMED.store(true, Ordering::Release);
-    // Legacy resident disarm BEFORE EBM lands — belt for the upgrade
-    // path; harmless when nothing is armed.
-    disarm_legacy();
-    sync_xaml_leg();
-    deliver_all();
+    finish_xaml();
     tracing::info!(
         effect = cfg.effect,
         "ExplorerBlurMica armed via resident relay"
@@ -616,16 +683,19 @@ mod tests {
     fn config_ini_matches_upstream_layout() {
         let dir = std::env::temp_dir().join("pecofence_ebm_cfg_test");
         std::fs::create_dir_all(&dir).unwrap();
-        let cfg = Fe {
-            effect: "acrylic".into(),
+        let cfg = FeGlassConfig {
+            effect: "acrylic",
             clear_address: true,
             clear_bar_bg: false,
             clear_winui_bg: true,
             show_line: true,
-            light_rgba: "#A0DCDCDC".into(),
-            dark_rgba: "#78000000".into(),
-            ..Default::default()
+            light_rgba: "#A0DCDCDC",
+            dark_rgba: "#78000000",
+            layout: "",
         };
+        write_config_ini(&dir, &cfg).unwrap();
+        // Identical contents are skipped on a second apply — an EBM-held
+        // read handle must never turn into a sharing violation.
         write_config_ini(&dir, &cfg).unwrap();
         let ini = std::fs::read_to_string(dir.join("config.ini")).unwrap();
         assert!(ini.contains("[config]\r\neffect=1"));
