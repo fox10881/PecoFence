@@ -646,9 +646,7 @@
   "开始菜单视觉主题；选择后立即生效": "Temi visivi per il menu Start; si applicano alla selezione",
   "开始菜单样式未能更改，请稍后重试。": "Impossibile cambiare lo stile del menu Start — riprova.",
   "任务栏视觉主题；选择后立即生效": "Temi visivi per la barra delle applicazioni; si applicano alla selezione",
-  "重启资源管理器": "Riavvia Esplora risorse",
   "出现卡顿或异常时按一下": "Premi in caso di blocchi o comportamenti anomali",
-  "重启": "Riavvia",
   "正在重启资源管理器…": "Riavvio di Esplora risorse…",
   "任务栏样式未能更改，请稍后重试。": "Impossibile cambiare lo stile della barra delle applicazioni — riprova.",
   "通知中心样式": "Stile del Centro notifiche",
@@ -703,8 +701,8 @@
   "ZEUS macOS Single Bar": "ZEUS barra singola macOS",
   "Compact Explorer 11": "Compact Explorer 11",
   "Floating Spaced Bars": "Barre fluttuanti spaziate",
-  "刷新外观 / 重启资源管理器": "Aggiorna aspetto / Riavvia Esplora risorse",
-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Aggiorna riapplica gli effetti correnti; riavvia Esplora risorse solo in caso di problemi",
+  "刷新外观": "Aggiorna aspetto",
+  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "Reinietta gli effetti visivi e riconsegna il layout di Explorer — senza riavviare Explorer e senza toccare lo sfondo video",
   "刷新": "Aggiorna",
   "外观已刷新": "Aspetto aggiornato"
 }

@@ -111,8 +111,10 @@ struct Fe {
     show_line: bool,
     light_rgba: String,
     dark_rgba: String,
-    /// Bumped every `apply_effect` — a pid whose delivery epoch trails
-    /// gets `EBMU`+`EBML` (fresh config read) rather than a skip.
+    /// Ini-generation counter — bumps ONLY when a `config.ini`-relevant
+    /// field changes (effect/flags/rgba). A trailing pid gets `EBMU`+`EBML`
+    /// (fresh config read); layout-only and identical applies bump nothing,
+    /// so routine delivery never unloads the live module.
     epoch: u64,
     /// pid → (cmd window, epoch delivered). `ensure()` only wires pids
     /// that are new, stale-epoch, or whose resident restarted.
@@ -523,7 +525,8 @@ fn deliver_all() {
 /// Stores the layout preset id — validation only. Arming/delivery runs in
 /// `sync_xaml_leg` + `deliver_all`, which the caller runs once every field
 /// the wire depends on (`layout`, `effect`, `clear_winui_bg`) is settled;
-/// wiring mid-apply would send a stale `clearWinUIBg` gate.
+/// wiring mid-apply would send a stale `clearWinUIBg` gate. The XAML epoch
+/// bumps only on a real preset change: an identical apply sends no wire.
 fn apply_layout(layout: &str) {
     let valid = layout.is_empty() || pecofence_core::fe_layouts::layout_wire(layout).is_some();
     if !valid {
@@ -532,8 +535,10 @@ fn apply_layout(layout: &str) {
     let layout = if valid { layout } else { "" };
     let mut guard = lock();
     let fe = guard.get_or_insert_with(Fe::default);
-    fe.layout = layout.to_string();
-    fe.xaml_epoch += 1;
+    if fe.layout != layout {
+        fe.layout = layout.to_string();
+        fe.xaml_epoch += 1;
+    }
     tracing::debug!(layout, "apply_layout: stored");
 }
 
@@ -580,6 +585,14 @@ fn disarm_legacy() {
 /// `layout`. The XAML leg runs unconditionally (`effect=""` still gets the
 /// layout wire — minus the clear rules, which need material behind them);
 /// `effect=""` additionally unloads EBM everywhere.
+///
+/// EBM lifecycle rule: `config.ini` is read once per `LoadLibrary`, so a
+/// real config change reaches an already-loaded pid only through
+/// `EBMU`+`EBML` — a mid-session `FreeLibrary` whose detach races live
+/// detours. That unload is therefore confined to the pids whose ini-
+/// generation trails: `epoch` bumps only when effect/flags/rgba actually
+/// change. A layout-only or identical apply delivers at most a `FELT`
+/// wire and never disturbs the material.
 /// Returns `false` when the deploy or the `config.ini` write failed so
 /// settings can revert.
 pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
@@ -615,6 +628,34 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
         finish_xaml();
         return false;
     }
+    // What the ini would actually change. `clear_winui_bg`/`effect`-empty
+    // also gate the XAML wire's clear rules — tracked here so the single
+    // bump below covers both legs.
+    let (ini_changed, wire_changed) = {
+        let guard = lock();
+        match guard.as_ref() {
+            Some(fe) => (
+                fe.effect != cfg.effect
+                    || fe.clear_address != cfg.clear_address
+                    || fe.clear_bar_bg != cfg.clear_bar_bg
+                    || fe.clear_winui_bg != cfg.clear_winui_bg
+                    || fe.show_line != cfg.show_line
+                    || fe.light_rgba != cfg.light_rgba
+                    || fe.dark_rgba != cfg.dark_rgba,
+                fe.clear_winui_bg != cfg.clear_winui_bg
+                    || fe.effect.is_empty() != cfg.effect.is_empty(),
+            ),
+            None => (true, true),
+        }
+    };
+    if !ini_changed && ARMED.load(Ordering::Acquire) {
+        // The material config is already what the pid runs — no deploy, no
+        // ini write, no unload+reload. The XAML leg still syncs/delivers
+        // (a layout change lands here).
+        tracing::debug!("apply_effect: EBM config unchanged — material leg skipped");
+        finish_xaml();
+        return true;
+    }
     let Some(dir) = residents_dir() else {
         tracing::warn!("ExplorerBlurMica apply failed — %LOCALAPPDATA% residents dir unavailable");
         finish_xaml();
@@ -649,8 +690,10 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
         fe.light_rgba = cfg.light_rgba.to_string();
         fe.dark_rgba = cfg.dark_rgba.to_string();
         fe.dll_path = dll_path.display().to_string();
-        fe.epoch += 1; // every live pid reloads EBM under the new config
-        fe.xaml_epoch += 1; // `clearWinUIBg`/`effect` gate the wire contents
+        fe.epoch += 1; // pids whose generation trails reload EBM once
+        if ini_changed || wire_changed {
+            fe.xaml_epoch += 1; // clear rules track effect/clearWinUIBg
+        }
     }
     ARMED.store(true, Ordering::Release);
     finish_xaml();
@@ -704,18 +747,19 @@ pub fn ensure() {
     deliver_all();
 }
 
-/// Manual refresh: forces a full re-delivery of the armed state — both epochs
-/// bump, so every live pid gets `EBMU`+`EBML` (fresh config read) and the
-/// XAML wire again. Dead command windows re-inject through
+/// Manual refresh: re-delivers the XAML wire to every pid and re-injects
+/// `EBML` into pids whose coverage trails — new cabinets and restarted
+/// residents get the module, already-covered pids see only `FELT`. The EBM
+/// epoch is deliberately NOT bumped: a mid-session `EBMU` unload races live
+/// detours and took Explorer down in the field, so refresh never unloads a
+/// healthy module. Dead command windows re-inject through
 /// `ensure_resident_at`'s IsWindow probe; nothing restarts Explorer.
 pub fn rearm() {
     if !is_armed() {
         return;
     }
     if let Some(fe) = lock().as_mut() {
-        fe.epoch += 1;
         fe.xaml_epoch += 1;
-        fe.delivered.clear();
         fe.xaml_delivered.clear();
     }
     deliver_all();

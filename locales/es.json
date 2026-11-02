@@ -646,9 +646,7 @@
   "开始菜单视觉主题；选择后立即生效": "Temas visuales para el menú Inicio; se aplican al elegirlos",
   "开始菜单样式未能更改，请稍后重试。": "No se pudo cambiar el estilo del menú Inicio — inténtalo de nuevo.",
   "任务栏视觉主题；选择后立即生效": "Temas visuales para la barra de tareas; se aplican al elegirlos",
-  "重启资源管理器": "Reiniciar el Explorador",
   "出现卡顿或异常时按一下": "Púlsalo si algo se bloquea o se comporta de forma extraña",
-  "重启": "Reiniciar",
   "正在重启资源管理器…": "Reiniciando el Explorador…",
   "任务栏样式未能更改，请稍后重试。": "No se pudo cambiar el estilo de la barra de tareas — inténtalo de nuevo.",
   "通知中心样式": "Estilo del Centro de notificaciones",
@@ -703,8 +701,8 @@
   "ZEUS macOS Single Bar": "ZEUS barra única macOS",
   "Compact Explorer 11": "Compact Explorer 11",
   "Floating Spaced Bars": "Barras flotantes espaciadas",
-  "刷新外观 / 重启资源管理器": "Actualizar apariencia / Reiniciar el Explorador",
-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Actualizar vuelve a aplicar los efectos actuales; reinicia el Explorador solo si se bloquea",
+  "刷新外观": "Actualizar apariencia",
+  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "Reinyecta los efectos visuales y reenvía la disposición del Explorador — sin reiniciar el Explorador ni tocar el fondo de vídeo",
   "刷新": "Actualizar",
   "外观已刷新": "Apariencia actualizada"
 }

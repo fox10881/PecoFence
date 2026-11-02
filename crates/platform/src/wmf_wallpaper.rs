@@ -2267,15 +2267,23 @@ unsafe fn run_gpu_attached(
                                 );
                             }
                             Some(Err(e)) => {
-                                if Instant::now() >= reattach_deadline.unwrap() {
-                                    let _ = DestroyWindow(pending_hwnd.take().unwrap());
-                                    return Err(format!("re-attach after window loss: {e}"));
+                                if reattach_deadline.is_some_and(|d| Instant::now() >= d) {
+                                    // No hard give-up: the shell may take far longer than
+                                    // 30 s to rebuild (or be mid-restart again), and a dead
+                                    // player made restart kill the video permanently. The
+                                    // 300 ms tick retry is a few FindWindow calls — cheap.
+                                    reattach_deadline = None;
+                                    tracing::warn!(
+                                        "wmf: desktop layer still missing after 30 s; \
+                                         retrying attach in the background until the shell returns"
+                                    );
+                                } else if reattach_deadline.is_some() {
+                                    // Shell still down — retry on the next tick.
+                                    tracing::debug!(
+                                        error = %e,
+                                        "wmf: re-attach pending; shell layer not back yet"
+                                    );
                                 }
-                                // Shell still down — retry on the next tick.
-                                tracing::debug!(
-                                    error = %e,
-                                    "wmf: re-attach pending; shell layer not back yet"
-                                );
                             }
                             None => {
                                 return Err("recreate video window failed".to_string());
@@ -2617,15 +2625,20 @@ fn run_player_thread(
                             tracing::info!(?hwnd, "wmf: video window re-attached (GDI)");
                         }
                         Some(Err(e)) => {
-                            if Instant::now() >= reattach_deadline.unwrap() {
-                                let _ = DestroyWindow(pending_hwnd.take().unwrap());
-                                tracing::error!(error = %e, "wmf: re-attach failed; stopping");
-                                break;
+                            if reattach_deadline.is_some_and(|d| Instant::now() >= d) {
+                                // Same rule as the GPU path: never stop on a long shell
+                                // outage — the stop flag is the only exit.
+                                reattach_deadline = None;
+                                tracing::warn!(
+                                    "wmf: desktop layer still missing after 30 s; \
+                                     retrying attach in the background until the shell returns"
+                                );
+                            } else if reattach_deadline.is_some() {
+                                tracing::debug!(
+                                    error = %e,
+                                    "wmf: re-attach pending; shell layer not back yet"
+                                );
                             }
-                            tracing::debug!(
-                                error = %e,
-                                "wmf: re-attach pending; shell layer not back yet"
-                            );
                         }
                         None => {
                             tracing::error!("wmf: recreate window failed; stopping");

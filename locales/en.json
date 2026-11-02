@@ -646,9 +646,7 @@
   "开始菜单视觉主题；选择后立即生效": "Visual themes for the Start menu; applies on selection",
   "开始菜单样式未能更改，请稍后重试。": "Couldn't change the Start Menu style — try again.",
   "任务栏视觉主题；选择后立即生效": "Visual themes for the taskbar; applies on selection",
-  "重启资源管理器": "Restart Explorer",
   "出现卡顿或异常时按一下": "Press if the shell hangs or misbehaves",
-  "重启": "Restart",
   "正在重启资源管理器…": "Restarting Explorer…",
   "任务栏样式未能更改，请稍后重试。": "Couldn't change the taskbar style — try again.",
   "通知中心样式": "Notification Center style",
@@ -703,8 +701,8 @@
   "ZEUS macOS Single Bar": "ZEUS macOS Single Bar",
   "Compact Explorer 11": "Compact Explorer 11",
   "Floating Spaced Bars": "Floating Spaced Bars",
-  "刷新外观 / 重启资源管理器": "Refresh visuals / Restart Explorer",
-  "刷新会重新应用当前视觉效果；资源管理器仅在卡顿时才需要重启": "Refresh re-applies the current visuals; restart Explorer only if it is stuck",
+  "刷新外观": "Refresh visuals",
+  "重新注入视觉效果并重新发送资源管理器布局 — 不重启资源管理器，不影响视频壁纸": "Re-injects the visuals and re-delivers the Explorer layout — no Explorer restart, video wallpaper untouched",
   "刷新": "Refresh",
   "外观已刷新": "Visuals refreshed"
 }

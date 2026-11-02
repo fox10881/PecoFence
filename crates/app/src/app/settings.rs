@@ -1036,9 +1036,10 @@ impl App {
                 Some("openFeGlass") => self.open_fe_glass(),
                 Some("refreshVisual") => self.refresh_visual_state(),
                 Some("restartExplorer") => {
-                    // Failsafe for a stuck taskbar/desktop: kill the shell and
-                    // let Windows' own respawn (or our detached spawn) bring it
-                    // back — the anchor tick then re-injects and re-styles it.
+                    // Failsafe for a stuck shell (no UI button — refresh is the
+                    // daily action). Kill the shell and let Windows' own
+                    // respawn (or our detached spawn) bring it back; the video
+                    // player's pending-reattach loop rides out the gap.
                     self.settings_toast(pecofence_core::i18n::text("正在重启资源管理器…"));
                     std::thread::spawn(pecofence_platform::tap::restart_explorer);
                 }
@@ -1579,8 +1580,33 @@ impl App {
     /// An outside change means wallpaper intent moved to the image, so a running or
     /// configured video yields — otherwise it keeps covering the image and exports keep
     /// bundling it.
+    /// `SPI_SETDESKWALLPAPER` broadcast — a static image took the desktop.
+    /// The video yields only when the reported image genuinely differs from
+    /// the baseline recorded at player start: a shell restart can re-assert
+    /// the same wallpaper, and clearing `video_wallpaper_path` on that
+    /// transient made restart kill the video permanently. With no baseline
+    /// recorded the broadcast itself is the evidence (a real apply).
     pub(super) fn on_wallpaper_changed(&mut self) {
         if self.wmf_player.is_none() && self.state.config.settings.video_wallpaper_path.is_none() {
+            return;
+        }
+        let now = Self::static_wallpaper_now();
+        let differs = match (self.static_under_video.as_ref(), now.as_ref()) {
+            (Some(b), Some(n)) => b != n,
+            _ => true,
+        };
+        if !differs {
+            tracing::debug!(
+                wallpaper = ?now,
+                "wallpaper signal re-asserted the same image; keeping video intent"
+            );
+            return;
+        }
+        if pecofence_platform::wallpaper::desktops_differ() {
+            tracing::debug!(
+                applied = ?now,
+                "wallpaper signal differs but virtual desktops differ; keeping video"
+            );
             return;
         }
         tracing::info!(
