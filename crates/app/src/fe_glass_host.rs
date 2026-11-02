@@ -86,16 +86,11 @@ impl FeGlassHost {
                             }
                             Some(0)
                         }
-                        // The transparent WebView reveals this surface —
-                        // paint the theme base so the page's translucent
-                        // sheet reads as tinted glass.
+                        // Black on a glass-extended surface = see-through:
+                        // the transparent WebView reveals real windows
+                        // behind this one.
                         msg::WM_ERASEBKGND => {
-                            let dark = matches!(state.borrow().mode, ThemeMode::Dark);
-                            window::fill_client(
-                                hwnd,
-                                wparam as *mut core::ffi::c_void,
-                                if dark { 0x0020_2020 } else { 0x00F3_F3F3 },
-                            );
+                            window::fill_client(hwnd, wparam as *mut core::ffi::c_void, 0);
                             Some(1)
                         }
                         msg::WM_DPICHANGED => {

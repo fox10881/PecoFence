@@ -142,18 +142,13 @@ impl SettingsHost {
                             }
                             Some(0)
                         }
-                        // The transparent WebView reveals this surface —
-                        // paint the theme base so the page's translucent
-                        // sheet reads as tinted glass (the real DWM material
-                        // lives on the frame; Win11 cannot materialize the
-                        // client surface behind a covering visual).
+                        // Black on a glass-extended surface is the
+                        // transparency convention: the client shows real
+                        // windows behind it. (Measured live — painting
+                        // anything else leaves an opaque fill visible
+                        // through the transparent WebView.)
                         msg::WM_ERASEBKGND => {
-                            let dark = matches!(state.borrow().mode, ThemeMode::Dark);
-                            window::fill_client(
-                                hwnd,
-                                wparam as *mut core::ffi::c_void,
-                                if dark { 0x0020_2020 } else { 0x00F3_F3F3 },
-                            );
+                            window::fill_client(hwnd, wparam as *mut core::ffi::c_void, 0);
                             Some(1)
                         }
                         msg::WM_GETMINMAXINFO => {
@@ -393,39 +388,16 @@ impl SettingsHost {
 ///   painting it again on the client would double it.
 /// - mica/micaalt → the user's tint at its own alpha, since the DWM system
 ///   backdrop can't take a colour and the frame stays untinted mica.
-/// The sheet must never reach alpha 1.0 — a full-opacity veil paints an
-/// opaque solid over the transparent WebView (the "solid colour" bug the
-/// clamp guards against). Above the cap the tint saturates; below it the
-/// user's own alpha passes through unchanged. 0 is honoured ("no tint").
-const MAX_SHEET_ALPHA: f32 = 0.45;
-
-fn veil(mode: ThemeMode, alpha: f32) -> String {
-    match mode {
-        ThemeMode::Dark => format!("rgba(26,26,26,{alpha:.2})"),
-        ThemeMode::Light => format!("rgba(243,243,243,{alpha:.2})"),
-    }
-}
-
-fn sheet_css(mode: ThemeMode, effect: &str, tint: Option<(u8, u8, u8, u8)>) -> String {
-    let opaque = match mode {
-        ThemeMode::Dark => "#202020",
-        ThemeMode::Light => "#f3f3f3",
-    };
-    // A tint's alpha is capped: at 100% the veil still has to let the
-    // painted surface beneath it show, never a solid fill.
-    let tinted = |(a, r, g, b): (u8, u8, u8, u8)| {
-        format!(
-            "rgba({r},{g},{b},{:.2})",
-            (f32::from(a) / 255.0).min(MAX_SHEET_ALPHA)
-        )
-    };
+fn sheet_css(mode: ThemeMode, effect: &str, _tint: Option<(u8, u8, u8, u8)>) -> String {
+    // Armed = the page paints nothing: the host surface is black-painted
+    // glass (real see-through), so any sheet colour — even translucent —
+    // is an unwanted veil over the OS material. Unarmed = stock opaque.
     match effect {
-        "" => opaque.to_string(),
-        // Mica can't take a colour: the host surface supplies the real
-        // material and the sheet carries the user's tint at its own alpha.
-        "mica" | "micaalt" => tint.map(tinted).unwrap_or_else(|| veil(mode, 0.30)),
-        "blurclear" => veil(mode, 0.30),
-        _ => tint.map(tinted).unwrap_or_else(|| veil(mode, 0.55)),
+        "" => match mode {
+            ThemeMode::Dark => "#202020".to_string(),
+            ThemeMode::Light => "#f3f3f3".to_string(),
+        },
+        _ => "transparent".to_string(),
     }
 }
 
