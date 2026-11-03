@@ -2,9 +2,10 @@
 
 use crate::anchor::{self, AnchorCell, DesktopAnchor, ShowDesktopBehavior, ZMode};
 use crate::commands::{
-    Command, CommandQueue, TransferMode, WM_APP_COMMAND, WM_APP_FRAME, WM_APP_FS_CHANGED,
-    WM_APP_LIVE_WALLPAPER, WM_APP_PEEK_FOCUSED, WM_APP_PREWARM_DONE, WM_APP_SHELL_CHANGED,
-    WM_APP_STARTUP_BACKDROPS, WM_APP_STARTUP_TASK, WM_APP_TRAY, WM_APP_WALLPAPER,
+    Command, CommandQueue, TransferMode, WM_APP_CLOCK_PROBE, WM_APP_COMMAND, WM_APP_FRAME,
+    WM_APP_FS_CHANGED, WM_APP_LIVE_WALLPAPER, WM_APP_PEEK_FOCUSED, WM_APP_PREWARM_DONE,
+    WM_APP_SHELL_CHANGED, WM_APP_STARTUP_BACKDROPS, WM_APP_STARTUP_TASK, WM_APP_TRAY,
+    WM_APP_WALLPAPER,
 };
 use crate::fence_window::{
     BackdropMode, BackdropSets, Behavior, FenceContext, FenceWindow, ItemView, SearchMarks, TabView,
@@ -35,7 +36,8 @@ use pecofence_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
 use pecofence_platform::{
-    HWND, POINT, RECT, desktop, monitors, msg, process, theme as systheme, wallpaper,
+    HWND, POINT, RECT, backdrop_probe, desktop, monitors, msg, process, theme as systheme,
+    wallpaper,
 };
 use pecofence_render::fence_chrome::FenceChrome;
 use pecofence_render::fence_chrome::FenceStyle;
@@ -111,6 +113,8 @@ const TIMER_TEST: usize = 48;
 const TIMER_PEEK_FOCUS_RETRY: usize = 49;
 /// Low-frequency safety net for changes that did not produce a wallpaper notification.
 const TIMER_WALLPAPER_POLL: usize = 50;
+/// Clock-backdrop sampler cadence — armed only while the widget is shown.
+const TIMER_CLOCK_PROBE: usize = 69;
 /// `events.subscribe` diff tick while at least one CLI stream is open (see `ipc.rs`).
 const TIMER_IPC_EVENTS: usize = 53;
 /// Read only the 16-byte desktop identity, never images/COM, while otherwise idle.
@@ -602,6 +606,18 @@ impl App {
                             }
                             Some(0)
                         }
+                        WM_APP_CLOCK_PROBE => {
+                            // Reclaim the worker's box even when the UI is
+                            // too busy to apply it (modal loop).
+                            let sample =
+                                unsafe { Box::from_raw(lparam as *mut backdrop_probe::Sample) };
+                            if let Ok(mut guard) = cell.try_borrow_mut()
+                                && let Some(app) = guard.as_mut()
+                            {
+                                app.apply_clock_theme(*sample);
+                            }
+                            Some(0)
+                        }
                         WM_APP_ICON_READY => {
                             // One timer per batch: SetTimer restarts a running timer, so arming
                             // it for every result would hold the drain back for as long as the
@@ -718,6 +734,13 @@ impl App {
                                         }
                                     } else {
                                         window::set_timer(hwnd, wparam, 200);
+                                    }
+                                }
+                                TIMER_CLOCK_PROBE => {
+                                    if let Ok(mut guard) = cell.try_borrow_mut()
+                                        && let Some(app) = guard.as_mut()
+                                    {
+                                        app.probe_clock_backdrop();
                                     }
                                 }
                                 TIMER_HOUSEKEEPING => {
@@ -2168,6 +2191,7 @@ impl App {
                 }
                 if self.clock.as_ref().is_some_and(|h| h.hwnd() == hwnd) {
                     self.clock = None;
+                    window::kill_timer(self.control.hwnd(), TIMER_CLOCK_PROBE);
                 }
                 if self.settings.is_none() && self.fe_glass.is_none() && self.clock.is_none() {
                     // The WebView2 environment only exists for the windows: release it

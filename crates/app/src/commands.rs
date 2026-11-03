@@ -44,6 +44,9 @@ pub const WM_APP_TAB_RAIL: u32 = msg::WM_APP + 15;
 pub const WM_APP_STARTUP_BACKDROPS: u32 = msg::WM_APP + 16;
 /// The Store edition's startup switch was read on a worker (worker thread → UI thread).
 pub const WM_APP_STARTUP_TASK: u32 = msg::WM_APP + 17;
+/// The clock-backdrop sampler finished on a worker; `lparam` is a boxed
+/// `backdrop_probe::Sample` the UI thread takes ownership of.
+pub const WM_APP_CLOCK_PROBE: u32 = msg::WM_APP + 18;
 
 /// What a file drop does with the dropped paths (Explorer's Move / Copy / Create shortcut, the
 /// effect the drop target reported).

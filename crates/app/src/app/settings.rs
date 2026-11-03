@@ -435,10 +435,12 @@ impl App {
             if let Some(h) = self.clock.take() {
                 h.close();
             }
+            window::kill_timer(self.control.hwnd(), super::TIMER_CLOCK_PROBE);
             return;
         }
         if let Some(h) = &self.clock {
             h.post_json(&serde_json::json!({ "t": "clockStyle", "style": s }).to_string());
+            self.probe_clock_backdrop();
             return;
         }
         if !self.ensure_web_env() {
@@ -451,9 +453,60 @@ impl App {
             bounds,
             self.queue.clone(),
         ) {
-            Ok(host) => self.clock = Some(host),
+            Ok(host) => {
+                self.clock = Some(host);
+                // Probe cadence lives for as long as the widget does;
+                // `clockReady` fires the first sample once the page listens.
+                window::set_timer(self.control.hwnd(), super::TIMER_CLOCK_PROBE, 2_500);
+            }
             Err(e) => tracing::error!(error = %e, "clock widget failed"),
         }
+    }
+
+    /// Adaptive backdrop contrast: spawns the off-thread sampler for the
+    /// widget's current rect. No-ops unless a widget exists and the setting
+    /// is on — the 2.5s timer may keep firing with no widget and costs a
+    /// no-op; `apply_clock_theme` re-checks the flag before posting.
+    pub(super) fn probe_clock_backdrop(&mut self) {
+        let Some(h) = &self.clock else {
+            return;
+        };
+        if !self.state.config.settings.clock_adaptive_color {
+            return;
+        }
+        let (rect, widget) = (window::window_rect(h.hwnd()), h.hwnd().0 as isize);
+        let control = self.control.hwnd().0 as isize;
+        std::thread::Builder::new()
+            .name("pecofence-clock-probe".into())
+            .spawn(move || {
+                let _com = pecofence_platform::com::MtaGuard::init();
+                let sample =
+                    backdrop_probe::sample(HWND(widget as _), rect, &monitors::enumerate());
+                let boxed = Box::into_raw(Box::new(sample));
+                window::post_message(HWND(control as _), WM_APP_CLOCK_PROBE, 0, boxed as isize);
+            })
+            .ok();
+    }
+
+    /// A finished sample: paint the widget's theme message when adaptive
+    /// mode is still armed (a toggle-off since the probe started wins).
+    pub(super) fn apply_clock_theme(&mut self, sample: backdrop_probe::Sample) {
+        let Some(h) = &self.clock else {
+            return;
+        };
+        if !self.state.config.settings.clock_adaptive_color {
+            return;
+        }
+        h.post_json(
+            &serde_json::json!({
+                "t": "clockTheme",
+                "adaptive": true,
+                "isLightBackdrop": sample.luminance > 150,
+                "accent": format!("#{:02x}{:02x}{:02x}", sample.accent[0], sample.accent[1], sample.accent[2]),
+                "luminance": sample.luminance,
+            })
+            .to_string(),
+        );
     }
 
     /// The dedicated ExplorerBlurMica editor (settings card's 高级设置 button):
@@ -831,6 +884,7 @@ impl App {
                     h.post_json(&serde_json::json!({ "t": "clockStyle", "style": s }).to_string());
                     window::show_normal(h.hwnd());
                 }
+                self.probe_clock_backdrop();
             }
             // Drag/resize ended — persist the widget's new bounds.
             Some("clockMoved") => {
@@ -838,6 +892,7 @@ impl App {
                 self.state.config.settings.clock_bounds =
                     Some([get("x"), get("y"), get("w"), get("h")]);
                 self.schedule_save();
+                self.probe_clock_backdrop();
             }
             Some("feApply") => self.apply_fe_glass(&v),
             Some("feCancel") => {
@@ -1346,6 +1401,14 @@ impl App {
         }
         if new.clock_style != old.clock_style {
             self.apply_clock_style(&new.clock_style);
+        }
+        if new.clock_adaptive_color != old.clock_adaptive_color {
+            if new.clock_adaptive_color {
+                self.probe_clock_backdrop();
+            } else if let Some(h) = &self.clock {
+                // Adaptive off → the page falls back to its dark palette.
+                h.post_json("{\"t\":\"clockTheme\",\"adaptive\":false}");
+            }
         }
         let icons_toggled = new.hide_real_icons != old.hide_real_icons;
         if new.icons.shortcut_arrows != old.icons.shortcut_arrows {

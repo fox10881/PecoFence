@@ -711,5 +711,7 @@
   "日历页": "Hoja de calendario",
   "渐变块": "Placa degradada",
   "日期海报": "Póster de fecha",
-  "紧凑胶囊": "Chip compacto"
+  "紧凑胶囊": "Chip compacto",
+  "自动适配壁纸配色": "Adaptar colores del widget al fondo",
+  "根据时钟背后壁纸的明暗与主色调自动切换深浅配色并调整强调色，保证文字始终清晰可读": "Ajusta automáticamente el color del texto y del cristal (oscuro o claro) según el brillo y los colores del fondo detrás del reloj para que siempre sea legible."
 }

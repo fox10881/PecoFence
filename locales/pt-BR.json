@@ -711,5 +711,7 @@
   "日历页": "Página calendário",
   "渐变块": "Placa gradiente",
   "日期海报": "Pôster data",
-  "紧凑胶囊": "Chip compacto"
+  "紧凑胶囊": "Chip compacto",
+  "自动适配壁纸配色": "Adaptar cores do widget ao papel de parede",
+  "根据时钟背后壁纸的明暗与主色调自动切换深浅配色并调整强调色，保证文字始终清晰可读": "Ajusta automaticamente a cor do texto e do vidro (escura ou clara) conforme o brilho e as cores do fundo atrás do relógio, mantendo sempre a legibilidade."
 }

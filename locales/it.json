@@ -711,5 +711,7 @@
   "日历页": "Pagina calendario",
   "渐变块": "Lastra sfumata",
   "日期海报": "Poster data",
-  "紧凑胶囊": "Chip compatto"
+  "紧凑胶囊": "Chip compatto",
+  "自动适配壁纸配色": "Adatta i colori del widget allo sfondo",
+  "根据时钟背后壁纸的明暗与主色调自动切换深浅配色并调整强调色，保证文字始终清晰可读": "Regola automaticamente il colore del testo e del vetro (scuro o chiaro) in base alla luminosità e ai colori dello sfondo dietro l’orologio, garantendo sempre una buona leggibilità."
 }

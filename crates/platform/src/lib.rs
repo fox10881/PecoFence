@@ -60,6 +60,7 @@ mod gpu_wallpaper;
 mod wmf_bindings;
 
 pub mod autostart;
+pub mod backdrop_probe;
 pub mod clipboard;
 pub mod com;
 pub mod crashlog;
@@ -73,8 +74,8 @@ pub mod file_explorer_styler;
 pub mod filedialog;
 pub mod fileinfo;
 pub mod fonts;
-pub mod frameless;
 pub mod frameclock;
+pub mod frameless;
 pub mod hash;
 pub mod hotkey;
 pub mod http;

@@ -239,6 +239,11 @@ pub struct Settings {
     /// the user first moves/resizes it (first spawn centres on primary).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clock_bounds: Option<[i32; 4]>,
+    /// Adaptive backdrop contrast: samples the wallpaper/window behind the
+    /// widget and swaps the page between light-on-dark and dark-on-light
+    /// palettes so text stays readable.
+    #[serde(default = "default_true")]
+    pub clock_adaptive_color: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -355,6 +360,7 @@ impl Default for Settings {
             theme_auto_update_daily: false,
             clock_style: "none".to_string(),
             clock_bounds: None,
+            clock_adaptive_color: true,
         }
     }
 }

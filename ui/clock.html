@@ -10,6 +10,7 @@
   :root {
     --accent: #38bdf8;
     --accent-glow: rgba(56, 189, 248, 0.45);
+    --accent-deep: var(--accent);
     --glass-bg: rgba(18, 22, 30, 0.55);
     --glass-border: rgba(255, 255, 255, 0.14);
     --text-main: #f8fafc;
@@ -292,6 +293,100 @@
   .d10-secline { position: absolute; left: 12%; right: 12%; bottom: 6%; height: 2px; background: rgba(255,255,255,0.12); border-radius: 2px; overflow: hidden; }
   .d10-secline i { display: block; height: 100%; background: var(--accent); }
   .style-d10-wrap { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+
+  /* ============ Adaptive backdrop palette ============
+     `body.light-backdrop` flips every design to a dark-on-light palette
+     when the sampler reports a bright region behind the widget. :where()
+     keeps the transition at zero specificity so each design's own
+     `transition` still wins where it sets one. */
+  :where(#widget-root, #widget-root *) {
+    transition: color .35s ease, background-color .35s ease, border-color .35s ease, text-shadow .35s ease;
+  }
+  body.light-backdrop {
+    --text-main: #0f172a;
+    --text-muted: rgba(15, 23, 42, 0.72);
+    --glass-bg: rgba(255, 255, 255, 0.62);
+    --glass-border: rgba(15, 23, 42, 0.18);
+    --accent-deep: color-mix(in srgb, var(--accent), #0f172a 45%);
+  }
+  /* Accent-coloured TEXT needs the deepened accent on bright backdrops;
+     fills/rings/dots keep the raw accent hue. */
+  body.light-backdrop .g1-ampm, body.light-backdrop .g1-meta .day,
+  body.light-backdrop .g2-day, body.light-backdrop .g3-sec,
+  body.light-backdrop .g6-day, body.light-backdrop .g7-label,
+  body.light-backdrop .g9-badge span, body.light-backdrop .g10-day,
+  body.light-backdrop .d3-meta b, body.light-backdrop .d4-time i,
+  body.light-backdrop .d4-meta .day, body.light-backdrop .d5-meta .day,
+  body.light-backdrop .d6-val.huge, body.light-backdrop .d7-day,
+  body.light-backdrop .d9-sub .day, body.light-backdrop .d10-day { color: var(--accent-deep); }
+  body.light-backdrop .d6-val.huge { text-shadow: 0 0 2.4vmin color-mix(in srgb, var(--accent), transparent 40%); }
+  body.light-backdrop .g1-card {
+  body.light-backdrop .g1-card::after { background: rgba(15,23,42,.22); box-shadow: 0 1px 0 rgba(255,255,255,.6); }
+  body.light-backdrop .g2-track { stroke: rgba(15,23,42,.1); }
+  body.light-backdrop .style-g3 { background: rgba(255,255,255,.58); }
+  body.light-backdrop .style-g4 {
+    background: rgba(244,247,251,.88); border-color: color-mix(in srgb, var(--accent), #0f172a 35%);
+    box-shadow: 0 0 4vmin rgba(15,23,42,.14), inset 0 0 3vmin rgba(255,255,255,.7);
+  }
+  body.light-backdrop .g4-lcd { color: var(--accent-deep); text-shadow: 0 0 2vmin color-mix(in srgb, var(--accent), transparent 45%); }
+  body.light-backdrop .g4-bottom { color: var(--accent-deep); border-top-color: rgba(15,23,42,.25); }
+  body.light-backdrop .style-g5 { background: rgba(255,255,255,.5); border-color: rgba(15,23,42,.16); }
+  body.light-backdrop .g5-divider { background: rgba(15,23,42,.22); }
+  body.light-backdrop .style-g6 {
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.82), rgba(226,232,240,.92));
+    border-color: rgba(15,23,42,.18); box-shadow: 0 2vmin 6vmin rgba(15,23,42,.28);
+  }
+  body.light-backdrop .g6-date-box { background: rgba(255,255,255,.62); border-color: rgba(15,23,42,.15); }
+  body.light-backdrop .g6-svg line.tkB { stroke: rgba(15,23,42,.72); }
+  body.light-backdrop .g6-svg line.tkS { stroke: rgba(15,23,42,.3); }
+  body.light-backdrop .g6-svg #g6h { stroke: #0f172a; }
+  body.light-backdrop .g6-svg #g6m { stroke: #334155; }
+  body.light-backdrop .style-g7 { background: rgba(255,255,255,.74); border-color: rgba(15,23,42,.22); }
+  body.light-backdrop .g7-cell { border-color: rgba(15,23,42,.12); }
+  body.light-backdrop .g7-bar-wrap { background: rgba(15,23,42,.1); }
+  body.light-backdrop .style-g8 { background: linear-gradient(160deg, rgba(255,255,255,.74), rgba(235,240,248,.84)); }
+  body.light-backdrop .g8-arc .g8-track { stroke: rgba(15,23,42,.18); }
+  body.light-backdrop .g8-arc #g8moon { fill: #64748b; }
+  body.light-backdrop .g8-sub b { color: #b45309; }
+  body.light-backdrop .g9-time {
+    color: var(--text-main);
+    text-shadow: 0 .6vmin 0 #94a3b8, 0 1.2vmin 0 #64748b, 0 1.8vmin 0 #475569, 0 2.4vmin 0 #334155, 0 4vmin 6vmin rgba(15,23,42,.35);
+  }
+  body.light-backdrop .g9-badge { background: rgba(255,255,255,.8); border-color: rgba(15,23,42,.2); }
+  body.light-backdrop .style-g10 { text-shadow: 0 .8vmin 2.5vmin rgba(255,255,255,.55); }
+  body.light-backdrop .g10-pulse-track { background: rgba(15,23,42,.14); }
+  body.light-backdrop .style-d1 {
+    background: rgba(255,255,255,.6); border-color: rgba(15,23,42,.16);
+    box-shadow: 0 3vmin 8vmin rgba(15,23,42,.2), inset 0 1px 0 rgba(255,255,255,.8);
+  }
+  body.light-backdrop .d1-row .day { color: var(--accent-deep); }
+  body.light-backdrop .d1-row .sep { background: rgba(15,23,42,.3); }
+  body.light-backdrop .style-d2 {
+    background: rgba(240,253,244,.88); border-color: rgba(21,128,61,.45); color: #15803d;
+    box-shadow: 0 0 4vmin rgba(21,128,61,.2), inset 0 0 6vmin rgba(255,255,255,.75);
+  }
+  body.light-backdrop .style-d2::after { background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(21,128,61,.1) 2px 4px); }
+  body.light-backdrop .d2-line.big { text-shadow: 0 0 2vmin rgba(21,128,61,.4); }
+  body.light-backdrop .d2-line .prompt { color: #0e7490; }
+  body.light-backdrop .d2-cursor { background: #15803d; }
+  body.light-backdrop .d3-ring { stroke: rgba(15,23,42,.14); }
+  body.light-backdrop .d3-tick { stroke: rgba(15,23,42,.4); }
+  body.light-backdrop .style-d4 { background: rgba(255,255,255,.55); }
+  body.light-backdrop .style-d5 {
+    background: linear-gradient(145deg, rgba(255,255,255,.92), rgba(226,232,240,.95));
+    box-shadow: 1.6vmin 1.6vmin 4vmin rgba(15,23,42,.22), -1vmin -1vmin 3vmin rgba(255,255,255,.85),
+      inset .8vmin .8vmin 2vmin rgba(255,255,255,.55);
+  }
+  body.light-backdrop .d5-track { stroke: rgba(15,23,42,.12); }
+  body.light-backdrop .d6-bar { background: rgba(15,23,42,.1); }
+  body.light-backdrop .style-d7 { background: rgba(255,255,255,.66); box-shadow: 0 2.4vmin 6vmin rgba(15,23,42,.22); }
+  body.light-backdrop .d9-dom {
+    background: linear-gradient(180deg, #0f172a 30%, var(--accent-deep) 130%);
+    -webkit-background-clip: text; background-clip: text;
+    filter: drop-shadow(0 1.5vmin 4vmin rgba(15,23,42,.28));
+  }
+  body.light-backdrop .style-d10 { background: rgba(255,255,255,.66); box-shadow: 0 1.6vmin 4.5vmin rgba(15,23,42,.2); }
+  body.light-backdrop .d10-secline { background: rgba(15,23,42,.12); }
 </style>
 </head>
 <body>
@@ -353,7 +448,7 @@
       for (let i = 0; i < 60; i++) {
         const a = (i / 60) * TAU, big = i % 5 === 0;
         const r1 = big ? 84 : 90, r2 = 96;
-        ticks += `<line x1="${160 + r1 * Math.sin(a)}" y1="${160 - r1 * Math.cos(a)}" x2="${160 + r2 * Math.sin(a)}" y2="${160 - r2 * Math.cos(a)}" stroke="rgba(255,255,255,${big ? 0.75 : 0.3})" stroke-width="${big ? 3 : 1.2}"/>`;
+        ticks += `<line class="${big ? 'tkB' : 'tkS'}" x1="${160 + r1 * Math.sin(a)}" y1="${160 - r1 * Math.cos(a)}" x2="${160 + r2 * Math.sin(a)}" y2="${160 - r2 * Math.cos(a)}" stroke="rgba(255,255,255,${big ? 0.75 : 0.3})" stroke-width="${big ? 3 : 1.2}"/>`;
       }
       return `<svg class="g6-svg" viewBox="0 0 320 320">${ticks}
         <line id="g6h" x1="160" y1="160" x2="160" y2="88" stroke="#f8fafc" stroke-width="7" stroke-linecap="round"/>
@@ -369,7 +464,7 @@
       <div class="g7-cell"><div class="g7-label">DATE</div><div class="g7-val js-date"></div></div>
       <div class="g7-bar-wrap"><div class="g7-bar-fill js-secfill"></div></div>`,
     g8: () => `<svg class="g8-arc" viewBox="0 0 320 110">
-        <path d="M20 100 A140 140 0 0 1 300 100" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="3" stroke-linecap="round"/>
+        <path class="g8-track" d="M20 100 A140 140 0 0 1 300 100" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="3" stroke-linecap="round"/>
         <path id="g8path" d="M20 100 A140 140 0 0 1 300 100" fill="none" stroke="#fbbf24" stroke-width="3" stroke-linecap="round"/>
         <circle id="g8orb" r="9" fill="#fbbf24" style="filter:drop-shadow(0 0 8px #fbbf24)"/>
         <circle id="g8moon" r="8" fill="#cbd5e1" style="display:none"/>
@@ -507,6 +602,15 @@
     wv.addEventListener('message', (e) => {
       const m = e.data || {};
       if (m.t === 'clockStyle' && BUILDS[m.style]) setDesign(m.style);
+      else if (m.t === 'clockTheme') {
+        const on = m.adaptive !== false;
+        document.body.classList.toggle('light-backdrop', on && !!m.isLightBackdrop);
+        const root = document.documentElement.style;
+        const accent = on && /^#[0-9a-fA-F]{6}$/.test(m.accent || '') ? m.accent : '#38bdf8';
+        root.setProperty('--accent', accent);
+        const r = parseInt(accent.slice(1, 3), 16), g = parseInt(accent.slice(3, 5), 16), b = parseInt(accent.slice(5, 7), 16);
+        root.setProperty('--accent-glow', `rgba(${r}, ${g}, ${b}, 0.45)`);
+      }
       else if (m.t === 'clockLocale') {
         window.PECOFENCE_LOCALE = { locale: m.locale, translations: m.translations };
         if (window.PecoFenceI18n) PecoFenceI18n.set(m.locale, m.translations);

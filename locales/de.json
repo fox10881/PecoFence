@@ -711,5 +711,7 @@
   "日历页": "Kalenderblatt",
   "渐变块": "Verlaufs-Platte",
   "日期海报": "Datums-Poster",
-  "紧凑胶囊": "Kompakt-Chip"
+  "紧凑胶囊": "Kompakt-Chip",
+  "自动适配壁纸配色": "Widgetfarben an Hintergrund anpassen",
+  "根据时钟背后壁纸的明暗与主色调自动切换深浅配色并调整强调色，保证文字始终清晰可读": "Passt Text- und Glasfarbe (dunkel oder hell) automatisch an Helligkeit und Farben des Hintergrunds hinter der Uhr an, damit sie stets gut lesbar bleibt."
 }

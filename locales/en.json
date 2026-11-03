@@ -711,5 +711,7 @@
   "日历页": "Calendar Page",
   "渐变块": "Gradient Slab",
   "日期海报": "Date Poster",
-  "紧凑胶囊": "Compact Chip"
+  "紧凑胶囊": "Compact Chip",
+  "自动适配壁纸配色": "Match widget colors to wallpaper",
+  "根据时钟背后壁纸的明暗与主色调自动切换深浅配色并调整强调色，保证文字始终清晰可读": "Automatically adjusts the text and glass tint (dark or light) to the brightness and colors of the backdrop behind the clock, so it always stays readable."
 }
