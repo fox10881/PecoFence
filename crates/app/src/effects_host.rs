@@ -1,13 +1,15 @@
 //! Host for the native desktop effects overlay (`تأثيرات سطح المكتب الحية`).
 //!
-//! One click-through `WS_POPUP` window spanning the virtual screen, rendered
-//! by a [`Panel`] (Windows.UI.Composition → Direct2D, premultiplied alpha) and
-//! anchored into the desktop band by `DesktopAnchor::register_desktop_surface`
-//! — directly above the icon host (icons, wallpaper, video wallpaper) and below
-//! every fence and the clock widget.
+//! One click-through window spanning the virtual screen, rendered by a
+//! [`Panel`] (Windows.UI.Composition → Direct2D, premultiplied alpha) and
+//! reparented into the `WorkerW` desktop background layer by
+//! `desktop::attach_to_background_layer` — physically behind
+//! `SHELLDLL_DefView`, so particles draw on the desktop itself and the icon
+//! layer above owns every click. The top-level `WS_POPUP` shape stays as the
+//! fallback while no layer exists (Explorer restarting).
 //!
 //! Timers on the overlay HWND drive everything:
-//! - `TIMER_FRAME` (~30 FPS): obstacle poll → `Engine::tick` → `Panel::draw`.
+//! - `TIMER_FRAME` (~30 FPS): cursor/button poll → `Engine::tick` → `Panel::draw`.
 //! - `TIMER_OCCLUSION` (500 ms): fullscreen/maximized-foreground detection →
 //!   kill the frame timer and hide the visual (0 % CPU/GPU while occluded).
 //! - `TIMER_WAKE` (100 ms, only while `Engine::idle`): cursor poll that wakes
@@ -28,7 +30,7 @@ use windows_core::Result;
 use crate::commands::{Command, CommandQueue};
 use crate::effects_engine::{Effect, Engine, FxCache};
 
-const CLASS_NAME: &str = "PecoFence.DesktopEffects";
+const CLASS_NAME: &str = desktop::EFFECTS_OVERLAY_CLASS;
 
 const TIMER_FRAME: usize = 1;
 const TIMER_OCCLUSION: usize = 2;
@@ -55,10 +57,6 @@ struct HostCore {
     panel: Option<Panel>,
     engine: Option<Engine>,
     cache: FxCache,
-    // Fence + clock HWNDs polled for obstacle rects each frame; `rects` is the
-    // reused scratch (no per-tick allocation).
-    obstacle_hwnds: Vec<HWND>,
-    rects: Vec<(f32, f32, f32, f32)>,
     // The overlay's own HWND + other windows the occlusion check must skip.
     paused: bool,
     sleeping: bool,
@@ -91,8 +89,6 @@ impl EffectsHost {
                 panel: None,
                 engine: None,
                 cache: FxCache::default(),
-                obstacle_hwnds: Vec::new(),
-                rects: Vec::with_capacity(24),
                 paused: false,
                 sleeping: false,
                 wants_cursor: false,
@@ -109,9 +105,10 @@ impl EffectsHost {
         self.core.borrow().window.as_ref().map(|w| w.hwnd())
     }
 
-    /// Apply the persisted trio. `"none"`/unknown ids tear the overlay down
+    /// Apply the persisted pair. `"none"`/unknown ids tear the overlay down
     /// completely (zero memory, zero GPU). Live changes reconfigure in place.
-    pub fn apply(&self, effect_id: &str, intensity: f32, collision: bool) {
+    /// Effects are a pure background layer — they never collide with UI.
+    pub fn apply(&self, effect_id: &str, intensity: f32) {
         let Some(effect) = Effect::from_id(effect_id) else {
             self.close();
             return;
@@ -122,20 +119,14 @@ impl EffectsHost {
                 && e.effect() == effect
             {
                 e.set_intensity(intensity);
-                e.set_collision(collision);
                 c.wants_cursor = effect.wants_cursor();
                 return;
             }
         }
-        if let Err(e) = self.open(effect, intensity, collision) {
+        if let Err(e) = self.open(effect, intensity) {
             tracing::error!(error = %e, ?effect, "effects: failed to open overlay");
             self.close();
         }
-    }
-
-    /// Fence/clock window set changed — the host polls these HWNDs per frame.
-    pub fn set_obstacle_windows(&self, hwnds: Vec<HWND>) {
-        self.core.borrow_mut().obstacle_hwnds = hwnds;
     }
 
     /// The render stack was rebuilt after device loss: `Panel::recreate` makes
@@ -158,7 +149,7 @@ impl EffectsHost {
     }
 
     /// Create the overlay window + composition tree + engine, start timers.
-    fn open(&self, effect: Effect, intensity: f32, collision: bool) -> Result<()> {
+    fn open(&self, effect: Effect, intensity: f32) -> Result<()> {
         // Tear down any previous instance first (effect switches rebuild).
         self.close();
 
@@ -181,12 +172,17 @@ impl EffectsHost {
         let core = self.core.clone();
         let handler: MessageHandler = Box::new(
             move |hwnd: HWND, message: u32, wparam: usize, lparam: isize| -> Option<isize> {
+                // Click-through must never wait on the engine borrow — a
+                // hit-test that lands mid-tick would get DefWindowProc's
+                // opaque answer and eat the desktop's click.
+                if message == msg::WM_NCHITTEST {
+                    return Some(msg::HTTRANSPARENT);
+                }
                 let mut c = match core.try_borrow_mut() {
                     Ok(c) => c,
                     Err(_) => return None,
                 };
                 match message {
-                    msg::WM_NCHITTEST => Some(msg::HTTRANSPARENT),
                     msg::WM_TIMER => {
                         match wparam {
                             TIMER_FRAME => c.frame(),
@@ -223,6 +219,14 @@ impl EffectsHost {
             .create(handler)?;
 
         let hwnd = window.hwnd();
+        // Parent into the WorkerW background layer — physically below
+        // SHELLDLL_DefView — so the desktop's icons and context menus own
+        // every click and the overlay can never swallow one. Without a layer
+        // (Explorer mid-restart) the window stays a top-level overlay whose
+        // WM_NCHITTEST → HTTRANSPARENT already passes clicks through.
+        if unsafe { desktop::attach_to_background_layer(hwnd, vx, vy, w_px, h_px) }.is_none() {
+            tracing::warn!("effects: no desktop layer host; staying a top-level overlay");
+        }
         // Click-through comes from WM_NCHITTEST → HTTRANSPARENT only. An empty
         // SetWindowRgn would also make the window click-through, but it clips
         // the window's update region to nothing — the composition visual tree
@@ -239,13 +243,7 @@ impl EffectsHost {
         let dpi = window::dpi_of(hwnd);
         panel_resize(&mut panel, w_px, h_px)?;
         let scale = dpi.max(96) as f32 / 96.0;
-        let engine = Engine::new(
-            effect,
-            intensity,
-            collision,
-            w_px as f32 / scale,
-            h_px as f32 / scale,
-        );
+        let engine = Engine::new(effect, intensity, w_px as f32 / scale, h_px as f32 / scale);
 
         {
             let mut c = self.core.borrow_mut();
@@ -261,25 +259,36 @@ impl EffectsHost {
             c.sleeping = false;
             c.last_tick = Instant::now();
         }
-        let c = self.core.borrow();
-        let w = c.window.as_ref().unwrap();
-        w.set_timer(TIMER_FRAME, FRAME_MS);
-        w.set_timer(TIMER_OCCLUSION, OCCLUSION_MS);
-        w.show_no_activate();
-        tracing::info!(?effect, vx, vy, w_px, h_px, hwnd = ?hwnd, "effects: overlay opened");
+        let mut c = self.core.borrow_mut();
+        c.window
+            .as_ref()
+            .unwrap()
+            .set_timer(TIMER_OCCLUSION, OCCLUSION_MS);
+        // A boot behind a fullscreen app/game must not render a single frame:
+        // the check runs now, not 500 ms from now — an occluded open stays
+        // hidden (no window show, no frame timer) at zero GPU cost.
+        c.occlusion_check();
+        if !c.paused {
+            let w = c.window.as_ref().unwrap();
+            w.show_no_activate();
+            w.set_timer(TIMER_FRAME, FRAME_MS);
+        }
+        tracing::info!(?effect, vx, vy, w_px, h_px, hwnd = ?hwnd, paused = c.paused, "effects: overlay opened");
         Ok(())
     }
 
     /// Destroy the overlay and release every GPU resource — the "none" state.
     pub fn close(&self) {
         let mut c = self.core.borrow_mut();
-        if let Some(w) = c.window.take() {
+        if let Some(w) = c.window.as_ref() {
             w.kill_timer(TIMER_FRAME);
             w.kill_timer(TIMER_OCCLUSION);
             w.kill_timer(TIMER_WAKE);
         }
         // Order matters: drop the visual tree before the target, the target
-        // before the window.
+        // before the window. `Panel::drop` parks a surface whose last update
+        // is still uncommitted in `RETIRED` so DirectComposition releases the
+        // GPU memory once the batch lands.
         c.engine = None;
         c.cache = FxCache::default();
         if let Some(root) = c.root.take() {
@@ -290,7 +299,8 @@ impl EffectsHost {
         c._target = None;
         c.paused = false;
         c.sleeping = false;
-        // `window` drops here → DestroyWindow.
+        // `window` drops last → DestroyWindow after the tree detached.
+        c.window = None;
     }
 }
 
@@ -300,7 +310,7 @@ fn panel_resize(panel: &mut Panel, w_px: i32, h_px: i32) -> Result<()> {
 }
 
 impl HostCore {
-    /// ~30 FPS: poll obstacles → tick → draw → present.
+    /// ~30 FPS: poll cursor/button → tick → draw → present.
     fn frame(&mut self) {
         let (Some(window), Some(panel), Some(engine)) = (
             self.window.as_ref(),
@@ -313,33 +323,15 @@ impl HostCore {
         let dt = now.duration_since(self.last_tick).as_secs_f32();
         self.last_tick = now;
 
-        // Obstacle rects: fence/clock HWNDs → surface coords (DIP).
         let origin = window.window_rect();
         let scale = self.dpi.max(96) as f32 / 96.0;
-        self.rects.clear();
-        for &h in &self.obstacle_hwnds {
-            if h.0.is_null() || !window::is_window(h) || !desktop::is_visible(h) {
-                continue;
-            }
-            let r = window::window_rect(h);
-            if r.right <= r.left || r.bottom <= r.top {
-                continue;
-            }
-            self.rects.push((
-                (r.left - origin.left) as f32 / scale,
-                (r.top - origin.top) as f32 / scale,
-                (r.right - origin.left) as f32 / scale,
-                (r.bottom - origin.top) as f32 / scale,
-            ));
-        }
-        engine.set_obstacles(&self.rects);
-
         if self.wants_cursor {
             let pt = window::cursor_pos();
             engine.set_cursor(
                 (pt.x - origin.left) as f32 / scale,
                 (pt.y - origin.top) as f32 / scale,
             );
+            engine.set_button_down(window::primary_button_down_async());
         }
         engine.tick(dt.max(0.0));
 
@@ -424,6 +416,9 @@ impl HostCore {
                 (pt.x - origin.left) as f32 / scale,
                 (pt.y - origin.top) as f32 / scale,
             );
+            // A click while sleeping must still wake ShatterClicks — the
+            // press edge is consumed by the next tick.
+            engine.set_button_down(window::primary_button_down_async());
             if !engine.idle() {
                 self.sleeping = false;
                 window.kill_timer(TIMER_WAKE);

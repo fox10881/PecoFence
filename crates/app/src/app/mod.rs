@@ -366,6 +366,12 @@ pub struct App {
     /// A video-wallpaper swap running on a worker (`stop` join + `start` first-frame
     /// wait are seconds-class — the UI thread installs the result once it lands).
     video_swap: Option<settings::VideoSwap>,
+    /// A video-wallpaper transcode running on a worker — the player stays off
+    /// until `video_wallpaper_path` flips to the optimized file.
+    video_transcode: Option<settings::VideoTranscode>,
+    /// Toast owed to a user pick whose apply goes through the transcode-then-
+    /// swap pipeline — consumed when the player finally installs.
+    pending_video_toast: bool,
     /// The static desktop wallpaper recorded when the video player started. A different
     /// image reported later means the user applied it over the video (Explorer applies do
     /// not broadcast `SPI_SETDESKWALLPAPER`) — the image wins and the video retires.
@@ -1377,6 +1383,8 @@ impl App {
             live_abandoned: None,
             wmf_player: None,
             video_swap: None,
+            video_transcode: None,
+            pending_video_toast: false,
             static_under_video: None,
             shell_respawn_wall: None,
             last_theme_meta: None,
@@ -1390,7 +1398,6 @@ impl App {
         // creates the overlay window).
         let fx = app.state.config.settings.clone();
         app.apply_desktop_effect(&fx);
-        app.refresh_effect_obstacles();
         // Watch both wallpaper settings and virtual-desktop state; either signal starts a
         // bounded burst of fast reads, because the image may arrive after the notification.
         {
@@ -2097,6 +2104,7 @@ impl App {
             Command::StepIconSize { fence, larger } => self.step_icon_size(fence, larger),
             Command::ItemProperties { fence, items } => self.show_properties(fence, &items),
             Command::RefreshFence(fence) => self.manual_refresh(fence),
+            Command::RefreshClock => self.soft_restart_clock(),
             Command::RenameFence { fence, title } => {
                 self.end_item_rename_visuals();
                 let title = title.trim();
@@ -2263,6 +2271,14 @@ impl App {
         pecofence_platform::start_menu::ensure();
         pecofence_platform::notification_center::ensure();
         self.ensure_video_wallpaper();
+        // The WorkerW layer died with the old Explorer — the reparented
+        // overlay child went with it; force a re-open on the fresh layer
+        // (apply() skips same-effect re-opens, so close() first).
+        if let Some(host) = &self.effects {
+            host.close();
+        }
+        let settings = self.state.config.settings.clone();
+        self.apply_desktop_effect(&settings);
         if let Some(a) = self.anchor.borrow_mut().as_mut() {
             a.reanchor("shell respawn");
         }
@@ -2286,6 +2302,7 @@ impl App {
     pub fn shutdown(&mut self) {
         self.end_peek_now();
         self.video_swap = None; // the worker self-disposes on the stale epoch
+        self.video_transcode = None;
         self.wmf_player = None;
         if let Some(e) = self.effects.take() {
             e.close();

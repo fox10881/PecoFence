@@ -213,6 +213,10 @@ pub enum Command {
     },
     /// F5: re-read this fence's contents (desktop or portal folder) and its icons.
     RefreshFence(FenceId),
+    /// The clock widget's own context menu (「تحديث」): soft-restart it — close
+    /// and respawn at its live rect — to recover a broken (opaque-black) WebView
+    /// surface without opening settings.
+    RefreshClock,
     /// Context menu on a fence's title/background at screen coordinates.
     FenceMenu {
         fence: FenceId,

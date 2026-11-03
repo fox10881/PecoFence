@@ -432,7 +432,8 @@ impl DesktopAnchor {
         let in_peek = self.peeking;
         self.with_anchoring(|s| {
             for (f, shadow) in s.fences.clone() {
-                if in_peek && s.desktop_surfaces.contains(&(f.0 as isize)) {
+                if desktop::is_child(f) || (in_peek && s.desktop_surfaces.contains(&(f.0 as isize)))
+                {
                     continue;
                 }
                 for h in std::iter::once(f).chain(shadow) {
@@ -493,6 +494,11 @@ impl DesktopAnchor {
             }
             self.with_anchoring(|s| {
                 for w in s.all_windows() {
+                    if desktop::is_child(w) {
+                        // Reparented into the WorkerW layer — the layer owns
+                        // its z-order; a top-level SetWindowPos would fail.
+                        continue;
+                    }
                     let _ = desktop::send_to_bottom(w);
                 }
             });
@@ -503,6 +509,12 @@ impl DesktopAnchor {
         self.with_anchoring(|s| {
             let mode = s.mode;
             let place = |w: HWND| -> Result<()> {
+                if desktop::is_child(w) {
+                    // Reparented into the WorkerW layer — the layer owns its
+                    // z-order; inserting relative to top-level windows would
+                    // fail or corrupt the child band.
+                    return Ok(());
+                }
                 match mode {
                     ZMode::InsertAboveHost => desktop::insert_above(w, host.host),
                     ZMode::HwndBottom => desktop::send_to_bottom(w),

@@ -28,14 +28,22 @@
 //! own module directory (`[config]` effect/flags, `[light]`/`[dark]`
 //! RGBA; it handles the system theme switch itself).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 use windows_core::PCWSTR;
 
 windows_core::link!("user32.dll" "system" fn GetClassNameW(hwnd: crate::bindings::HWND, lpclassname: windows_core::PWSTR, nmaxcount: i32) -> i32);
+windows_core::link!("user32.dll" "system" fn GetForegroundWindow() -> crate::bindings::HWND);
 windows_core::link!("advapi32.dll" "system" fn RegOpenKeyExW(hkey: isize, subkey: PCWSTR, options: u32, sam: u32, result: *mut isize) -> i32);
 windows_core::link!("advapi32.dll" "system" fn RegCloseKey(hkey: isize) -> i32);
+windows_core::link!("kernel32.dll" "system" fn OpenProcess(dwdesiredaccess: u32, binherithandle: windows_core::BOOL, dwprocessid: u32) -> *mut core::ffi::c_void);
+windows_core::link!("kernel32.dll" "system" fn CloseHandle(hobject: *mut core::ffi::c_void) -> windows_core::BOOL);
+
+/// `PROCESS_QUERY_LIMITED_INFORMATION` — enough to test the pid's death.
+const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
 
 /// `COPYDATASTRUCT.dwData` values — must match `crates/tap/src/command.rs`.
 /// `EBML` = load `ExplorerBlurMica.dll` (payload: UTF-16 path + NUL);
@@ -91,6 +99,18 @@ struct Fe {
     /// Last `deliver_all` fan-out signature — the debug line logs only when
     /// pids/readiness/epochs change, not every 2 s `ensure()` tick.
     delivery_sig: String,
+    /// pid → when the cabinet owner was first observed. EBM hooks whatever
+    /// XAML the pid hosts — on the shared shell explorer that includes the
+    /// taskbar and the Alt-Tab switcher — so `EBML` waits until the pid
+    /// survived a whole settle window instead of landing mid-creation.
+    first_seen: HashMap<u32, Instant>,
+    /// pid → when `EBML` was last delivered. A pid that dies inside
+    /// `EBM_CRASH_WINDOW` of a delivery is a suspected EBM crash.
+    delivered_at: HashMap<u32, Instant>,
+    /// Suspected EBM crashes this session; `EBM_MAX_STRIKES` trips `halted`.
+    strikes: u32,
+    /// Circuit breaker: no more `EBML` this session (unloads still flow).
+    halted: bool,
 }
 
 static FE: Mutex<Option<Fe>> = Mutex::new(None);
@@ -354,6 +374,54 @@ fn cabinet_anchors() -> Vec<(u32, crate::bindings::HWND)> {
 
 // ------------------------------------------------------------- delivery ----
 
+/// A cabinet pid must be observed this long before `EBML` — one `ensure()`
+/// tick spans it — so EBM's `DllMain` hooks never land in a pid whose XAML
+/// is still constructing. Just-injected cabinet processes are exactly where
+/// the Switcher/taskbar APPCRASHes were reported.
+const EBM_PID_WARMUP: Duration = Duration::from_secs(3);
+/// A delivered pid dying within this window counts as a suspected EBM crash.
+const EBM_CRASH_WINDOW: Duration = Duration::from_secs(90);
+/// Suspected crashes before `EBML` stops for the session.
+const EBM_MAX_STRIKES: u32 = 2;
+
+/// `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` — a live pid answers.
+fn pid_alive(pid: u32) -> bool {
+    let h = unsafe {
+        OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION,
+            windows_core::BOOL(0),
+            pid,
+        )
+    };
+    if h.is_null() {
+        return false;
+    }
+    unsafe {
+        let _ = CloseHandle(h);
+    }
+    true
+}
+
+/// A task-switcher UI is foreground. On the shared shell explorer, EBM's
+/// `DllMain` installs hooks process-wide — delivering while `Switcher`/
+/// `MultitaskingView` XAML is up is the reported APPCRASH path, so the
+/// whole batch defers one tick instead of sending mid-gesture.
+fn task_switcher_foreground() -> bool {
+    let hwnd = unsafe { GetForegroundWindow() };
+    if hwnd.0.is_null() {
+        return false;
+    }
+    let mut cls = [0u16; 64];
+    let n = unsafe { GetClassNameW(hwnd, windows_core::PWSTR(cls.as_mut_ptr()), 64) };
+    if n <= 0 {
+        return false;
+    }
+    matches!(
+        &*String::from_utf16_lossy(&cls[..n as usize]),
+        "MultitaskingViewFrame" | "TaskSwitcherWnd" | "ForegroundStaging"
+    )
+}
+
 /// Sends `EBMU`+`EBML` to one pid's resident. Unload-first makes a
 /// config change re-read `config.ini` in already-loaded pids; it is a
 /// no-op where EBM was never loaded.
@@ -410,6 +478,11 @@ fn deliver_all() {
             );
         }
     }
+    // A delivered pid dying mid-flight is the crash signal: the post-loop
+    // accounting counts victims of the last batch before another goes out.
+    // `EBML` halts for the session after enough strikes — EBMU/reset and
+    // resident management stay live.
+    let halted = lock().as_ref().is_some_and(|fe| fe.halted);
     let mut live_pids = Vec::new();
     for (pid, anchor) in anchors {
         live_pids.push(pid);
@@ -421,13 +494,61 @@ fn deliver_all() {
         let Some(fe) = guard.as_mut() else {
             return;
         };
-        if !fe.effect.is_empty() && !wide.is_empty() {
+        if !halted && !fe.effect.is_empty() && !wide.is_empty() {
             let current = (cmd.0 as usize, fe.epoch);
             if fe.delivered.get(&pid) != Some(&current) {
+                let now = Instant::now();
+                let first = *fe.first_seen.entry(pid).or_insert(now);
+                if now.duration_since(first) < EBM_PID_WARMUP {
+                    // Seen for the first time: let the pid's XAML settle; the
+                    // next ensure() tick delivers.
+                    continue;
+                }
+                if task_switcher_foreground() {
+                    tracing::debug!(pid, "deliver_all: task switcher foreground — deferred");
+                    continue;
+                }
                 deliver_ebm(cmd, &wide);
                 tracing::debug!(pid, epoch = fe.epoch, "deliver_all: EBML sent");
                 fe.delivered.insert(pid, current);
+                fe.delivered_at.insert(pid, Instant::now());
             }
+        }
+    }
+    // Post-delivery crash accounting: a delivered pid gone from the cabinet
+    // set that also failed `OpenProcess` inside the window is a strike. A
+    // pid that merely closed its last cabinet (still alive — the shared
+    // shell explorer) is not.
+    {
+        let mut guard = lock();
+        if let Some(fe) = guard.as_mut() {
+            let now = Instant::now();
+            let mut dead = Vec::new();
+            fe.delivered_at.retain(|pid, when| {
+                if live_pids.contains(pid) {
+                    return true;
+                }
+                if now.duration_since(*when) < EBM_CRASH_WINDOW && !pid_alive(*pid) {
+                    dead.push(*pid);
+                }
+                false
+            });
+            for pid in dead {
+                fe.strikes += 1;
+                tracing::warn!(
+                    pid,
+                    strikes = fe.strikes,
+                    "explorer pid died shortly after EBML — suspected EBM crash"
+                );
+            }
+            if !fe.halted && fe.strikes >= EBM_MAX_STRIKES {
+                fe.halted = true;
+                tracing::warn!(
+                    strikes = fe.strikes,
+                    "EBM halted for the session after repeated explorer crashes"
+                );
+            }
+            fe.first_seen.retain(|pid, _| live_pids.contains(pid));
         }
     }
     crate::tap::prune_extra_residents(&live_pids);
@@ -559,6 +680,10 @@ pub fn apply_effect(cfg: &FeGlassConfig) -> bool {
         fe.dark_rgba = cfg.dark_rgba.to_string();
         fe.dll_path = dll_path.display().to_string();
         fe.epoch += 1; // pids whose generation trails reload EBM once
+        // A real config change is a fresh contract — clear the crash
+        // breaker so a fixed config is not held guilty by an old engine.
+        fe.strikes = 0;
+        fe.halted = false;
     }
     ARMED.store(true, Ordering::Release);
     finish();
@@ -583,9 +708,20 @@ fn reset_ebm() -> bool {
     if let Some(fe) = lock().as_mut() {
         fe.effect.clear();
         fe.delivered.clear();
+        fe.delivered_at.clear();
+        fe.first_seen.clear();
+        fe.strikes = 0;
+        fe.halted = false;
     }
     ARMED.store(false, Ordering::Release);
     true
+}
+
+/// `true` when the crash circuit breaker tripped — `EBML` no longer fans
+/// out this session. Settings can surface this ("Explorer material paused
+/// for stability") instead of silently showing a dead effect.
+pub fn halted() -> bool {
+    lock().as_ref().is_some_and(|fe| fe.halted)
 }
 
 /// `Windows Default` — full disarm: EBM unload + mux/legacy resets.

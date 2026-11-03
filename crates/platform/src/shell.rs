@@ -1252,6 +1252,72 @@ pub fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
 /// resolved target, arguments, working directory and show command. A default launch
 /// refused for elevation is retried through the UAC prompt.
 pub fn shell_execute(path: &Path, verb: Option<&str>, owner: Option<HWND>) -> Result<()> {
+    if is_lnk(path) && verb.is_none() {
+        // The link's own chain first: GetPath/GetIDList land on the real
+        // target — chasing link-to-link indirections (a desktop copy of a
+        // Start-menu link) whose one-hop shell verb dies silently — and the
+        // innermost link supplies its own arguments and working directory.
+        if let Some((target, ctx)) = lnk_filesystem_target(path, 0) {
+            let dir = ctx
+                .dir
+                .as_deref()
+                .or_else(|| target.parent().and_then(|p| p.to_str()));
+            tracing::info!(
+                path = %path.display(),
+                target = %target.display(),
+                args = ?ctx.args,
+                dir = ?dir,
+                show = ctx.show,
+                "launching resolved link target",
+            );
+            match shell_execute_raw(&target, ctx.args.as_deref(), dir, None, ctx.show, owner) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    if needs_elevation(&e) {
+                        tracing::info!(path = %path.display(), error = %e, "launch denied; retrying runas");
+                        return shell_execute_raw(
+                            &target,
+                            ctx.args.as_deref(),
+                            dir,
+                            Some("runas"),
+                            ctx.show,
+                            owner,
+                        );
+                    }
+                    tracing::warn!(
+                        path = %path.display(),
+                        target = %target.display(),
+                        %e,
+                        "resolved link target refused; falling back to shell activation",
+                    );
+                }
+            }
+        }
+        // No filesystem target — activate the link's stored target PIDL.
+        // Namespace items (a Start-menu app's AUMID record) have a delegate
+        // verb that silently no-ops in a foreign process; Explorer's own
+        // process performs the activation instead.
+        if let Some(pidl) = lnk_target_pidl(path) {
+            let activation = namespace_activation_name(pidl);
+            unsafe { ILFree(Some(pidl as *const ITEMIDLIST)) };
+            if let Some(name) = activation {
+                tracing::info!(
+                    path = %path.display(),
+                    activation = %name,
+                    "delegating namespace activation to explorer",
+                );
+                match explorer_activate(&name, owner) {
+                    Ok(()) => return Ok(()),
+                    Err(e) => tracing::warn!(
+                        path = %path.display(),
+                        activation = %name,
+                        %e,
+                        "explorer activation failed; trying the link's own verb",
+                    ),
+                }
+            }
+        }
+    }
     if is_lnk(path) {
         match shell_invoke_pidl(path, verb, owner) {
             Ok(()) => return Ok(()),
@@ -1392,11 +1458,10 @@ fn shell_execute_raw(
 /// links whose `GetPath` has no filesystem target to hand `lpFile`. `lpFile`, `lpParameters`
 /// and `lpDirectory` stay NULL on purpose: nothing is reconstructed for the shell.
 fn shell_invoke_pidl(path: &Path, verb: Option<&str>, owner: Option<HWND>) -> Result<()> {
-    const SEE_MASK_NOCLOSEPROCESS: u32 = 0x40;
     let name = path_wide(path);
     let mut pidl: LPITEMIDLIST = core::ptr::null_mut();
     // SAFETY: `name` is NUL-terminated and outlives the call; `pidl` is a live out-pointer.
-    // The PIDL is shell-allocated below and freed with `ILFree` in all paths after this.
+    // The PIDL is shell-allocated below and freed inside `shell_invoke_idlist`.
     unsafe {
         SHParseDisplayName(PCWSTR(name.as_ptr()), None, &mut pidl, SFGAOF(0), None).ok()?;
     }
@@ -1405,6 +1470,19 @@ fn shell_invoke_pidl(path: &Path, verb: Option<&str>, owner: Option<HWND>) -> Re
             0x8007_0002_u32 as i32, // HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)
         )));
     }
+    shell_invoke_idlist(pidl, verb, owner, path)
+}
+
+/// `SEE_MASK_INVOKEIDLIST` on an absolute PIDL — `IContextMenu::InvokeCommand`
+/// semantics on the item itself (the shell activates, not us). `pidl` is
+/// caller-owned and always freed here.
+fn shell_invoke_idlist(
+    pidl: LPITEMIDLIST,
+    verb: Option<&str>,
+    owner: Option<HWND>,
+    label: &Path,
+) -> Result<()> {
+    const SEE_MASK_NOCLOSEPROCESS: u32 = 0x40;
     let verb_w = verb.map(to_wide);
     let mut info = SHELLEXECUTEINFOW {
         cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
@@ -1425,17 +1503,17 @@ fn shell_invoke_pidl(path: &Path, verb: Option<&str>, owner: Option<HWND>) -> Re
     match result.ok() {
         Ok(()) => {
             tracing::info!(
-                path = %path.display(),
+                path = %label.display(),
                 verb = verb.unwrap_or("<default>"),
                 has_process = !info.hProcess.0.is_null(),
                 "shell PIDL launch accepted",
             );
-            watch_launched(path, info.hProcess);
+            watch_launched(label, info.hProcess);
             Ok(())
         }
         Err(e) => {
             tracing::warn!(
-                path = %path.display(),
+                path = %label.display(),
                 verb = verb.unwrap_or("<default>"),
                 code = e.code().0,
                 hinst = info.hInstApp.0 as isize,
@@ -1444,6 +1522,73 @@ fn shell_invoke_pidl(path: &Path, verb: Option<&str>, owner: Option<HWND>) -> Re
             Err(e)
         }
     }
+}
+
+/// The stored *target* PIDL of a `.lnk` (`IShellLinkW::GetIDList`), caller-owned
+/// — one activation level deeper than invoking the link file itself.
+fn lnk_target_pidl(path: &Path) -> Option<LPITEMIDLIST> {
+    let link = open_link(path, true)?;
+    unsafe { link.GetIDList() }.ok().filter(|p| !p.is_null())
+}
+
+/// The activation name for a stored target PIDL that has no filesystem path —
+/// a namespace object such as a Start-menu app record whose desktop-absolute
+/// parsing name is a bare AppUserModelId (`com.vendor.app`). Bare ids are
+/// rewritten as `shell:AppsFolder\<id>` when that parses (it is where those
+/// records live). `None` for filesystem targets — the link-context route
+/// handles those.
+fn namespace_activation_name(pidl: LPITEMIDLIST) -> Option<String> {
+    let mut raw: *mut core::ffi::c_void = core::ptr::null_mut();
+    // SAFETY: `pidl` is a valid absolute PIDL for the call's duration.
+    unsafe {
+        SHCreateItemFromIDList(pidl as *const ITEMIDLIST, &IShellItem::IID, &mut raw)
+            .ok()
+            .ok()?;
+    }
+    if raw.is_null() {
+        return None;
+    }
+    // SAFETY: `raw` is a live IShellItem reference we now own; GetDisplayName
+    // returns a shell-allocated string `take_string` frees.
+    let item: IShellItem = unsafe { windows_core::Interface::from_raw(raw) };
+    let name = unsafe { item.GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING) }
+        .ok()
+        .map(take_string)
+        .filter(|s| !s.is_empty())?;
+    // A filesystem path belongs to the link-context route.
+    if Path::new(&name).is_absolute() {
+        return None;
+    }
+    // An already-qualified shell/namespace name launches as-is.
+    if name.starts_with("shell:") || name.starts_with("::") {
+        return Some(name);
+    }
+    // A bare id parses only inside AppsFolder — verify rather than assume.
+    let apps = format!("shell:AppsFolder\\{name}");
+    let w = to_wide(&apps);
+    let mut probe: LPITEMIDLIST = core::ptr::null_mut();
+    // SAFETY: `w` outlives the call; `probe` is freed on success.
+    let parsed =
+        unsafe { SHParseDisplayName(PCWSTR(w.as_ptr()), None, &mut probe, SFGAOF(0), None) };
+    if parsed.is_ok() && !probe.is_null() {
+        unsafe { ILFree(Some(probe as *const ITEMIDLIST)) };
+        Some(apps)
+    } else {
+        Some(name)
+    }
+}
+
+/// Delegates activation of a namespace object to Explorer itself
+/// (`explorer.exe "<parsing-name>"`): delegate verbs such as the AppsFolder
+/// app-activation handler refuse to run synchronously inside a foreign
+/// process — and silently no-op — but fire in the shell's own.
+fn explorer_activate(name: &str, owner: Option<HWND>) -> Result<()> {
+    let explorer = std::env::var_os("SystemRoot")
+        .map(|r| PathBuf::from(r).join("explorer.exe"))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| PathBuf::from("explorer.exe"));
+    let args = format!("\"{name}\"");
+    shell_execute_raw(&explorer, Some(&args), None, None, SW_SHOWNORMAL, owner)
 }
 
 /// Refusals the UAC prompt (`runas` verb) can turn into a success: access denied, or a target
@@ -1572,11 +1717,16 @@ struct ShortcutContext {
 }
 
 fn shortcut_context(path: &Path) -> Option<ShortcutContext> {
+    let link = open_link(path, true)?;
+    Some(shortcut_context_of(&link))
+}
+
+/// The execution context of an already-opened (resolved) `.lnk`.
+fn shortcut_context_of(link: &IShellLinkW) -> ShortcutContext {
     // SW_SHOWMAXIMIZED / SW_SHOWMINNOACTIVE: the only non-normal values a .lnk can store
     // (shell link spec); a missing or unexpected value means normal.
     const SW_SHOWMAXIMIZED: i32 = 3;
     const SW_SHOWMINNOACTIVE: i32 = 7;
-    let link = open_link(path, true)?;
     // SAFETY: the getters write sized, NUL-terminated buffers.
     unsafe {
         let target = link_string(|p, cch| link.GetPath(p, cch, core::ptr::null_mut(), 0))
@@ -1589,13 +1739,59 @@ fn shortcut_context(path: &Path) -> Option<ShortcutContext> {
             .ok()
             .filter(|s| matches!(*s, SW_SHOWNORMAL | SW_SHOWMAXIMIZED | SW_SHOWMINNOACTIVE))
             .unwrap_or(SW_SHOWNORMAL);
-        Some(ShortcutContext {
+        ShortcutContext {
             target,
             args,
             dir,
             show,
-        })
+        }
     }
+}
+
+/// Follows a `.lnk`'s stored target to the deepest filesystem path the chain
+/// resolves to. `GetPath` yields the direct target when there is one; a
+/// PIDL-only link (`GetPath` empty — namespace item or link-to-link) is
+/// chased through `GetIDList` + `SHGetPathFromIDListW`, which maps the
+/// stored PIDL back to a filesystem path when it has one. That matters for
+/// a desktop copy of a Start-menu link: its PIDL lands on the inner `.lnk`,
+/// which then resolves to the real exe — a hop the shell's one-shot PIDL
+/// verb silently dies on. Returns the innermost target plus the context of
+/// the link that produced it (the inner link's own arguments/workdir/show).
+/// Namespace links whose PIDL has no filesystem path return `None`.
+fn lnk_filesystem_target(path: &Path, depth: u32) -> Option<(PathBuf, ShortcutContext)> {
+    const MAX_DEPTH: u32 = 4;
+    if depth >= MAX_DEPTH {
+        return None;
+    }
+    let link = open_link(path, true)?;
+    let ctx = shortcut_context_of(&link);
+    let mut target = ctx.target.clone();
+    if target.is_none() {
+        // SAFETY: `pidl` is a live shell allocation freed below; `buf` is a
+        // sized, NUL-terminated output buffer.
+        if let Ok(pidl) = unsafe { link.GetIDList() } {
+            if !pidl.is_null() {
+                let mut buf = [0u16; 1024];
+                let ok = unsafe {
+                    SHGetPathFromIDListW(pidl as *const ITEMIDLIST, PWSTR(buf.as_mut_ptr()))
+                };
+                unsafe { ILFree(Some(pidl as *const ITEMIDLIST)) };
+                if ok.as_bool() {
+                    target = Some(PathBuf::from(crate::wide::from_wide(&buf)));
+                }
+            }
+        }
+    }
+    let target = target?;
+    if !target.is_absolute() || target == path {
+        return None;
+    }
+    if is_lnk(&target) {
+        // Link-to-link: chase the inner link so its own exe/args/workdir —
+        // not this link's — drive the launch.
+        return lnk_filesystem_target(&target, depth + 1).or(Some((target, ctx)));
+    }
+    Some((target, ctx))
 }
 
 /// Creates the `.lnk` Explorer writes for "在当前位置创建快捷方式": `<name> - 快捷方式.lnk` in
@@ -2195,6 +2391,13 @@ mod lnk_probe {
                 ctx.as_ref().map(|c| c.dir.clone()),
                 ctx.as_ref().map(|c| c.show),
             );
+            let chased = lnk_filesystem_target(Path::new(p), 0);
+            eprintln!(
+                "  chain -> target={:?} args={:?} dir={:?}",
+                chased.as_ref().map(|(t, _)| t.clone()),
+                chased.as_ref().map(|(_, c)| c.args.clone()),
+                chased.as_ref().map(|(_, c)| c.dir.clone()),
+            );
             let w = path_wide(Path::new(p));
             unsafe {
                 match CoCreateInstance::<_, IShellLinkW>(&ShellLink, None, CLSCTX_INPROC_SERVER) {
@@ -2234,6 +2437,44 @@ mod lnk_probe {
                             link.GetWorkingDirectory(PWSTR(dir.as_mut_ptr()), dir.len() as i32),
                             crate::wide::from_wide(&dir)
                         );
+                        match link.GetIDList() {
+                            Err(e) => eprintln!("  getidlist: ERR {e:?}"),
+                            Ok(pidl) => {
+                                let mut buf3 = [0u16; 1024];
+                                let ok3 = SHGetPathFromIDListW(
+                                    pidl as *const ITEMIDLIST,
+                                    PWSTR(buf3.as_mut_ptr()),
+                                );
+                                eprintln!(
+                                    "  idlist={pidl:?} path={ok3:?} -> {:?}",
+                                    crate::wide::from_wide(&buf3)
+                                );
+                                let mut item: *mut core::ffi::c_void = core::ptr::null_mut();
+                                let hr = SHCreateItemFromIDList(
+                                    pidl as *const ITEMIDLIST,
+                                    &IShellItem::IID,
+                                    &mut item,
+                                );
+                                eprintln!("  item={hr:?}");
+                                if hr.is_ok() && !item.is_null() {
+                                    let item: IShellItem = windows_core::Interface::from_raw(item);
+                                    for (name, sigdn) in [
+                                        ("parse", SIGDN_DESKTOPABSOLUTEPARSING),
+                                        ("fspath", SIGDN_FILESYSPATH),
+                                        ("normal", SIGDN_NORMALDISPLAY),
+                                    ] {
+                                        match item.GetDisplayName(sigdn) {
+                                            Ok(p) => {
+                                                let s = take_string(p);
+                                                eprintln!("    {name}: {s:?}")
+                                            }
+                                            Err(e) => eprintln!("    {name}: ERR {e:?}"),
+                                        }
+                                    }
+                                }
+                                ILFree(Some(pidl as *const ITEMIDLIST));
+                            }
+                        }
                     }
                 }
             }

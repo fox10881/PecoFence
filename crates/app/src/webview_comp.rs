@@ -1196,6 +1196,25 @@ impl CompWebview {
         }
     }
 
+    /// Re-asserts the transparent surface after a desktop composition-band
+    /// rebuild (theme apply re-creates the wallpaper + effects surfaces and
+    /// the WebView's companion window can lose alpha to the churn):
+    /// transparent background, the visual → target attach, a bounds/dpi
+    /// re-sync, and a `Commit` so a detached tree re-binds. Idempotent.
+    pub fn rearm_transparency(&self, dpi: u32, client: (i32, i32)) {
+        unsafe {
+            let _ = self.ctl3.put_DefaultBackgroundColor(TRANSPARENT);
+            let _ = self.target.SetRoot(&self._visual);
+            let _ = self
+                .comp
+                .put_RootVisualTarget(windows::core::Interface::as_raw(&self._visual) as CF);
+            self.set_bounds(client.0, client.1);
+            self.set_rasterization_scale(dpi);
+            self.notify_parent_window_position_changed();
+            let _ = self.device.Commit();
+        }
+    }
+
     /// `WM_SETFOCUS` — hands the keyboard to the WebView2 input site; without
     /// it a composition-hosted page never sees a key.
     pub fn move_focus(&self) {

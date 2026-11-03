@@ -14,12 +14,12 @@ use pecofence_render::{
 use windows_core::Result;
 
 /// Upper bound of live particles; `intensity` scales the active prefix.
-pub const MAX_PARTICLES: usize = 512;
-const MAX_OBSTACLES: usize = 24;
+pub const MAX_PARTICLES: usize = 2048;
+
 /// Per-gradient alpha quantization (0.125 steps) — smooth enough for particles.
 const ALPHA_BUCKETS: usize = 8;
 
-/// The 12 selectable effects; `"none"` never reaches this enum.
+/// The selectable effects; `"none"` never reaches this enum.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Effect {
     #[default]
@@ -35,6 +35,11 @@ pub enum Effect {
     Matrix,
     Ripples,
     Constellation,
+    MagicTrail,
+    ShatterClicks,
+    QuantumSwarm,
+    CyberGridReveal,
+    RepulsionDust,
 }
 
 impl Effect {
@@ -54,13 +59,27 @@ impl Effect {
             "matrix" => Self::Matrix,
             "ripples" => Self::Ripples,
             "constellation" => Self::Constellation,
+            "magic_trail" => Self::MagicTrail,
+            "shatter_clicks" => Self::ShatterClicks,
+            "quantum_swarm" => Self::QuantumSwarm,
+            "cyber_grid_reveal" => Self::CyberGridReveal,
+            "repulsion_dust" => Self::RepulsionDust,
             _ => return None,
         })
     }
 
     /// Cursor-driven effects may sleep the tick loop while the pointer is still.
     pub fn wants_cursor(&self) -> bool {
-        matches!(self, Self::Ripples | Self::Constellation)
+        matches!(
+            self,
+            Self::Ripples
+                | Self::Constellation
+                | Self::MagicTrail
+                | Self::ShatterClicks
+                | Self::QuantumSwarm
+                | Self::CyberGridReveal
+                | Self::RepulsionDust
+        )
     }
 }
 
@@ -82,16 +101,6 @@ struct P {
     life: f32,
     k: f32,
     f2: f32,
-}
-
-/// Screen-space obstacle rect (fence / clock widget edge), `frost` = snow pile.
-#[derive(Clone, Copy, Default)]
-struct Ob {
-    l: f32,
-    t: f32,
-    r: f32,
-    b: f32,
-    frost: f32,
 }
 
 #[inline]
@@ -201,13 +210,11 @@ impl FxCache {
 pub struct Engine {
     effect: Effect,
     intensity: f32,
-    collision: bool,
     w: f32,
     h: f32,
     t: f32,
     rng: u64,
     ps: Vec<P>,
-    obs: Vec<Ob>,
     // Thunderstorm / starfield transient actors.
     bolt: [Vector2; 64],
     bolt_n: usize,
@@ -217,9 +224,13 @@ pub struct Engine {
     met: P,
     met_live: bool,
     next_met: f32,
-    // Cursor channel (ripples + constellation).
+    // Cursor channel (ripples + constellation + the interactive effects).
     cursor: (f32, f32),
     cursor_prev: (f32, f32),
+    button_down: bool,
+    button_prev: bool,
+    /// Round-robin scan head for cursor-spawned slots (trail sparks, shards).
+    emit_i: usize,
 }
 
 #[inline]
@@ -250,17 +261,15 @@ fn stop(pos: f32, c: ColorF) -> GradientStop {
 }
 
 impl Engine {
-    pub fn new(effect: Effect, intensity: f32, collision: bool, w: f32, h: f32) -> Self {
+    pub fn new(effect: Effect, intensity: f32, w: f32, h: f32) -> Self {
         let mut e = Self {
             effect,
             intensity: intensity.clamp(0.1, 1.0),
-            collision,
             w,
             h,
             t: 0.0,
             rng: 0x9E3779B97F4A7C15 ^ (effect as u64 + 1).wrapping_mul(0xD1B54A32D192ED03),
             ps: vec![P::default(); MAX_PARTICLES],
-            obs: Vec::with_capacity(MAX_OBSTACLES),
             bolt: [Vector2 { x: 0.0, y: 0.0 }; 64],
             bolt_n: 0,
             bolt_age: 1.0,
@@ -271,6 +280,9 @@ impl Engine {
             next_met: 0.0,
             cursor: (0.0, 0.0),
             cursor_prev: (0.0, 0.0),
+            button_down: false,
+            button_prev: false,
+            emit_i: 0,
         };
         e.seed();
         e
@@ -315,46 +327,15 @@ impl Engine {
         self.seed();
     }
 
-    pub fn set_collision(&mut self, on: bool) {
-        self.collision = on;
-    }
-
     /// Cursor position in surface coordinates each tick.
     pub fn set_cursor(&mut self, x: f32, y: f32) {
         self.cursor = (x, y);
     }
 
-    /// Fresh obstacle list in surface coordinates (host translates).
-    /// Reuses `obs`'s capacity — tick-path callers must not allocate.
-    pub fn set_obstacles(&mut self, rects: &[(f32, f32, f32, f32)]) {
-        let n = rects.len().min(MAX_OBSTACLES);
-        // Frost survives while the same rect (within a few px) persists.
-        let old: [Ob; MAX_OBSTACLES] = {
-            let mut a = [Ob::default(); MAX_OBSTACLES];
-            a[..self.obs.len()].copy_from_slice(&self.obs);
-            a
-        };
-        self.obs.clear();
-        for r in &rects[..n] {
-            let mut ob = Ob {
-                l: r.0,
-                t: r.1,
-                r: r.2,
-                b: r.3,
-                frost: 0.0,
-            };
-            for o in &old {
-                if (o.l - ob.l).abs() < 4.0
-                    && (o.t - ob.t).abs() < 4.0
-                    && (o.r - ob.r).abs() < 4.0
-                    && (o.b - ob.b).abs() < 4.0
-                {
-                    ob.frost = o.frost;
-                    break;
-                }
-            }
-            self.obs.push(ob);
-        }
+    /// Primary mouse button state (async poll — the overlay is click-through
+    /// so it never sees WM_LBUTTON*).
+    pub fn set_button_down(&mut self, down: bool) {
+        self.button_down = down;
     }
 
     /// First-fill the pool so the effect starts fully formed.
@@ -371,7 +352,8 @@ impl Engine {
     }
 
     /// Live particle count for the current intensity — a per-effect base
-    /// scaled by the 10–100 % slider. `Aurora` draws ribbons, not particles.
+    /// scaled by the 10–100 % slider. `Aurora` and `CyberGridReveal` draw
+    /// procedural geometry, not particles.
     fn target_count(&self) -> usize {
         let base = match self.effect {
             Effect::Rain | Effect::Thunderstorm => 400,
@@ -380,11 +362,15 @@ impl Engine {
             Effect::Embers => 180,
             Effect::Sakura => 200,
             Effect::Mist => 8,
-            Effect::Aurora => 0,
+            Effect::Aurora | Effect::CyberGridReveal => 0,
             Effect::Starfield => 160,
             Effect::Matrix => 120,
             Effect::Ripples => 200,
             Effect::Constellation => 90,
+            Effect::MagicTrail => 260,
+            Effect::ShatterClicks => 220,
+            Effect::QuantumSwarm => 100,
+            Effect::RepulsionDust => MAX_PARTICLES,
         };
         ((base as f32 * self.intensity) as usize).min(MAX_PARTICLES)
     }
@@ -395,18 +381,22 @@ impl Engine {
         let mut p = P {
             x: self.range(0.0, w),
             y: 0.0,
-            ph: self.range(0.0, 6.283),
+            ph: self.range(0.0, std::f32::consts::TAU),
             fq: self.range(0.5, 2.5),
             life: 1.0,
             ..P::default()
         };
         match self.effect {
             Effect::Rain | Effect::Thunderstorm => {
-                p.y = if anywhere {
-                    self.range(0.0, h)
+                if anywhere {
+                    p.y = self.range(0.0, h);
+                    // Jittered grid: one drop per slot across the width — the
+                    // pure-uniform seed could leave visible bare bands.
+                    let n = self.target_count().max(1) as f32;
+                    p.x = (i as f32 + self.rnd()) * (w / n);
                 } else {
-                    self.range(-40.0, -8.0)
-                };
+                    p.y = self.range(-40.0, -8.0);
+                }
                 p.vy = self.range(520.0, 780.0);
                 p.vx = p.vy * 0.21; // ~12° slant
                 p.r = self.range(18.0, 35.0);
@@ -491,32 +481,52 @@ impl Engine {
                 p.vy = self.range(-7.0, 7.0);
                 p.r = self.range(1.2, 2.4);
             }
+            // Born at the cursor, not seeded — `life = 0` keeps slots dead
+            // until `tick_magic_trail`/`tick_shatter` claim them.
+            Effect::MagicTrail | Effect::ShatterClicks => {
+                p.life = 0.0;
+            }
+            Effect::QuantumSwarm => {
+                p.y = self.range(0.0, h);
+                p.vx = self.range(-26.0, 26.0);
+                p.vy = self.range(-26.0, 26.0);
+                p.r = self.range(1.6, 3.4);
+                p.fq = self.range(0.4, 1.3);
+                p.a = self.range(0.45, 0.9);
+                p.life = 1.0;
+            }
+            Effect::RepulsionDust => {
+                p.y = self.range(0.0, h);
+                p.vx = self.range(-6.0, 6.0);
+                p.vy = -self.range(4.0, 16.0); // ambient rise
+                p.r = self.range(0.7, 1.7);
+                p.a = self.range(0.08, 0.24);
+                p.fq = self.range(0.3, 1.4);
+                p.life = 1.0;
+            }
+            Effect::CyberGridReveal => {}
         }
         p
     }
 
     /// True while the effect has nothing animating — the host sleeps the
-    /// tick loop (ripples: cursor still + all rings faded).
+    /// tick loop. `wake_check` re-arms it on cursor motion / a button press.
     pub fn idle(&self) -> bool {
-        self.effect == Effect::Ripples
-            && self.cursor == self.cursor_prev
-            && self.ps[..self.target_count().min(self.ps.len())]
-                .iter()
-                .all(|p| p.life <= 0.0)
-    }
-
-    /// Obstacle index whose top edge the point rests on (snow settle test).
-    #[inline]
-    fn obstacle_index_at(&self, x: f32, y: f32) -> Option<usize> {
-        if !self.collision {
-            return None;
+        let still = self.cursor == self.cursor_prev;
+        let dead = self.ps[..self.target_count().min(self.ps.len())]
+            .iter()
+            .all(|p| p.life <= 0.0);
+        match self.effect {
+            Effect::Ripples => still && dead,
+            // Trail sparks and shards decay on their own once the burst ends.
+            Effect::MagicTrail => dead,
+            // A held button must keep the loop alive so the press-edge ticks.
+            Effect::ShatterClicks => dead && !self.button_down,
+            // The grid is static — a resting cursor means the same frame.
+            Effect::CyberGridReveal => still,
+            // Swarm and dust drift forever; everything else never sleeps.
+            _ => false,
         }
-        for (i, ob) in self.obs.iter().enumerate() {
-            if x >= ob.l && x <= ob.r && y >= ob.t - 2.0 && y <= ob.t + 8.0 {
-                return Some(i);
-            }
-        }
-        None
     }
 
     pub fn tick(&mut self, dt: f32) {
@@ -535,17 +545,35 @@ impl Engine {
             Effect::Matrix => self.tick_matrix(n, dt),
             Effect::Ripples => self.tick_ripples(n, dt),
             Effect::Constellation => self.tick_constellation(n, dt),
+            Effect::MagicTrail => self.tick_magic_trail(n, dt),
+            Effect::ShatterClicks => self.tick_shatter(n, dt),
+            Effect::QuantumSwarm => self.tick_swarm(n, dt),
+            Effect::CyberGridReveal => {}
+            Effect::RepulsionDust => self.tick_dust(n, dt),
         }
         if self.flash > 0.0 {
             self.flash = (self.flash - dt * 4.0).max(0.0);
         }
         if self.bolt_n > 0 {
             self.bolt_age += dt;
-            if self.bolt_age > 0.25 {
+            if self.bolt_age > 0.5 {
                 self.bolt_n = 0;
             }
         }
         self.cursor_prev = self.cursor;
+        self.button_prev = self.button_down;
+    }
+
+    /// Next reusable (dead) slot in `0..n`; the round-robin scan caps at `n`.
+    fn claim_dead_slot(&mut self, n: usize) -> Option<usize> {
+        for _ in 0..n {
+            let i = self.emit_i % n.max(1);
+            self.emit_i = (self.emit_i + 1) % n.max(1);
+            if self.ps[i].life <= 0.0 {
+                return Some(i);
+            }
+        }
+        None
     }
 
     fn respawn(&mut self, i: usize) {
@@ -554,71 +582,19 @@ impl Engine {
 
     fn tick_rain(&mut self, n: usize, dt: f32) {
         let h = self.h;
-        // The whole pool walks: splash droplets live in the dead tail past `n`.
-        for i in 0..MAX_PARTICLES {
-            let is_splash = self.ps[i].k >= 9.0;
-            if !is_splash && i >= n {
-                continue; // dead rain slot
-            }
-            let mut action = 0u8; // 0=keep, 1=respawn, 2=kill-in-place
-            {
-                let p = &mut self.ps[i];
-                if is_splash {
-                    // Splash droplet: ballistic arc, short life.
-                    p.life -= dt * 2.6;
-                    p.vy += 980.0 * dt;
-                    p.x += p.vx * dt;
-                    p.y += p.vy * dt;
-                    if p.life <= 0.0 {
-                        action = if i < n { 1 } else { 2 };
-                    }
-                } else {
-                    let prev_y = p.y;
-                    p.x += p.vx * dt;
-                    p.y += p.vy * dt;
-                    let (x, y) = (p.x, p.y);
-                    let hit = self
-                        .obs
-                        .iter()
-                        .find(|ob| x >= ob.l && x <= ob.r && prev_y <= ob.t && y >= ob.t)
-                        .map(|ob| ob.t);
-                    if let Some(top) = hit.filter(|_| self.collision) {
-                        // Recycle the drop; emit 2–3 micro-splash droplets into
-                        // the dead tail (they tick/draw as splash kind).
-                        for s in 0..3 {
-                            let slot = n + (i * 3 + s) % (MAX_PARTICLES - n).max(1);
-                            let (vx, vy, r, life) = (
-                                self.range(-90.0, 90.0),
-                                -self.range(60.0, 150.0),
-                                self.range(2.0, 4.0),
-                                self.range(0.25, 0.45),
-                            );
-                            let q = &mut self.ps[slot.min(MAX_PARTICLES - 1)];
-                            q.x = x;
-                            q.y = top - 1.0;
-                            q.vx = vx;
-                            q.vy = vy;
-                            q.r = r;
-                            q.a = 0.6;
-                            q.k = 9.0;
-                            q.life = life;
-                        }
-                        action = 1;
-                    } else if y > h + 40.0 || x > self.w + 40.0 {
-                        action = 1;
-                    }
-                }
-            }
-            match action {
-                1 => self.respawn(i),
-                2 => self.ps[i] = P::default(),
-                _ => {}
+        // Pure background fall — drops pass through fences and the clock.
+        for i in 0..n {
+            let p = &mut self.ps[i];
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            if p.y > h + 40.0 || p.x > self.w + 40.0 {
+                self.respawn(i);
             }
         }
         if self.effect == Effect::Thunderstorm {
             self.next_bolt -= dt;
             if self.next_bolt <= 0.0 {
-                self.next_bolt = self.range(6.0, 14.0);
+                self.next_bolt = self.range(5.0, 11.0);
                 self.strike_lightning();
             }
         }
@@ -677,13 +653,14 @@ impl Engine {
             self.bolt_n += 1;
         }
         self.bolt_age = 0.0;
-        self.flash = 0.09;
+        self.flash = 0.16;
     }
 
     fn tick_snow(&mut self, n: usize, dt: f32) {
         let h = self.h;
+        // Flakes drift down past every UI element — no settling on roofs.
         for i in 0..n {
-            let (mut settle_top, mut respawn) = (None, false);
+            let mut respawn = false;
             {
                 let p = &mut self.ps[i];
                 if p.life <= 0.5 {
@@ -695,27 +672,14 @@ impl Engine {
                     p.ph += dt * p.fq;
                     p.x += (p.vx + p.ph.sin() * 24.0) * dt;
                     p.y += p.vy * dt;
-                    let (x, y) = (p.x, p.y);
-                    if let Some(oi) = self.obstacle_index_at(x, y) {
-                        settle_top = Some((oi, self.obs[oi].t));
-                    } else if y > h + 12.0 {
+                    if p.y > h + 12.0 {
                         respawn = true;
                     }
                 }
             }
-            if let Some((oi, top)) = settle_top {
-                self.obs[oi].frost = (self.obs[oi].frost + 0.02).min(1.0);
-                let life = self.range(1.5, 3.0);
-                let p = &mut self.ps[i];
-                p.y = top - p.r;
-                p.life = life;
-                p.a = 0.9;
-            } else if respawn {
+            if respawn {
                 self.respawn(i);
             }
-        }
-        for ob in &mut self.obs {
-            ob.frost = (ob.frost - dt * 0.05).max(0.0);
         }
     }
 
@@ -759,34 +723,14 @@ impl Engine {
     fn tick_sakura(&mut self, n: usize, dt: f32) {
         let h = self.h;
         for i in 0..n {
-            let (mut glide, mut respawn) = (None, false);
+            let mut respawn = false;
             {
                 let p = &mut self.ps[i];
                 p.ph += dt * p.fq;
                 p.rot += p.vr * dt;
                 p.x += (p.vx + p.ph.sin() * 26.0) * dt;
                 p.y += p.vy * dt;
-                let (x, y) = (p.x, p.y);
-                if self.collision {
-                    glide = self
-                        .obs
-                        .iter()
-                        .find(|ob| x >= ob.l && x <= ob.r && y >= ob.t - 1.0 && y <= ob.t + 6.0)
-                        .map(|ob| ob.t);
-                }
-                if glide.is_none() && (y > h + 14.0 || x > self.w + 20.0) {
-                    respawn = true;
-                }
-            }
-            if let Some(top) = glide {
-                // Petals glide sideways off the edge instead of splashing.
-                let vx = self.range(40.0, 80.0);
-                let p = &mut self.ps[i];
-                p.y = top - 1.0;
-                p.vy = 0.0;
-                p.vx = p.vx.signum() * vx;
-                p.r *= 0.995;
-                if p.r < 1.5 {
+                if p.y > h + 14.0 || p.x > self.w + 20.0 {
                     respawn = true;
                 }
             }
@@ -854,17 +798,6 @@ impl Engine {
             {
                 let p = &mut self.ps[i];
                 p.y += p.vy * dt;
-                if self.collision
-                    && let Some(top) = self
-                        .obs
-                        .iter()
-                        .find(|ob| p.x >= ob.l && p.x <= ob.r && p.y >= ob.t - 4.0 && p.y <= ob.b)
-                        .map(|ob| ob.t)
-                {
-                    // The column slides off the obstacle's side edge.
-                    p.y = top - 4.0;
-                    p.x += if (i & 1) == 0 { -24.0 } else { 24.0 };
-                }
                 if p.y > h + p.f2 * 20.0 {
                     respawn = true;
                 }
@@ -931,6 +864,199 @@ impl Engine {
         }
     }
 
+    /// Neon trail: sparks born along the cursor segment (interpolated so fast
+    /// flicks never gap), then drag, shrink and fade out.
+    fn tick_magic_trail(&mut self, n: usize, dt: f32) {
+        let (cx, cy) = self.cursor;
+        let (px, py) = self.cursor_prev;
+        let dist = ((cx - px) * (cx - px) + (cy - py) * (cy - py)).sqrt();
+        // ~1 spark per 7 px travelled, capped per tick.
+        let emit = ((dist / 7.0) as usize + usize::from(dist > 1.0)).min(9);
+        for k in 0..emit {
+            let t = (k + 1) as f32 / emit as f32;
+            let (jx, jy) = (self.range(-2.0, 2.0), self.range(-2.0, 2.0));
+            let (vx, vy) = (self.range(-26.0, 26.0), self.range(-26.0, 26.0));
+            let (r, hue, span) = (self.range(1.8, 4.6), self.rnd(), self.range(0.75, 1.0));
+            let Some(i) = self.claim_dead_slot(n) else {
+                break;
+            };
+            let p = &mut self.ps[i];
+            p.x = px + (cx - px) * t + jx;
+            p.y = py + (cy - py) * t + jy;
+            p.vx = vx;
+            p.vy = vy;
+            p.r = r;
+            p.ph = hue; // 0 → cyan, 1 → violet
+            p.life = 1.0;
+            p.fq = span; // lifetime scale (seconds-ish)
+        }
+        let drag = (1.0 - 3.2 * dt).max(0.0);
+        for i in 0..n {
+            let p = &mut self.ps[i];
+            if p.life <= 0.0 {
+                continue;
+            }
+            p.life -= dt / (1.4 * p.fq).max(0.3);
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.vx *= drag;
+            p.vy *= drag;
+        }
+    }
+
+    /// Click shatter: on the press edge a burst of glass shards jumps out of
+    /// the cursor, spins, and falls under gravity.
+    fn tick_shatter(&mut self, n: usize, dt: f32) {
+        if self.button_down && !self.button_prev {
+            let (cx, cy) = self.cursor;
+            const BURST: usize = 18;
+            for _ in 0..BURST {
+                let ang = self.range(0.0, std::f32::consts::TAU);
+                let sp = self.range(150.0, 430.0);
+                let lift = self.range(60.0, 240.0);
+                let (rot, vr) = (
+                    self.range(0.0, std::f32::consts::TAU),
+                    self.range(-9.0, 9.0),
+                );
+                let (r, a, life) = (
+                    self.range(3.0, 9.0),
+                    self.range(0.35, 0.75),
+                    self.range(0.8, 1.4),
+                );
+                let Some(i) = self.claim_dead_slot(n) else {
+                    break;
+                };
+                let p = &mut self.ps[i];
+                p.x = cx;
+                p.y = cy;
+                p.vx = ang.cos() * sp;
+                p.vy = ang.sin() * sp - lift;
+                p.rot = rot;
+                p.vr = vr;
+                p.r = r;
+                p.a = a;
+                p.life = life;
+            }
+        }
+        for i in 0..n {
+            let p = &mut self.ps[i];
+            if p.life <= 0.0 {
+                continue;
+            }
+            p.life -= dt;
+            p.vy += 1350.0 * dt;
+            p.vx *= (1.0 - 0.5 * dt).max(0.0);
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.rot += p.vr * dt;
+        }
+    }
+
+    /// Magnetic swarm: aimless drifters inside a 300 px radius get pulled into
+    /// a vortex around a fast-moving cursor, then disperse.
+    fn tick_swarm(&mut self, n: usize, dt: f32) {
+        const RADIUS: f32 = 300.0;
+        let (cx, cy) = self.cursor;
+        let (px, py) = self.cursor_prev;
+        let cvx = (cx - px) / dt.max(0.001);
+        let cvy = (cy - py) / dt.max(0.001);
+        let cspeed = (cvx * cvx + cvy * cvy).sqrt();
+        // Only a moving cursor stirs the swarm; strength scales with speed.
+        let strength = (cspeed / 620.0).clamp(0.0, 1.4);
+        let damping = (1.0 - 4.2 * dt).max(0.0);
+        for i in 0..n {
+            let p = &mut self.ps[i];
+            p.ph += dt * p.fq;
+            // Ambient wander.
+            p.vx += p.ph.sin() * 11.0 * dt;
+            p.vy += (p.ph * 1.31).cos() * 11.0 * dt;
+            if strength > 0.02 {
+                let dx = cx - p.x;
+                let dy = cy - p.y;
+                let d2 = dx * dx + dy * dy;
+                if d2 < RADIUS * RADIUS && d2 > 16.0 {
+                    let d = d2.sqrt();
+                    let f = (1.0 - d / RADIUS) * strength;
+                    // Radial pull + perpendicular swirl = vortex.
+                    let pull = 1250.0 * f;
+                    let swirl = 1500.0 * f;
+                    p.vx += (dx / d * pull - dy / d * swirl) * dt;
+                    p.vy += (dy / d * pull + dx / d * swirl) * dt;
+                }
+            }
+            p.vx *= damping;
+            p.vy *= damping;
+            let sp2 = p.vx * p.vx + p.vy * p.vy;
+            if sp2 > 400.0 * 400.0 {
+                let s = 400.0 / sp2.sqrt();
+                p.vx *= s;
+                p.vy *= s;
+            }
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            if p.x < -12.0 {
+                p.x = self.w + 12.0;
+            } else if p.x > self.w + 12.0 {
+                p.x = -12.0;
+            }
+            if p.y < -12.0 {
+                p.y = self.h + 12.0;
+            } else if p.y > self.h + 12.0 {
+                p.y = -12.0;
+            }
+        }
+    }
+
+    /// Repulsion dust: motes rise gently; the cursor is a 150 px repulsive
+    /// sphere that pushes them aside smoothly.
+    fn tick_dust(&mut self, n: usize, dt: f32) {
+        const RADIUS: f32 = 150.0;
+        let (cx, cy) = self.cursor;
+        let damping = (1.0 - 2.6 * dt).max(0.0);
+        for i in 0..n {
+            let p = &mut self.ps[i];
+            p.ph += dt * p.fq;
+            let dx = p.x - cx;
+            let dy = p.y - cy;
+            let d2 = dx * dx + dy * dy;
+            if d2 < RADIUS * RADIUS && d2 > 4.0 {
+                let d = d2.sqrt();
+                let f = (1.0 - d / RADIUS).powi(2);
+                p.vx += dx / d * f * 2600.0 * dt;
+                p.vy += dy / d * f * 2600.0 * dt;
+                p.k = f; // draw-time flare channel
+            } else {
+                p.k *= (1.0 - 6.0 * dt).max(0.0);
+            }
+            // Wander + buoyancy, then drag so the push decays smoothly.
+            p.vx += p.ph.sin() * 5.0 * dt;
+            p.vy -= 9.0 * dt;
+            if p.vy < -30.0 {
+                p.vy = -30.0;
+            }
+            p.vx *= damping;
+            p.vy *= damping;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            let wrapped = p.y < -8.0;
+            if wrapped {
+                p.y = self.h + 8.0;
+            } else if p.y > self.h + 8.0 {
+                p.y = -8.0;
+            }
+            if p.x < -8.0 {
+                p.x = self.w + 8.0;
+            } else if p.x > self.w + 8.0 {
+                p.x = -8.0;
+            }
+            if wrapped {
+                // Re-enter from below at a fresh lane.
+                let nx = self.range(0.0, self.w);
+                self.ps[i].x = nx;
+            }
+        }
+    }
+
     /// Draw the frame into the panel session (surface already clipped to size).
     pub fn draw(&self, s: &DrawingSession<'_>, cache: &mut FxCache) -> Result<()> {
         s.clear(cf(0.0, 0.0, 0.0, 0.0));
@@ -946,6 +1072,11 @@ impl Engine {
             Effect::Matrix => self.draw_matrix(s, cache),
             Effect::Ripples => self.draw_ripples(s, cache),
             Effect::Constellation => self.draw_constellation(s, cache),
+            Effect::MagicTrail => self.draw_magic_trail(s, cache),
+            Effect::ShatterClicks => self.draw_shatter(s, cache),
+            Effect::QuantumSwarm => self.draw_swarm(s, cache),
+            Effect::CyberGridReveal => self.draw_grid_reveal(s, cache),
+            Effect::RepulsionDust => self.draw_dust(s, cache),
         }
         if self.flash > 0.0 {
             if let Some(b) = cache.pen(s) {
@@ -993,10 +1124,11 @@ impl Engine {
             }
         }
         if self.effect == Effect::Thunderstorm && self.bolt_n > 1 {
-            let fade = (1.0 - self.bolt_age / 0.25).clamp(0.0, 1.0);
-            let glow = s.create_solid_brush(cf(0.49, 0.83, 0.99, 0.25 * fade));
+            let fade = (1.0 - self.bolt_age / 0.5).clamp(0.0, 1.0);
+            let glow = s.create_solid_brush(cf(0.49, 0.83, 0.99, 0.30 * fade));
+            let halo = s.create_solid_brush(cf(0.75, 0.92, 1.0, 0.55 * fade));
             let core = s.create_solid_brush(cf(1.0, 1.0, 1.0, 0.95 * fade));
-            if let (Ok(glow), Ok(core)) = (glow, core) {
+            if let (Ok(glow), Ok(halo), Ok(core)) = (glow, halo, core) {
                 let mut open = false;
                 let mut prev = v2(0.0, 0.0);
                 for pt in &self.bolt[..self.bolt_n] {
@@ -1005,8 +1137,9 @@ impl Engine {
                         continue;
                     }
                     if open {
-                        s.draw_line(prev, *pt, &glow, 8.0);
-                        s.draw_line(prev, *pt, &core, 2.0);
+                        s.draw_line(prev, *pt, &glow, 10.0);
+                        s.draw_line(prev, *pt, &halo, 4.0);
+                        s.draw_line(prev, *pt, &core, 1.6);
                     }
                     prev = *pt;
                     open = true;
@@ -1017,12 +1150,6 @@ impl Engine {
 
     fn draw_snow(&self, s: &DrawingSession<'_>, cache: &mut FxCache) {
         let Some(b) = cache.pen(s) else { return };
-        for ob in &self.obs {
-            if ob.frost > 0.02 {
-                b.set_color(cf(0.9, 0.95, 1.0, 0.25 + ob.frost * 0.3));
-                s.fill_rect(&Rect::new(ob.l, ob.t - 1.0, ob.r, ob.t + ob.frost * 3.0), b);
-            }
-        }
         let n = self.target_count().min(self.ps.len());
         for i in 0..n {
             let p = &self.ps[i];
@@ -1044,6 +1171,10 @@ impl Engine {
         ) {
             return;
         }
+        // `with_transform` replaces the caller-visible transform — compose the
+        // session's base (DIP scale + panel offset) in or particles draw in raw
+        // pixels and crowd the top-left on scaled monitors.
+        let base = s.transform();
         let n = self.target_count().min(self.ps.len());
         for i in 0..n {
             let p = &self.ps[i];
@@ -1058,7 +1189,7 @@ impl Engine {
                 continue;
             }
             let g = &cache.glow_warm[bucket(a)];
-            let m = Matrix3x2::scale(r, r) * Matrix3x2::translation(p.x, p.y);
+            let m = Matrix3x2::scale(r, r) * Matrix3x2::translation(p.x, p.y) * base;
             s.with_transform(&m, || s.fill_ellipse(&ellipse(0.0, 0.0, 1.0, 1.0), g));
         }
     }
@@ -1075,6 +1206,7 @@ impl Engine {
         ) {
             return;
         }
+        let base = s.transform();
         let n = self.target_count().min(self.ps.len());
         for i in 0..n {
             let p = &self.ps[i];
@@ -1083,7 +1215,7 @@ impl Engine {
             let a = (life_t * flick).min(1.0);
             let r = p.r * (0.5 + life_t * 0.7);
             let g = &cache.glow_ember[bucket(a)];
-            let m = Matrix3x2::scale(r, r) * Matrix3x2::translation(p.x, p.y);
+            let m = Matrix3x2::scale(r, r) * Matrix3x2::translation(p.x, p.y) * base;
             s.with_transform(&m, || s.fill_ellipse(&ellipse(0.0, 0.0, 2.4, 2.4), g));
         }
     }
@@ -1099,13 +1231,15 @@ impl Engine {
         ) {
             return;
         }
+        let base = s.transform();
         let n = self.target_count().min(self.ps.len());
         for i in 0..n {
             let p = &self.ps[i];
             let squash = p.ph.cos().abs().max(0.15);
             let m = Matrix3x2::rotation(p.rot)
                 * Matrix3x2::scale(squash, 1.0)
-                * Matrix3x2::translation(p.x, p.y);
+                * Matrix3x2::translation(p.x, p.y)
+                * base;
             let g = &cache.petal[bucket(0.9)];
             s.with_transform(&m, || {
                 s.fill_ellipse(&ellipse(0.0, 0.0, p.r, p.r * 0.62), g)
@@ -1124,11 +1258,12 @@ impl Engine {
         ) {
             return;
         }
+        let base = s.transform();
         let n = self.target_count().min(self.ps.len());
         for i in 0..n {
             let p = &self.ps[i];
             let g = &cache.glow_mist[bucket(p.a)];
-            let m = Matrix3x2::scale(p.r, p.f2) * Matrix3x2::translation(p.x, p.y);
+            let m = Matrix3x2::scale(p.r, p.f2) * Matrix3x2::translation(p.x, p.y) * base;
             s.with_transform(&m, || s.fill_ellipse(&ellipse(0.0, 0.0, 1.0, 1.0), g));
         }
     }
@@ -1147,6 +1282,7 @@ impl Engine {
         ) {
             return;
         }
+        let base = s.transform();
         let (w, h) = (self.w, self.h);
         let step = 26.0f32;
         for band in 0..3 {
@@ -1158,7 +1294,7 @@ impl Engine {
             while x < w {
                 let t = self.t * (0.6 + band as f32 * 0.25);
                 let y = yb + amp * (x * 0.003 + t).sin() + amp * 0.5 * (x * 0.007 - t * 1.3).sin();
-                let m = Matrix3x2::scale(1.0, amp * 3.2) * Matrix3x2::translation(x, y);
+                let m = Matrix3x2::scale(1.0, amp * 3.2) * Matrix3x2::translation(x, y) * base;
                 s.with_transform(&m, || s.draw_line(v2(0.0, 0.0), v2(0.0, -1.0), g, step));
                 x += step;
             }
@@ -1321,6 +1457,136 @@ impl Engine {
             let p = &self.ps[i];
             let Some(b) = cache.pen(s) else { return };
             b.set_color(cf(0.8, 0.9, 1.0, 0.7));
+            s.fill_ellipse(&ellipse(p.x, p.y, p.r, p.r), b);
+        }
+    }
+
+    /// Neon sparks along the cursor path — hue slides cyan → violet per spark;
+    /// alpha is a fast fade-in / smooth fade-out envelope, radius shrinks.
+    fn draw_magic_trail(&self, s: &DrawingSession<'_>, cache: &mut FxCache) {
+        let n = self.target_count().min(self.ps.len());
+        let Some(b) = cache.pen(s) else { return };
+        for i in 0..n {
+            let p = &self.ps[i];
+            if p.life <= 0.0 {
+                continue;
+            }
+            let age = 1.0 - p.life;
+            let a = (age * 6.0).min(1.0) * p.life * 0.9;
+            let r = p.r * (0.35 + p.life * 0.65);
+            // cyan (0.3, 0.9, 1.0) → violet (0.72, 0.38, 1.0)
+            let t = p.ph;
+            b.set_color(cf(0.3 + (0.72 - 0.3) * t, 0.9 + (0.38 - 0.9) * t, 1.0, a));
+            s.fill_ellipse(&ellipse(p.x, p.y, r, r), b);
+        }
+    }
+
+    /// Glass shards: thin rotating triangles catching the light.
+    fn draw_shatter(&self, s: &DrawingSession<'_>, cache: &mut FxCache) {
+        let n = self.target_count().min(self.ps.len());
+        let base = s.transform();
+        for i in 0..n {
+            let p = &self.ps[i];
+            if p.life <= 0.0 {
+                continue;
+            }
+            let Some(b) = cache.pen(s) else { return };
+            let fade = (p.life / 1.4).clamp(0.0, 1.0);
+            b.set_color(cf(0.82, 0.94, 1.0, p.a * fade));
+            let r = p.r;
+            let m = Matrix3x2::rotation(p.rot) * Matrix3x2::translation(p.x, p.y) * base;
+            s.with_transform(&m, || {
+                s.draw_line(v2(-r, -r * 0.5), v2(r * 0.9, -r * 0.3), b, 1.1);
+                s.draw_line(v2(r * 0.9, -r * 0.3), v2(0.0, r), b, 1.1);
+                s.draw_line(v2(0.0, r), v2(-r, -r * 0.5), b, 1.1);
+            });
+        }
+    }
+
+    /// Magnetic swarm dots — they brighten as the vortex winds them inward.
+    fn draw_swarm(&self, s: &DrawingSession<'_>, cache: &mut FxCache) {
+        let n = self.target_count().min(self.ps.len());
+        let (cx, cy) = self.cursor;
+        let Some(b) = cache.pen(s) else { return };
+        for i in 0..n {
+            let p = &self.ps[i];
+            let dx = cx - p.x;
+            let dy = cy - p.y;
+            let d2 = dx * dx + dy * dy;
+            // Dots near the cursor glow hotter (vortex heat channel in `k`).
+            let near = if d2 < 300.0 * 300.0 {
+                1.0 - d2.sqrt() / 300.0
+            } else {
+                0.0
+            };
+            let a = (p.a * (0.55 + near * 1.2)).min(1.0);
+            b.set_color(cf(0.45 + near * 0.4, 0.75 + near * 0.2, 1.0, a));
+            let r = p.r * (1.0 + near * 0.9);
+            s.fill_ellipse(&ellipse(p.x, p.y, r, r), b);
+        }
+        // Faint capture-radius halo while the swarm is stirred — reads as the
+        // field the cursor carries; invisible when the pointer rests far away.
+        let speed2 = {
+            let dx = cx - self.cursor_prev.0;
+            let dy = cy - self.cursor_prev.1;
+            dx * dx + dy * dy
+        };
+        if speed2 > 4.0 {
+            b.set_color(cf(0.4, 0.75, 1.0, 0.10));
+            s.draw_ellipse(&ellipse(cx, cy, 300.0, 300.0), b, 1.0);
+            b.set_color(cf(0.5, 0.85, 1.0, 0.22));
+            s.draw_ellipse(&ellipse(cx, cy, 26.0, 26.0), b, 1.4);
+        }
+    }
+
+    /// Cyber grid reveal: a dot-matrix lattice exists everywhere but only the
+    /// 250 px soft mask around the cursor is lit.
+    fn draw_grid_reveal(&self, s: &DrawingSession<'_>, cache: &mut FxCache) {
+        const STEP: f32 = 44.0;
+        const MASK: f32 = 250.0;
+        let (cx, cy) = self.cursor;
+        let Some(b) = cache.pen(s) else { return };
+        // Scan only the mask's bounding box — the lattice is infinite but the
+        // visible cells are the ones within ~1.15 masks of the cursor.
+        let reach = MASK + STEP;
+        let x0 = (((cx - reach) / STEP).floor() as i32).max(0);
+        let x1 = (((cx + reach) / STEP).ceil() as i32).min((self.w / STEP) as i32 + 1);
+        let y0 = (((cy - reach) / STEP).floor() as i32).max(0);
+        let y1 = (((cy + reach) / STEP).ceil() as i32).min((self.h / STEP) as i32 + 1);
+        for gy in y0..y1 {
+            for gx in x0..x1 {
+                // Hex offset: alternate rows shift half a cell.
+                let x = gx as f32 * STEP + if gy & 1 == 1 { STEP * 0.5 } else { 0.0 };
+                let y = gy as f32 * STEP;
+                let dx = x - cx;
+                let dy = y - cy;
+                let d2 = dx * dx + dy * dy;
+                if d2 > MASK * MASK {
+                    continue;
+                }
+                let falloff = 1.0 - d2.sqrt() / MASK;
+                let a = falloff.powi(2) * 0.55;
+                if a < 0.015 {
+                    continue;
+                }
+                b.set_color(cf(0.35, 0.85, 1.0, a));
+                s.fill_ellipse(&ellipse(x, y, 1.7, 1.7), b);
+            }
+        }
+        // Soft mask edge — a whisper of a ring so the reveal has a boundary.
+        b.set_color(cf(0.35, 0.85, 1.0, 0.12));
+        s.draw_ellipse(&ellipse(cx, cy, MASK, MASK), b, 1.0);
+    }
+
+    /// Dust motes: ultra-small, faint, drifting up; `p.k` flares them where
+    /// the repulsion sphere just pushed through.
+    fn draw_dust(&self, s: &DrawingSession<'_>, cache: &mut FxCache) {
+        let n = self.target_count().min(self.ps.len());
+        let Some(b) = cache.pen(s) else { return };
+        for i in 0..n {
+            let p = &self.ps[i];
+            let a = (p.a + p.k * 0.5).min(0.85);
+            b.set_color(cf(0.85, 0.9, 1.0, a));
             s.fill_ellipse(&ellipse(p.x, p.y, p.r, p.r), b);
         }
     }

@@ -153,6 +153,10 @@ impl SettingsHost {
                             let h = msg::hi_i16(lparam);
                             if let Some(c) = state.borrow().comp.as_ref() {
                                 c.set_bounds(w, h);
+                                // Same as WM_MOVE: a resize-only change still
+                                // re-anchors the WebView2 input twin — skips
+                                // it and the twin lingers as a black rect.
+                                c.notify_parent_window_position_changed();
                                 c.post_json(&format!(
                                     "{{\"t\":\"wstate\",\"max\":{}}}",
                                     frameless::is_zoomed(hwnd)

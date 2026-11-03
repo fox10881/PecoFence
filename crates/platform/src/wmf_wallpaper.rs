@@ -32,9 +32,10 @@ use crate::wmf_bindings::{
     MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READER_ALL_STREAMS,
     MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED,
     MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR, MF_VERSION, MFCreateAttributes,
-    MFCreateDXGIDeviceManager, MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Video,
-    MFSTARTUP_NOSOCKET, MFShutdown, MFStartup, PROPVARIANT, SRCCOPY, SetParent, SetStretchBltMode,
-    StretchDIBits, VARTYPE, WICBitmapEncoderNoCache,
+    MFCreateDXGIDeviceManager, MFCreateMFByteStreamOnStream, MFCreateMediaType,
+    MFCreateSourceReaderFromByteStream, MFCreateSourceReaderFromURL, MFMediaType_Video,
+    MFSTARTUP_NOSOCKET, MFShutdown, MFStartup, PROPVARIANT, SHCreateMemStream, SRCCOPY, SetParent,
+    SetStretchBltMode, StretchDIBits, VARTYPE, WICBitmapEncoderNoCache,
 };
 use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
@@ -43,8 +44,6 @@ use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::time::{Duration, Instant};
 use windows_core::{Error, GUID, IUnknown, Interface, PCWSTR, Result};
 
-const WM_SPAWN_WORKER: u32 = 0x052C;
-const SMTO_NORMAL: u32 = 0x0000;
 const WM_PRINT: u32 = 0x0317;
 const WM_PRINTCLIENT: u32 = 0x0318;
 const SM_CXVIRTUALSCREEN: i32 = 78;
@@ -56,12 +55,19 @@ const RPC_E_CHANGED_MODE: i32 = 0x8001_0106u32 as i32;
 const THUMB_W: usize = 640;
 const THUMB_H: usize = 360;
 
+/// Window class of the desktop video window the player threads create.
+/// `live_wallpaper_still` matches on it: a `PrintWindow` against this
+/// `WS_EX_NOREDIRECTIONBITMAP`-style composition surface always comes back
+/// black, so the app sources its still from [`WmfWallpaperPlayer::latest_frame`]
+/// instead of screenshotting its own player.
+pub const VIDEO_WINDOW_CLASS: &str = "PecoFence.WmfWallpaper";
+
 // WMF GUIDs for source reader attributes and video subtypes.
-const MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING: GUID =
+pub(crate) const MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING: GUID =
     GUID::from_u128(0xfb394f3d_ccf1_42ee_bbb3_f9b845d5681d);
-const MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING: GUID =
+pub(crate) const MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING: GUID =
     GUID::from_u128(0xed812c83_b66e_4322_b50a_d201c90328ff);
-const MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS: GUID =
+pub(crate) const MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS: GUID =
     GUID::from_u128(0xa634a91c_822b_41b9_a494_4de4643612b0);
 const MF_READWRITE_DISABLE_CONVERTERS: GUID =
     GUID::from_u128(0x98d5b065_1374_4847_8d5d_31520fee7156);
@@ -69,10 +75,13 @@ const MF_LOW_LATENCY: GUID = GUID::from_u128(0x9c27891a_ed7a_40e1_88e8_b22727a02
 const MF_SOURCE_READER_D3D_MANAGER: GUID = GUID::from_u128(0xec822da2_e1e9_4b29_a0d8_563c719f5269);
 
 // FourCC-based WMF Video Format GUIDs: XXXXXXXX-0000-0010-8000-00AA00389B71
-const MF_VIDEO_FORMAT_RGB32: GUID = GUID::from_u128(0x00000016_0000_0010_8000_00aa00389b71);
+pub(crate) const MF_VIDEO_FORMAT_RGB32: GUID =
+    GUID::from_u128(0x00000016_0000_0010_8000_00aa00389b71);
 const MF_VIDEO_FORMAT_ARGB32: GUID = GUID::from_u128(0x00000015_0000_0010_8000_00aa00389b71);
-const MF_VIDEO_FORMAT_NV12: GUID = GUID::from_u128(0x3231564e_0000_0010_8000_00aa00389b71);
-const MF_VIDEO_FORMAT_H264: GUID = GUID::from_u128(0x34363248_0000_0010_8000_00aa00389b71);
+pub(crate) const MF_VIDEO_FORMAT_NV12: GUID =
+    GUID::from_u128(0x3231564e_0000_0010_8000_00aa00389b71);
+pub(crate) const MF_VIDEO_FORMAT_H264: GUID =
+    GUID::from_u128(0x34363248_0000_0010_8000_00aa00389b71);
 const MF_VIDEO_FORMAT_H264_LOWER: GUID = GUID::from_u128(0x34363268_0000_0010_8000_00aa00389b71);
 const MF_VIDEO_FORMAT_H264_ES: GUID = GUID::from_u128(0x3f40f4f0_5622_4ff8_b6d8_a17a584bee5e);
 const MF_VIDEO_FORMAT_AVC1: GUID = GUID::from_u128(0x31435641_0000_0010_8000_00aa00389b71);
@@ -80,12 +89,12 @@ const MF_VIDEO_FORMAT_AVC1_LOWER: GUID = GUID::from_u128(0x31637661_0000_0010_80
 
 /// Initializes COM on the current thread if not already initialized (tolerates STA threads
 /// where `CoInitializeEx(COINIT_MULTITHREADED)` returns `RPC_E_CHANGED_MODE`).
-struct ComThreadGuard {
+pub(crate) struct ComThreadGuard {
     uninit: bool,
 }
 
 impl ComThreadGuard {
-    fn init() -> Result<Self> {
+    pub(crate) fn init() -> Result<Self> {
         // SAFETY: plain FFI call; RPC_E_CHANGED_MODE means COM is already initialized as STA.
         let hr = unsafe {
             CoInitializeEx(
@@ -111,10 +120,10 @@ impl Drop for ComThreadGuard {
     }
 }
 
-struct MfSessionGuard;
+pub(crate) struct MfSessionGuard;
 
 impl MfSessionGuard {
-    fn init() -> Result<Self> {
+    pub(crate) fn init() -> Result<Self> {
         // SAFETY: standard Media Foundation startup; paired with MFShutdown in Drop.
         unsafe { MFStartup(MF_VERSION as u32, MFSTARTUP_NOSOCKET as u32).ok()? };
         Ok(Self)
@@ -138,7 +147,7 @@ pub struct VideoFrame {
     pub bgra: Vec<u8>,
 }
 
-fn is_h264_subtype(subtype: &GUID) -> bool {
+pub(crate) fn is_h264_subtype(subtype: &GUID) -> bool {
     *subtype == MF_VIDEO_FORMAT_H264
         || *subtype == MF_VIDEO_FORMAT_H264_LOWER
         || *subtype == MF_VIDEO_FORMAT_H264_ES
@@ -224,7 +233,7 @@ struct ReaderOpened {
 /// `IMFSourceReader` in the software-decode configuration (NV12 direct decode first, RGB32 via
 /// the video processor as a fallback). This path never installs a D3D manager — it exists for
 /// machines without a usable hardware D3D11 device or where the GPU pipeline failed to init.
-fn open_sw_reader(path: &Path) -> std::result::Result<ReaderOpened, String> {
+fn open_sw_reader(path: &Path, mem: Option<&[u8]>) -> std::result::Result<ReaderOpened, String> {
     tracing::debug!(path = %path.display(), "wmf: validating and opening MP4 file");
     if !path
         .extension()
@@ -241,15 +250,32 @@ fn open_sw_reader(path: &Path) -> std::result::Result<ReaderOpened, String> {
         .to_string_lossy()
         .trim_start_matches(r"\\?\")
         .to_string();
-    match try_open_reader(&clean_path, OutputKind::Nv12, None) {
+    match try_open_reader(&clean_path, OutputKind::Nv12, None, mem) {
         Ok(ok) => Ok(ok),
         Err(lean_err) => {
             tracing::debug!(
                 error = %lean_err,
                 "wmf: NV12 direct decode refused; retrying with the video processor (RGB32)"
             );
-            try_open_reader(&clean_path, OutputKind::Rgb32, None)
+            try_open_reader(&clean_path, OutputKind::Rgb32, None, mem)
         }
+    }
+}
+
+/// Source reader over an in-RAM copy of the video: `SHCreateMemStream` views
+/// the caller's buffer (no copy) → `MFCreateMFByteStreamOnStream` → reader.
+/// The buffer must outlive the reader; every intermediate object is released
+/// after the reader AddRefs through the chain. `Err` callers fall back to
+/// `MFCreateSourceReaderFromURL`.
+/// SAFETY: COM calls on live interfaces; `mem` bytes stay valid for the
+/// returned reader's life (the caller owns them for the whole playback loop).
+unsafe fn open_mem_reader(mem: &[u8], attrs: &IMFAttributes) -> Result<IMFSourceReader> {
+    unsafe {
+        let stream = SHCreateMemStream(mem.as_ptr(), mem.len() as u32)?;
+        let byte_stream = MFCreateMFByteStreamOnStream(windows_core::Interface::as_raw(&stream));
+        byte_stream.and_then(|bs| {
+            MFCreateSourceReaderFromByteStream(windows_core::Interface::as_raw(&bs), attrs)
+        })
     }
 }
 
@@ -257,6 +283,7 @@ fn try_open_reader(
     clean_path: &str,
     kind: OutputKind,
     d3d_manager: Option<&IMFDXGIDeviceManager>,
+    mem: Option<&[u8]>,
 ) -> std::result::Result<ReaderOpened, String> {
     let wide = to_wide(clean_path);
     // SAFETY: COM and Media Foundation calls on valid local buffers/interfaces.
@@ -289,10 +316,24 @@ fn try_open_reader(
             let _ = attrs.SetUINT32(&MF_READWRITE_DISABLE_CONVERTERS, 1);
         }
 
-        let reader = MFCreateSourceReaderFromURL(PCWSTR(wide.as_ptr()), &attrs).map_err(|e| {
-            tracing::error!(path = %clean_path, error = %e, "wmf: MFCreateSourceReaderFromURL failed");
-            format!("MFCreateSourceReaderFromURL: {e}")
-        })?;
+        let reader = match mem.and_then(|m| {
+            open_mem_reader(m, &attrs)
+                .map_err(|e| {
+                    tracing::warn!(
+                        path = %clean_path,
+                        error = %e,
+                        "wmf: in-memory reader failed; falling back to file URL"
+                    );
+                    e
+                })
+                .ok()
+        }) {
+            Some(r) => r,
+            None => MFCreateSourceReaderFromURL(PCWSTR(wide.as_ptr()), &attrs).map_err(|e| {
+                tracing::error!(path = %clean_path, error = %e, "wmf: MFCreateSourceReaderFromURL failed");
+                format!("MFCreateSourceReaderFromURL: {e}")
+            })?,
+        };
         let _ = reader.SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS as u32, false);
         reader
             .SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM as u32, true)
@@ -699,7 +740,7 @@ unsafe fn copy_strided_rows(
 pub fn decode_video_first_frame(path: &Path) -> std::result::Result<VideoFrame, String> {
     let _com = ComThreadGuard::init().map_err(|e| format!("COM init: {e}"))?;
     let _mf = MfSessionGuard::init().map_err(|e| format!("MFStartup: {e}"))?;
-    let opened = open_sw_reader(path)?;
+    let opened = open_sw_reader(path, None)?;
     let (mut w, mut h, mut stride, kind) =
         (opened.width, opened.height, opened.stride, opened.kind);
     let reader = &opened.reader;
@@ -820,110 +861,19 @@ unsafe fn attach_to_desktop_worker(
 ) -> std::result::Result<(HWND, i32, i32), String> {
     // SAFETY: standard Win32 window hierarchy calls on Progman / WorkerW and our own HWND.
     unsafe {
-        let progman = {
-            let p = FindWindowW(windows_core::w!("Progman"), PCWSTR::null());
-            if p.0.is_null() {
-                desktop::shell_window()
-            } else {
-                p
-            }
-        };
-        if progman.0.is_null() {
-            tracing::error!("wmf: Progman window not found");
-            return Err("Progman window not found".to_string());
-        }
-
         let vw = GetSystemMetrics(SM_CXVIRTUALSCREEN).max(1);
         let vh = GetSystemMetrics(SM_CYVIRTUALSCREEN).max(1);
 
-        // Locate SHELLDLL_DefView and WorkerW for both Modern (24H2+) and Legacy (<=23H2) shells.
-        // Enumerate BEFORE spawning: 0x052C creates a NEW WorkerW every time, so firing it
-        // on every wallpaper attach leaks zombie WorkerW windows (and their redirection
-        // surfaces) inside explorer.exe — the empty WorkerW from a previous attach is a
-        // perfectly good host and must be reused.
-        let find_hosts = |progman: HWND| -> (HWND, HWND, HWND) {
-            let def_under_progman = FindWindowExW(
-                Some(progman),
-                None,
-                windows_core::w!("SHELLDLL_DefView"),
-                PCWSTR::null(),
-            );
-            let worker_under_progman = FindWindowExW(
-                Some(progman),
-                None,
-                windows_core::w!("WorkerW"),
-                PCWSTR::null(),
-            );
-
-            let mut top_worker = HWND::default();
-            if def_under_progman.0.is_null() {
-                for top in desktop::top_level_windows() {
-                    let def = FindWindowExW(
-                        Some(top),
-                        None,
-                        windows_core::w!("SHELLDLL_DefView"),
-                        PCWSTR::null(),
-                    );
-                    if !def.0.is_null() {
-                        let w = FindWindowExW(
-                            None,
-                            Some(top),
-                            windows_core::w!("WorkerW"),
-                            PCWSTR::null(),
-                        );
-                        if !w.0.is_null() {
-                            top_worker = w;
-                            break;
-                        }
-                    }
-                }
-            }
-            (def_under_progman, worker_under_progman, top_worker)
+        // Resolve the desktop background layer — a WorkerW physically behind
+        // SHELLDLL_DefView — spawning it via 0x052C only when none exists.
+        // A WorkerW child can never see a click: the icon layer above it owns
+        // hit-testing, which is what restores native desktop interaction
+        // (right-click menus, drag-select) without hit-test tricks.
+        let Some(layer) = desktop::background_layer() else {
+            tracing::error!("wmf: desktop background layer not found");
+            return Err("desktop background layer not found".to_string());
         };
-
-        let (mut def_under_progman, mut worker_under_progman, mut top_worker) = find_hosts(progman);
-        let mut spawned = false;
-        if def_under_progman.0.is_null()
-            && worker_under_progman.0.is_null()
-            && top_worker.0.is_null()
-        {
-            // No usable host exists — spawn WorkerW behind the desktop icons via 0x052C.
-            let r1 = SendMessageTimeoutW(
-                progman,
-                WM_SPAWN_WORKER,
-                WPARAM(0xD),
-                LPARAM(1),
-                SMTO_NORMAL,
-                1000,
-                None,
-            );
-            let r2 = SendMessageTimeoutW(
-                progman,
-                WM_SPAWN_WORKER,
-                WPARAM(0),
-                LPARAM(0),
-                SMTO_NORMAL,
-                1000,
-                None,
-            );
-            spawned = true;
-            tracing::debug!(
-                spawn_r1 = r1.0,
-                spawn_r2 = r2.0,
-                "wmf: spawned WorkerW via 0x052C"
-            );
-            (def_under_progman, worker_under_progman, top_worker) = find_hosts(progman);
-        }
-
-        let host = if !top_worker.0.is_null() {
-            top_worker
-        } else if !def_under_progman.0.is_null() {
-            progman
-        } else if !worker_under_progman.0.is_null() {
-            worker_under_progman
-        } else {
-            progman
-        };
+        let (progman, def_under_progman, host) = (layer.progman, layer.def_view, layer.host);
 
         // Ensure WS_EX_LAYERED is armed before parenting so Windows 11 24H2+ Progman
         // (WS_EX_NOREDIRECTIONBITMAP) composites our child surface.
@@ -933,15 +883,24 @@ unsafe fn attach_to_desktop_worker(
             Some(crate::wmf_bindings::HWND(host.0)),
         );
         let style = (WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS) as isize;
-        let ex_style = (WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) as isize;
+        let ex_style =
+            (WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT) as isize;
         SetWindowLongPtrW(video_hwnd, GWL_STYLE, style);
         SetWindowLongPtrW(video_hwnd, GWL_EXSTYLE, ex_style);
         let lwa_ok = SetLayeredWindowAttributes(video_hwnd, COLORREF(0), 255, LWA_ALPHA as u32);
 
         let insert_after = if host == progman && !def_under_progman.0.is_null() {
+            // No-layer fallback (Progman): sit directly above the icon layer —
+            // the old behavior; WS_EX_TRANSPARENT + HTTRANSPARENT keep clicks
+            // passing through there.
             def_under_progman
         } else {
-            HWND_TOP
+            // Inside WorkerW the effects overlay must stay on top: tuck the
+            // video directly below an already-attached overlay sibling so a
+            // re-attach can never bury it.
+            let fx_class = to_wide(desktop::EFFECTS_OVERLAY_CLASS);
+            let fx = FindWindowExW(Some(host), None, PCWSTR(fx_class.as_ptr()), PCWSTR::null());
+            if !fx.0.is_null() { fx } else { HWND_TOP }
         };
         let swp_ok = SetWindowPos(
             video_hwnd,
@@ -957,12 +916,12 @@ unsafe fn attach_to_desktop_worker(
         tracing::info!(
             ?progman,
             ?def_under_progman,
-            ?worker_under_progman,
-            ?top_worker,
+            worker_under_progman = ?layer.worker_under_progman,
+            top_worker = ?layer.top_worker,
             ?host,
             ?video_hwnd,
             ?prev_parent,
-            spawned,
+            spawned = layer.spawned,
             lwa_ok = lwa_ok.as_bool(),
             swp_ok = swp_ok.as_bool(),
             vw,
@@ -1120,6 +1079,9 @@ unsafe extern "system" fn video_wnd_proc(
     // SAFETY: GWLP_USERDATA holds a valid pointer to `Mutex<SharedSurface>` while the window lives.
     unsafe {
         match msg {
+            // The video sits above SHELLDLL_DefView in the Progman child
+            // z-order — hit-test transparent or every desktop click dies here.
+            x if x == WM_NCHITTEST as u32 => LRESULT(-1), // HTTRANSPARENT
             x if x == WM_ERASEBKGND as u32 => LRESULT(1),
             x if x == WM_PAINT as u32 => {
                 let mut ps = PAINTSTRUCT::default();
@@ -1902,7 +1864,7 @@ unsafe fn create_video_window(
         };
         let _ = RegisterClassExW(&wc);
         let hwnd = CreateWindowExW(
-            (WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) as u32,
+            (WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT) as u32,
             PCWSTR(class_name.as_ptr()),
             windows_core::w!("PecoFence Video Wallpaper"),
             WS_POPUP,
@@ -1950,6 +1912,7 @@ unsafe fn detach_video_window(hwnd: HWND, host: HWND) {
 unsafe fn run_gpu_wallpaper(
     path: &Path,
     letterbox: bool,
+    mem: Option<&[u8]>,
     stop: &AtomicBool,
     wake: &(Mutex<()>, Condvar),
     latest_frame: &Mutex<Option<VideoFrame>>,
@@ -1962,7 +1925,7 @@ unsafe fn run_gpu_wallpaper(
         .to_string_lossy()
         .trim_start_matches(r"\\?\")
         .to_string();
-    let opened = try_open_reader(&clean_path, OutputKind::Nv12, Some(&manager))
+    let opened = try_open_reader(&clean_path, OutputKind::Nv12, Some(&manager), mem)
         .map_err(|e| format!("hardware reader: {e}"))?;
     let reader = opened.reader;
     let interval = opened.frame_interval;
@@ -1976,7 +1939,7 @@ unsafe fn run_gpu_wallpaper(
     let (first_buf, first_tex, first_slice) =
         unsafe { sample_texture(&first) }.map_err(|e| format!("first sample: {e}"))?;
 
-    let class_name = to_wide("PecoFence.WmfWallpaper");
+    let class_name = to_wide(VIDEO_WINDOW_CLASS);
     let hwnd = unsafe { create_video_window(&class_name, 0) }?;
     let (host, win_w, win_h) = match unsafe { attach_to_desktop_worker(hwnd) } {
         Ok(v) => v,
@@ -2447,6 +2410,43 @@ unsafe fn run_gpu_attached(
     }
 }
 
+/// Files up to this size play back from RAM — one sequential read at start
+/// instead of the source reader streaming scattered filesystem I/O for the
+/// whole session. Wallpapers are short loops; 256 MB covers even 4K60 files.
+const VIDEO_RAM_CACHE_MAX: u64 = 256 * 1024 * 1024;
+
+/// Reads `path` into RAM when it fits [`VIDEO_RAM_CACHE_MAX`]; `None` keeps
+/// the caller on the plain URL reader (oversized file or read failure).
+fn read_video_bytes(path: &Path) -> Option<Vec<u8>> {
+    let meta = std::fs::metadata(path).ok()?;
+    if meta.len() > VIDEO_RAM_CACHE_MAX {
+        tracing::info!(
+            path = %path.display(),
+            size_mb = meta.len() / (1024 * 1024),
+            "wmf: video too large for the RAM cache; streaming from disk"
+        );
+        return None;
+    }
+    match std::fs::read(path) {
+        Ok(bytes) => {
+            tracing::info!(
+                path = %path.display(),
+                size_mb = bytes.len() / (1024 * 1024),
+                "wmf: video cached in RAM; playback performs no disk I/O"
+            );
+            Some(bytes)
+        }
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "wmf: RAM cache read failed; streaming from disk"
+            );
+            None
+        }
+    }
+}
+
 fn run_player_thread(
     path: PathBuf,
     letterbox: bool,
@@ -2470,10 +2470,26 @@ fn run_player_thread(
         }
     };
 
+    // The whole file plays back through an in-RAM byte stream when it fits
+    // the cap — one sequential read up front instead of the source reader
+    // pulling scattered I/O off the filesystem for the whole session. An
+    // oversized or unreadable file keeps the plain URL reader.
+    let mem = read_video_bytes(&path);
+
     // Zero-copy GPU path first: DXVA decode → D3D11 video processor → DirectComposition
     // swap chain. Any failure (no D3D11 device, DXVA refused, DComp unavailable) falls
     // through to the software path below.
-    match unsafe { run_gpu_wallpaper(&path, letterbox, &stop, &wake, &latest_frame, &startup_tx) } {
+    match unsafe {
+        run_gpu_wallpaper(
+            &path,
+            letterbox,
+            mem.as_deref(),
+            &stop,
+            &wake,
+            &latest_frame,
+            &startup_tx,
+        )
+    } {
         Ok(()) => return,
         Err(e) => {
             tracing::warn!(
@@ -2483,7 +2499,7 @@ fn run_player_thread(
         }
     }
 
-    let opened = match open_sw_reader(&path) {
+    let opened = match open_sw_reader(&path, mem.as_deref()) {
         Ok(v) => v,
         Err(e) => {
             let _ = startup_tx.send(Err(e));
@@ -2518,7 +2534,7 @@ fn run_player_thread(
         return;
     }
 
-    let class_name = to_wide("PecoFence.WmfWallpaper");
+    let class_name = to_wide(VIDEO_WINDOW_CLASS);
     // SAFETY: Win32 window creation, WMF frame presentation, and cleanup.
     unsafe {
         let surface = Box::new(Mutex::new(SharedSurface {
@@ -2920,7 +2936,7 @@ mod tests {
         let _mf = MfSessionGuard::init().unwrap();
         eprintln!("commit after MFStartup: {:.1} MB", mb());
         {
-            let opened = open_sw_reader(path).unwrap();
+            let opened = open_sw_reader(path, None).unwrap();
             let opened_mb = mb();
             eprintln!(
                 "commit after open_sw_reader ({:?}): {opened_mb:.1} MB",
@@ -2965,8 +2981,8 @@ mod tests {
             return;
         };
         let clean = path.to_string_lossy().to_string();
-        let opened =
-            try_open_reader(&clean, OutputKind::Nv12, Some(&manager)).expect("hardware reader");
+        let opened = try_open_reader(&clean, OutputKind::Nv12, Some(&manager), None)
+            .expect("hardware reader");
         let reader = opened.reader;
         let mut dims_changed = false;
         // SAFETY: all objects live on this thread; the hidden window is destroyed at the end.
@@ -3012,7 +3028,7 @@ mod tests {
         }
         let _com = ComThreadGuard::init().unwrap();
         let _mf = MfSessionGuard::init().unwrap();
-        let opened = open_sw_reader(path).expect("software reader");
+        let opened = open_sw_reader(path, None).expect("software reader");
         let reader = &opened.reader;
         let mut dims_changed = false;
         let mut first_pts: Option<i64> = None;
@@ -3062,8 +3078,8 @@ mod tests {
             return;
         };
         let clean = path.to_string_lossy().to_string();
-        let opened =
-            try_open_reader(&clean, OutputKind::Nv12, Some(&manager)).expect("hardware reader");
+        let opened = try_open_reader(&clean, OutputKind::Nv12, Some(&manager), None)
+            .expect("hardware reader");
         eprintln!(
             "negotiated: {}x{} interval={:?} fps={}/{} kind={:?}",
             opened.width,
@@ -3133,7 +3149,7 @@ mod tests {
         // Second pass through the full GPU present path on a hidden window: measures the
         // presentation half of the pipeline (VP blit + flip-queue behaviour) that decode
         // timing alone cannot see.
-        let opened2 = try_open_reader(&clean, OutputKind::Nv12, Some(&manager))
+        let opened2 = try_open_reader(&clean, OutputKind::Nv12, Some(&manager), None)
             .expect("hardware reader (pass 2)");
         let reader2 = &opened2.reader;
         unsafe {

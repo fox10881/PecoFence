@@ -109,6 +109,7 @@ pub mod watcher;
 pub mod wide;
 pub mod window;
 pub mod winevent;
+pub mod wmf_transcode;
 pub mod wmf_wallpaper;
 
 pub use bindings::{HWND, POINT, RECT};

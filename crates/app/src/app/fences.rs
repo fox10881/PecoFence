@@ -158,7 +158,6 @@ impl App {
             }
         }
         self.refresh_desktop();
-        self.refresh_effect_obstacles();
         self.push_settings_state();
     }
 

@@ -253,10 +253,6 @@ pub struct Settings {
     /// Particle density 10–100 %; scales the live-particle count linearly.
     #[serde(default = "desktop_effect_intensity_default")]
     pub desktop_effect_intensity: u8,
-    /// Rain splashes, snow settling and petal glides against the top edges of
-    /// the fences and the clock widget.
-    #[serde(default = "default_true")]
-    pub desktop_effect_collision: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -376,7 +372,6 @@ impl Default for Settings {
             clock_adaptive_color: true,
             desktop_effect: "none".to_string(),
             desktop_effect_intensity: 50,
-            desktop_effect_collision: true,
         }
     }
 }

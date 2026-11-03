@@ -2007,6 +2007,23 @@ pub unsafe fn SHGetSetSettings(lpss: Option<*mut SHELLSTATEA>, dwmask: u32, bset
     }
 }
 #[inline]
+pub unsafe fn SHGetPathFromIDListW(
+    pidl: *const ITEMIDLIST,
+    pszpath: windows_core::PWSTR,
+) -> windows_core::BOOL {
+    windows_core::link!("shell32.dll" "system" fn SHGetPathFromIDListW(pidl : *const ITEMIDLIST, pszpath : windows_core::PWSTR) -> windows_core::BOOL);
+    unsafe { SHGetPathFromIDListW(pidl, pszpath) }
+}
+#[inline]
+pub unsafe fn SHCreateItemFromIDList(
+    pidl: *const ITEMIDLIST,
+    riid: *const windows_core::GUID,
+    ppv: *mut *mut core::ffi::c_void,
+) -> windows_core::HRESULT {
+    windows_core::link!("shell32.dll" "system" fn SHCreateItemFromIDList(pidl : *const ITEMIDLIST, riid : *const windows_core::GUID, ppv : *mut *mut core::ffi::c_void) -> windows_core::HRESULT);
+    unsafe { SHCreateItemFromIDList(pidl, riid, ppv) }
+}
+#[inline]
 pub unsafe fn SHParseDisplayName<P0, P1>(
     pszname: P0,
     pbc: P1,
@@ -3761,6 +3778,7 @@ pub const FileOperation: windows_core::GUID =
     windows_core::GUID::from_u128(0x3ad05575_8857_4850_9277_11b85bdb8e09);
 pub const FileSaveDialog: windows_core::GUID =
     windows_core::GUID::from_u128(0xc0b4e2f3_ba21_4773_8dba_335ec946eb8b);
+pub const GA_PARENT: i32 = 1;
 pub const GA_ROOT: i32 = 2;
 pub const GA_ROOTOWNER: i32 = 3;
 pub const GENERIC_READ: u32 = 2147483648;
@@ -15907,6 +15925,7 @@ pub struct SID_AND_ATTRIBUTES {
     pub Attributes: u32,
 }
 pub type SIGDN = i32;
+pub const SIGDN_DESKTOPABSOLUTEPARSING: SIGDN = -2147434496;
 pub const SIGDN_FILESYSPATH: SIGDN = -2147123200;
 pub const SIGDN_NORMALDISPLAY: SIGDN = 0;
 pub const SIGDN_PARENTRELATIVEEDITING: SIGDN = -2147282943;

@@ -264,6 +264,228 @@ pub fn resolve_icon_host(generation: Generation) -> Option<IconHost> {
     None
 }
 
+/// `0x052C` to `Progman` — the undocumented message that makes Explorer spawn
+/// a `WorkerW` behind the desktop icons (the classic wallpaper-injection
+/// trigger used by Rainmeter/Lively).
+const WM_SPAWN_WORKER: u32 = 0x052C;
+const SMTO_NORMAL: u32 = 0x0000;
+
+/// The `PecoFence.DesktopEffects` overlay's window class — kept here so the
+/// layer plumbing can find it as a sibling without importing the app crate.
+pub const EFFECTS_OVERLAY_CLASS: &str = "PecoFence.DesktopEffects";
+
+/// The window hosting the desktop background layer, physically below
+/// `SHELLDLL_DefView`: children `SetParent`-ed into it render behind the
+/// desktop icons and context menus and can never see a click.
+pub struct DesktopLayer {
+    /// What `SetParent` should target — `Progman` only when no `WorkerW`
+    /// exists at all (a last-resort fallback that keeps the old behavior).
+    pub host: HWND,
+    pub progman: HWND,
+    /// `SHELLDLL_DefView` when it is a direct `Progman` child (modern shell).
+    pub def_view: HWND,
+    /// `Progman`'s `WorkerW` child — the modern-shell background layer.
+    pub worker_under_progman: HWND,
+    /// The unhosted top-level `WorkerW` — legacy or `0x052C`-spawned layer.
+    pub top_worker: HWND,
+    /// True when this call created the layer via `0x052C`.
+    pub spawned: bool,
+}
+
+/// `(SHELLDLL_DefView under Progman, WorkerW under Progman, unhosted top-level WorkerW)`.
+fn probe_background_layer(progman: HWND) -> (HWND, HWND, HWND) {
+    // SAFETY: read-only window queries.
+    unsafe {
+        let def_under_progman = FindWindowExW(
+            Some(progman),
+            None,
+            windows_core::w!("SHELLDLL_DefView"),
+            PCWSTR::null(),
+        );
+        let worker_under_progman = FindWindowExW(
+            Some(progman),
+            None,
+            windows_core::w!("WorkerW"),
+            PCWSTR::null(),
+        );
+        let mut top_worker = HWND::default();
+        if worker_under_progman.0.is_null() {
+            // Legacy or spawned top-level layer: the `WorkerW` sibling that
+            // follows the `SHELLDLL_DefView` host in the z-order is unhosted —
+            // that one is the background layer.
+            for top in top_level_windows() {
+                if FindWindowExW(
+                    Some(top),
+                    None,
+                    windows_core::w!("SHELLDLL_DefView"),
+                    PCWSTR::null(),
+                )
+                .0
+                .is_null()
+                {
+                    continue;
+                }
+                let w = FindWindowExW(None, Some(top), windows_core::w!("WorkerW"), PCWSTR::null());
+                if !w.0.is_null() {
+                    top_worker = w;
+                    break;
+                }
+            }
+        }
+        (def_under_progman, worker_under_progman, top_worker)
+    }
+}
+
+/// Resolves the desktop background layer, spawning it via `0x052C` only when
+/// no `WorkerW` layer exists at all — `0x052C` creates a new `WorkerW` every
+/// time, so firing it on every attach would leak zombie windows (and their
+/// redirection surfaces) inside explorer.exe.
+pub fn background_layer() -> Option<DesktopLayer> {
+    // SAFETY: standard Win32 window hierarchy calls on shell windows.
+    unsafe {
+        let progman = {
+            let p = FindWindowW(windows_core::w!("Progman"), PCWSTR::null());
+            if p.0.is_null() { shell_window() } else { p }
+        };
+        if progman.0.is_null() {
+            return None;
+        }
+        let (mut def_view, mut worker_under_progman, mut top_worker) =
+            probe_background_layer(progman);
+        let mut spawned = false;
+        if worker_under_progman.0.is_null() && top_worker.0.is_null() {
+            // No background layer — have Explorer spawn one behind the icons.
+            let r1 = SendMessageTimeoutW(
+                progman,
+                WM_SPAWN_WORKER,
+                WPARAM(0xD),
+                LPARAM(1),
+                SMTO_NORMAL,
+                1000,
+                None,
+            );
+            let r2 = SendMessageTimeoutW(
+                progman,
+                WM_SPAWN_WORKER,
+                WPARAM(0),
+                LPARAM(0),
+                SMTO_NORMAL,
+                1000,
+                None,
+            );
+            spawned = true;
+            tracing::debug!(
+                spawn_r1 = r1.0,
+                spawn_r2 = r2.0,
+                "desktop: spawned WorkerW via 0x052C"
+            );
+            (def_view, worker_under_progman, top_worker) = probe_background_layer(progman);
+        }
+        // Prefer the real layer over Progman: parenting into Progman lands the
+        // window above `SHELLDLL_DefView`, which swallows desktop clicks.
+        let host = if !worker_under_progman.0.is_null() {
+            worker_under_progman
+        } else if !top_worker.0.is_null() {
+            top_worker
+        } else {
+            progman
+        };
+        Some(DesktopLayer {
+            host,
+            progman,
+            def_view,
+            worker_under_progman,
+            top_worker,
+            spawned,
+        })
+    }
+}
+
+/// `GetAncestor(GA_PARENT)` — the true reparented parent. `GetParent` is not
+/// usable here: on a `WS_POPUP` window it reads the *owner* slot, which stays
+/// null even after `SetParent` has moved the window into a foreign tree
+/// (`GA_PARENT` always reflects the real parent).
+pub fn parent_of(hwnd: HWND) -> HWND {
+    // SAFETY: plain FFI call.
+    unsafe { GetAncestor(hwnd, GA_PARENT as u32) }
+}
+
+/// True when `hwnd` was reparented into a foreign window — i.e. it lives in
+/// the desktop background layer, whose child z-order is the layer's business
+/// and must not be touched by top-level anchoring. `GA_ROOT != hwnd` is the
+/// test that survives `SetParent`'s popup/parent quirks: any window inside
+/// another window's tree has a root above itself.
+pub fn is_child(hwnd: HWND) -> bool {
+    root_ancestor(hwnd) != hwnd
+}
+
+/// Reparents `hwnd` into the desktop background layer, covering the screen
+/// rect `(vx, vy, w, h)` and sitting at the top of the layer's child z-order
+/// (above a video-wallpaper sibling, still below `SHELLDLL_DefView` — the
+/// icons own every click now). `WS_EX_TRANSPARENT` is OR-ed onto the ex-style
+/// as belt-and-braces. Returns the layer host, `None` when no shell window
+/// exists to attach to — the caller then keeps the window top-level, where
+/// `HTTRANSPARENT` hit-testing already makes it click-through.
+///
+/// SAFETY: `hwnd` must be a live window owned by the calling thread.
+pub unsafe fn attach_to_background_layer(
+    hwnd: HWND,
+    vx: i32,
+    vy: i32,
+    w: i32,
+    h: i32,
+) -> Option<HWND> {
+    // SAFETY: window-hierarchy calls on our own HWND and shell windows.
+    unsafe {
+        let layer = background_layer()?;
+        crate::wmf_bindings::SetParent(
+            crate::wmf_bindings::HWND(hwnd.0),
+            Some(crate::wmf_bindings::HWND(layer.host.0)),
+        );
+        if parent_of(hwnd) != layer.host {
+            let err = windows_core::Error::from_thread();
+            let actual = parent_of(hwnd);
+            tracing::warn!(
+                ?hwnd,
+                host = ?layer.host,
+                ?actual,
+                error = %err,
+                "desktop: reparent into background layer failed"
+            );
+            return None;
+        }
+        SetWindowLongPtrW(hwnd, GWL_STYLE, (WS_CHILD | WS_CLIPSIBLINGS) as isize);
+        SetWindowLongPtrW(
+            hwnd,
+            GWL_EXSTYLE,
+            (ex_style(hwnd) | WS_EX_TRANSPARENT as u32) as isize,
+        );
+        let mut wr = RECT::default();
+        let _ = GetWindowRect(layer.host, &mut wr);
+        let ok = SetWindowPos(
+            hwnd,
+            Some(HWND_TOP),
+            vx - wr.left,
+            vy - wr.top,
+            w,
+            h,
+            (SWP_NOACTIVATE | SWP_FRAMECHANGED) as u32,
+        );
+        tracing::info!(
+            ?hwnd,
+            host = ?layer.host,
+            spawned = layer.spawned,
+            ok = ok.as_bool(),
+            x = vx - wr.left,
+            y = vy - wr.top,
+            w,
+            h,
+            "desktop: surface attached to the WorkerW background layer"
+        );
+        Some(layer.host)
+    }
+}
+
 const ANCHOR_FLAGS: u32 = (SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER) as u32;
 
 /// A foreign window that can actually occlude the desktop. Minimized terminal

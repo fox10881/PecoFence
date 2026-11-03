@@ -16,7 +16,7 @@ use crate::webview_comp::CompWebview;
 use pecofence_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, RECT, frameless, monitors, msg};
+use pecofence_platform::{HWND, RECT, frameless, monitors, msg, tray};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use windows_core::Result;
@@ -24,6 +24,8 @@ use windows_core::Result;
 pub const CLOCK_CLASS: &str = "PecoFence.Clock";
 const CLOCK_HTML: &str = include_str!("../../../ui/clock.html");
 const I18N_JS: &str = include_str!("../../../ui/i18n.js");
+/// The widget's only context-menu entry (「تحديث」 = soft restart).
+const MENU_CLOCK_REFRESH: u32 = 1;
 
 /// First-spawn size in DIPs, centred on the primary work area.
 const DEFAULT_W_DIP: i32 = 380;
@@ -60,22 +62,7 @@ impl ClockHost {
 
         let (x, y, w, h) = match saved {
             Some([x, y, w, h]) if w > 0 && h > 0 => (x, y, w, h),
-            _ => {
-                let mons = monitors::enumerate();
-                let primary = mons.iter().find(|m| m.primary).or(mons.first());
-                let scale = primary.map(|m| m.scale()).unwrap_or(1.0);
-                let area = primary.map(|m| m.work_area).unwrap_or(RECT_FALLBACK);
-                let (w, h) = (
-                    (DEFAULT_W_DIP as f32 * scale) as i32,
-                    (DEFAULT_H_DIP as f32 * scale) as i32,
-                );
-                (
-                    area.left + (area.right - area.left - w) / 2,
-                    area.top + (area.bottom - area.top - h) / 2,
-                    w,
-                    h,
-                )
-            }
+            _ => default_bounds(),
         };
 
         let handler: MessageHandler = {
@@ -108,6 +95,11 @@ impl ClockHost {
                             let h = msg::hi_i16(lparam);
                             if let Some(c) = state.borrow().comp.as_ref() {
                                 c.set_bounds(w, h);
+                                // The WebView2 input twin re-anchors on both
+                                // move AND size — without this a resize-only
+                                // SetWindowPos strands it at the old rect as a
+                                // black frame.
+                                c.notify_parent_window_position_changed();
                             }
                             Some(0)
                         }
@@ -151,6 +143,28 @@ impl ClockHost {
                                 });
                             }
                             Some(1)
+                        }
+                        // The widget's only chrome: right-click shows a
+                        // single-item 「تحديث」 menu — the manual fail-safe
+                        // that soft-restarts a broken (opaque-black) WebView
+                        // surface. Interior hit-tests as HTCAPTION, so clicks
+                        // arrive as WM_NCRBUTTONUP; the keyboard menu key
+                        // arrives as WM_CONTEXTMENU (x=y=-1 → centre).
+                        msg::WM_CONTEXTMENU | msg::WM_NCRBUTTONUP => {
+                            let x = msg::lo_i16(lparam);
+                            let y = msg::hi_i16(lparam);
+                            let (x, y) = if (x, y) == (-1, -1) {
+                                let r = window::window_rect(hwnd);
+                                ((r.left + r.right) / 2, (r.top + r.bottom) / 2)
+                            } else {
+                                (x, y)
+                            };
+                            let menu = tray::PopupMenu::new();
+                            menu.item(MENU_CLOCK_REFRESH, "تحديث", false, false);
+                            if menu.show_context(hwnd, x, y) == MENU_CLOCK_REFRESH {
+                                queue.push(Command::RefreshClock);
+                            }
+                            Some(0)
                         }
                         msg::WM_DESTROY => {
                             let mut s = state.borrow_mut();
@@ -230,6 +244,18 @@ impl ClockHost {
         }
     }
 
+    /// Re-asserts the WebView's transparent surface + DComp attach after a
+    /// desktop composition-band rebuild — the in-place counterpart of the
+    /// soft restart (`CompWebview::rearm_transparency`).
+    pub fn rearm_transparency(&self) {
+        if let Some(c) = self.state.borrow().comp.as_ref() {
+            c.rearm_transparency(
+                window::dpi_of(self.window.hwnd()),
+                self.window.client_size(),
+            );
+        }
+    }
+
     /// Language switched while the widget is up: push a fresh
     /// `{t:"clockLocale", locale, translations}` so the page rebuilds its
     /// Intl formatters without recreating the window.
@@ -259,3 +285,23 @@ const RECT_FALLBACK: pecofence_platform::RECT = pecofence_platform::RECT {
     right: 1920,
     bottom: 1040,
 };
+
+/// First-spawn bounds: `DEFAULT_W_DIP × DEFAULT_H_DIP` scaled to the primary
+/// monitor's DPI and centred on its work area. Also used when a theme's
+/// `clockBounds` is absent so the widget returns to its default spot.
+pub fn default_bounds() -> (i32, i32, i32, i32) {
+    let mons = monitors::enumerate();
+    let primary = mons.iter().find(|m| m.primary).or(mons.first());
+    let scale = primary.map(|m| m.scale()).unwrap_or(1.0);
+    let area = primary.map(|m| m.work_area).unwrap_or(RECT_FALLBACK);
+    let (w, h) = (
+        (DEFAULT_W_DIP as f32 * scale) as i32,
+        (DEFAULT_H_DIP as f32 * scale) as i32,
+    );
+    (
+        area.left + (area.right - area.left - w) / 2,
+        area.top + (area.bottom - area.top - h) / 2,
+        w,
+        h,
+    )
+}

@@ -88,17 +88,46 @@ fn monitor_part(window: RECT, shot: &Image, monitor: RECT) -> Image {
     )
 }
 
+/// Our own video window: `PrintWindow` on its composition surface returns an
+/// all-black image anyway, so the still comes from the player's decoded frame.
+/// `frame` is resized to what `monitor_part` expects — the window rect at
+/// `CAPTURE_DOWNSCALE` — keeping multi-monitor crops correct.
+fn own_video_shot(hwnd: isize, frame: &Image) -> Option<(RECT, Image)> {
+    let rect = window::window_rect(HWND(hwnd as *mut core::ffi::c_void));
+    let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
+    if w <= 0 || h <= 0 {
+        return None;
+    }
+    let d = CAPTURE_DOWNSCALE as i32;
+    Some((
+        rect,
+        frame.resized(((w + d - 1) / d) as u32, ((h + d - 1) / d) as u32),
+    ))
+}
+
 /// On the worker: captures each monitor's target window (once per window, which may span
 /// monitors) and builds every monitor's backdrop image. A capture that failed or came back
 /// black leaves the recipe's previous capture.
-fn capture_and_build(work: Vec<(MonitorRecipe, Option<isize>)>) -> Result<Built> {
+fn capture_and_build(
+    work: Vec<(MonitorRecipe, Option<isize>)>,
+    own_video: Option<Arc<Image>>,
+) -> Result<Built> {
     let mut shots: Vec<(isize, Option<(RECT, Image)>)> = Vec::new();
     let mut built = Vec::new();
     for (mut recipe, target) in work {
         let mut captured = None;
         if let Some(hwnd) = target {
             if !shots.iter().any(|(h, _)| *h == hwnd) {
-                shots.push((hwnd, capture(hwnd)));
+                let shot = match &own_video {
+                    Some(frame)
+                        if desktop::class_name(HWND(hwnd as *mut core::ffi::c_void))
+                            == pecofence_platform::wmf_wallpaper::VIDEO_WINDOW_CLASS =>
+                    {
+                        own_video_shot(hwnd, frame)
+                    }
+                    _ => capture(hwnd),
+                };
+                shots.push((hwnd, shot));
             }
             let shot = shots.iter().find(|(h, _)| *h == hwnd);
             if let Some((_, Some((window, image)))) = shot {
@@ -257,6 +286,24 @@ impl App {
                 (recipe, target.map(|(_, hwnd)| *hwnd))
             })
             .collect();
+        // Our own video player counts as a live wallpaper (its window covers
+        // the desktop like any player's). `PrintWindow` on its composition
+        // surface only ever returns black — and allocates a full-screen DIB
+        // per try — so the still comes from the player's decoded frame slot.
+        let wants_own_video = targets.iter().any(|(_, hwnd)| {
+            desktop::class_name(HWND(*hwnd as *mut core::ffi::c_void))
+                == pecofence_platform::wmf_wallpaper::VIDEO_WINDOW_CLASS
+        });
+        let own_video = wants_own_video
+            .then(|| self.wmf_player.as_ref().and_then(|p| p.latest_frame()))
+            .flatten()
+            .map(|f| {
+                Arc::new(Image {
+                    width: f.width,
+                    height: f.height,
+                    bgra: f.bgra,
+                })
+            });
         let result = Arc::new(Mutex::new(None));
         let spawned = {
             let result = result.clone();
@@ -265,7 +312,7 @@ impl App {
                 .name("pecofence-live-wallpaper".into())
                 .spawn(move || {
                     let built = pecofence_platform::com::MtaGuard::init()
-                        .and_then(|_com| capture_and_build(work))
+                        .and_then(|_com| capture_and_build(work, own_video))
                         .map_err(|error| error.to_string());
                     if let Ok(mut slot) = result.lock() {
                         *slot = Some(built);

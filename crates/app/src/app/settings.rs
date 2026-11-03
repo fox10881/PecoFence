@@ -190,6 +190,38 @@ pub(super) struct VideoSwap {
     >,
 }
 
+/// A `wmf_transcode::transcode_for_display` run in flight on a worker.
+/// `poll_video_transcode` flips `video_wallpaper_path` to the optimized file
+/// when it lands — while a transcode is pending, `sync_video_wallpaper` and
+/// `ensure_video_wallpaper` hold off starting the player entirely.
+pub(super) struct VideoTranscode {
+    epoch: u64,
+    /// The original pick — `video_wallpaper_path` holds it until the optimized
+    /// file lands.
+    src: PathBuf,
+    toast: bool,
+    rx: std::sync::mpsc::Receiver<std::result::Result<Option<PathBuf>, String>>,
+}
+
+/// Worker-side transcode: decodes, scales to `target` physical px, re-encodes
+/// H.264 into `cache_dir`. `Ok(None)` = source already compliant; `Ok(Some)` =
+/// the optimized file; `Err` = caller falls back to the source.
+fn spawn_video_transcode(
+    src: PathBuf,
+    cache_dir: PathBuf,
+    target: (u32, u32),
+) -> std::sync::mpsc::Receiver<std::result::Result<Option<PathBuf>, String>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = std::thread::Builder::new()
+        .name("pecofence-video-transcode".into())
+        .spawn(move || {
+            let _ = tx.send(pecofence_platform::wmf_transcode::transcode_for_display(
+                &src, &cache_dir, target.0, target.1,
+            ));
+        });
+    rx
+}
+
 /// Stops a player off the UI thread (stop+join ≈70 ms), serialized with swap
 /// workers so a teardown never races the next pipeline's allocation.
 fn reap_video_player(player: pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer) {
@@ -291,6 +323,13 @@ impl App {
         self.sync_video_wallpaper();
         self.apply_icon_variant();
         self.refresh_visuals(true);
+        // A theme apply rebuilds the desktop's composition band (wallpaper
+        // swap, effects re-open) — the WebView's companion surface can lose
+        // its alpha to that churn and paint the widget opaque black. The
+        // fail-safe soft restart respawns it transparent at its live rect.
+        if matches!(source, ConfigSource::Theme | ConfigSource::Retune) {
+            self.soft_restart_clock();
+        }
         self.state.save_if_dirty();
         self.push_settings_state();
         self.settings_toast(source.done());
@@ -436,11 +475,13 @@ impl App {
                 h.close();
             }
             window::kill_timer(self.control.hwnd(), super::TIMER_CLOCK_PROBE);
-            self.refresh_effect_obstacles();
             return;
         }
         if let Some(h) = &self.clock {
             h.post_json(&serde_json::json!({ "t": "clockStyle", "style": s }).to_string());
+            // Re-assert the transparent surface — cheap insurance for the
+            // alpha-loss case the soft restart also covers.
+            h.rearm_transparency();
             self.probe_clock_backdrop();
             return;
         }
@@ -459,10 +500,28 @@ impl App {
                 // Probe cadence lives for as long as the widget does;
                 // `clockReady` fires the first sample once the page listens.
                 window::set_timer(self.control.hwnd(), super::TIMER_CLOCK_PROBE, 2_500);
-                self.refresh_effect_obstacles();
             }
             Err(e) => tracing::error!(error = %e, "clock widget failed"),
         }
+    }
+
+    /// Soft restart for the widget: destroys it and respawns at its *live*
+    /// rect — the window's own rect, not the config's, so a restart mid-drag
+    /// still lands it exactly where it was. The `.peco` theme-apply fail-safe
+    /// and the widget's 「تحديث」 context menu both run this; the fresh page's
+    /// `clockReady` re-arms the persisted style, locale, and backdrop probe.
+    pub(super) fn soft_restart_clock(&mut self) {
+        let Some(h) = self.clock.take() else {
+            return;
+        };
+        let r = window::window_rect(h.hwnd());
+        let live = [r.left, r.top, r.right - r.left, r.bottom - r.top];
+        if live[2] > 0 && live[3] > 0 {
+            self.state.config.settings.clock_bounds = Some(live);
+        }
+        h.close();
+        let style = self.state.config.settings.clock_style.clone();
+        self.apply_clock_style(&style);
     }
 
     /// Native desktop particle/weather overlay. `"none"` tears the overlay
@@ -475,11 +534,7 @@ impl App {
             return;
         };
         let before = host.hwnd();
-        host.apply(
-            &s.desktop_effect,
-            s.desktop_effect_intensity as f32 / 100.0,
-            s.desktop_effect_collision,
-        );
+        host.apply(&s.desktop_effect, s.desktop_effect_intensity as f32 / 100.0);
         let after = host.hwnd();
         if before == after {
             return;
@@ -493,19 +548,6 @@ impl App {
             }
             a.reanchor("desktop effects changed");
         }
-    }
-
-    /// Fence + clock HWNDs the effects overlay collides against; polled via
-    /// `GetWindowRect` each frame so moves/hides need no further wiring.
-    pub(super) fn refresh_effect_obstacles(&mut self) {
-        let Some(host) = &self.effects else {
-            return;
-        };
-        let mut hwnds: Vec<HWND> = self.fences.values().map(|w| w.hwnd()).collect();
-        if let Some(c) = &self.clock {
-            hwnds.push(c.hwnd());
-        }
-        host.set_obstacle_windows(hwnds);
     }
 
     /// Adaptive backdrop contrast: spawns the off-thread sampler for the
@@ -1444,12 +1486,28 @@ impl App {
                 ));
             }
         }
+        // Clock bounds ride `.peco` themes: adopt them before the style diff
+        // so a fresh `ClockHost::open` spawns at the themed spot (state still
+        // holds `old` during this diff — `apply_clock_style` reads it).
+        self.state.config.settings.clock_bounds = new.clock_bounds;
         if new.clock_style != old.clock_style {
             self.apply_clock_style(&new.clock_style);
         }
+        if new.clock_bounds != old.clock_bounds {
+            // A live widget is moved in place; a theme without bounds returns
+            // it to the default centred spot. Closed widgets pick bounds up
+            // on their next open via the state write above.
+            if let Some(h) = &self.clock {
+                let (x, y, w, hh) = new
+                    .clock_bounds
+                    .map(|[x, y, w, h]| (x, y, w, h))
+                    .unwrap_or_else(crate::clock_host::default_bounds);
+                let _ = window::set_window_bounds(h.hwnd(), x, y, w, hh);
+                self.probe_clock_backdrop();
+            }
+        }
         if new.desktop_effect != old.desktop_effect
             || new.desktop_effect_intensity != old.desktop_effect_intensity
-            || new.desktop_effect_collision != old.desktop_effect_collision
         {
             self.apply_desktop_effect(&new);
         }
@@ -1603,7 +1661,13 @@ impl App {
     /// and `start`'s first-frame wait are seconds-class calls the UI thread
     /// never pays for; `poll_video_swap` installs the result when it lands.
     pub(super) fn sync_video_wallpaper(&mut self) {
+        self.poll_video_transcode();
         self.poll_video_swap();
+        // A pick's transcode is still running — nothing plays until it lands
+        // and `video_wallpaper_path` flips to the optimized file.
+        if self.video_transcode.is_some() {
+            return;
+        }
         let wanted = self
             .state
             .config
@@ -1660,6 +1724,8 @@ impl App {
     fn invalidate_video_swap(&mut self) {
         VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst);
         self.video_swap = None;
+        self.video_transcode = None;
+        self.pending_video_toast = false;
     }
 
     /// Installs a finished swap when it still matches the config. Runs off the
@@ -1689,7 +1755,7 @@ impl App {
                     if swap.reattach {
                         tracing::info!("wmf video wallpaper re-attached after desktop restart");
                     }
-                    if swap.toast {
+                    if swap.toast || std::mem::take(&mut self.pending_video_toast) {
                         self.settings_toast(pecofence_core::i18n::text("已将视频设为桌面壁纸"));
                     }
                 } else {
@@ -1714,6 +1780,57 @@ impl App {
         }
     }
 
+    /// Installs a finished transcode: flips `video_wallpaper_path` to the
+    /// optimized file when the pick it was made for is still the configured
+    /// one. `Ok(None)` (source already lean) and `Err` both leave the path on
+    /// the source — the swap pipeline plays it untouched either way, so the
+    /// toast rides along through `pending_video_toast`.
+    pub(super) fn poll_video_transcode(&mut self) {
+        let Some(t) = &self.video_transcode else {
+            return;
+        };
+        match t.rx.try_recv() {
+            Ok(res) => {
+                let t = self.video_transcode.take().unwrap();
+                let fresh = VIDEO_SWAP_EPOCH.load(Ordering::SeqCst) == t.epoch
+                    && self
+                        .state
+                        .config
+                        .settings
+                        .video_wallpaper_path
+                        .as_deref()
+                        .map(PathBuf::from)
+                        == Some(t.src.clone());
+                match res {
+                    Ok(Some(optimized)) if fresh => {
+                        self.state.config.settings.video_wallpaper_path =
+                            Some(optimized.to_string_lossy().into_owned());
+                        self.settings_mutated();
+                        if t.toast {
+                            self.pending_video_toast = true;
+                        }
+                    }
+                    Ok(Some(_)) => {} // superseded pick — named cache file stays for reuse
+                    Ok(None) => {
+                        if t.toast {
+                            self.pending_video_toast = true;
+                        }
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "video transcode failed; playing source as-is");
+                        if fresh && t.toast {
+                            self.pending_video_toast = true;
+                        }
+                    }
+                }
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.video_transcode = None;
+            }
+        }
+    }
+
     /// Self-heal for the desktop video wallpaper: an Explorer restart destroys the
     /// WorkerW/Progman layer the video window is parented to, so the player thread
     /// exits while `video_wallpaper_path` still names the file. When the shell is
@@ -1723,7 +1840,12 @@ impl App {
     /// recovers without a settings round-trip. Failures stay quiet: a shell that
     /// is mid-boot retries on the next poll.
     pub(super) fn ensure_video_wallpaper(&mut self) {
+        self.poll_video_transcode();
         self.poll_video_swap();
+        // Transcode in flight — the player starts once the path flips.
+        if self.video_transcode.is_some() {
+            return;
+        }
         let Some(path_str) = self
             .state
             .config
@@ -1830,6 +1952,16 @@ impl App {
             );
             return;
         }
+        if pecofence_platform::wallpaper::slideshow_active() {
+            // A running Windows slideshow broadcasts SETDESKWALLPAPER on every
+            // rotation — a new path/mtime that is not a user apply. Picking a
+            // single picture exits slideshow mode, so real applies still land.
+            tracing::debug!(
+                wallpaper = ?now,
+                "wallpaper signal differs but a slideshow is running; keeping video"
+            );
+            return;
+        }
         if pecofence_platform::wallpaper::desktops_differ() {
             tracing::debug!(
                 applied = ?now,
@@ -1920,6 +2052,14 @@ impl App {
             );
             return;
         }
+        if pecofence_platform::wallpaper::slideshow_active() {
+            // Slideshow rotation, not a user apply — see `on_wallpaper_changed`.
+            tracing::debug!(
+                applied = %now.0.display(),
+                "static wallpaper differs but a slideshow is running; keeping video"
+            );
+            return;
+        }
         if pecofence_platform::wallpaper::desktops_differ() {
             tracing::debug!(
                 applied = %now.0.display(),
@@ -1962,6 +2102,10 @@ impl App {
         let letterbox = self.contain_background();
         // The same pick is already in flight (e.g. a theme apply racing a user
         // pick) — keep it and make sure its completion toasts.
+        if let Some(t) = self.video_transcode.as_mut().filter(|t| t.src == path) {
+            t.toast = true;
+            return;
+        }
         if let Some(s) = self
             .video_swap
             .as_mut()
@@ -1975,16 +2119,45 @@ impl App {
             reap_video_player(p);
         }
         self.static_under_video = None;
+        // The config holds the original until the optimized file lands —
+        // `poll_video_transcode` flips it, and the swap pipeline starts the
+        // player from there. `.peco` exports therefore always bundle the
+        // downscaled asset, never the 4K source.
         self.state.config.settings.video_wallpaper_path = Some(path.to_string_lossy().into_owned());
         self.settings_mutated();
         let epoch = VIDEO_SWAP_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
-        self.video_swap = Some(VideoSwap {
+        let Some(dir) = self
+            .state
+            .config_path()
+            .parent()
+            .map(|p| p.join("imported_wallpapers"))
+        else {
+            // No cache dir to hold an optimized asset — play the source as before.
+            self.video_swap = Some(VideoSwap {
+                epoch,
+                path: path.to_path_buf(),
+                letterbox,
+                reattach: false,
+                toast: true,
+                rx: spawn_video_swap(None, path.to_path_buf(), letterbox, epoch),
+            });
+            return;
+        };
+        // The largest connected display's physical pixels — transcoding to
+        // any bigger frame would only inflate the bundle.
+        let (tw, th) = self
+            .state
+            .work_areas
+            .iter()
+            .map(|a| a.screen_px())
+            .map(|[w, h]| (w.max(0) as u32, h.max(0) as u32))
+            .max_by_key(|(w, h)| w * h)
+            .unwrap_or((1920, 1080));
+        self.video_transcode = Some(VideoTranscode {
             epoch,
-            path: path.to_path_buf(),
-            letterbox,
-            reattach: false,
+            src: path.to_path_buf(),
             toast: true,
-            rx: spawn_video_swap(None, path.to_path_buf(), letterbox, epoch),
+            rx: spawn_video_transcode(path.to_path_buf(), dir, (tw, th)),
         });
     }
 

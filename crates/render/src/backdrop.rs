@@ -179,6 +179,31 @@ impl Image {
         }
     }
 
+    /// A bilinear resample to exactly `width` x `height` — upscales or
+    /// downscales. `crop`/`downscale_*` only shrink; the live-wallpaper path
+    /// needs a decoded frame sized to its window's scaled rect.
+    pub fn resized(&self, width: u32, height: u32) -> Image {
+        let (width, height) = (width.max(1), height.max(1));
+        if width == self.width && height == self.height {
+            return self.clone();
+        }
+        let mut bgra = Vec::with_capacity((width * height * 4) as usize);
+        let sx_step = self.width as f32 / width as f32;
+        let sy_step = self.height as f32 / height as f32;
+        for y in 0..height {
+            let sy = (y as f32 + 0.5) * sy_step - 0.5;
+            for x in 0..width {
+                let sx = (x as f32 + 0.5) * sx_step - 0.5;
+                bgra.extend_from_slice(&self.sample(sx, sy));
+            }
+        }
+        Image {
+            width,
+            height,
+            bgra,
+        }
+    }
+
     /// Averages each `factor` x `factor` block (edge blocks may be partial).
     pub fn downscale_box(&self, factor: u32) -> Image {
         Self::downscale_pixels(&self.bgra, self.width, self.height, factor)

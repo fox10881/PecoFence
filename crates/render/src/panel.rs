@@ -249,3 +249,23 @@ impl Panel {
         draw_result.map(|()| true)
     }
 }
+
+impl Drop for Panel {
+    /// `resize` retires a surface whose last update is still waiting for its
+    /// commit batch; a *dropped* panel needs the same treatment. Throwing the
+    /// surface away while the update pends makes DirectComposition keep that
+    /// update's GPU memory for as long as the graphics device lives — one
+    /// surface's worth per desktop-effects switch at virtual-screen size.
+    /// Parking it in `RETIRED` lets the update commit normally; the next
+    /// `release_retired_surfaces` frees it.
+    fn drop(&mut self) {
+        let pending = self
+            .drawn_in
+            .get_mut()
+            .take()
+            .filter(|batch| !batch.IsEnded().unwrap_or(true));
+        if let Some(batch) = pending {
+            RETIRED.with(|r| r.borrow_mut().push((self.surface.clone(), batch)));
+        }
+    }
+}

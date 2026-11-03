@@ -414,6 +414,22 @@ pub fn query() -> Result<WallpaperSnapshot> {
     }
 }
 
+/// `IDesktopWallpaper::GetStatus` → `DSS_SLIDESHOW`: the desktop is cycling a
+/// configured slideshow right now. A `SPI_SETDESKWALLPAPER` broadcast fired by
+/// a rotation reports a *new* image path, indistinguishable from a user apply
+/// at the message level — this flag is the discriminator. A user picking a
+/// single picture drops the slideshow state entirely, so genuine applies
+/// still read `false`. COM failures err on `false` (a cautious caller keeps
+/// current behaviour on an unanswerable query).
+pub fn slideshow_active() -> bool {
+    /// `DESKTOP_SLIDESHOW_STATE` bit: a slideshow is running.
+    const DSS_SLIDESHOW: u32 = 0x4;
+    let dw: std::result::Result<IDesktopWallpaper, _> =
+        unsafe { CoCreateInstance(&DesktopWallpaper, None, CLSCTX_ALL as u32) };
+    dw.and_then(|dw| unsafe { dw.GetStatus() })
+        .is_ok_and(|state| state & DSS_SLIDESHOW != 0)
+}
+
 /// `IDesktopWallpaper::SetWallpaper` for one monitor — Explorer's own per-monitor route;
 /// it does not broadcast `SPI_SETDESKWALLPAPER`. `monitor_id` is the `\\?\DISPLAY#…`
 /// device path a [`query`] snapshot reports.

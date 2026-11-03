@@ -458,8 +458,6 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
           <select id="desktopEffectSel" data-bind="desktopEffect" data-str></select></div>
         <div class="card child"><div class="l"><div><div class="t">效果强度</div><div class="s">粒子数量密度，10% – 100%</div></div></div>
           <div class="sliderctl"><input type="range" id="desktopEffectIntensity" min="10" max="100" step="5"><span class="sliderval" id="desktopEffectIntensityVal"></span></div></div>
-        <div class="card child"><div class="l"><div><div class="t">与栅栏和时钟碰撞</div><div class="s">雨滴溅散、雪花堆积、花瓣滑落 — 粒子撞上栅栏与时钟上沿时产生物理反馈</div></div></div>
-          <div class="toggle" role="switch" tabindex="0" data-bind="desktopEffectCollision"></div></div>
       </div>
       <div class="card"><div class="l"><span class="ic">&#xE7A1;</span><div><div class="t">颜色模式</div></div></div>
         <select data-bind="theme"><option value="followWindowsMode">跟随 Windows 模式</option><option value="followAppMode">跟随应用模式</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
@@ -974,32 +972,35 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
   // File Explorer glass (ExplorerBlurMica): the effect select is a plain
   // data-bind dropdown — no catalog arrives from the backend.
 
-  // 桌面时钟小组件: none + g1..g10 (Gemini) + d1..d10 (Devin). The brand and
-  // number stay literal; each design's name localizes through its own key.
+  // 桌面时钟小组件: none + g1..g10 + d1..d10 — the option label is ONLY the
+  // localized design name; the g/d ids stay internal values.
   const CLOCK_DESIGNS = [
-    ['none', '', '无（关闭）'],
-    ['g1', 'Gemini 1', '玻璃翻页'], ['g2', 'Gemini 2', '霓虹时环'], ['g3', 'Gemini 3', '瑞士粗体'],
-    ['g4', 'Gemini 4', '点阵数码'], ['g5', 'Gemini 5', '流光胶囊'], ['g6', 'Gemini 6', '奢华指针'],
-    ['g7', 'Gemini 7', '分割网格'], ['g8', 'Gemini 8', '日月地平线'], ['g9', 'Gemini 9', '立体堆叠'],
-    ['g10', 'Gemini 10', '禅意缎带'],
-    ['d1', 'Devin 1', '极光霜面'], ['d2', 'Devin 2', '霓虹终端'], ['d3', 'Devin 3', '时间轨道'],
-    ['d4', 'Devin 4', '衬线卡片'], ['d5', 'Devin 5', '柔和表盘'], ['d6', 'Devin 6', '全息面板'],
-    ['d7', 'Devin 7', '日历页'], ['d8', 'Devin 8', '渐变块'], ['d9', 'Devin 9', '日期海报'],
-    ['d10', 'Devin 10', '紧凑胶囊'],
+    ['none', '无（关闭）'],
+    ['g1', '玻璃翻页'], ['g2', '霓虹时环'], ['g3', '瑞士粗体'],
+    ['g4', '点阵数码'], ['g5', '流光胶囊'], ['g6', '奢华指针'],
+    ['g7', '分割网格'], ['g8', '日月地平线'], ['g9', '立体堆叠'],
+    ['g10', '禅意缎带'],
+    ['d1', '极光霜面'], ['d2', '霓虹终端'], ['d3', '时间轨道'],
+    ['d4', '衬线卡片'], ['d5', '柔和表盘'], ['d6', '全息面板'],
+    ['d7', '日历页'], ['d8', '渐变块'], ['d9', '日期海报'],
+    ['d10', '紧凑胶囊'],
   ];
   function renderClockStyles() {
     const sel = document.getElementById('clockStyleSel');
     if (!sel) return;
-    sel.replaceChildren(...CLOCK_DESIGNS.map(([v, brand, name]) => {
+    // Options must exist before bindAll assigns .value — and rebuilding them
+    // must not clobber it: a select whose value has no option shows index 0
+    // ("none"), which is exactly the reset-to-off users saw.
+    sel.replaceChildren(...CLOCK_DESIGNS.map(([v, name]) => {
       const e = document.createElement('option');
       e.value = v;
-      e.textContent = brand ? `${brand} · ${t(name)}` : t(name);
+      e.textContent = t(name);
       return e;
     }));
+    sel.value = String(state.settings.clockStyle ?? 'none');
   }
 
-  // 桌面动态效果: none + the 12 native Direct2D effects. The Latin name in
-  // parentheses stays literal so the option keeps its catalog identity.
+  // 桌面动态效果: none + the native Direct2D effects.
   const DESKTOP_EFFECTS = [
     ['none', '无（关闭）'],
     ['rain', '流体雨滴'],
@@ -1014,6 +1015,11 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
     ['matrix', '数码矩阵'],
     ['ripples', '水波涟漪'],
     ['constellation', '星链网络'],
+    ['magic_trail', '魔法霓虹轨迹'],
+    ['shatter_clicks', '点击玻璃碎裂'],
+    ['quantum_swarm', '量子磁力虫群'],
+    ['cyber_grid_reveal', '赛博网格显影'],
+    ['repulsion_dust', '物理斥力尘埃'],
   ];
   function renderDesktopEffects() {
     const sel = document.getElementById('desktopEffectSel');
@@ -1024,6 +1030,9 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
       e.textContent = t(name);
       return e;
     }));
+    // Reassign after the rebuild — a .value set before the options existed
+    // leaves the select displaying index 0 ("none") while state says otherwise.
+    sel.value = String(state.settings.desktopEffect ?? 'none');
   }
   function bindDesktopEffectIntensity() {
     const rng = document.getElementById('desktopEffectIntensity'), val = document.getElementById('desktopEffectIntensityVal');
@@ -1033,17 +1042,13 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
     rng.oninput = () => { state.settings.desktopEffectIntensity = Number(rng.value); val.textContent = rng.value + '%'; };
     rng.onchange = () => commit('desktopEffectIntensity');
   }
-  // The slider and collision switch are inert while the effect is off.
+  // The intensity slider is inert while the effect is off.
   function renderDesktopEffectDependents() {
     const on = (state.settings.desktopEffect ?? 'none') !== 'none';
     for (const id of ['desktopEffectIntensity']) {
       const el = document.getElementById(id);
       el.disabled = !on; el.closest('.card').classList.toggle('disabled', !on);
     }
-    const t = document.querySelector('[data-bind="desktopEffectCollision"]');
-    t.closest('.card').classList.toggle('disabled', !on);
-    t.tabIndex = on ? 0 : -1;
-    t.setAttribute('aria-disabled', String(!on));
   }
 
   // 速览栅栏 › 快捷键: the box records the next combination, the host checks it, tries
@@ -1773,7 +1778,8 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
       renderTaskbarStyles(m);
       renderNotificationCenterStyles(m);
       renderClockStyles();
-      bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); bindDesktopEffectIntensity(); renderDesktopEffects(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
+      renderDesktopEffects();
+      bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); bindDesktopEffectIntensity(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
       update = m.update; renderUpdate();
       // Transitions come on a frame after this state has been drawn: a single frame would style
       // both changes together and start them after all.

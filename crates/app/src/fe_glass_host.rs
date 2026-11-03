@@ -96,6 +96,10 @@ impl FeGlassHost {
                             let h = msg::hi_i16(lparam);
                             if let Some(c) = state.borrow().comp.as_ref() {
                                 c.set_bounds(w, h);
+                                // A resize-only change still re-anchors the
+                                // WebView2 input twin; WM_MOVE alone misses it
+                                // and leaves the twin behind as a black rect.
+                                c.notify_parent_window_position_changed();
                                 c.post_json(&format!(
                                     "{{\"t\":\"wstate\",\"max\":{}}}",
                                     frameless::is_zoomed(hwnd)

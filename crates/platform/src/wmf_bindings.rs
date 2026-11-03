@@ -119,6 +119,68 @@ where
     }
 }
 #[inline]
+pub unsafe fn MFCreateSourceReaderFromByteStream<P1>(
+    pbytestream: *mut core::ffi::c_void,
+    pattributes: P1,
+) -> windows_core::Result<IMFSourceReader>
+where
+    P1: windows_core::Param<IMFAttributes>,
+{
+    windows_core::link!("mfreadwrite.dll" "system" fn MFCreateSourceReaderFromByteStream(pbytestream : *mut core::ffi::c_void, pattributes : *mut core::ffi::c_void, ppsourcereader : *mut *mut core::ffi::c_void) -> windows_core::HRESULT);
+    unsafe {
+        let mut result__ = core::mem::zeroed();
+        MFCreateSourceReaderFromByteStream(pbytestream, pattributes.param().abi(), &mut result__)
+            .and_then(|| windows_core::imp::Type::from_abi(result__))
+    }
+}
+#[inline]
+pub unsafe fn MFCreateMFByteStreamOnStream(
+    pstream: *mut core::ffi::c_void,
+) -> windows_core::Result<windows_core::IUnknown> {
+    windows_core::link!("mfplat.dll" "system" fn MFCreateMFByteStreamOnStream(pstream : *mut core::ffi::c_void, ppbytestream : *mut *mut core::ffi::c_void) -> windows_core::HRESULT);
+    unsafe {
+        let mut result__ = core::mem::zeroed();
+        MFCreateMFByteStreamOnStream(pstream, &mut result__)
+            .and_then(|| windows_core::imp::Type::from_abi(result__))
+    }
+}
+#[inline]
+pub unsafe fn SHCreateMemStream(pinit: *const u8, cbinit: u32) -> windows_core::Result<IStream> {
+    windows_core::link!("shlwapi.dll" "system" fn SHCreateMemStream(pinit : *const u8, cbinit : u32) -> *mut core::ffi::c_void);
+    unsafe {
+        let p = SHCreateMemStream(pinit, cbinit);
+        if p.is_null() {
+            Err(windows_core::Error::from_hresult(windows_core::HRESULT(
+                0x8000_700Eu32 as _,
+            )))
+        } else {
+            windows_core::imp::Type::from_abi(p)
+        }
+    }
+}
+#[inline]
+pub unsafe fn MFCreateSinkWriterFromURL<P0, P2>(
+    pwszoutputurl: P0,
+    pbytestream: *mut core::ffi::c_void,
+    pattributes: P2,
+) -> windows_core::Result<IMFSinkWriter>
+where
+    P0: windows_core::Param<windows_core::PCWSTR>,
+    P2: windows_core::Param<IMFAttributes>,
+{
+    windows_core::link!("mfreadwrite.dll" "system" fn MFCreateSinkWriterFromURL(pwszoutputurl : windows_core::PCWSTR, pbytestream : *mut core::ffi::c_void, pattributes : *mut core::ffi::c_void, ppsinkwriter : *mut *mut core::ffi::c_void) -> windows_core::HRESULT);
+    unsafe {
+        let mut result__ = core::mem::zeroed();
+        MFCreateSinkWriterFromURL(
+            pwszoutputurl.param().abi(),
+            pbytestream,
+            pattributes.param().abi(),
+            &mut result__,
+        )
+        .and_then(|| windows_core::imp::Type::from_abi(result__))
+    }
+}
+#[inline]
 pub unsafe fn MFShutdown() -> windows_core::HRESULT {
     windows_core::link!("mfplat.dll" "system" fn MFShutdown() -> windows_core::HRESULT);
     unsafe { MFShutdown() }
@@ -21463,6 +21525,145 @@ impl IMFSourceReader_Vtbl {
 }
 impl windows_core::RuntimeName for IMFSourceReader {}
 windows_core::imp::define_interface!(
+    IMFSinkWriter,
+    IMFSinkWriter_Vtbl,
+    0x3137f1cd_fe5e_4805_a5d8_fb477448cb3d
+);
+windows_core::imp::interface_hierarchy!(IMFSinkWriter, windows_core::IUnknown);
+impl IMFSinkWriter {
+    pub(crate) unsafe fn AddStream<P0>(&self, ptargetmediatype: P0) -> windows_core::Result<u32>
+    where
+        P0: windows_core::Param<IMFMediaType>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).AddStream)(
+                windows_core::Interface::as_raw(self),
+                ptargetmediatype.param().abi(),
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+    pub(crate) unsafe fn SetInputMediaType<P1, P2>(
+        &self,
+        dwstreamindex: u32,
+        pinputmediatype: P1,
+        pencodingparameters: P2,
+    ) -> windows_core::Result<()>
+    where
+        P1: windows_core::Param<IMFMediaType>,
+        P2: windows_core::Param<IMFAttributes>,
+    {
+        unsafe {
+            (windows_core::Interface::vtable(self).SetInputMediaType)(
+                windows_core::Interface::as_raw(self),
+                dwstreamindex,
+                pinputmediatype.param().abi(),
+                pencodingparameters.param().abi(),
+            )
+            .ok()
+        }
+    }
+    pub(crate) unsafe fn BeginWriting(&self) -> windows_core::Result<()> {
+        unsafe {
+            (windows_core::Interface::vtable(self).BeginWriting)(windows_core::Interface::as_raw(
+                self,
+            ))
+            .ok()
+        }
+    }
+    pub(crate) unsafe fn WriteSample<P1>(
+        &self,
+        dwstreamindex: u32,
+        psample: P1,
+    ) -> windows_core::Result<()>
+    where
+        P1: windows_core::Param<IMFSample>,
+    {
+        unsafe {
+            (windows_core::Interface::vtable(self).WriteSample)(
+                windows_core::Interface::as_raw(self),
+                dwstreamindex,
+                psample.param().abi(),
+            )
+            .ok()
+        }
+    }
+    pub(crate) unsafe fn Finalize(&self) -> windows_core::Result<()> {
+        unsafe {
+            (windows_core::Interface::vtable(self).Finalize)(windows_core::Interface::as_raw(self))
+                .ok()
+        }
+    }
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct MF_SINK_WRITER_STATISTICS {
+    pub cb: u32,
+    pub lllasttimestampreceived: i64,
+    pub lllasttimestampencoded: i64,
+    pub lllasttimestampprocessed: i64,
+    pub lllaststreamtickreceived: i64,
+    pub lllastsinksamplerequest: i64,
+    pub qwnumsamplesreceived: u64,
+    pub qwnumsamplesencoded: u64,
+    pub qwnumsamplesprocessed: u64,
+    pub qwnumstreamticksreceived: u64,
+    pub dwbytecountqueued: u32,
+    pub qwbytecountprocessed: u64,
+    pub dwnumoutstandingsinksamplerequests: u32,
+    pub dwaveragesampleratereceived: u32,
+    pub dwaveragesamplerateencoded: u32,
+    pub dwaveragesamplerateprocessed: u32,
+}
+#[repr(C)]
+#[doc(hidden)]
+pub struct IMFSinkWriter_Vtbl {
+    pub base__: windows_core::IUnknown_Vtbl,
+    pub AddStream: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *mut core::ffi::c_void,
+        *mut u32,
+    ) -> windows_core::HRESULT,
+    pub SetInputMediaType: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        u32,
+        *mut core::ffi::c_void,
+        *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+    pub BeginWriting: unsafe extern "system" fn(*mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub WriteSample: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        u32,
+        *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+    pub SendStreamTick:
+        unsafe extern "system" fn(*mut core::ffi::c_void, u32, i64) -> windows_core::HRESULT,
+    pub PlaceMarker: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        u32,
+        *const core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+    pub NotifyEndOfSegment:
+        unsafe extern "system" fn(*mut core::ffi::c_void, u32) -> windows_core::HRESULT,
+    pub Flush: unsafe extern "system" fn(*mut core::ffi::c_void, u32) -> windows_core::HRESULT,
+    pub Finalize: unsafe extern "system" fn(*mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub GetServiceForStream: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        u32,
+        *const windows_core::GUID,
+        *const windows_core::GUID,
+        *mut *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+    pub GetStatistics: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        u32,
+        *mut MF_SINK_WRITER_STATISTICS,
+    ) -> windows_core::HRESULT,
+}
+impl windows_core::RuntimeName for IMFSinkWriter {}
+windows_core::imp::define_interface!(
     IMFTransform,
     IMFTransform_Vtbl,
     0xbf94c121_5b05_4e6f_8000_ba598961414d
@@ -23717,8 +23918,20 @@ pub struct MFT_OUTPUT_STREAM_INFO {
 }
 pub type MF_ATTRIBUTES_MATCH_TYPE = i32;
 pub type MF_ATTRIBUTE_TYPE = i32;
+pub const MF_MT_AVG_BITRATE: windows_core::GUID =
+    windows_core::GUID::from_u128(0x20332624_fb0d_4d9e_bd0d_cbf6786c102e);
 pub const MF_MT_DEFAULT_STRIDE: windows_core::GUID =
     windows_core::GUID::from_u128(0x644b4e48_1e02_4516_b0eb_c01ca9d49ac6);
+pub const MF_MT_INTERLACE_MODE: windows_core::GUID =
+    windows_core::GUID::from_u128(0xe2724bb8_e676_4806_b4b2_a8d6efb44ccd);
+pub const MF_MT_PIXEL_ASPECT_RATIO: windows_core::GUID =
+    windows_core::GUID::from_u128(0xc6376a1e_8d0a_4027_be45_6d9a0ad39bb6);
+pub const MF_PD_DURATION: windows_core::GUID =
+    windows_core::GUID::from_u128(0x6c990d33_bb8e_477a_8598_0d5d96fcd88a);
+/// `MFVideoInterlace_Progressive` — progressive scan frames.
+pub const MFVIDEOINTERLACE_PROGRESSIVE: u32 = 2;
+/// `MF_SOURCE_READER_MEDIASOURCE` — `GetPresentationAttribute` stream selector.
+pub const MF_SOURCE_READER_MEDIASOURCE: i32 = -1;
 pub const MF_MT_FRAME_RATE: windows_core::GUID =
     windows_core::GUID::from_u128(0xc459a2e8_3d2c_4e44_b132_fee5156c7bb0);
 pub const MF_MT_FRAME_SIZE: windows_core::GUID =

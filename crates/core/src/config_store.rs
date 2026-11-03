@@ -1296,4 +1296,35 @@ mod tests {
         assert_eq!(s.len(), 10);
         assert!(s.starts_with("20"));
     }
+
+    /// Unicode paths must survive the config round-trip byte-exact — a theme
+    /// named in Arabic (or any non-ASCII script) writes to NTFS as UTF-16 and
+    /// to `config.json` as UTF-8, with no ANSI/codepage conversion anywhere.
+    #[test]
+    fn unicode_paths_round_trip_unchanged() {
+        let store = ConfigStore::new(tmpdir("unicode"));
+        let mut cfg = sample();
+        let arabic = r"C:\Users\يحيى\AppData\Roaming\PecoFence\themes\سماء زرقاء (2).peco";
+        let cjk = r"D:\壁紙\青い空.peco";
+        cfg.settings.active_theme_path = Some(arabic.to_string());
+        cfg.settings.video_wallpaper_path = Some(cjk.to_string());
+        store.save(&cfg).unwrap();
+
+        // The bytes on disk are valid UTF-8 and contain the names unescaped
+        // (serde_json JSON-escapes backslashes, so match the Unicode stems).
+        let raw = fs::read(&store.primary_path()).unwrap();
+        let text = String::from_utf8(raw).expect("config.json must be UTF-8");
+        assert!(
+            text.contains("سماء زرقاء"),
+            "Arabic path mangled in json: {text}"
+        );
+        assert!(
+            text.contains("壁紙\\\\青い空.peco"),
+            "CJK path mangled in json: {text}"
+        );
+
+        let back = ConfigStore::parse_file(&store.primary_path()).unwrap();
+        assert_eq!(back.settings.active_theme_path.as_deref(), Some(arabic));
+        assert_eq!(back.settings.video_wallpaper_path.as_deref(), Some(cjk));
+    }
 }
