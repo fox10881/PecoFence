@@ -7,15 +7,16 @@
 //! `feToast` with `post_json`.
 
 use crate::commands::{Command, CommandQueue};
-use crate::settings_host::{glass_message, WebEnvironment};
+use crate::settings_host::{WebEnvironment, glass_message};
 use crate::webview_comp::CompWebview;
 use pecofence_platform::window::{
-    self, style, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass,
+    self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{dwm, frameless, monitors, msg, HWND, RECT};
+use pecofence_platform::{HWND, RECT, dwm, frameless, monitors, msg};
 use pecofence_render::ThemeMode;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::time::Instant;
 use windows_core::Result;
 
 pub const FE_GLASS_CLASS: &str = "PecoFence.FeGlass";
@@ -25,6 +26,8 @@ const I18N_JS: &str = include_str!("../../../ui/i18n.js");
 struct HostState {
     comp: Option<CompWebview>,
     mouse_tracked: Cell<bool>,
+    /// Last caption press (time + screen point) for manual dbl-click detect.
+    last_cap: Cell<Option<(Instant, i32, i32)>>,
     /// The app's theme mode — needed to re-blend the sheet on glass/theme changes.
     mode: ThemeMode,
     /// The mirrored EBM effect (`""` = none) + resolved tint for this window.
@@ -56,6 +59,7 @@ impl FeGlassHost {
         let state = Rc::new(RefCell::new(HostState {
             comp: None,
             mouse_tracked: Cell::new(false),
+            last_cap: Cell::new(None),
             mode,
             glass_effect: String::new(),
             glass_tint: None,
@@ -76,6 +80,17 @@ impl FeGlassHost {
                         // zones supply drag, resize, and caption buttons.
                         msg::WM_NCCALCSIZE => Some(frameless::calc_size(hwnd, wparam, lparam)),
                         msg::WM_NCHITTEST => Some(frameless::hit_test(hwnd, lparam)),
+                        // DefWindowProc's NC button tracker needs a real
+                        // frame to compute the hit rects — with none it
+                        // swallows Min/Max/Close. Fire them on the DOWN;
+                        // caption dbl-click toggles zoom ourselves too.
+                        msg::WM_NCLBUTTONDOWN | msg::WM_NCLBUTTONDBLCLK => frameless::nc_button(
+                            hwnd,
+                            message,
+                            wparam,
+                            lparam,
+                            &state.borrow().last_cap,
+                        ),
                         msg::WM_SIZE => {
                             let w = msg::lo_i16(lparam);
                             let h = msg::hi_i16(lparam);

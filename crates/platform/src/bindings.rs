@@ -16305,6 +16305,7 @@ pub const WM_NCDESTROY: i32 = 130;
 pub const WM_NCHITTEST: i32 = 132;
 pub const WM_NCLBUTTONDBLCLK: i32 = 163;
 pub const WM_NCLBUTTONDOWN: i32 = 161;
+pub const WM_NCLBUTTONUP: i32 = 162;
 pub const WM_NCMOUSELEAVE: i32 = 674;
 pub const WM_NCMOUSEMOVE: i32 = 160;
 pub const WM_NCPAINT: i32 = 133;

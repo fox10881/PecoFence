@@ -8,11 +8,15 @@
 //! resize edges/corners, and real window buttons (`HTCLOSE`/`HTMAXBUTTON`/
 //! `HTMINBUTTON` get SC_* behaviour and the snap flyout from DefWindowProc).
 
+use std::cell::Cell;
+use std::time::Instant;
+
 use crate::bindings::{
     self as b, GWL_STYLE, GetClientRect, GetWindowLongPtrW, GetWindowRect, HWND, POINT, RECT,
-    ScreenToClient,
+    SM_CXDOUBLECLK, SM_CYDOUBLECLK, ScreenToClient, ShowWindow,
 };
-use crate::window::dpi_of;
+use crate::msg;
+use crate::window::{self, dpi_of};
 
 // The page titlebar uses the same DIP layout — change both or neither.
 const TITLE_H_DIP: i32 = 32;
@@ -21,6 +25,9 @@ const BUTTON_H_DIP: i32 = 32;
 const EDGE_DIP: i32 = 6;
 
 const WS_MAXIMIZE: isize = 0x0100_0000;
+const SW_MAXIMIZE: i32 = 3;
+const SW_MINIMIZE: i32 = 6;
+const SW_RESTORE: i32 = 9;
 const DWMWA_EXTENDED_FRAME_BOUNDS: u32 = 9;
 const SM_CXSIZEFRAME: i32 = 32;
 const SM_CYSIZEFRAME: i32 = 33;
@@ -226,4 +233,105 @@ pub fn widget_hit_test(hwnd: HWND, lparam: isize) -> isize {
         return HTBOTTOM;
     }
     HTCAPTION
+}
+
+/// `WM_NCLBUTTON{DOWN,DBLCLK}` handling for the caption zones `hit_test`
+/// reports.
+///
+/// `DefWindowProc`'s own button tracker computes the hit rects from real
+/// frame metrics — a window whose `WM_NCCALCSIZE` client covers everything
+/// has no frame for those rects, so its track never completes and Min/Max/
+/// Close clicks silently die (verified live: hit codes correct, `ShowWindow`
+/// fine, the DOWN->SC_* hop dead). And on a maximized window the
+/// drag-to-restore track swallows the second caption press before Windows
+/// can convert it to `WM_NCLBUTTONDBLCLK` — `last_cap` carries the previous
+/// caption press (time + screen point) so a quick second `NCLBUTTONDOWN`
+/// toggles zoom ourselves. (`CS_DBLCLKS` still delivers a real DBLCLK for
+/// the restored-state case; both paths end here.)
+pub fn nc_button(
+    hwnd: HWND,
+    message: u32,
+    wparam: usize,
+    lparam: isize,
+    last_cap: &Cell<Option<(Instant, i32, i32)>>,
+) -> Option<isize> {
+    match message {
+        m if m == msg::WM_NCLBUTTONDOWN => match wparam as isize {
+            HTMINBUTTON => unsafe {
+                // SAFETY: plain FFI call.
+                let _ = ShowWindow(hwnd, SW_MINIMIZE);
+            },
+            HTMAXBUTTON => unsafe {
+                // SAFETY: plain FFI call; SW_RESTORE also unmaximizes.
+                let _ = ShowWindow(
+                    hwnd,
+                    if is_zoomed(hwnd) {
+                        SW_RESTORE
+                    } else {
+                        SW_MAXIMIZE
+                    },
+                );
+            },
+            HTCLOSE => {
+                let _ = window::post_message(hwnd, msg::WM_CLOSE, 0, 0);
+            }
+            HTCAPTION => {
+                let (x, y) = nc_point(lparam);
+                if let Some((t, lx, ly)) = last_cap.replace(None) {
+                    let fast =
+                        t.elapsed().as_millis() <= unsafe { b::GetDoubleClickTime() } as u128;
+                    let (dx, dy) = ((x - lx).abs(), (y - ly).abs());
+                    let (cx, cy) = unsafe {
+                        (
+                            b::GetSystemMetricsForDpi(SM_CXDOUBLECLK, dpi_of(hwnd)),
+                            b::GetSystemMetricsForDpi(SM_CYDOUBLECLK, dpi_of(hwnd)),
+                        )
+                    };
+                    if fast && dx <= cx && dy <= cy {
+                        unsafe {
+                            // SAFETY: plain FFI call.
+                            let _ = ShowWindow(
+                                hwnd,
+                                if is_zoomed(hwnd) {
+                                    SW_RESTORE
+                                } else {
+                                    SW_MAXIMIZE
+                                },
+                            );
+                        }
+                        return Some(0);
+                    }
+                }
+                last_cap.set(Some((Instant::now(), x, y)));
+                return None;
+            }
+            _ => return None,
+        },
+        m if m == msg::WM_NCLBUTTONDBLCLK => match wparam as isize {
+            HTCAPTION | HTMAXBUTTON => {
+                last_cap.set(None);
+                unsafe {
+                    // SAFETY: plain FFI call.
+                    let _ = ShowWindow(
+                        hwnd,
+                        if is_zoomed(hwnd) {
+                            SW_RESTORE
+                        } else {
+                            SW_MAXIMIZE
+                        },
+                    );
+                }
+            }
+            _ => return None,
+        },
+        _ => return None,
+    }
+    Some(0)
+}
+
+fn nc_point(lparam: isize) -> (i32, i32) {
+    (
+        (lparam & 0xffff) as u16 as i16 as i32,
+        ((lparam >> 16) & 0xffff) as u16 as i16 as i32,
+    )
 }
