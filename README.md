@@ -1,4 +1,4 @@
-<img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/3ee0557a-c28c-421f-8583-0c882a77159a" /><img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/bd534c1b-fefd-49a5-8193-150ab72341db" /><img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/9dd1f64c-f0e7-4f6b-9b3c-b8e92bb74e8a" /><div align="center">
+
 
 # 💠 PecoFence — Ultimate Desktop Customization & Organization Suite
 
@@ -7,7 +7,7 @@
 PecoFence is a heavily supercharged, next-generation desktop organization and Windows 11 shell customization suite built in Rust. Moving far beyond basic icon fences, PecoFence combines magnetic desktop organization, 3D perspective shelves, live H.264 video wallpapers, adaptive desktop clock widgets, deep Windows 11 shell theming (Taskbar, Start Menu, Notification Center, and File Explorer Mica/Acrylic), and one-click `.peco` full-desktop theme packages.
 
 <!-- TODO: ADD IMAGE 1 (Hero Desktop Showcase) -->
-![PecoFence Hero Showcase](assets/hero-showcase.png)
+
 <img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/33abf85c-c9c9-45b4-b831-b76f9074b502" />
 
 
@@ -35,7 +35,7 @@ Go beyond standard containers with four distinct visual paradigms:
 - **Full Arabic Localization & RTL UI [NEW]:** Native, first-class Arabic interface (`العربية`) with seamless Right-to-Left (RTL) layout and instant live language switching.
 
 <!-- TODO: ADD IMAGE 2 (Fence Styles & Chameleon Mode) -->
-![Fence Styles Showcase](assets/fence-styles.png)
+
 <img width="3837" height="2064" alt="image" src="https://github.com/user-attachments/assets/ba1ce0b3-861f-42e0-b2d9-7445825b7aeb" />
 
 
@@ -53,7 +53,7 @@ Go beyond standard containers with four distinct visual paradigms:
 - **Adaptive Wallpaper Contrast (`تنسيق ألوان الويدجت تلقائياً لتناسب الخلفية`) [NEW]:** PecoFence continuously samples the exact wallpaper pixels behind the clock widget. Whether your wallpaper is blindingly bright white or pitch black, the widget automatically flips its text, glass, and accent contrast so the time and date remain 100% crisp and readable at all times.
 
 <!-- TODO: ADD IMAGE 3 (Desktop Clock Widget & Video Wallpaper) -->
-![Desktop Clock Widget Showcase](assets/clock-widgets.png)
+
 <img width="3066" height="1530" alt="image" src="https://github.com/user-attachments/assets/96265444-24cd-40e5-813c-b1f874ce94fb" />
 
 
@@ -70,7 +70,7 @@ Switch themes on the fly—applied immediately upon selection with zero reboots:
 - **Notification Center Styles (`نمط مركز الإشعارات`):** Theme your Action Center & Notification popups with *Layer Mica UI, Translucent Shell, Matte, Unified, JumpLists 10, Better Control 11, Fluid, Liquid Glass, Borderless, Dense, Frosty Glass, OS26 Tahoe Glass, and Command Center*.
 
 <!-- TODO: ADD IMAGE 4 (Taskbar, Start Menu & Notification Center Themes) -->
-![Windows 11 Shell Customization](assets/windows-shell-customization.png)
+
 <img width="3837" height="1716" alt="image" src="https://github.com/user-attachments/assets/e5653484-b329-4150-a151-297c65a2c5a1" />
 
 
@@ -81,7 +81,7 @@ Switch themes on the fly—applied immediately upon selection with zero reboots:
 - **One-Click Appearance Refresh (`تحديث المظهر`) [NEW]:** Instantly restarts `explorer.exe` and cleanly re-hooks all desktop fences and your active video wallpaper whenever Windows needs a fresh state.
 
 <!-- TODO: ADD IMAGE 5 (File Explorer Glass Studio & Live Preview) -->
-![File Explorer Glass Editor](assets/explorer-glass-editor.png)
+
 <img width="3837" height="2058" alt="image" src="https://github.com/user-attachments/assets/67bb0f05-997b-4844-8158-c718580501b3" />
 
 ---
@@ -101,7 +101,7 @@ Every single fence can be tailored down to the pixel in the **Fences (`الأس�
 - **3D Tilted Shelf Mode & Perspective Scale (`وضع الرف المائل` + `معامل التكبير`) [NEW]:** Tilts the fence into a 3D perspective parallelogram that aligns with angled 3D room wallpapers! Adjust the **Perspective Scale Factor (`معامل التكبير`)** so icons smoothly scale down toward the far edge of the shelf for realistic depth.
 
 <!-- TODO: ADD IMAGE 6 (Per-Fence Customization, Icon Frames & Tilted Shelf) -->
-![Advanced Fence Layout & 3D Shelf](assets/fence-advanced-layout.png)
+
 <img width="3837" height="2067" alt="image" src="https://github.com/user-attachments/assets/233e8c03-7580-4ba0-9d47-15948d8c5d3a" />
 
 
@@ -117,7 +117,7 @@ The **Sorting Rules (`قواعد الفرز`)** engine has been completely rebui
 - **One-Click Quick Presets (`إضافة سريعة`):** Instantly generate pre-built fences and rules for *Pictures, Music, Videos, Archives, Installers,* or *Desktop Cleanup* (which only sweeps up installers and archives untouched for 30+ days without deleting a single file).
 
 <!-- TODO: ADD IMAGE 7 (Color-Coded Sorting Rules & Force Apply) -->
-![Sorting Rules Engine](assets/sorting-rules-colored.png)
+
 <img width="3837" height="2055" alt="image" src="https://github.com/user-attachments/assets/6a99d08c-0124-4581-bb3e-36e0d587c4f6" />
 
 
@@ -132,7 +132,7 @@ Forget basic `.json` layout backups—the **Layout & Backups (`التخطيط و
 - **Daily Auto-Save (`حفظ تحديث الثيم تلقائياً كل يوم`) [NEW]:** Automatically updates your active `.peco` theme file once a day in-place so your latest desktop tweaks are always preserved without creating duplicate clutter.
 
 <!-- TODO: ADD IMAGE 8 (Theme Gallery & .peco Packages) -->
-![Theme Gallery Showcase](assets/themes-gallery.png)
+
 <img width="3837" height="2061" alt="image" src="https://github.com/user-attachments/assets/6d74f4a5-814f-4b17-867a-bf493a4c4334" />
 
 
