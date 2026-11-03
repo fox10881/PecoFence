@@ -1,190 +1,138 @@
-# Wallpaper Engine 自用版
+<div align="center">
 
-本 fork 的 `0.1.5-we.12` 支持 Wallpaper Engine 实时壁纸，并重新设计 Liquid Glass 的光学截面：
-更宽的椭圆弧面、轻微放大的中央曲面与柔和反光，去掉额外黑色阴影。
-已在当前 Windows 11 桌面验证网页、视频、DX11 场景之间切换；捕获条件、构建方法和回退说明见
-[动态壁纸兼容说明](docs/WALLPAPER_ENGINE.md)。we.12 还移除了强制收件栅栏，支持图标自由拖回桌面、任意栅栏删除、手动摆放优先；详见[桌面收纳逻辑](docs/DESKTOP_CONTAINERS.md)。上游作者与许可证保留如下。
+# 💠 PecoFence — Ultimate Desktop Customization & Organization Suite
 
-https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
+**Transform Windows 11 into a living, breathing, ultra-organized glass workspace.**
 
-<p align="center">
-  <strong>A free, open-source Stardock Fences alternative for Windows 11.</strong><br>
-  Keep files in glass panels, switch projects with tabs, and ask your AI agent to configure the layout, appearance and sorting rules through the built-in CLI.
-</p>
+PecoFence is a heavily supercharged, next-generation desktop organization and Windows 11 shell customization suite built in Rust. Moving far beyond basic icon fences, PecoFence combines magnetic desktop organization, 3D perspective shelves, live H.264 video wallpapers, adaptive desktop clock widgets, deep Windows 11 shell theming (Taskbar, Start Menu, Notification Center, and File Explorer Mica/Acrylic), and one-click `.peco` full-desktop theme packages.
 
-<p align="center">
-  <a href="https://pecofence.jiang.jp/"><strong>Website</strong></a>
-  &nbsp;·&nbsp; <a href="#get-pecofence"><strong>Get PecoFence →</strong></a>
-  &nbsp;·&nbsp; <a href="#your-desktop-configured-by-your-ai"><strong>AI + CLI</strong></a>
-  &nbsp;·&nbsp; <a href="#see-it-in-action">See it in action</a>
-  &nbsp;·&nbsp; <a href="docs/README.md">Documentation</a>
-</p>
+<!-- TODO: ADD IMAGE 1 (Hero Desktop Showcase) -->
+![PecoFence Hero Showcase](assets/hero-showcase.png)
+*> **[IMAGE PLACEHOLDER 1]:** Add a full desktop screenshot showing the Invisible/Bookshelf fences, Desktop Clock Widget, and Translucent Taskbar.*
 
-<p align="center">
-  <strong>English</strong>
-  &nbsp;·&nbsp; <a href="docs/readme/README.zh-CN.md">简体中文</a>
-  &nbsp;·&nbsp; <a href="docs/readme/README.zh-TW.md">繁體中文</a>
-  &nbsp;·&nbsp; <a href="docs/readme/README.ja.md">日本語</a>
-  &nbsp;·&nbsp; <a href="docs/readme/README.ko.md">한국어</a>
-  &nbsp;·&nbsp; <a href="docs/readme/README.de.md">Deutsch</a>
-  &nbsp;·&nbsp; <a href="docs/readme/README.fr.md">Français</a>
-  &nbsp;·&nbsp; <a href="docs/readme/README.es.md">Español</a>
-  &nbsp;·&nbsp; <a href="docs/readme/README.pt-BR.md">Português (Brasil)</a>
-  &nbsp;·&nbsp; <a href="docs/readme/README.ru.md">Русский</a>
-  &nbsp;·&nbsp; <a href="docs/readme/README.ar.md">العربية</a>
-</p>
+</div>
 
 ---
 
-## Ultimate Static Desktop & Poster Shelves Integration
+## ✨ What Makes This Edition Extraordinary?
 
-![Ultimate Static Desktop & Poster Shelves Integration]
-<img width="3837" height="2160" alt="image" src="https://github.com/user-attachments/assets/1849b142-aa9e-4b5d-802e-4f3519d79c73" />
-
-<img width="3837" height="2034" alt="image" src="https://github.com/user-attachments/assets/311962e3-984b-4a7a-bc2c-48ffdaa9379b" />
-
-
-### 🧩 The Essential Missing Piece: BoxArt Studio
-While PecoFence provides the rigid grid layout and zero-gap 2:3 poster containers, Windows still natively generates standard square icons. 
-To achieve the exact physical game shelf look shown in the screenshot, you need **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. BoxArt Studio is the essential companion tool that batch-transforms your standard Windows game shortcuts and folders into beautiful, high-resolution 2:3 physical game boxes. 
-
-### 📸 Portable Layout Snapshots
-
-Layout snapshots are fully portable backups now: rename a save file right in the snapshot list, and optionally bundle the current desktop wallpaper into the save file itself. The layout then restores pixel-perfect on any PC — even one that has never seen your wallpaper.
-
-### 🧊 3D Shelf Mode (Experimental)
-
-Shear any fence into a perfect parallelogram so its rows can follow the shelves of an angled wallpaper: drag the vertical edge handles to tilt one side of the fence, and icons scale progressively toward the nearer, lower edge — adjustable with the **Depth Scale Factor** slider in the fence's settings.
-
-> **⚠️ Known issue — help wanted.** The mouse movement, alignment, and hit-testing inside the skewed parallelogram are working perfectly. However, when using a 3D perspective wallpaper, the first row aligns perfectly with the shelf, but subsequent rows do not due to the wallpaper's vanishing point perspective. If any developer knows how to perfectly solve this multi-row perspective math, pull requests are highly welcome!
-
-### 🖼️ Ready-made 2D Wallpapers
-
-The repository ships a curated pack of flat front-elevation shelf wallpapers in [`assets/wallpapers/`](assets/wallpapers/) that align perfectly with the flat, unsheared fences — pick one, arrange your shelves, done.
-
-> **💡 Pro Tip:** We have provided ready-to-use 2D wallpapers that align perfectly with the flat fences. For an amazing setup, we highly recommend taking these 2D images, running them through an AI video generator to animate them, and applying them to your desktop using [Lively Wallpaper](https://github.com/rocksdanister/lively).
-
-### 🎛️ New Themes & Deep Per-Fence Controls
-
-Settings now offers two more looks: **Bookshelf** — a classic wooden shelf that sets game covers right on the boards — and **Invisible Canvas**, a fully transparent theme that lets icons float on your wallpaper. On each fence's own page you can now hide the **Title Bar** completely with **Never**, switch **Icon Labels** off, and dial in the grid with sliders for **Custom Icon Size**, **Column Spacing** and **Row Spacing** — plus **Hide Scrollbar**, **Lock Scrolling** and **Automatic Height** toggles for a clean, static display case.
-
-<a id="ask-your-ai-to-organize-it"></a>
-
-## Your desktop. Configured by your AI
-
-**Built-in CLI. Ready for your AI agent.**
-
-Tell your AI agent how you want your desktop to work. The bundled `pecofence-cli` lets Claude Code, Codex and Cursor read your current setup and apply changes directly in PecoFence.
-
-- **Configure it in your own words.** Change themes, transparency, icon sizes and global settings, or adjust every fence at once.
-- **Organize once. Keep it organized.** Create project fences, arrange icons and add rules that sort new files automatically.
-- **Save a setup you like.** Use snapshots for fence layouts and configuration export/import for settings, rules and layouts.
-
-**Try it with your AI agent**
-
-Open PecoFence, then paste this request into your AI coding agent:
-
-> Use pecofence-cli to configure my desktop. First read pecofence-cli skill and pecofence-cli describe, then inspect my current settings and fences. Back up my configuration before changes. Switch to dark mode and make all fences more transparent.
-
-The CLI is included. The Microsoft Store edition adds `pecofence-cli` to PATH. With the portable ZIP, give your agent the path to `pecofence-cli.exe`.
-
-<details>
-<summary><strong>Example conversation with a coding agent</strong></summary>
-
-> Put my desktop PDFs in a Docs fence, keep new PDFs there, switch to dark mode and make the fences more transparent.
-
-```powershell
-pecofence-cli config export "$env:USERPROFILE\pecofence-before-ai.json"
-pecofence-cli snapshot save before-cleanup
-pecofence-cli fence create --title Docs
-pecofence-cli rule add --name PDFs --ext pdf --to Docs --index 0
-pecofence-cli rule apply
-pecofence-cli settings set theme dark
-pecofence-cli fence set --all opacity clear
-```
-
-</details>
-
-Built for agents and scripts: `describe` exposes the command catalog and JSON Schemas; `skill` prints the agent guide. JSON results report what changed, and structured application errors help the agent choose its next step.
-
-[Get started with the CLI →](docs/CLI.md#start-with-your-ai-agent)
-
-## Give everything a place
-
-<p align="center">
-  <img src="docs/assets/hero-en.png" alt="PecoFence — Project folders, a PDF and original design studies in Liquid Glass fences." width="1280">
-</p>
-
-## See it in action
-
-### One fence. Multiple workspaces.
-
-Keep related fences together as tabs. Switch from Project to Ideas in a click,
-then drag a tab out when you want the extra room.
-
-![Merging two fences into tabs, switching between Project and Ideas, then dragging a tab out into its own fence.](docs/assets/tabs.gif)
-
-### Your desktop, one shortcut away.
-
-Press **Ctrl + Alt + Space** to bring your fences above the current application.
-Grab what you need, then press **Esc** to return.
-
-![Peek brings your fences above an application; a click outside or opening a file returns to it.](docs/assets/peek.gif)
-
-<sub>Animations from the <a href="https://pecofence.jiang.jp/manual/">user manual</a>. GIFs loop automatically.</sub>
-
-## Small details that add up
-
-| Feature | What you get |
-| :--- | :--- |
-| **AI + CLI** | `pecofence-cli` — **Configure it in your own words.** Change themes, transparency, icon sizes and global settings, or adjust every fence at once. |
-| **Less sorting** | Rules for file types, extensions, names, wildcards, shortcut targets, time and size. New files find their fence automatically. |
-| **Looks that fit your desktop** | Fluent, Liquid Glass, Bookshelf and Invisible Canvas themes, light/dark modes, per-fence colors, opacity and icon tinting. |
-| **Every fence, your way** | Per-fence title-bar visibility (down to **Never**), optional icon labels, sliders for icon size and column/row spacing, plus scrollbar, scroll-lock and automatic-height toggles. |
-| **Familiar file handling** | File Explorer context menus, drag and drop, copy/paste, multi-select, thumbnails and icon/list/details views. |
-| **Keep folders close** | Put a live folder on your desktop. Browse subfolders and see changes as they happen. |
-| **Space when you need it** | Roll a fence up to its title. Hover to expand. Lock a layout you like. Double-click the desktop to hide your fences. Double-click again to bring them back. |
-| **A way back** | Layout snapshots — rename them and embed the wallpaper for a fully portable backup — configuration import/export and swapping fences between displays. |
-| **3D Shelf Mode (experimental)** | Shear a fence into a parallelogram so its rows follow the shelves of an angled wallpaper, with per-icon depth scaling toward the nearer edge. |
-| **A small footprint** | A native Rust application that idles at about 40 MB of memory in Task Manager. The WebView2 settings panel loads on demand. |
-
-Automatic sorting rules keep files in their original locations. File moves you
-initiate work like they do in File Explorer.
-
-[Explore the complete feature list →](docs/FEATURES.md)
-
-## Get PecoFence
-
-<a href="https://apps.microsoft.com/detail/9MV6WG3XNWSX?mode=direct"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Get it from Microsoft Store" width="200"></a>
-
-The Microsoft Store edition is signed by Microsoft, updates automatically and never shows a SmartScreen prompt. The same app also comes as:
-
-- **Portable ZIP**: download `pecofence-v<version>-x64-portable.zip` from this repository's **Releases** page, extract the **whole ZIP** into a folder and run `pecofence.exe`.
-- **Installer**: `pecofence-v<version>-x64-setup.exe` on the same page installs PecoFence for your Windows user, with a Start menu entry and an uninstaller.
-- **winget**: `winget install DayuanJiang.PecoFence` installs the portable build and skips the SmartScreen prompt.
-
-<details>
-<summary><strong>Requirements, configuration and a few useful notes</strong></summary>
-
-- Windows 10 22H2, or Windows 11 22H2 or later. Settings needs the Microsoft Edge WebView2 Runtime. Windows 11 includes it; on Windows 10 install it from Microsoft if Settings does not open.
-- The first launch creates four fences in your selected language: Programs, Folders, Files and documents, and Desktop. Windows desktop icons are restored when you exit.
-- Configuration lives in `%APPDATA%\PecoFence\config.json`. Launch with `--portable` to keep it in a `config` folder beside the executable.
-- The ZIP and the installer are unsigned. If Windows SmartScreen appears on first launch, choose **More info → Run anyway**.
-
-[Portable edition guide](docs/PORTABLE.md) · [Language guide](docs/LOCALIZATION.md) · [Windows installer guide](docs/INSTALLER.md)
-
-</details>
-
-## Build it. Make it yours.
-
-PecoFence is Apache 2.0 licensed, and contributions are welcome—from a sharper translation
-to a better desktop interaction.
-
-[Contribute](CONTRIBUTING.md) · [Improve a translation](docs/LOCALIZATION.md) · [Development guide](docs/DEVELOPMENT.md)
+Every layer of PecoFence has been re-engineered to give you total creative control over both your desktop icons and the Windows 11 shell itself—while keeping CPU and GPU usage near zero.
 
 ---
 
-**Made for a desktop you enjoy coming back to.**  
-[Apache License 2.0](LICENSE) · [Third-party notices](third_party/README.md)
+## 🎨 1. Next-Gen Fence Styles & Visual Blending
 
-Thanks to the [LINUX DO](https://linux.do) community.
+Go beyond standard containers with four distinct visual paradigms:
+- **Fluent (Classic):** Clean Windows 11 Fluent cards with crisp borders.
+- **Liquid Glass:** Real-time refractive glass that samples static or live video wallpapers.
+- **Bookshelf (`رف الكتب`) [NEW]:** Turns your fence into a tactile dimensional shelf where icons sit neatly along shelf rows.
+- **Invisible Canvas (`لوحة غير مرئية`) [NEW]:** Completely hides the fence background and borders—giving you all the power of magnetic snapping, sorting rules, and grid alignment while icons appear to float naturally on your raw desktop wallpaper.
+
+### 🦎 Chameleon Icon Blending & Shortcut Cleanup
+- **Chameleon Mode (`دمج الأيقونات مع الخلفية`) [NEW]:** Dynamically desaturates and blends desktop icons into your wallpaper using a customizable **Blend Strength slider (0%–100%)**, creating a calm, distraction-free aesthetic.
+- **Shortcut Arrow Toggle (`إظهار/إخفاء أسهم الاختصارات`) [NEW]:** Instantly strip away or restore those cluttered Windows shortcut overlay arrows directly from the settings.
+- **Full Arabic Localization & RTL UI [NEW]:** Native, first-class Arabic interface (`العربية`) with seamless Right-to-Left (RTL) layout and instant live language switching.
+
+<!-- TODO: ADD IMAGE 2 (Fence Styles & Chameleon Mode) -->
+![Fence Styles Showcase](assets/fence-styles.png)
+*> **[IMAGE PLACEHOLDER 2]:** Add a screenshot of the General tab showing the 4 Theme Styles (Fluent, Liquid Glass, Bookshelf, Invisible Canvas) and Chameleon Blending.*
+
+---
+
+## 🎬 2. Native H.264 Video Wallpapers & Adaptive Clock Widgets
+
+### 🎞️ Hardware-Accelerated Video Wallpaper Engine [NEW]
+- Set any **MP4 (H.264)** video as a buttery-smooth live desktop wallpaper directly from PecoFence.
+- Built-in quick links to *CloudConvert* and *FreeConvert* make converting any video into an ultra-lightweight, GPU-friendly wallpaper effortless.
+
+### 🕰️ Frameless Desktop Clock Widget (`ويدجت الساعة المكتبية`) [NEW]
+- Choose from **20 handcrafted, responsive clock/date/day designs** (10 Gemini Signatures + 10 Devin Signatures), or turn it off (`بدون`) to remove the widget entirely.
+- **True Frameless Interaction:** No title bar or clutter. Click and drag **anywhere inside the widget** to move it across your screen, or grab **any edge/corner** to resize it smoothly with automatic typography scaling.
+- **Adaptive Wallpaper Contrast (`تنسيق ألوان الويدجت تلقائياً لتناسب الخلفية`) [NEW]:** PecoFence continuously samples the exact wallpaper pixels behind the clock widget. Whether your wallpaper is blindingly bright white or pitch black, the widget automatically flips its text, glass, and accent contrast so the time and date remain 100% crisp and readable at all times.
+
+<!-- TODO: ADD IMAGE 3 (Desktop Clock Widget & Video Wallpaper) -->
+![Desktop Clock Widget Showcase](assets/clock-widgets.png)
+*> **[IMAGE PLACEHOLDER 3]:** Add a screenshot showing the Desktop Clock Widget floating on the desktop alongside the Widget Settings & Adaptive Contrast toggle.*
+
+---
+
+## 🪟 3. Deep Windows 11 Shell & File Explorer Glass Customization
+
+Why install five separate tweaking tools when PecoFence unifies your entire Windows 11 aesthetic in one place?
+
+### 🛠️ Instant Live Shell Styling (Windhawk-Powered Presets) [NEW]
+Switch themes on the fly—applied immediately upon selection with zero reboots:
+- **Taskbar Styles (`نمط شريط المهام`):** Choose from *Translucent Taskbar, Window Glass, OS26 Liquid Glass (Clear/Dark Mac Dock & Taskbar variants), Plasma, Surface, Luminosity, Layer Mica UI, Fluid, Tinted Glass, Frosted Acrylic, Pills, Blob, Minecraft Hotbar, One UI 8.5 Dock*, and more.
+- **Start Menu Styles (`نمط قائمة ابدأ`):** Transform the Windows 11 Start Menu with *Down Aero, Translucent Start Menu, No Recommended Section, Side by Side, Windows 10, Fluent 2 Inspired, Rose Pine, Metro 10 Minimal, Everblush, Sun Valley, Liquid Glass, Borderless, Command Center, Full Screen, and Frosty Glass*.
+- **Notification Center Styles (`نمط مركز الإشعارات`):** Theme your Action Center & Notification popups with *Layer Mica UI, Translucent Shell, Matte, Unified, JumpLists 10, Better Control 11, Fluid, Liquid Glass, Borderless, Dense, Frosty Glass, OS26 Tahoe Glass, and Command Center*.
+
+<!-- TODO: ADD IMAGE 4 (Taskbar, Start Menu & Notification Center Themes) -->
+![Windows 11 Shell Customization](assets/windows-shell-customization.png)
+*> **[IMAGE PLACEHOLDER 4]:** Add a screenshot showcasing the custom Start Menu, Notification Center, and Taskbar theme dropdowns in action.*
+
+### 🔍 File Explorer Glass Studio & Unified App Transparency [NEW]
+- **Dedicated File Explorer Glass Editor (`تأثير خلفية مستكشف الملفات`):** Open the **Advanced Settings (`الإعدادات المتقدمة`)** studio featuring an interactive **Live File Explorer Preview (`معاينة مباشرة`)** with selectable preview backdrops!
+- Customize **Blur, Acrylic, Mica, Mica Alt, and Clear Blur**, toggle address bar/scrollbar/WinUI toolbar transparency, and fine-tune custom `#AARRGGBB` Light & Dark blend tints and opacity.
+- **True DComp App Mirroring:** PecoFence's own windows (including the frameless title bar and client area) mirror your File Explorer glass material in real time with a smart `-70` opacity offset—giving the entire app genuine see-through hardware glass without any opaque tint flooding.
+- **One-Click Appearance Refresh (`تحديث المظهر`) [NEW]:** Instantly restarts `explorer.exe` and cleanly re-hooks all desktop fences and your active video wallpaper whenever Windows needs a fresh state.
+
+<!-- TODO: ADD IMAGE 5 (File Explorer Glass Studio & Live Preview) -->
+![File Explorer Glass Editor](assets/explorer-glass-editor.png)
+*> **[IMAGE PLACEHOLDER 5]:** Add a screenshot of the File Explorer Glass Advanced Settings window showing the interactive Live Preview and custom RGBA controls.*
+
+---
+
+## 📐 4. Granular Per-Fence Customization & 3D Perspective Shelves
+
+Every single fence can be tailored down to the pixel in the **Fences (`الأسوار`)** tab:
+
+- **Clone Fence Settings (`نسخ الإعدادات من سياج آخر`) [NEW]:** Designed the perfect fence? Copy its entire visual appearance and layout settings to any other fence with a single click—without overwriting the target fence's name, content, or sorting rules.
+- **Title Bar Visibility (`إظهار شريط العنوان`):** Added **"Never Show" (`عدم الإظهار أبداً`) [NEW]** alongside *Always* and *On Hover* for a completely headerless look.
+- **Custom Icon Frames & Color Palettes (`إطارات الأيقونات`) [NEW]:** Wrap individual icons in **Transparent (`شفاف`)** or **Fully Colored (`ملون بالكامل`)** rounded cards with dedicated 11-color pickers for both **Text Color (`لون النص`)** and **Frame Color (`لون الإطار`)**.
+- **Flush / Contiguous Icon Mode (`شكل الأيقونة: ملتصق`) [NEW]:** Crop icons into sharp `2:3` edge-to-edge posters—perfect for game libraries and media fences!
+- **Precision Pixel Sliders [NEW]:**
+  - **Custom Icon Size (`حجم أيقونة مخصص`):** Free-form slider from `16px` to `512px`.
+  - **Column Gap (`تباعد الأعمدة`) & Row Gap (`تباعد الصفوف`):** Dial spacing down to `0px` so icons touch seamlessly, or space them out to `48px+`.
+- **Scrollbar Control [NEW]:** Independently toggle **Hide Scrollbar (`إخفاء شريط التمرير`)** while keeping mouse-wheel scrolling active, or enable **Lock Scroll (`قفل التمرير`)** to freeze content at the top for fixed showcase layouts.
+- **3D Tilted Shelf Mode & Perspective Scale (`وضع الرف المائل` + `معامل التكبير`) [NEW]:** Tilts the fence into a 3D perspective parallelogram that aligns with angled 3D room wallpapers! Adjust the **Perspective Scale Factor (`معامل التكبير`)** so icons smoothly scale down toward the far edge of the shelf for realistic depth.
+
+<!-- TODO: ADD IMAGE 6 (Per-Fence Customization, Icon Frames & Tilted Shelf) -->
+![Advanced Fence Layout & 3D Shelf](assets/fence-advanced-layout.png)
+*> **[IMAGE PLACEHOLDER 6]:** Add a screenshot of the Fences tab showing Clone Settings, Icon Frames & Color Pickers, Contiguous 2:3 mode, Gap Sliders, and Tilted Shelf Mode.*
+
+---
+
+## ⚡ 5. Color-Coded Sorting Engine & Force Apply
+
+The **Sorting Rules (`قواعد الفرز`)** engine has been completely rebuilt for reliability and visual clarity:
+- **Color-Coded Fence Badges [NEW]:** Every fence is assigned a distinct color badge inside the rules list so you can immediately identify which rule routes to which fence at a glance.
+- **Apply Now vs. Force Apply (`تطبيق إجباري على كل العناصر`) [NEW]:**
+  - **Apply Now (`تطبيق الآن`):** Gently routes unorganized desktop items while respecting items you manually placed.
+  - **Force Apply (`تطبيق إجباري`):** Overrides all manual placements and ruthlessly re-sorts every single item on your desktop strictly according to your active rules.
+- **One-Click Quick Presets (`إضافة سريعة`):** Instantly generate pre-built fences and rules for *Pictures, Music, Videos, Archives, Installers,* or *Desktop Cleanup* (which only sweeps up installers and archives untouched for 30+ days without deleting a single file).
+
+<!-- TODO: ADD IMAGE 7 (Color-Coded Sorting Rules & Force Apply) -->
+![Sorting Rules Engine](assets/sorting-rules-colored.png)
+*> **[IMAGE PLACEHOLDER 7]:** Add a screenshot of the Sorting Rules tab highlighting the Color-Coded Fence Badges and the orange Force Apply button.*
+
+---
+
+## 📦 6. `.peco` Complete Theme Packages & Smart Wallpaper Fitting
+
+Forget basic `.json` layout backups—the **Layout & Backups (`التخطيط والنسخ الاحتياطية`)** tab is now a full **Visual Theme Gallery (`معرض الثيمات`)**:
+- **All-in-One `.peco` Theme Archives [NEW]:** Saving a theme captures **everything** into a portable `.peco` bundle—your exact fence coordinates, per-fence styles, custom icon sizes, sorting rules, glass settings, AND your static or live video wallpaper, complete with an automatic desktop preview thumbnail!
+- **One-Click Apply, Export & Import:** Switch between entire desktop setups in seconds, or export `.peco` files to share your desktop themes with anyone.
+- **Smart Aspect-Ratio Wallpaper Fit (`ضبط الصورة لتظهر بالكامل مهما كانت أبعاد الشاشة`) [NEW]:** Have a wallpaper that doesn't match your monitor's aspect ratio? Toggle this on to display the full uncropped image centered on your screen with an atmospheric blurred backdrop filling the edges—or turn it off for standard edge-to-edge crop fill.
+- **Daily Auto-Save (`حفظ تحديث الثيم تلقائياً كل يوم`) [NEW]:** Automatically updates your active `.peco` theme file once a day in-place so your latest desktop tweaks are always preserved without creating duplicate clutter.
+
+<!-- TODO: ADD IMAGE 8 (Theme Gallery & .peco Packages) -->
+![Theme Gallery Showcase](assets/themes-gallery.png)
+*> **[IMAGE PLACEHOLDER 8]:** Add a screenshot of the Theme Gallery showing the visual theme cards with Apply / Export .peco / Delete buttons and the Smart Wallpaper Fit toggle.*
+
+---
+
+## 🚀 Getting Started
+
+1. Download the latest `setup.exe` or `portable.zip` from the **Releases** page.
+2. Launch **PecoFence** from the system tray and open **Settings (`إعدادات PecoFence`)**.
+3. Pick a **Theme Style** (*Fluent, Liquid Glass, Bookshelf, or Invisible Canvas*), enable a **Desktop Clock Widget**, or import a `.peco` theme from the **Theme Gallery**—and watch your desktop transform immediately!
