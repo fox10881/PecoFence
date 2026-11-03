@@ -1,4 +1,4 @@
-<div align="center">
+<img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/3ee0557a-c28c-421f-8583-0c882a77159a" /><img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/bd534c1b-fefd-49a5-8193-150ab72341db" /><img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/9dd1f64c-f0e7-4f6b-9b3c-b8e92bb74e8a" /><div align="center">
 
 # 💠 PecoFence — Ultimate Desktop Customization & Organization Suite
 
@@ -8,7 +8,8 @@ PecoFence is a heavily supercharged, next-generation desktop organization and Wi
 
 <!-- TODO: ADD IMAGE 1 (Hero Desktop Showcase) -->
 ![PecoFence Hero Showcase](assets/hero-showcase.png)
-*> **[IMAGE PLACEHOLDER 1]:** Add a full desktop screenshot showing the Invisible/Bookshelf fences, Desktop Clock Widget, and Translucent Taskbar.*
+<img width="3840" height="2160" alt="image" src="https://github.com/user-attachments/assets/33abf85c-c9c9-45b4-b831-b76f9074b502" />
+
 
 </div>
 
@@ -35,7 +36,8 @@ Go beyond standard containers with four distinct visual paradigms:
 
 <!-- TODO: ADD IMAGE 2 (Fence Styles & Chameleon Mode) -->
 ![Fence Styles Showcase](assets/fence-styles.png)
-*> **[IMAGE PLACEHOLDER 2]:** Add a screenshot of the General tab showing the 4 Theme Styles (Fluent, Liquid Glass, Bookshelf, Invisible Canvas) and Chameleon Blending.*
+<img width="3837" height="2064" alt="image" src="https://github.com/user-attachments/assets/ba1ce0b3-861f-42e0-b2d9-7445825b7aeb" />
+
 
 ---
 
@@ -52,7 +54,8 @@ Go beyond standard containers with four distinct visual paradigms:
 
 <!-- TODO: ADD IMAGE 3 (Desktop Clock Widget & Video Wallpaper) -->
 ![Desktop Clock Widget Showcase](assets/clock-widgets.png)
-*> **[IMAGE PLACEHOLDER 3]:** Add a screenshot showing the Desktop Clock Widget floating on the desktop alongside the Widget Settings & Adaptive Contrast toggle.*
+<img width="3066" height="1530" alt="image" src="https://github.com/user-attachments/assets/96265444-24cd-40e5-813c-b1f874ce94fb" />
+
 
 ---
 
@@ -68,7 +71,8 @@ Switch themes on the fly—applied immediately upon selection with zero reboots:
 
 <!-- TODO: ADD IMAGE 4 (Taskbar, Start Menu & Notification Center Themes) -->
 ![Windows 11 Shell Customization](assets/windows-shell-customization.png)
-*> **[IMAGE PLACEHOLDER 4]:** Add a screenshot showcasing the custom Start Menu, Notification Center, and Taskbar theme dropdowns in action.*
+<img width="3837" height="1716" alt="image" src="https://github.com/user-attachments/assets/e5653484-b329-4150-a151-297c65a2c5a1" />
+
 
 ### 🔍 File Explorer Glass Studio & Unified App Transparency [NEW]
 - **Dedicated File Explorer Glass Editor (`تأثير خلفية مستكشف الملفات`):** Open the **Advanced Settings (`الإعدادات المتقدمة`)** studio featuring an interactive **Live File Explorer Preview (`معاينة مباشرة`)** with selectable preview backdrops!
@@ -78,7 +82,7 @@ Switch themes on the fly—applied immediately upon selection with zero reboots:
 
 <!-- TODO: ADD IMAGE 5 (File Explorer Glass Studio & Live Preview) -->
 ![File Explorer Glass Editor](assets/explorer-glass-editor.png)
-*> **[IMAGE PLACEHOLDER 5]:** Add a screenshot of the File Explorer Glass Advanced Settings window showing the interactive Live Preview and custom RGBA controls.*
+<img width="3837" height="2058" alt="image" src="https://github.com/user-attachments/assets/67bb0f05-997b-4844-8158-c718580501b3" />
 
 ---
 
@@ -98,7 +102,8 @@ Every single fence can be tailored down to the pixel in the **Fences (`الأس�
 
 <!-- TODO: ADD IMAGE 6 (Per-Fence Customization, Icon Frames & Tilted Shelf) -->
 ![Advanced Fence Layout & 3D Shelf](assets/fence-advanced-layout.png)
-*> **[IMAGE PLACEHOLDER 6]:** Add a screenshot of the Fences tab showing Clone Settings, Icon Frames & Color Pickers, Contiguous 2:3 mode, Gap Sliders, and Tilted Shelf Mode.*
+<img width="3837" height="2067" alt="image" src="https://github.com/user-attachments/assets/233e8c03-7580-4ba0-9d47-15948d8c5d3a" />
+
 
 ---
 
@@ -113,7 +118,8 @@ The **Sorting Rules (`قواعد الفرز`)** engine has been completely rebui
 
 <!-- TODO: ADD IMAGE 7 (Color-Coded Sorting Rules & Force Apply) -->
 ![Sorting Rules Engine](assets/sorting-rules-colored.png)
-*> **[IMAGE PLACEHOLDER 7]:** Add a screenshot of the Sorting Rules tab highlighting the Color-Coded Fence Badges and the orange Force Apply button.*
+<img width="3837" height="2055" alt="image" src="https://github.com/user-attachments/assets/6a99d08c-0124-4581-bb3e-36e0d587c4f6" />
+
 
 ---
 
@@ -127,7 +133,8 @@ Forget basic `.json` layout backups—the **Layout & Backups (`التخطيط و
 
 <!-- TODO: ADD IMAGE 8 (Theme Gallery & .peco Packages) -->
 ![Theme Gallery Showcase](assets/themes-gallery.png)
-*> **[IMAGE PLACEHOLDER 8]:** Add a screenshot of the Theme Gallery showing the visual theme cards with Apply / Export .peco / Delete buttons and the Smart Wallpaper Fit toggle.*
+<img width="3837" height="2061" alt="image" src="https://github.com/user-attachments/assets/6d74f4a5-814f-4b17-867a-bf493a4c4334" />
+
 
 ---
 
