@@ -410,6 +410,10 @@ pub struct App {
     /// operation and the clipboard sequence number at the paste. The clipboard is emptied when
     /// the move succeeds, unless something else was put on it meanwhile (see `paste_into`).
     cut_paste: Option<(u64, u32)>,
+    /// Set by `Command::Quit { restart_shell: true }` — the tray's explicit
+    /// 退出 only. `shutdown()` restarts the shell after unloading the
+    /// injected pieces so Explorer comes back vanilla.
+    restart_shell_on_exit: bool,
 }
 
 pub type AppCell = Rc<RefCell<Option<App>>>;
@@ -1092,7 +1096,9 @@ impl App {
                                 // quit below: close it, then quit as 退出 does (saving first)
                                 // once the App is free again.
                                 tray::end_menu();
-                                queue.push(Command::Quit);
+                                queue.push(Command::Quit {
+                                    restart_shell: false,
+                                });
                             }
                             window::post_quit(0);
                             Some(0)
@@ -1373,6 +1379,7 @@ impl App {
             cut_items: HashSet::new(),
             cut_clip_seq: 0,
             cut_paste: None,
+            restart_shell_on_exit: false,
             wallpaper_sig: None,
             wallpaper_cache: BackdropCache::default(),
             live_wallpaper: live_wallpaper::LiveBackdrop::default(),
@@ -1519,6 +1526,20 @@ impl App {
         }
         if let Some(a) = app.anchor.borrow_mut().as_mut() {
             a.reanchor("startup");
+        }
+        // Cold-boot lifecycle hook — the ONLY point in the lifecycle where
+        // the daemon may restart explorer.exe. An armed ExplorerBlurMica
+        // wants a fresh process so DllMain hooks land cleanly; a resident
+        // still answering means a previous run died uncleanly and injected
+        // code is alive in the shell — a restart scrubs both at once.
+        // Neither applies → the shell is left alone. Settings-UI opens
+        // never reach here: the single-instance gate exits in main().
+        let fe_armed = !app.state.config.settings.fe_effect.is_empty();
+        let stale_resident =
+            args.instance.is_none() && !pecofence_platform::tap::resident_windows_all().is_empty();
+        if fe_armed || stale_resident {
+            tracing::info!(fe_armed, stale_resident, "cold boot: restarting Explorer");
+            std::thread::spawn(pecofence_platform::tap::restart_explorer);
         }
         // Saved surface styles — each apply() stores the selection either
         // way, and the periodic ensure() delivers it when the hosts
@@ -2194,7 +2215,8 @@ impl App {
                     w.redraw();
                 }
             }
-            Command::Quit => {
+            Command::Quit { restart_shell } => {
+                self.restart_shell_on_exit = restart_shell;
                 self.state.save_if_dirty();
                 if let Some(a) = self.anchor.borrow_mut().as_mut() {
                     a.restore_desktop_icons();
@@ -2323,5 +2345,14 @@ impl App {
             a.restore_desktop_icons();
         }
         self.tray = None;
+        // Full-exit lifecycle hook: only the tray's explicit 退出 arrives
+        // here armed. The injected pieces are already unloaded above
+        // (EBMU + resident unload + styler resets); restarting the shell
+        // now returns the user to a guaranteed-vanilla Explorer instead
+        // of leaving a half-detached one running until sign-out.
+        if self.restart_shell_on_exit {
+            tracing::info!("tray exit: restarting Explorer for a vanilla shell");
+            pecofence_platform::tap::restart_explorer();
+        }
     }
 }

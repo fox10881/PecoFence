@@ -66,6 +66,79 @@ pub(crate) fn is_unloaded() -> bool {
     UNLOADED.load(Ordering::Acquire)
 }
 
+/// Heavy wire work runs on ONE worker thread so the command pump never
+/// stalls: `LoadLibraryW`/`FreeLibrary` serialize on the loader lock,
+/// `ensure_watching` calls into COM (`InitializeXamlDiagnosticsEx`), and
+/// `IImageList2` overlay sync marshals into apartments. Any of those
+/// blocking inside `handle_message` would starve the `WM_TIMER` keepalive
+/// (diagnostics re-advise, `CmdHwnd` re-stamp, overlay sync) and park every
+/// later `SendMessage` behind it — the resident would look dead while the
+/// host keeps sending. A single FIFO preserves the host's send order
+/// (`TBSR`→`TBST`, `EBMU`→`EBML`, `FELR`→`EBMU`) exactly as the
+/// synchronous handlers did.
+enum Job {
+    /// `site::ensure_watching` — re-arm/retry the visual-tree watcher.
+    EnsureWatching,
+    /// `site::ensure_watching_winui3` — the mux session's second watcher.
+    EnsureWatchingWinui3,
+    /// `TBST`/`SMST`/`NCST` theme wire — parse + dispatcher handoff.
+    WireApply(String),
+    /// `TBSR`/`SMSR`/`NCSR` reset.
+    WireReset,
+    /// `EBML` — `LoadLibraryW` the vendored EBM image.
+    EbmLoad(Vec<u8>),
+    /// `EBMU` — `FreeLibrary` it.
+    EbmUnload,
+    /// `FELR` — retired mux wire restore.
+    FeLayoutReset,
+    /// `SLNK` / timer-driven `IImageList2` overlay sync.
+    LinkOverlay(Option<bool>),
+}
+
+static WORK: std::sync::OnceLock<std::sync::mpsc::Sender<Job>> = std::sync::OnceLock::new();
+
+fn enqueue(job: Job) {
+    if let Some(tx) = WORK.get() {
+        let _ = tx.send(job);
+    }
+}
+
+fn run_job(job: Job) {
+    match job {
+        Job::EnsureWatching => crate::site::ensure_watching(),
+        Job::EnsureWatchingWinui3 => crate::site::ensure_watching_winui3(),
+        Job::WireApply(text) => {
+            // The styler needs the visual-tree feed — re-arm/retry the
+            // watcher (cheap no-op once advised).
+            crate::site::ensure_watching();
+            crate::styler::wux::apply_wire(&text);
+        }
+        Job::WireReset => crate::styler::wux::reset(),
+        Job::EbmLoad(bytes) => crate::ebm::load(&bytes),
+        Job::EbmUnload => crate::ebm::unload(),
+        Job::FeLayoutReset => crate::styler::mux::reset(),
+        Job::LinkOverlay(shown) => sync_link_overlay(shown),
+    }
+}
+
+/// Spawn the single FIFO worker; called once from `run()` before the window
+/// is created so early wires can already enqueue. Jobs after `unload()` are
+/// skipped — an inert resident must not re-arm anything.
+fn start_worker() {
+    let (tx, rx) = std::sync::mpsc::channel::<Job>();
+    let _ = WORK.set(tx);
+    let _ = std::thread::Builder::new()
+        .name("pecofence-tap-work".into())
+        .spawn(move || {
+            while let Ok(job) = rx.recv() {
+                if is_unloaded() {
+                    continue;
+                }
+                let _ = std::panic::catch_unwind(core::panic::AssertUnwindSafe(|| run_job(job)));
+            }
+        });
+}
+
 /// Command-protocol build stamp — set as a window property
 /// (`PecoFence.TAP.Build`) so the host can tell a stale resident apart:
 /// `InitializeXamlDiagnosticsEx` pins the DLL in the host process, so an
@@ -96,6 +169,9 @@ const BUILD_PROP_NAME: &[u16] = &[
 ];
 
 pub fn run() {
+    // Spawn the FIFO worker first — `LoadLibraryW`/`FreeLibrary` and COM
+    // diagnostics calls must never run inside `handle_message` (see `Job`).
+    start_worker();
     unsafe {
         UNLOAD_MSG.store(
             RegisterWindowMessageW(pcwstr(UNLOAD_NAME)),
@@ -152,7 +228,7 @@ pub fn run() {
         // `Shell_TrayWnd` (shell explorer's taskbar) — so the host reads it
         // back with GetPropW instead of guessing among same-class residents.
         stamp_host_props(hwnd);
-        sync_link_overlay(None);
+        enqueue(Job::LinkOverlay(None));
         // The IXDEx retry cadence: a fresh Explorer has no XAML island yet,
         // so early install attempts fail until the taskbar comes up. `site::
         // ensure_watching` is a cheap no-op once the watcher is advised.
@@ -306,18 +382,21 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
         return;
     }
     if msg == WM_TIMER {
-        crate::site::ensure_watching();
+        // COM diagnostics + image-list work ride the worker — a marshaled
+        // call into a busy UI thread must never stall this keepalive pump.
+        enqueue(Job::EnsureWatching);
         // The mux session's endpoint exists only once a WinUI3 island
         // registers it — a theme wire can land before any File Explorer
         // window exists, so keep re-trying while the mux engine wants one.
         if crate::styler::mux::wants_session() {
-            crate::site::ensure_watching_winui3();
+            enqueue(Job::EnsureWatchingWinui3);
         }
         // Anchor props for late-created frames — a `Shell_TrayWnd` window
         // opened after this resident booted has no `CmdHwnd` prop until a
-        // re-stamp, and the host would arm the hook forever.
+        // re-stamp, and the host would arm the hook forever. EnumWindows +
+        // GetProp stay on the pump: pure win32, no COM marshaling.
         stamp_host_props(_hwnd);
-        sync_link_overlay(None);
+        enqueue(Job::LinkOverlay(None));
         return;
     }
     if msg == WM_COPYDATA {
@@ -337,23 +416,24 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
             CDS_THEME | CDS_TB_THEME | CDS_NC_THEME
                 if !cds.lp_data.is_null() && cds.cb_data > 0 =>
             {
+                // `lp_data` is borrowed for the SendMessage duration — copy
+                // before handing the wire to the worker.
                 let bytes = unsafe {
                     core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
                 };
-                let Ok(text) = core::str::from_utf8(bytes) else {
+                let Ok(text) = std::str::from_utf8(bytes) else {
                     crate::tap_log!("styler wire not UTF-8");
                     return;
                 };
-                // The styler needs the visual-tree feed — re-arm/retry the
-                // watcher (cheap no-op once advised).
-                crate::site::ensure_watching();
-                crate::styler::wux::apply_wire(text);
+                enqueue(Job::WireApply(text.to_owned()));
             }
             CDS_HELLO | CDS_TB_HELLO | CDS_NC_HELLO
                 if !cds.lp_data.is_null() && cds.cb_data == 4 =>
             {
                 // Host announced itself — arm the death watch so styles
-                // restore if pecofence.exe dies.
+                // restore if pecofence.exe dies. Cheap OpenProcess +
+                // RegisterWaitForSingleObject; stays on the pump so the
+                // watch is armed before the SendMessage returns.
                 let pid = unsafe { *(cds.lp_data as *const u32) };
                 watch_host_process(pid);
             }
@@ -361,15 +441,15 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
                 let bytes = unsafe {
                     core::slice::from_raw_parts(cds.lp_data as *const u8, cds.cb_data as usize)
                 };
-                crate::ebm::load(bytes);
+                enqueue(Job::EbmLoad(bytes.to_vec()));
             }
-            CDS_EBM_UNLOAD => crate::ebm::unload(),
-            CDS_FE_LAYOUT_RESET => crate::styler::mux::reset(),
+            CDS_EBM_UNLOAD => enqueue(Job::EbmUnload),
+            CDS_FE_LAYOUT_RESET => enqueue(Job::FeLayoutReset),
             CDS_LINK_OVERLAY if !cds.lp_data.is_null() && cds.cb_data >= 1 => {
                 let shown = unsafe { *(cds.lp_data as *const u8) } != 0;
-                sync_link_overlay(Some(shown));
+                enqueue(Job::LinkOverlay(Some(shown)));
             }
-            CDS_RESET | CDS_TB_RESET | CDS_NC_RESET => crate::styler::wux::reset(),
+            CDS_RESET | CDS_TB_RESET | CDS_NC_RESET => enqueue(Job::WireReset),
             _ => {}
         }
     }

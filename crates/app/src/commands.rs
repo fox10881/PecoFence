@@ -296,7 +296,14 @@ pub enum Command {
     /// Settings window on the 「栅栏」 page with this fence selected.
     OpenOptionsForFence(FenceId),
     RedrawAll,
-    Quit,
+    /// Full application exit. `restart_shell` is honoured only for the
+    /// tray's explicit 退出 — the one moment the lifecycle policy allows
+    /// an Explorer restart (the shell is scrubbed back to vanilla).
+    /// Update-install and session-end quits pass `false`: the app is
+    /// either coming straight back or the shell is dying anyway.
+    Quit {
+        restart_shell: bool,
+    },
     /// A window was destroyed (unregister).
     WindowGone(HWND),
     /// The settings window became the active window (back from Windows' Startup page, say).

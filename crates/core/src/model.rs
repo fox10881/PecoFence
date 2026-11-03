@@ -163,12 +163,12 @@ pub struct Settings {
     /// The Start Menu style applied through Windhawk's
     /// `windows-11-start-menu-styler` mod — a [`crate::start_menu_themes`]
     /// catalog id, `""` = Windows Default (the mod's `theme` setting cleared).
-    /// Local device preference — themes never carry it.
+    /// `.peco` themes carry it; a machine without the mod keeps its own.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub start_menu_style: String,
     /// The Taskbar style applied through the native XAML styler — a
     /// [`crate::taskbar_themes`] catalog id, `""` = Windows Default (stock
-    /// taskbar restored). Local device preference — themes never carry it.
+    /// taskbar restored). `.peco` themes carry it.
     /// Always serialized (unlike `startMenuStyle`): the CLI's
     /// `settings set` allowlist comes from the serialized object, so a
     /// skipped-empty field could never be set.
@@ -177,14 +177,16 @@ pub struct Settings {
     /// The Notification Center style applied through the native XAML
     /// styler — a [`crate::notification_center_themes`] catalog id, `""` =
     /// Windows Default (stock Action/Notification Center restored).
-    /// Local device preference — themes never carry it.
+    /// `.peco` themes carry it.
     #[serde(default)]
     pub notification_center_style: String,
     /// File Explorer window glass — the ExplorerBlurMica recipe applied
     /// natively: `""` = Windows Default (stock chrome + backdrop);
     /// `"blur"`/`"acrylic"`/`"mica"`/`"blurclear"`/`"micaalt"` map to
     /// EBM's `effect=` (Blur/Acrylic/Mica/Blur (Clear)/Mica Alt).
-    /// Local device preference — themes never carry it.
+    /// `.peco` themes carry the whole `fe_*` recipe — applying a theme
+    /// restores the author's Explorer material (and `""` disarms to
+    /// stock).
     #[serde(default)]
     pub fe_effect: String,
     /// EBM `clearAddress` — clear the address bar background.
@@ -212,7 +214,7 @@ pub struct Settings {
     /// strict Contain (the whole frame centered and uncropped, the leftover
     /// margins filled with a blurred copy). Replaces `stretchTolerancePct` —
     /// a negative value there meant Contain ([`crate::config_store::migrate`]).
-    /// Local device preference — themes never carry it.
+    /// `.peco` themes carry it.
     #[serde(default)]
     pub contain_background: bool,
     /// Legacy `stretchTolerancePct`: read only so `migrate` can map `< 0` →
@@ -231,8 +233,8 @@ pub struct Settings {
     #[serde(default)]
     pub theme_auto_update_daily: bool,
     /// Desktop clock widget design: `"none"` = hidden (default);
-    /// `"g1".."g10"` and `"d1".."d10"` pick a design. Local device
-    /// preference — themes never carry it.
+    /// `"g1".."g10"` and `"d1".."d10"` pick a design. `.peco` themes
+    /// carry it (with `clock_bounds`).
     #[serde(default = "clock_style_default")]
     pub clock_style: String,
     /// Widget window bounds in physical pixels `[x, y, w, h]`; `None` until
@@ -1979,17 +1981,6 @@ impl Config {
     /// their manifest with the listing's names so a machine without that folder gets a
     /// graceful virtual fence.
     pub fn make_theme_portable(&mut self) {
-        // fe_* are local device preferences — themes never carry them (the
-        // apply side preserves the local values, but the archive shouldn't
-        // describe a foreign machine's Explorer styling at all).
-        let defaults = Settings::default();
-        self.settings.fe_effect = defaults.fe_effect;
-        self.settings.fe_clear_address = defaults.fe_clear_address;
-        self.settings.fe_clear_bar_bg = defaults.fe_clear_bar_bg;
-        self.settings.fe_clear_winui_bg = defaults.fe_clear_winui_bg;
-        self.settings.fe_show_line = defaults.fe_show_line;
-        self.settings.fe_light_rgba = defaults.fe_light_rgba;
-        self.settings.fe_dark_rgba = defaults.fe_dark_rgba;
         for layout in &mut self.layouts {
             for fence in &mut layout.fences {
                 if fence.kind == FenceKind::FolderPortal {
@@ -2026,6 +2017,119 @@ impl Config {
             .collect();
         self.items.retain(|id, _| referenced.contains(id));
     }
+
+    /// Normalize shell-facing fields arriving from an external source (a
+    /// `.peco` archive or an imported `config.json`). Legacy archives predate
+    /// fields, and hand-edited or cross-version archives may carry ids this
+    /// build doesn't know; feeding unknown styling ids or corrupt geometry
+    /// into the shell-styling surfaces (taskbar/Start/Notification Center
+    /// wires, the EBM recipe, window placement) makes the injected resident
+    /// and the window layer misbehave, so every externally supplied value is
+    /// validated against its catalog and falls back to a safe default.
+    pub fn sanitize_external(&mut self) {
+        let s = &mut self.settings;
+        // EBM effect ids — `""` means "Windows Default" (styling off).
+        const EBM_EFFECTS: &[&str] = &["", "blur", "acrylic", "mica", "blurclear", "micaalt"];
+        if !EBM_EFFECTS.contains(&s.fe_effect.as_str()) {
+            s.fe_effect.clear();
+        }
+        if !looks_like_rgba(&s.fe_light_rgba) {
+            s.fe_light_rgba = fe_light_rgba_default();
+        }
+        if !looks_like_rgba(&s.fe_dark_rgba) {
+            s.fe_dark_rgba = fe_dark_rgba_default();
+        }
+        // `""` = surface not styled — always a legal theme value.
+        if !s.taskbar_style.is_empty() && !crate::taskbar_themes::is_style_id(&s.taskbar_style) {
+            s.taskbar_style.clear();
+        }
+        if !s.start_menu_style.is_empty()
+            && !crate::start_menu_themes::is_style_id(&s.start_menu_style)
+        {
+            s.start_menu_style.clear();
+        }
+        if !s.notification_center_style.is_empty()
+            && !crate::notification_center_themes::is_style_id(&s.notification_center_style)
+        {
+            s.notification_center_style.clear();
+        }
+        // Clock design: `"none"`/`""` hide it; `"g1".."g10"`/`"d1".."d10"`
+        // are the designs. Unknown ids used to slip through and the widget
+        // host silently spawned nothing.
+        let clock_ok = s.clock_style.is_empty()
+            || s.clock_style == "none"
+            || (s.clock_style.len() <= 3
+                && s.clock_style
+                    .strip_prefix(|c| c == 'g' || c == 'd')
+                    .is_some_and(|n| n.parse::<u8>().is_ok_and(|v| (1..=10).contains(&v))));
+        if !clock_ok {
+            s.clock_style = "none".into();
+        }
+        // `[x, y, w, h]` physical pixels — x/y may be negative on multi-
+        // monitor setups, only the size needs a sane range.
+        if s.clock_bounds
+            .is_some_and(|[_, _, w, h]| !(16..=8192).contains(&w) || !(16..=8192).contains(&h))
+        {
+            s.clock_bounds = None;
+        }
+        s.desktop_effect_intensity = s.desktop_effect_intensity.clamp(10, 100);
+
+        // Fence geometry is stored in logical pixels against the saved
+        // `work_w`/`work_h` — NOT normalized fractions. A non-finite or
+        // degenerate value (NaN, w <= 0, missing work area) can't be mapped
+        // to a window rect; reset it to a visible default instead of a
+        // 0-DIP speck at the origin. Everything else only clamps to a
+        // generous DIP range so real 4K/multi-monitor layouts (which can
+        // legitimately exceed ±3000 or sit slightly off-screen) survive
+        // byte-exact.
+        for layout in &mut self.layouts {
+            for fence in &mut layout.fences {
+                let g = &mut fence.geometry;
+                let mappable = g.x.is_finite()
+                    && g.y.is_finite()
+                    && g.work_w.is_finite()
+                    && g.work_w > 0.0
+                    && g.work_h.is_finite()
+                    && g.work_h > 0.0
+                    && g.w.is_finite()
+                    && g.w > 0.0
+                    && g.h.is_finite()
+                    && g.h > 0.0;
+                if mappable {
+                    g.x = g.x.clamp(-32767.0, 32767.0);
+                    g.y = g.y.clamp(-32767.0, 32767.0);
+                    g.w = g.w.min(32767.0);
+                    g.h = g.h.min(32767.0);
+                } else {
+                    g.x = 100.0;
+                    g.y = 100.0;
+                    g.w = 280.0;
+                    g.h = 400.0;
+                    if !(g.work_w.is_finite() && g.work_w > 0.0) {
+                        g.work_w = 1920.0;
+                    }
+                    if !(g.work_h.is_finite() && g.work_h > 0.0) {
+                        g.work_h = 1040.0;
+                    }
+                }
+                if !fence.expanded_h.is_finite() || fence.expanded_h <= 0.0 {
+                    fence.expanded_h = g.h;
+                }
+                for v in [&mut g.skew_left, &mut g.skew_right] {
+                    if v.is_some_and(|s| !s.is_finite()) {
+                        *v = None;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// `#AARRGGBB` / `#RRGGBB` — matches `file_explorer_styler::parse_rgba`'s
+/// accepted shapes so a malformed string can't reach `config.ini`.
+fn looks_like_rgba(s: &str) -> bool {
+    let hex = s.strip_prefix('#').unwrap_or(s);
+    matches!(hex.len(), 6 | 8) && hex.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 fn default_chameleon_intensity() -> u8 {
@@ -3155,6 +3259,103 @@ mod theme_portable_tests {
         // Round-trips: manifests parse back for the import side.
         let back: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(back.layouts[0].fences[0].contained_files.len(), 2);
+    }
+
+    #[test]
+    fn theme_portable_keeps_fe_explorer_recipe() {
+        // The .peco archive carries the whole fe_* ExplorerBlurMica recipe —
+        // applying a theme restores the author's Explorer material. A stray
+        // reset here silently regresses themes back to "local-only" styling.
+        let mut c = Config::default();
+        c.settings.fe_effect = "acrylic".into();
+        c.settings.fe_clear_address = false;
+        c.settings.fe_show_line = true;
+        c.settings.fe_light_rgba = "#11223344".into();
+        c.settings.fe_dark_rgba = "#55667788".into();
+
+        c.make_theme_portable();
+
+        let s = &c.settings;
+        assert_eq!(s.fe_effect, "acrylic");
+        assert!(!s.fe_clear_address && s.fe_clear_bar_bg && s.fe_clear_winui_bg);
+        assert!(s.fe_show_line);
+        assert_eq!(s.fe_light_rgba, "#11223344");
+        assert_eq!(s.fe_dark_rgba, "#55667788");
+        let back: Config = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.settings.fe_effect, "acrylic");
+    }
+
+    #[test]
+    fn sanitize_external_falls_back_to_safe_shell_values() {
+        // Legacy/hand-edited archives may carry styling ids this build
+        // doesn't know or corrupt geometry — every shell-facing field must
+        // normalize to a safe default instead of reaching the resident.
+        let mut c = Config::default();
+        c.settings.fe_effect = "micaalt2".into();
+        c.settings.fe_light_rgba = "not-a-color".into();
+        c.settings.fe_dark_rgba = "#GGHHIIJJ".into();
+        c.settings.taskbar_style = "NonexistentStyle".into();
+        c.settings.start_menu_style = "Down Aero".into(); // valid — kept
+        c.settings.notification_center_style = "???".into();
+        c.settings.clock_style = "g99".into();
+        c.settings.clock_bounds = Some([0, 0, -5, 99999]);
+        c.settings.desktop_effect_intensity = 0;
+        c.layouts.push(layout_with(vec![Fence::new(
+            "F",
+            FenceKind::Virtual,
+            geo(),
+        )]));
+        c.layouts[0].fences[0].geometry.w = f32::NAN;
+        c.layouts[0].fences[0].geometry.x = f32::INFINITY;
+        c.layouts[0].fences[0].geometry.skew_left = Some(f32::NAN);
+
+        c.sanitize_external();
+        let s = &c.settings;
+        assert_eq!(s.fe_effect, "");
+        assert!(super::looks_like_rgba(&s.fe_light_rgba));
+        assert!(super::looks_like_rgba(&s.fe_dark_rgba));
+        assert_eq!(s.taskbar_style, "");
+        assert_eq!(s.start_menu_style, "Down Aero");
+        assert_eq!(s.notification_center_style, "");
+        assert_eq!(s.clock_style, "none");
+        assert_eq!(s.clock_bounds, None);
+        assert_eq!(s.desktop_effect_intensity, 10);
+        // Degenerate geometry falls back to a visible rect, not a 0 speck.
+        let g = &c.layouts[0].fences[0].geometry;
+        assert!(g.w.is_finite() && g.x.is_finite() && g.w > 0.0 && g.h > 0.0);
+        assert_eq!(g.skew_left, None);
+
+        // Valid values survive untouched — including a real fence's DIP
+        // geometry (fences are logical pixels against work_w/work_h, not
+        // normalized fractions: 939/243-style values must round-trip).
+        let mut ok = Config::default();
+        ok.settings.fe_effect = "micaalt".into();
+        ok.settings.clock_style = "d3".into();
+        ok.settings.clock_bounds = Some([-200, 100, 400, 120]);
+        ok.layouts.push(layout_with(vec![Fence::new(
+            "Real",
+            FenceKind::Virtual,
+            NormGeometry {
+                monitor: "m".into(),
+                x: 939.0,
+                y: 95.0,
+                w: 243.0,
+                h: 406.66666,
+                work_w: 1280.0,
+                work_h: 688.0,
+                anchor: Anchor::RightTop,
+                skew_left: Some(-14.0),
+                skew_right: None,
+            },
+        )]));
+        ok.sanitize_external();
+        assert_eq!(ok.settings.fe_effect, "micaalt");
+        assert_eq!(ok.settings.clock_style, "d3");
+        assert_eq!(ok.settings.clock_bounds, Some([-200, 100, 400, 120]));
+        let rg = &ok.layouts[0].fences[0].geometry;
+        assert_eq!((rg.x, rg.y, rg.w, rg.h), (939.0, 95.0, 243.0, 406.66666));
+        assert_eq!((rg.work_w, rg.work_h), (1280.0, 688.0));
+        assert_eq!(rg.skew_left, Some(-14.0));
     }
 
     #[test]

@@ -3997,7 +3997,11 @@ pub(crate) fn dispatch_apply() {
         crate::tap_log!("styler: no dispatcher yet — apply deferred");
         return;
     };
-    post_ui(&dispatcher, Prio::Normal, || {
+    // Low priority: the sweep is one long dispatcher item (restore_all +
+    // restyle); during back-to-back theme applies queued input must get
+    // dispatched ahead of it or the taskbar feels frozen for the sweep's
+    // whole duration. Resets keep Normal so they still land first.
+    post_ui(&dispatcher, Prio::Low, || {
         apply_theme_ui();
         Ok(())
     });

@@ -266,8 +266,18 @@ fn spawn_video_swap(
 
 impl App {
     /// Replaces the configuration wholesale (import / backup) and rebuilds everything.
-    pub(super) fn adopt_config(&mut self, cfg: pecofence_core::Config, source: ConfigSource) {
+    pub(super) fn adopt_config(&mut self, mut cfg: pecofence_core::Config, source: ConfigSource) {
         self.end_peek_now();
+        // An external config (`.peco` archive or imported file) can carry
+        // unknown styling ids or corrupt geometry from another version or a
+        // hand edit — normalize before anything diffs/applies it, or the
+        // shell surfaces get fed values this build can't honour.
+        cfg.sanitize_external();
+        if cfg.settings.desktop_effect != "none"
+            && crate::effects_engine::Effect::from_id(&cfg.settings.desktop_effect).is_none()
+        {
+            cfg.settings.desktop_effect = "none".into();
+        }
         let old_settings = self.state.config.settings.clone();
         self.state.replace_config(cfg);
         if let Some(desk) = shell::user_desktop() {
@@ -278,19 +288,6 @@ impl App {
         let mut new_settings = self.state.config.settings.clone();
         if pecofence_platform::process::is_packaged() {
             new_settings.autostart = old_settings.autostart;
-        }
-        if matches!(source, ConfigSource::Theme | ConfigSource::Retune) {
-            // fe_* are local device preferences — a theme never carries them.
-            // Without this preserve, an archive whose `fe_effect=""` (authored
-            // before the feature, or stripped on pack) broadcasts FELR/EBMU
-            // disarm and wipes the user's armed Explorer styling on every apply.
-            new_settings.fe_effect = old_settings.fe_effect.clone();
-            new_settings.fe_clear_address = old_settings.fe_clear_address;
-            new_settings.fe_clear_bar_bg = old_settings.fe_clear_bar_bg;
-            new_settings.fe_clear_winui_bg = old_settings.fe_clear_winui_bg;
-            new_settings.fe_show_line = old_settings.fe_show_line;
-            new_settings.fe_light_rgba = old_settings.fe_light_rgba.clone();
-            new_settings.fe_dark_rgba = old_settings.fe_dark_rgba.clone();
         }
         if !matches!(source, ConfigSource::Theme | ConfigSource::Retune) {
             // A plain config import/backup restore severs the link to whatever theme
@@ -1449,6 +1446,10 @@ impl App {
                 ));
             }
         }
+        // Themes carry the fe_* Explorer-material recipe now: the archive's
+        // values land here and this diff applies them. Archives packed by
+        // older builds carry the stripped defaults (`fe_effect=""`), which
+        // correctly read as "Windows Default" and disarm to stock.
         let fe_changed = new.fe_effect != old.fe_effect
             || new.fe_clear_address != old.fe_clear_address
             || new.fe_clear_bar_bg != old.fe_clear_bar_bg

@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+- **`.peco` themes now carry the complete ExplorerBlurMica recipe** — the
+  `fe_*` fields (effect, address-bar/bar/WinUI background clearing, split
+  line, light & dark RGBA) were previously stripped at export and locally
+  preserved at apply, so themes silently kept the machine's own Explorer
+  styling. Export now serializes them and applying a theme restores the
+  author's full Explorer material.
+- **Explorer restart lifecycle**: Explorer is restarted on cold boot only
+  when the Explorer effect is armed or a stale injected resident survives
+  an unclean shutdown — never when Settings is merely opened while the
+  daemon runs. A full quit from the tray unhooks every shell styling
+  surface (EBM, taskbar, Start menu, Notification Center) and then restarts
+  Explorer so Windows returns to vanilla; update exits and Windows session
+  end deliberately skip the restart.
+- **Shell-freeze hardening for theme applies**: the tap resident's command
+  pump no longer runs blocking work inside `WM_COPYDATA` handlers —
+  `LoadLibrary`/`FreeLibrary` (loader lock), COM diagnostics calls, and the
+  `IImageList2` overlay sync now ride a single FIFO worker so a stalled
+  operation can't starve the keepalive timer or park `SendMessage` callers.
+  The taskbar theme sweep is queued at Low dispatcher priority so input
+  keeps dispatching during back-to-back theme applies.
+- **Theme sanitizer**: `.peco` archives and imported configs are validated
+  on adoption — unknown ExplorerBlurMica/style/clock ids fall back to safe
+  defaults, malformed RGBA strings and out-of-range intensity are reset.
+  Fence geometry is stored in logical pixels against the saved work area,
+  so only non-finite or degenerate values (NaN, non-positive size/work)
+  fall back to a visible default — real DPI-scaled and multi-monitor
+  positions round-trip untouched.
+
 ## 0.2.8
 
 - **Desktop video & effects render inside Explorer's WorkerW background layer**: the video wallpaper and the particle overlay are reparented into the WorkerW host behind `SHELLDLL_DefView` (spawning one via the undocumented `0x052C` message only when no usable layer exists), so desktop right-click and drag-select behave natively again — no hit-test tricks standing between you and the icons. The overlay re-opens itself when Explorer restarts, and the video tucks directly below it so re-attaches never bury the particles.
