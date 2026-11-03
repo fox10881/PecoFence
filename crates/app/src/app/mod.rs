@@ -289,6 +289,9 @@ pub struct App {
     /// The desktop clock widget (chrome-free singleton — `clock_style`
     /// `""`/`"none"` keeps it closed).
     clock: Option<crate::clock_host::ClockHost>,
+    /// Native D2D/DComp desktop effects overlay; the window exists only while
+    /// `settings.desktop_effect` names a real effect (`"none"` = zero resources).
+    effects: Option<crate::effects_host::EffectsHost>,
     /// Signature of the last `feState` pushed to the glass editor — repeat
     /// pushes are skipped so its unsaved draft is never clobbered (empty
     /// forces a push: fresh page, or after close).
@@ -1246,6 +1249,7 @@ impl App {
         let fe_glass_class = crate::fe_glass_host::FeGlassHost::register_class()?;
         let clock_class = crate::clock_host::ClockHost::register_class()?;
         let peek_class = PeekOverlay::register_class()?;
+        let effects_class = crate::effects_host::EffectsHost::register_class()?;
 
         // CLI named pipe: requests land in `ipc_pending`, the control window is poked.
         let ipc_pending: PendingQueue = Arc::new(Mutex::new(VecDeque::new()));
@@ -1287,7 +1291,7 @@ impl App {
             desktop_marquee_base: HashMap::new(),
             anchor: anchor_cell,
             control,
-            queue,
+            queue: queue.clone(),
             tray,
             watchers,
             _shell_watch: shell_watch,
@@ -1306,6 +1310,11 @@ impl App {
             settings: None,
             fe_glass: None,
             clock: None,
+            effects: Some(crate::effects_host::EffectsHost::new(
+                effects_class,
+                stack.clone(),
+                queue.clone(),
+            )),
             fe_glass_pushed: RefCell::new(String::new()),
             settings_focus_fence: None,
             feedback: Default::default(),
@@ -1377,6 +1386,11 @@ impl App {
         // Restores a previously armed clock widget (a no-op while the
         // style is ""/"none").
         app.apply_clock_style(&app.state.config.settings.clock_style.clone());
+        // Restores a persisted desktop effect ("none" is a no-op that never
+        // creates the overlay window).
+        let fx = app.state.config.settings.clone();
+        app.apply_desktop_effect(&fx);
+        app.refresh_effect_obstacles();
         // Watch both wallpaper settings and virtual-desktop state; either signal starts a
         // bounded burst of fast reads, because the image may arrive after the notification.
         {
@@ -2273,6 +2287,9 @@ impl App {
         self.end_peek_now();
         self.video_swap = None; // the worker self-disposes on the stale epoch
         self.wmf_player = None;
+        if let Some(e) = self.effects.take() {
+            e.close();
+        }
         // Restore the taskbar + Start Menu before the TAP's death-watch
         // would have to. The taskbar styler's reset must reach the resident
         // first — `tap::shutdown` unloads the channel it arrives on.

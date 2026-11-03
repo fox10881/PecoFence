@@ -63,6 +63,16 @@ pub fn user_accepts_notifications() -> bool {
     unsafe { SHQueryUserNotificationState() }.is_ok_and(|state| state == QUNS_ACCEPTS_NOTIFICATIONS)
 }
 
+/// Raw `SHQueryUserNotificationState` result (`QUNS_*`), `None` when the query fails.
+/// Callers match against `store_bindings` values (`3` = D3D fullscreen, `2` = busy,
+/// `4` = presentation mode) without the private module leaking.
+pub fn user_notification_state() -> Option<i32> {
+    // SAFETY: plain FFI call with an out parameter.
+    unsafe { SHQueryUserNotificationState() }
+        .ok()
+        .map(|s| s as i32)
+}
+
 /// Whether Windows' startup switch for the package (Settings > Apps > Startup, the manifest's
 /// `PecoFenceStartup` task) is on. Waits for WinRT, so call it on a worker.
 pub fn startup_task_enabled() -> Result<bool> {

@@ -453,6 +453,14 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
         <div class="card child"><div class="l"><div><div class="t">自动适配壁纸配色</div><div class="s">根据时钟背后壁纸的明暗与主色调自动切换深浅配色并调整强调色，保证文字始终清晰可读</div></div></div>
           <div class="toggle" role="switch" tabindex="0" data-bind="clockAdaptiveColor"></div></div>
       </div>
+      <div class="group">
+        <div class="card"><div class="l"><span class="ic">&#xE945;</span><div><div class="t">桌面动态效果</div><div class="s">原生 Direct2D 粒子与天气引擎 — 零 WebView2 开销；窗口最大化或进入游戏时自动暂停至零占用</div></div></div>
+          <select id="desktopEffectSel" data-bind="desktopEffect" data-str></select></div>
+        <div class="card child"><div class="l"><div><div class="t">效果强度</div><div class="s">粒子数量密度，10% – 100%</div></div></div>
+          <div class="sliderctl"><input type="range" id="desktopEffectIntensity" min="10" max="100" step="5"><span class="sliderval" id="desktopEffectIntensityVal"></span></div></div>
+        <div class="card child"><div class="l"><div><div class="t">与栅栏和时钟碰撞</div><div class="s">雨滴溅散、雪花堆积、花瓣滑落 — 粒子撞上栅栏与时钟上沿时产生物理反馈</div></div></div>
+          <div class="toggle" role="switch" tabindex="0" data-bind="desktopEffectCollision"></div></div>
+      </div>
       <div class="card"><div class="l"><span class="ic">&#xE7A1;</span><div><div class="t">颜色模式</div></div></div>
         <select data-bind="theme"><option value="followWindowsMode">跟随 Windows 模式</option><option value="followAppMode">跟随应用模式</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
       <div class="card"><div class="l"><span class="ic">&#xE8D3;</span><div><div class="t">文字颜色</div><div class="s">自动：液态玻璃按背后壁纸的明暗选深色或浅色，Fluent 跟随颜色模式；栅栏标题的颜色在“栅栏”页设置</div></div></div>
@@ -906,6 +914,7 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
     au.tabIndex = hasTheme ? 0 : -1;
     au.setAttribute('aria-disabled', String(!hasTheme));
     renderChameleonDependent();
+    renderDesktopEffectDependents();
     renderPeekHotkey();
   }
 
@@ -987,6 +996,54 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
       e.textContent = brand ? `${brand} · ${t(name)}` : t(name);
       return e;
     }));
+  }
+
+  // 桌面动态效果: none + the 12 native Direct2D effects. The Latin name in
+  // parentheses stays literal so the option keeps its catalog identity.
+  const DESKTOP_EFFECTS = [
+    ['none', '无（关闭）'],
+    ['rain', '流体雨滴'],
+    ['thunderstorm', '雷雨风暴'],
+    ['snow', '飘落雪花'],
+    ['fireflies', '萤火之光'],
+    ['embers', '升腾余烬'],
+    ['sakura', '樱吹雪'],
+    ['mist', '缥缈薄雾'],
+    ['aurora', '北极光'],
+    ['starfield', '星空尘埃'],
+    ['matrix', '数码矩阵'],
+    ['ripples', '水波涟漪'],
+    ['constellation', '星链网络'],
+  ];
+  function renderDesktopEffects() {
+    const sel = document.getElementById('desktopEffectSel');
+    if (!sel) return;
+    sel.replaceChildren(...DESKTOP_EFFECTS.map(([v, name]) => {
+      const e = document.createElement('option');
+      e.value = v;
+      e.textContent = t(name);
+      return e;
+    }));
+  }
+  function bindDesktopEffectIntensity() {
+    const rng = document.getElementById('desktopEffectIntensity'), val = document.getElementById('desktopEffectIntensityVal');
+    const v = Math.round(state.settings.desktopEffectIntensity ?? 50);
+    if (document.activeElement !== rng) rng.value = v;
+    val.textContent = v + '%';
+    rng.oninput = () => { state.settings.desktopEffectIntensity = Number(rng.value); val.textContent = rng.value + '%'; };
+    rng.onchange = () => commit('desktopEffectIntensity');
+  }
+  // The slider and collision switch are inert while the effect is off.
+  function renderDesktopEffectDependents() {
+    const on = (state.settings.desktopEffect ?? 'none') !== 'none';
+    for (const id of ['desktopEffectIntensity']) {
+      const el = document.getElementById(id);
+      el.disabled = !on; el.closest('.card').classList.toggle('disabled', !on);
+    }
+    const t = document.querySelector('[data-bind="desktopEffectCollision"]');
+    t.closest('.card').classList.toggle('disabled', !on);
+    t.tabIndex = on ? 0 : -1;
+    t.setAttribute('aria-disabled', String(!on));
   }
 
   // 速览栅栏 › 快捷键: the box records the next combination, the host checks it, tries
@@ -1716,7 +1773,7 @@ html.light.glass { --card: #fbfbfbb3; --subtle: #00000010; }
       renderTaskbarStyles(m);
       renderNotificationCenterStyles(m);
       renderClockStyles();
-      bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
+      bindAll(); bindThemeStyle(); bindIconTint(); bindChameleonIntensity(); bindDesktopEffectIntensity(); renderDesktopEffects(); renderDependents(); renderFences(); renderRules(); renderLayout(); updateKind(); renderAppearance(); renderDesktopIconsStatus();
       update = m.update; renderUpdate();
       // Transitions come on a frame after this state has been drawn: a single frame would style
       // both changes together and start them after all.

@@ -9,6 +9,8 @@ mod clock_host;
 mod commands;
 mod drag_guides;
 mod drop_preview;
+mod effects_engine;
+mod effects_host;
 mod fe_glass_host;
 mod fence_window;
 mod icons;

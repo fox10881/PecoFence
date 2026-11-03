@@ -50,8 +50,9 @@ pub use panel::{Clip, Panel};
 pub use stack::RenderStack;
 pub use theme::{Theme, ThemeMode};
 pub use windows_canvas::{
-    Bitmap, ColorF, DrawingSession, FontWeight, Matrix3x2, ParagraphAlignment, Rect, RenderTarget,
-    RoundedRect, TextAlignment, TextFormat, TextLayout, Vector2, WordWrapping,
+    Bitmap, Brush, ColorF, DrawingSession, Ellipse, FontWeight, GradientStop, LinearGradient,
+    Matrix3x2, ParagraphAlignment, RadialGradient, Rect, RenderTarget, RoundedRect, TextAlignment,
+    TextFormat, TextLayout, Vector2, WordWrapping,
 };
 pub use windows_composition::{ContainerVisual, DesktopWindowTarget, SpriteVisual, Visual};
 pub use windows_core::Result;

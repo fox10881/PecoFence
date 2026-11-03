@@ -244,6 +244,19 @@ pub struct Settings {
     /// palettes so text stays readable.
     #[serde(default = "default_true")]
     pub clock_adaptive_color: bool,
+    /// Native desktop particle/weather effect: `"none"` (default) or one of the
+    /// 12 effect ids — `rain`, `thunderstorm`, `snow`, `fireflies`, `embers`,
+    /// `sakura`, `mist`, `aurora`, `starfield`, `matrix`, `ripples`,
+    /// `constellation`. Rendered by the zero-WebView2 Direct2D/DComp overlay.
+    #[serde(default = "desktop_effect_default")]
+    pub desktop_effect: String,
+    /// Particle density 10–100 %; scales the live-particle count linearly.
+    #[serde(default = "desktop_effect_intensity_default")]
+    pub desktop_effect_intensity: u8,
+    /// Rain splashes, snow settling and petal glides against the top edges of
+    /// the fences and the clock widget.
+    #[serde(default = "default_true")]
+    pub desktop_effect_collision: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -361,6 +374,9 @@ impl Default for Settings {
             clock_style: "none".to_string(),
             clock_bounds: None,
             clock_adaptive_color: true,
+            desktop_effect: "none".to_string(),
+            desktop_effect_intensity: 50,
+            desktop_effect_collision: true,
         }
     }
 }
@@ -2023,6 +2039,14 @@ fn default_chameleon_intensity() -> u8 {
 
 fn clock_style_default() -> String {
     "none".to_string()
+}
+
+fn desktop_effect_default() -> String {
+    "none".to_string()
+}
+
+fn desktop_effect_intensity_default() -> u8 {
+    50
 }
 
 fn fe_light_rgba_default() -> String {

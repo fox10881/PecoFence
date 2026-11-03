@@ -34,11 +34,13 @@ impl App {
     pub(super) fn recover_device(&mut self) {
         let back_to_gpu =
             self.ctx.stack.on_fallback_warp() && self.device_retry_ms < DEVICE_RETRY_MAX_MS;
+        let effects_lost = self.effects.as_ref().is_some_and(|e| e.device_lost());
         if !self
             .fences
             .values()
             .chain(self.desktop_windows.values())
             .any(|w| w.device_lost())
+            && !effects_lost
             && !back_to_gpu
         {
             self.device_retry_ms = DEVICE_RETRY_FIRST_MS;
@@ -54,6 +56,7 @@ impl App {
             .values()
             .chain(self.desktop_windows.values())
             .any(|w| w.device_lost())
+            || effects_lost
             || self.ctx.stack.on_fallback_warp()
         {
             // A window got no new surfaces (logged there), or WARP draws: rebuild everything
@@ -94,6 +97,9 @@ impl App {
         for w in self.fences.values().chain(self.desktop_windows.values()) {
             w.recreate_surfaces(&self.ctx.stack);
         }
+        if let Some(e) = self.effects.as_ref() {
+            e.recreate_surfaces();
+        }
         self.redraw_notices();
         Ok(())
     }
@@ -114,7 +120,8 @@ impl App {
         // Windows that lost their device draw at once, with WARP while the driver still
         // resets. A rebuild nothing waits for (back to the GPU, handing back GPU memory) keeps
         // the current device unless the hardware one can be created.
-        let lost = self.fences.values().any(|w| w.device_lost());
+        let lost = self.fences.values().any(|w| w.device_lost())
+            || self.effects.as_ref().is_some_and(|e| e.device_lost());
         self.ctx.stack.recover(lost)
     }
 

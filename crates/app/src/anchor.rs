@@ -425,9 +425,14 @@ impl DesktopAnchor {
     /// raised meanwhile end up above the dimmer or the desktop instead of behind it.
     fn place_topmost_band(&mut self) {
         let mut refused = None;
+        // Peek dims everything else — desktop surfaces (marquee, effects) stay in the
+        // normal band so the dimmer covers them. During show-desktop the raised desktop
+        // keeps the icon layer and the video wallpaper inside it visible, so surfaces
+        // float with the fences instead of ending up behind Progman.
+        let in_peek = self.peeking;
         self.with_anchoring(|s| {
             for (f, shadow) in s.fences.clone() {
-                if s.desktop_surfaces.contains(&(f.0 as isize)) {
+                if in_peek && s.desktop_surfaces.contains(&(f.0 as isize)) {
                     continue;
                 }
                 for h in std::iter::once(f).chain(shadow) {
@@ -811,6 +816,12 @@ impl DesktopAnchor {
         if resolved != self.host || !self.is_anchored() {
             self.reanchor(reason);
             for (w, _) in self.fences.clone() {
+                // Click-through desktop surfaces (drop preview, marquee band, effects
+                // overlay) own their visibility — the effects overlay hides itself
+                // deliberately while a fullscreen/maximized app pauses it.
+                if self.desktop_surfaces.contains(&(w.0 as isize)) {
+                    continue;
+                }
                 if desktop::is_cloaked(w) {
                     tracing::info!(hwnd = ?w, "fence was cloaked; uncloaking");
                     let _ = desktop::set_cloak(w, false);

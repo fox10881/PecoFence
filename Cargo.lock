@@ -329,6 +329,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "windows",
+ "windows-composition",
  "windows-core 0.100.0",
 ]
 

@@ -436,6 +436,7 @@ impl App {
                 h.close();
             }
             window::kill_timer(self.control.hwnd(), super::TIMER_CLOCK_PROBE);
+            self.refresh_effect_obstacles();
             return;
         }
         if let Some(h) = &self.clock {
@@ -458,9 +459,53 @@ impl App {
                 // Probe cadence lives for as long as the widget does;
                 // `clockReady` fires the first sample once the page listens.
                 window::set_timer(self.control.hwnd(), super::TIMER_CLOCK_PROBE, 2_500);
+                self.refresh_effect_obstacles();
             }
             Err(e) => tracing::error!(error = %e, "clock widget failed"),
         }
+    }
+
+    /// Native desktop particle/weather overlay. `"none"` tears the overlay
+    /// down to zero resources; a real effect opens (or rebuilds) it and joins
+    /// the anchor's desktop-surface band — directly above the icon host (and
+    /// any video wallpaper, which is a child of that host) and below fences.
+    /// Called from `apply_settings`' diff and once at startup.
+    pub(super) fn apply_desktop_effect(&mut self, s: &pecofence_core::Settings) {
+        let Some(host) = &self.effects else {
+            return;
+        };
+        let before = host.hwnd();
+        host.apply(
+            &s.desktop_effect,
+            s.desktop_effect_intensity as f32 / 100.0,
+            s.desktop_effect_collision,
+        );
+        let after = host.hwnd();
+        if before == after {
+            return;
+        }
+        if let Some(a) = self.anchor.borrow_mut().as_mut() {
+            if let Some(h) = before {
+                a.unregister_fence(h);
+            }
+            if let Some(h) = after {
+                a.register_desktop_surface(h);
+            }
+            a.reanchor("desktop effects changed");
+        }
+    }
+
+    /// Fence + clock HWNDs the effects overlay collides against; polled via
+    /// `GetWindowRect` each frame so moves/hides need no further wiring.
+    pub(super) fn refresh_effect_obstacles(&mut self) {
+        let Some(host) = &self.effects else {
+            return;
+        };
+        let mut hwnds: Vec<HWND> = self.fences.values().map(|w| w.hwnd()).collect();
+        if let Some(c) = &self.clock {
+            hwnds.push(c.hwnd());
+        }
+        host.set_obstacle_windows(hwnds);
     }
 
     /// Adaptive backdrop contrast: spawns the off-thread sampler for the
@@ -1401,6 +1446,12 @@ impl App {
         }
         if new.clock_style != old.clock_style {
             self.apply_clock_style(&new.clock_style);
+        }
+        if new.desktop_effect != old.desktop_effect
+            || new.desktop_effect_intensity != old.desktop_effect_intensity
+            || new.desktop_effect_collision != old.desktop_effect_collision
+        {
+            self.apply_desktop_effect(&new);
         }
         if new.clock_adaptive_color != old.clock_adaptive_color {
             if new.clock_adaptive_color {
