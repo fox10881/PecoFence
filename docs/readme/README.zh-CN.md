@@ -1,183 +1,155 @@
-# Wallpaper Engine 自用版
-
-https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
-
-<p align="center">
-  <strong>免费、开源的 Windows 11 桌面整理工具，可以替代 Stardock Fences。</strong><br>
-  用玻璃栅栏收好文件，用标签页切换项目，还能让 AI 助手通过内置 CLI，直接调整布局、外观和自动整理规则。
-</p>
-
-<p align="center">
-  <a href="https://pecofence.jiang.jp/zh-CN/"><strong>官网</strong></a>
-  &nbsp;·&nbsp; <a href="#开始使用"><strong>下载使用 →</strong></a>
-  &nbsp;·&nbsp; <a href="#桌面怎么配告诉-ai-就好"><strong>AI + CLI</strong></a>
-  &nbsp;·&nbsp; <a href="#看看它怎么用">看看实际操作</a>
-  &nbsp;·&nbsp; <a href="../README.md">项目文档</a>
-</p>
-
 <p align="center">
   <a href="../../README.md">English</a>
-  &nbsp;·&nbsp; <strong>简体中文</strong>
-  &nbsp;·&nbsp; <a href="README.zh-TW.md">繁體中文</a>
-  &nbsp;·&nbsp; <a href="README.ja.md">日本語</a>
-  &nbsp;·&nbsp; <a href="README.ko.md">한국어</a>
-  &nbsp;·&nbsp; <a href="README.de.md">Deutsch</a>
-  &nbsp;·&nbsp; <a href="README.fr.md">Français</a>
-  &nbsp;·&nbsp; <a href="README.es.md">Español</a>
-  &nbsp;·&nbsp; <a href="README.pt-BR.md">Português (Brasil)</a>
-  &nbsp;·&nbsp; <a href="README.ru.md">Русский</a>
-  &nbsp;·&nbsp; <a href="README.ar.md">العربية</a>
+  &nbsp;·&nbsp;   <strong>简体中文</strong>
+  &nbsp;·&nbsp;   <a href="README.zh-TW.md">繁體中文</a>
+  &nbsp;·&nbsp;   <a href="README.ja.md">日本語</a>
+  &nbsp;·&nbsp;   <a href="README.ko.md">한국어</a>
+  &nbsp;·&nbsp;   <a href="README.de.md">Deutsch</a>
+  &nbsp;·&nbsp;   <a href="README.fr.md">Français</a>
+  &nbsp;·&nbsp;   <a href="README.es.md">Español</a>
+  &nbsp;·&nbsp;   <a href="README.pt-BR.md">Português (Brasil)</a>
+  &nbsp;·&nbsp;   <a href="README.it.md">Italiano</a>
+  &nbsp;·&nbsp;   <a href="README.ru.md">Русский</a>
+  &nbsp;·&nbsp;   <a href="README.ar.md">العربية</a>
 </p>
 
 ---
 
-## 桌面静态海报书架整合：终极形态
+<div align="center">
 
-![桌面静态海报书架整合]
-<img width="3837" height="2160" alt="image" src="https://github.com/user-attachments/assets/1849b142-aa9e-4b5d-802e-4f3519d79c73" />
+# 💠 PecoFence — 终极桌面定制与整理套件
 
-<img width="3837" height="2034" alt="image" src="https://github.com/user-attachments/assets/311962e3-984b-4a7a-bc2c-48ffdaa9379b" />
+**将 Windows 11 变身为生动鲜活、极度有序的玻璃工作空间。**
 
-### 🧩 最后一块拼图：BoxArt Studio
-PecoFence 提供了整齐的网格布局和零间距的 2:3 海报容器，但 Windows 原生生成的仍是标准方形图标。
-要实现截图中的实体游戏盒书架效果，你需要 **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**。BoxArt Studio 是必备的搭配工具，可以把普通的 Windows 游戏快捷方式和文件夹批量转换成精美的高分辨率 2:3 实体游戏盒封面。
+PecoFence 是一款用 Rust 打造的超强次世代桌面整理与 Windows 11 外壳定制套件。远超基础图标围栏，PecoFence 融合了磁性桌面整理、3D 透视书架、实时 H.264 视频壁纸、自适应桌面时钟小部件、Windows 11 外壳深度主题化（任务栏、开始菜单、通知中心和文件资源管理器 Mica/Acrylic），以及一键式 `.peco` 完整主题包。
 
-### 📸 便携布局快照
+<!-- TODO: ADD IMAGE 1 (Hero Desktop Showcase) -->
+![PecoFence Hero Showcase](assets/hero-showcase.png)
+*> **[IMAGE PLACEHOLDER 1]:** 添加一张完整桌面截图，展示 Invisible/Bookshelf 围栏、桌面时钟小部件和半透明任务栏。*
 
-布局快照现在是可以完全带走的备份:直接在快照列表里重命名存档文件,还可以把当前桌面壁纸一并打进存档。这样在任何一台电脑上还原布局都分毫不差——哪怕那台电脑从未见过你的壁纸。
-
-### 🧊 3D 倾斜层架(实验性)
-
-把任意栅栏剪切成一个完美的平行四边形,让每一行都能贴合斜视角壁纸里的层板:拖动侧边上缘的竖向手柄倾斜栅栏的一侧,图标会朝更低、更近的一侧逐级缩放——可在栅栏设置中通过**纵深缩放**滑杆调节。
-
-> **⚠️ 已知问题——求助。** 平行四边形内的鼠标移动、对齐和命中测试都完全正常。但使用 3D 透视壁纸时,第一行能与层板完美对齐,后续各行却因为壁纸的灭点透视而对不上。如果哪位开发者知道如何完美解决这种多行透视数学问题,我们非常欢迎 PR!
-
-### 🖼️ 现成的 2D 壁纸
-
-仓库自带一组正面平视的书架壁纸,位于 [`assets/wallpapers/`](../../assets/wallpapers/),与未倾斜的平直栅栏完美对齐——选一张,摆好层架,完成。
-
-> **💡 小贴士:** 我们提供了一套与平直栅栏完美对齐的现成 2D 壁纸。想要惊艳的效果,强烈建议把这些 2D 图片交给 AI 视频生成器做成动画,再用 [Lively Wallpaper](https://github.com/rocksdanister/lively) 应用到桌面。
-
-### 🎛️ 新主题与逐栅栏精细控制
-
-设置新增两种风格:**书架**——经典木质书架,游戏封面直接坐落在木板上——以及**隐形画布**,完全透明的主题让图标悬浮在壁纸之上。每个栅栏的页面还可以用**从不显示**彻底隐藏**标题栏**、关闭**图标标签**,并通过**自定义图标大小**、**水平间距**、**垂直间距**滑杆精确调整网格;再加上**隐藏滚动条**、**锁定滚动**、**自动高度**开关,打造干净静态的展示柜。
-
-<a id="让-ai-帮你整理"></a>
-
-## 桌面怎么配，告诉 AI 就好
-
-**内置 CLI，让 AI 直接配置桌面**
-
-把你想要的桌面告诉 AI 助手。PecoFence 自带 `pecofence-cli`，Claude Code、Codex、Cursor 可以读取当前配置，并直接在 PecoFence 中执行修改。
-
-- **说出需求，直接改配置。** 切换主题，调整透明度、图标大小和全局设置，也能一次改好所有栅栏。
-- **整理一次，以后自动归位。** 创建项目栅栏、整理图标，再添加规则，让新文件自动进入对应栅栏。
-- **喜欢的配置，保存下来。** 用快照保存栅栏布局，用配置导入导出保存和恢复设置、规则与布局。
-
-**现在就让你的 AI 助手试试**
-
-启动 PecoFence，把下面这段话发给你的 AI 编程助手：
-
-> 请用 pecofence-cli 帮我配置桌面。先阅读 pecofence-cli skill 和 pecofence-cli describe，再查看当前设置与栅栏。修改前先备份配置，然后切换为深色模式，并把所有栅栏调得更透明。
-
-CLI 已随应用附带。Microsoft Store 版会把 `pecofence-cli` 加入 PATH；使用便携版时，告诉助手 `pecofence-cli.exe` 的完整路径即可。
-
-<details>
-<summary><strong>与编程助手的对话示例</strong></summary>
-
-> 把桌面上的 PDF 放进 Docs 栅栏，以后的 PDF 也自动归进去，切成深色模式，再把栅栏调得更透明一点。
-
-```powershell
-pecofence-cli config export "$env:USERPROFILE\pecofence-before-ai.json"
-pecofence-cli snapshot save before-cleanup
-pecofence-cli fence create --title Docs
-pecofence-cli rule add --name PDFs --ext pdf --to Docs --index 0
-pecofence-cli rule apply
-pecofence-cli settings set theme dark
-pecofence-cli fence set --all opacity clear
-```
-
-</details>
-
-为 AI 和脚本设计：`describe` 输出命令目录和 JSON Schema，`skill` 输出使用指南。每次执行都用 JSON 说明改了什么；出错时返回结构化错误，助手可以据此决定下一步。
-
-[查看 CLI 上手指南 →](../CLI.md#start-with-your-ai-agent)
-
-## 给每件事留一个位置
-
-<p align="center">
-  <img src="../assets/hero-zh-CN.png" alt="PecoFence — 项目文件夹、PDF 和设计海报，收在 Liquid Glass 栅栏里。" width="1280">
-</p>
-
-## 看看它怎么用
-
-### 一个栅栏，切换多个项目
-
-把相关栅栏合成标签页，点一下就能从 Project 切到 Ideas。
-需要同时看两组文件时，把标签页拖出来，就变回两个独立栅栏。
-
-![把两个栅栏合成标签页，在 Project 和 Ideas 之间切换，再把标签拖出来，拆回独立栅栏。](../assets/tabs.gif)
-
-### 文件就在当前应用前面
-
-按 **Ctrl + Alt + 空格** 速览栅栏，所有栅栏显示在当前应用上方。
-取用需要的文件后，按 **Esc** 回去接着工作。
-
-![用快捷键速览栅栏，栅栏显示在应用上方；点一下栅栏外面或打开文件，就回到应用。](../assets/peek.gif)
-
-<sub>动图来自<a href="https://pecofence.jiang.jp/zh-CN/manual/">使用手册</a>，会自动循环播放。</sub>
-
-## 日常好用，藏在这些细节里
-
-| 体验 | 能做什么 |
-| :--- | :--- |
-| **AI + CLI** | `pecofence-cli` — **说出需求，直接改配置。** 切换主题，调整透明度、图标大小和全局设置，也能一次改好所有栅栏。 |
-| **少一点手动整理** | 按类型、扩展名、名称、通配符、快捷方式目标、时间和大小设置规则，新文件自动找到位置。 |
-| **配得上你的壁纸** | Fluent、Liquid Glass、书架、隐形画布四种风格,支持深浅色;每个栅栏可单独设置色调和不透明度,还能给图标着色。 |
-| **每个栅栏随你调** | 按栅栏设置标题栏显示(直至**从不显示**)、可关的图标标签、图标大小与行/列间距滑杆,以及滚动条、滚动锁定和自动高度开关。 |
-| **熟悉的文件操作** | 资源管理器右键菜单、拖放、复制粘贴、多选、缩略图，以及图标／列表／详细信息视图。 |
-| **把文件夹放在手边** | 把真实文件夹变成桌面上的窗口；可以进入子文件夹，内容变化自动同步。 |
-| **用时展开，闲时收好** | 把栅栏收起成一条标题栏，鼠标悬停即可展开；也可以锁定已经摆好的位置和大小。双击桌面空白处隐藏全部栅栏，再次双击恢复。 |
-| **喜欢的布局，留得住** | 保存布局快照、每日自动备份、导入导出配置、交换两个显示器上的栅栏。 |
-| **3D 倾斜层架(实验性)** | 把栅栏剪切成平行四边形,让各行贴合斜视角壁纸的层板;图标朝更近的一侧逐级缩放。 |
-| **轻巧地待在桌面上** | Rust 编写的原生应用，空闲时内存占用约 40 MB（任务管理器显示）。WebView2 设置面板按需加载。 |
-
-自动整理只改变文件所属的栅栏，保留文件原来的位置。
-你主动发起的移动、重命名和删除，则像资源管理器一样操作真实文件。
-
-[查看完整功能清单 →](../FEATURES.md)
-
-## 开始使用
-
-<a href="https://apps.microsoft.com/detail/9MV6WG3XNWSX?mode=direct"><img src="https://get.microsoft.com/images/zh-cn%20dark.svg" alt="从 Microsoft Store 获取" width="200"></a>
-
-Microsoft Store 版由微软签名，自动更新，不会出现 SmartScreen 提示。同一个程序也可以这样安装：
-
-- **便携版 ZIP**：在本仓库的 **Releases** 页面下载 `pecofence-v<版本>-x64-portable.zip`，**完整解压**到一个文件夹，运行 `pecofence.exe`。
-- **安装包**：同一页面上的 `pecofence-v<版本>-x64-setup.exe` 只为当前用户安装，会添加开始菜单项和卸载程序。
-- **winget**：`winget install DayuanJiang.PecoFence` 安装的是便携版，不会触发 SmartScreen 提示。
-
-<details>
-<summary><strong>系统要求、配置位置与使用说明</strong></summary>
-
-- 支持 Windows 10 22H2，以及 Windows 11 22H2 及以上版本。设置面板需要 Microsoft Edge WebView2 Runtime，Windows 11 已自带，Windows 10 如打不开设置请从微软官网安装。
-- 首次运行会按所选语言创建“程序”“文件夹”“文件与文档”和“桌面”四个栅栏。退出程序时，Windows 桌面图标会恢复显示。
-- 配置保存在 `%APPDATA%\PecoFence\config.json`。用 `--portable` 启动，可改为保存在程序旁的 `config` 文件夹。
-- 便携版和安装包都没有代码签名。首次运行若出现 Windows SmartScreen 提示，点击**更多信息 → 仍要运行**。
-
-[便携版说明](../PORTABLE.md) · [多语言说明](../LOCALIZATION.md) · [Windows 安装版说明](../INSTALLER.md)
-
-</details>
-
-## 开源，也欢迎你的想法
-
-改进一句翻译、修好一次拖拽、让某个日常操作更顺手，都很欢迎。
-
-[参与贡献](../../CONTRIBUTING.md) · [完善翻译](../LOCALIZATION.md) · [开发文档](../DEVELOPMENT.md)
+</div>
 
 ---
 
-**让每次回到桌面，都更舒服一点。**  
-[Apache 2.0 许可证](../../LICENSE) · [第三方许可说明](../../third_party/README.md)
+## ✨ 本版本的非凡之处
 
-感谢 [LINUX DO](https://linux.do) 社区。
+PecoFence 的每一层都经过重新设计，让你对桌面图标和 Windows 11 外壳本身拥有完全的创意掌控——同时 CPU 和 GPU 占用近乎为零。
+
+---
+
+## 🎨 1. 次世代围栏样式与视觉融合
+
+以四种独特视觉范式超越标准容器：
+- **Fluent（经典）：** 干净的 Windows 11 Fluent 卡片，边框锐利。
+- **Liquid Glass：** 实时折射玻璃，可对静态或动态视频壁纸进行采样。
+- **Bookshelf（`رف الكتب`）[新]：** 将围栏变成有触感的立体书架，图标整齐排列在书架上。
+- **Invisible Canvas（`لوحة غير مرئية`）[新]：** 完全隐藏围栏背景和边框——保留磁性吸附、排序规则和网格对齐的全部能力，图标仿佛自然悬浮在原始壁纸上。
+
+### 🦎 变色龙图标融合与快捷方式清理
+- **变色龙模式（`دمج الأيقونات مع الخلفية`）[新]：** 通过可自定义的**融合强度滑块（0%–100%）**动态去饱和并将图标融入壁纸，营造平静、无干扰的美感。
+- **快捷方式箭头开关（`إظهار/إخفاء أسهم الاختصارات`）[新]：** 在设置中即时移除或恢复杂乱的 Windows 快捷方式箭头。
+- **完整阿拉伯语本地化与 RTL 界面 [新]：** 原生阿拉伯语界面（`العربية`），无缝从右到左布局与即时语言切换。
+
+<!-- TODO: ADD IMAGE 2 (Fence Styles & Chameleon Mode) -->
+![Fence Styles Showcase](assets/fence-styles.png)
+*> **[IMAGE PLACEHOLDER 2]:** 添加「常规」选项卡截图，展示 4 种主题样式（Fluent、Liquid Glass、Bookshelf、Invisible Canvas）和变色龙融合。*
+
+---
+
+## 🎬 2. 原生 H.264 视频壁纸与自适应时钟小部件
+
+### 🎞️ 硬件加速视频壁纸引擎 [新]
+- 直接从 PecoFence 将任意 **MP4 (H.264)** 视频设为丝般顺滑的动态桌面壁纸。
+- 内置 *CloudConvert* 和 *FreeConvert* 快捷链接，轻松将任何视频转换为超轻量、GPU 友好的壁纸。
+
+### 🕰️ 无边框桌面时钟小部件（`ويدجت الساعة المكتبية`）[新]
+- 从 **20 款手工打造的响应式时钟/日期/星期设计**（10 款 Gemini 签名 + 10 款 Devin 签名）中选择，或选 `بدون` 完全关闭。
+- **真正的无边框交互：** 无标题栏、无杂物。在小部件**内部任意位置**点击拖动即可移动，抓住**任意边缘/角落**即可平滑缩放并自动缩放字体。
+- **自适应壁纸对比度（`تنسيق ألوان الويدجت تلقائياً لتناسب الخلفية`）[新]：** PecoFence 持续采样时钟小部件正后方的精确壁纸像素。无论壁纸是刺眼的纯白还是纯黑，小部件都会自动翻转文字、玻璃和强调的对比度，使时间和日期始终 100% 清晰可读。
+
+<!-- TODO: ADD IMAGE 3 (Desktop Clock Widget & Video Wallpaper) -->
+![Desktop Clock Widget Showcase](assets/clock-widgets.png)
+*> **[IMAGE PLACEHOLDER 3]:** 添加一张桌面时钟小部件悬浮截图及其设置与自适应对比度开关。*
+
+---
+
+## 🪟 3. Windows 11 外壳与文件资源管理器玻璃深度定制
+
+何必安装五个独立调教工具？PecoFence 一站式统一你的整个 Windows 11 美学。
+
+### 🛠️ 即时实时外壳样式（Windhawk 驱动预设）[新]
+即时切换主题——选择即应用，零重启：
+- **任务栏样式（`نمط شريط المهام`）：***Translucent Taskbar、Window Glass、OS26 Liquid Glass（Clear/Dark Mac Dock & Taskbar 变体）、Plasma、Surface、Luminosity、Layer Mica UI、Fluid、Tinted Glass、Frosted Acrylic、Pills、Blob、Minecraft Hotbar、One UI 8.5 Dock* 等。
+- **开始菜单样式（`نمط قائمة ابدأ`）：***Down Aero、Translucent Start Menu、No Recommended Section、Side by Side、Windows 10、Fluent 2 Inspired、Rose Pine、Metro 10 Minimal、Everblush、Sun Valley、Liquid Glass、Borderless、Command Center、Full Screen、Frosty Glass*。
+- **通知中心样式（`نمط مركز الإشعارات`）：***Layer Mica UI、Translucent Shell、Matte、Unified、JumpLists 10、Better Control 11、Fluid、Liquid Glass、Borderless、Dense、Frosty Glass、OS26 Tahoe Glass、Command Center*。
+
+<!-- TODO: ADD IMAGE 4 (Taskbar, Start Menu & Notification Center Themes) -->
+![Windows 11 Shell Customization](assets/windows-shell-customization.png)
+*> **[IMAGE PLACEHOLDER 4]:** 添加自定义开始菜单、通知中心和任务栏主题下拉菜单实际运行的截图。*
+
+### 🔍 文件资源管理器玻璃工作室与统一应用透明化 [新]
+- **专属文件资源管理器玻璃编辑器（`تأثير خلفية مستكشف الملفات`）：** 打开带有交互式**文件资源管理器实时预览（`معاينة مباشرة`）**和可选预览背景的**高级设置（`الإعدادات المتقدمة`）**工作室！
+- 自定义 **Blur、Acrylic、Mica、Mica Alt、Clear Blur**，切换地址栏/滚动条/WinUI 工具栏透明度，并微调自定义 `#AARRGGBB` 浅色与深色混合色调及不透明度。
+- **真正的 DComp 应用镜像：** PecoFence 自身窗口（含无边框标题栏和客户区）以智能 `-70` 不透明度偏移实时镜像你的资源管理器玻璃材质——整个应用获得真正的透视硬件玻璃，无杂色覆盖。
+- **一键外观刷新（`تحديث المظهر`）[新]：** 即时重启 `explorer.exe` 并干净地重新挂钩所有桌面围栏和活动视频壁纸。
+
+<!-- TODO: ADD IMAGE 5 (File Explorer Glass Studio & Live Preview) -->
+![File Explorer Glass Editor](assets/explorer-glass-editor.png)
+*> **[IMAGE PLACEHOLDER 5]:** 添加文件资源管理器玻璃高级设置窗口的截图，展示交互式实时预览和自定义 RGBA 控件。*
+
+---
+
+## 📐 4. 围栏级精细定制与 3D 透视书架
+
+在**围栏（`الأسوار`）**选项卡中，每个围栏都能精确到像素调整：
+
+- **克隆围栏设置（`نسخ الإعدادات من سياج آخر`）[新]：** 设计好完美围栏？一键将其整体视觉外观和布局设置复制到任意其他围栏——不覆盖目标围栏的名称、内容或排序规则。
+- **标题栏可见性（`إظهار شريط العنوان`）：** 在*始终*和*悬停时*之外新增**「永不显示」（`عدم الإظهار أبداً`）[新]**，实现完全无标题外观。
+- **自定义图标框架与调色板（`إطارات الأيقونات`）[新]：** 用**透明（`شفاف`）**或**全彩（`ملون بالكامل`）**圆角卡片包裹单个图标，**文字颜色（`لون النص`）**和**框架颜色（`لون الإطار`）**各配专用 11 色选择器。
+- **贴边图标模式（`شكل الأيقونة: ملتصق`）[新]：** 将图标裁剪为 `2:3` 边到边海报——游戏库和媒体围栏的完美之选！
+- **精密像素滑块 [新]：**
+  - **自定义图标大小（`حجم أيقونة مخصص`）：** `16px` 到 `512px` 自由滑块。
+  - **列间距（`تباعد الأعمدة`）与行间距（`تباعد الصفوف`）：** 可缩至 `0px` 让图标无缝贴合，或拉大到 `48px+`。
+- **滚动条控制 [新]：** 独立切换**隐藏滚动条（`إخفاء شريط التمرير`）**（鼠标滚轮滚动保持有效），或启用**锁定滚动（`قفل التمرير`）**将内容固定在顶部用于展示布局。
+- **3D 倾斜书架模式与透视缩放（`وضع الرف المائل` + `معامل التكبير`）[新]：** 将围栏倾斜成 3D 透视平行四边形，与带角度的 3D 房间壁纸对齐！调整**透视缩放系数（`معامل التكبير`）**让图标向书架远端平滑缩小，营造真实纵深感。
+
+<!-- TODO: ADD IMAGE 6 (Per-Fence Customization, Icon Frames & Tilted Shelf) -->
+![Advanced Fence Layout & 3D Shelf](assets/fence-advanced-layout.png)
+*> **[IMAGE PLACEHOLDER 6]:** 添加「围栏」选项卡截图，展示克隆设置、图标框架与颜色选择器、贴边 2:3 模式、间距滑块和倾斜书架模式。*
+
+---
+
+## ⚡ 5. 颜色编码排序引擎与强制应用
+
+**排序规则（`قواعد الفرز`）**引擎已为可靠性和视觉清晰度完全重建：
+- **颜色编码围栏徽章 [新]：** 每个围栏在规则列表中获得独特的颜色徽章，一眼即可识别哪条规则通往哪个围栏。
+- **立即应用 vs 强制应用（`تطبيق إجباري على كل العناصر`）[新]：**
+  - **立即应用（`تطبيق الآن`）：** 温和地引导未整理的桌面项目，同时尊重你手动放置的条目。
+  - **强制应用（`تطبيق إجباري`）：** 覆盖所有手动放置，严格按照活动规则对桌面每一项进行无情重排。
+- **一键快速预设（`إضافة سريعة`）：** 立即为*图片、音乐、视频、压缩包、安装程序*或*桌面清理*（仅扫走 30 天以上未动的安装程序和压缩包，不删除任何文件）生成预建围栏和规则。
+
+<!-- TODO: ADD IMAGE 7 (Color-Coded Sorting Rules & Force Apply) -->
+![Sorting Rules Engine](assets/sorting-rules-colored.png)
+*> **[IMAGE PLACEHOLDER 7]:** 添加排序规则选项卡截图，突出颜色编码围栏徽章和橙色强制应用按钮。*
+
+---
+
+## 📦 6. `.peco` 完整主题包与智能壁纸适配
+
+忘掉基础的 `.json` 布局备份——**布局与备份（`التخطيط والنسخ الاحتياطية`）**选项卡现在是完整的**可视化主题库（`معرض الثيمات`）**：
+- **一体化 `.peco` 主题存档 [新]：** 保存主题将**一切**捕获进便携式 `.peco` 捆绑包——围栏精确坐标、围栏级样式、自定义图标大小、排序规则、玻璃设置，以及你的静态或动态视频壁纸，并附带自动桌面预览缩略图！
+- **一键应用、导出与导入：** 数秒内在整套桌面配置间切换，或导出 `.peco` 与他人分享你的桌面主题。
+- **智能宽高比壁纸适配（`ضبط الصورة لتظهر بالكامل مهما كانت أبعاد الشاشة`）[新]：** 壁纸与显示器宽高比不符？开启后可将完整未裁剪图像居中显示，边缘以氛围感模糊背景填充——关闭则为标准边到边裁剪填充。
+- **每日自动保存（`حفظ تحديث الثيم تلقائياً كل يوم`）[新]：** 每天自动就地更新你的活动 `.peco` 主题文件——最新桌面调整始终保存且无重复。
+
+<!-- TODO: ADD IMAGE 8 (Theme Gallery & .peco Packages) -->
+![Theme Gallery Showcase](assets/themes-gallery.png)
+*> **[IMAGE PLACEHOLDER 8]:** 添加主题库截图，展示带应用/导出 .peco/删除按钮的可视化主题卡片和智能壁纸适配开关。*
+
+---
+
+## 🚀 开始使用
+
+1. 从 **Releases** 页面下载最新的 `setup.exe` 或 `portable.zip`。
+2. 从系统托盘启动 **PecoFence** 并打开**设置（`إعدادات PecoFence`）**。
+3. 选择**主题样式**（*Fluent、Liquid Glass、Bookshelf 或 Invisible Canvas*），启用**桌面时钟小部件**，或从**主题库**导入 `.peco` 主题——见证桌面即刻焕然一新！

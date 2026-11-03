@@ -1,184 +1,155 @@
-# Wallpaper Engine 自用版
-
-https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
-
-<p align="center">
-  <strong>Windows 11용 무료 오픈 소스 Stardock Fences 대안.</strong><br>
-  유리 펜스에 파일을 모으고 탭으로 프로젝트를 전환하세요. 내장 CLI로 AI 에이전트에게 배치, 모양, 자동 정리 규칙 설정도 맡길 수 있습니다.
-</p>
-
-<p align="center">
-  <a href="https://pecofence.jiang.jp/ko/"><strong>공식 웹사이트</strong></a>
-  &nbsp;·&nbsp; <a href="#pecofence-시작하기"><strong>PecoFence 시작하기 →</strong></a>
-  &nbsp;·&nbsp; <a href="#원하는-바탕-화면을-ai에게-말해-보세요"><strong>AI + CLI</strong></a>
-  &nbsp;·&nbsp; <a href="#실제-동작-보기">실제 동작 보기</a>
-  &nbsp;·&nbsp; <a href="../README.md">문서</a>
-</p>
-
 <p align="center">
   <a href="../../README.md">English</a>
-  &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a>
-  &nbsp;·&nbsp; <a href="README.zh-TW.md">繁體中文</a>
-  &nbsp;·&nbsp; <a href="README.ja.md">日本語</a>
-  &nbsp;·&nbsp; <strong>한국어</strong>
-  &nbsp;·&nbsp; <a href="README.de.md">Deutsch</a>
-  &nbsp;·&nbsp; <a href="README.fr.md">Français</a>
-  &nbsp;·&nbsp; <a href="README.es.md">Español</a>
-  &nbsp;·&nbsp; <a href="README.pt-BR.md">Português (Brasil)</a>
-  &nbsp;·&nbsp; <a href="README.ru.md">Русский</a>
-  &nbsp;·&nbsp; <a href="README.ar.md">العربية</a>
+  &nbsp;·&nbsp;   <a href="README.zh-CN.md">简体中文</a>
+  &nbsp;·&nbsp;   <a href="README.zh-TW.md">繁體中文</a>
+  &nbsp;·&nbsp;   <a href="README.ja.md">日本語</a>
+  &nbsp;·&nbsp;   <strong>한국어</strong>
+  &nbsp;·&nbsp;   <a href="README.de.md">Deutsch</a>
+  &nbsp;·&nbsp;   <a href="README.fr.md">Français</a>
+  &nbsp;·&nbsp;   <a href="README.es.md">Español</a>
+  &nbsp;·&nbsp;   <a href="README.pt-BR.md">Português (Brasil)</a>
+  &nbsp;·&nbsp;   <a href="README.it.md">Italiano</a>
+  &nbsp;·&nbsp;   <a href="README.ru.md">Русский</a>
+  &nbsp;·&nbsp;   <a href="README.ar.md">العربية</a>
 </p>
 
 ---
 
-## 궁극의 정적 데스크톱 & 포스터 선반 통합
+<div align="center">
 
-![궁극의 정적 데스크톱 & 포스터 선반 통합]
-<img width="3837" height="2160" alt="image" src="https://github.com/user-attachments/assets/1849b142-aa9e-4b5d-802e-4f3519d79c73" />
+# 💠 PecoFence — 궁극의 데스크톱 커스터마이징 및 정리 스위트
 
-<img width="3837" height="2034" alt="image" src="https://github.com/user-attachments/assets/311962e3-984b-4a7a-bc2c-48ffdaa9379b" />
+**Windows 11을 살아 숨쉬는 초정밀 유리 작업 공간으로 변환하세요.**
 
-### 🧩 빠져 있던 마지막 조각: BoxArt Studio
-PecoFence는 정돈된 그리드 레이아웃과 간격 없는 2:3 포스터 컨테이너를 제공하지만, Windows는 여전히 표준 정사각형 아이콘을 생성합니다.
-스크린샷처럼 실물 게임 패키지 선반 모양을 구현하려면 **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**가 필요합니다. BoxArt Studio는 일반 Windows 게임 바로 가기와 폴더를 아름다운 고해상도 2:3 실물 게임 박스로 일괄 변환해 주는 필수 도우미 도구입니다.
+PecoFence는 Rust로 작성된 강력하게 업그레이드된 차세대 데스크톱 정리 및 Windows 11 셸 커스터마이징 스위트입니다. 기본적인 아이콘 펜스를 훨씬 넘어서, 자석식 데스크톱 정리, 3D 원근 선반, 라이브 H.264 비디오 배경화면, 적응형 데스크톱 시계 위젯, Windows 11 셸 심층 테마(작업 표시줄, 시작 메뉴, 알림 센터, 파일 탐색기 Mica/Acrylic), 원클릭 `.peco` 전체 테마 패키지를 하나로 묶었습니다.
 
-### 📸 포터블 레이아웃 스냅샷
+<!-- TODO: ADD IMAGE 1 (Hero Desktop Showcase) -->
+![PecoFence Hero Showcase](assets/hero-showcase.png)
+*> **[IMAGE PLACEHOLDER 1]:** Invisible/Bookshelf 펜스, 데스크톱 시계 위젯, 반투명 작업 표시줄이 보이는 전체 데스크톱 스크린샷을 추가하세요.*
 
-레이아웃 스냅샷이 이제 완전히 휴대 가능한 백업이 되었습니다. 스냅샷 목록에서 저장 파일의 이름을 바로 바꿀 수 있고, 현재 바탕 화면 배경 무늬를 파일 안에 함께 담을 수도 있습니다. 그러면 배경 무늬가 없던 PC에서도 레이아웃이 픽셀 단위로 정확히 복원됩니다.
-
-### 🧊 3D 기울어진 선반(실험적)
-
-펜스를 완벽한 평행사변형으로 전단 변형해 각 줄이 기울어진 배경 무늬의 선반을 따라가게 할 수 있습니다. 측면 상단의 세로 핸들을 드래그해 펜스 한쪽을 기울이면, 아이콘이 더 낮고 가까운 쪽을 향해 점진적으로 커집니다. 펜스 설정의 **깊이 배율** 슬라이더로 조절하세요.
-
-> **⚠️ 알려진 문제 — 도움 환영.** 기울어진 평행사변형 안에서의 마우스 이동, 정렬, 히트 테스트는 완벽하게 동작합니다. 다만 3D 원근감 배경 무늬를 사용하면 첫 번째 줄은 선반에 정확히 맞지만, 배경 무늬의 소실점 원근 때문에 이후 줄들은 어긋납니다. 이 다중 행 원근 수학을 완벽하게 해결할 방법을 아는 개발자가 계시다면 풀 리퀘스트를 환영합니다!
-
-### 🖼️ 바로 쓸 수 있는 2D 배경 무늬
-
-정면 평면 시점으로 그려진 엄선된 선반 배경 무늬 팩을 [`assets/wallpapers/`](../../assets/wallpapers/)에 담았습니다. 기울이지 않은 평평한 펜스와 완벽하게 정렬됩니다 — 하나 골라 선반을 배치하면 끝입니다.
-
-> **💡 프로 팁:** 평평한 펜스와 완벽하게 어울리는 2D 배경 무늬를 제공합니다. 더 멋진 설정을 위해 이 2D 이미지를 AI 영상 생성기로 애니메이션화한 뒤 [Lively Wallpaper](https://github.com/rocksdanister/lively)로 바탕 화면에 적용해 보세요.
-
-### 🎛️ 새로운 테마와 펜스별 세밀한 설정
-
-설정에 두 가지 스타일이 추가되었습니다. 게임 커버가 나무 선반 위에 바로 놓이는 클래식한 **Bookshelf**와, 아이콘이 배경 화면 위에 떠 있게 보이는 완전 투명 테마 **Invisible Canvas**입니다. 각 펜스 페이지에서는 **표시 안 함**으로 **제목 표시줄**을 완전히 숨기고, **아이콘 레이블**을 끄고, **사용자 지정 아이콘 크기**, **열 간격**, **행 간격** 슬라이더로 그리드를 정밀하게 조정할 수 있습니다. **스크롤 바 숨기기**, **스크롤 잠금**, **자동 높이** 토글까지 더해 깔끔하고 정적인 진열장을 완성하세요.
-
-<a id="ai에게-정리를-맡기세요"></a>
-
-## 원하는 바탕 화면을 AI에게 말해 보세요
-
-**CLI 내장. AI 에이전트에게 바로 맡기세요.**
-
-바탕 화면을 어떻게 쓰고 싶은지 AI 에이전트에게 알려 주세요. 함께 제공되는 `pecofence-cli`로 Claude Code, Codex, Cursor가 현재 설정을 읽고 PecoFence에 바로 변경 사항을 적용합니다.
-
-- **말로 요청하고 바로 설정하세요.** 테마, 불투명도, 아이콘 크기, 앱 전체 설정을 바꾸거나 모든 펜스를 한 번에 조정할 수 있습니다.
-- **한 번 정리하면 이후에는 자동으로.** 프로젝트별 펜스를 만들고 아이콘을 정리하세요. 규칙을 추가하면 새 파일도 자동으로 분류됩니다.
-- **마음에 드는 설정을 보관하세요.** 스냅샷으로 펜스 배치를 저장하고, 설정 내보내기/가져오기로 규칙과 배치까지 모두 백업하고 복원할 수 있습니다.
-
-**사용 중인 AI 에이전트로 시작하세요**
-
-PecoFence를 실행한 뒤, 아래 요청을 AI 코딩 에이전트에 붙여 넣으세요.
-
-> pecofence-cli로 내 바탕 화면을 설정해 주세요. 먼저 pecofence-cli skill과 pecofence-cli describe를 읽고 현재 설정과 펜스를 확인해 주세요. 변경하기 전에 설정을 백업하고, 다크 모드로 바꾼 다음 모든 펜스를 좀 더 투명하게 해 주세요.
-
-CLI는 앱에 포함되어 있습니다. Microsoft Store 버전은 `pecofence-cli`를 PATH에 추가합니다. 포터블 ZIP에서는 에이전트에게 `pecofence-cli.exe`의 전체 경로를 알려 주세요.
-
-<details>
-<summary><strong>코딩 에이전트와의 대화 예시</strong></summary>
-
-> 바탕 화면의 PDF를 Docs 펜스에 모으고 새 PDF도 자동으로 넣어 줘. 다크 모드로 바꾸고 펜스를 좀 더 투명하게 해 줘.
-
-```powershell
-pecofence-cli config export "$env:USERPROFILE\pecofence-before-ai.json"
-pecofence-cli snapshot save before-cleanup
-pecofence-cli fence create --title Docs
-pecofence-cli rule add --name PDFs --ext pdf --to Docs --index 0
-pecofence-cli rule apply
-pecofence-cli settings set theme dark
-pecofence-cli fence set --all opacity clear
-```
-
-</details>
-
-AI와 스크립트를 위한 인터페이스: `describe`는 명령 목록과 JSON Schema를, `skill`은 에이전트 가이드를 출력합니다. JSON 결과로 실제 변경 내용을 확인하고, 구조화된 앱 오류를 바탕으로 다음 작업을 결정할 수 있습니다.
-
-[CLI 시작 가이드 →](../CLI.md#start-with-your-ai-agent)
-
-## 모든 것에 제자리를
-
-<p align="center">
-  <img src="../assets/hero-ko.png" alt="PecoFence — 프로젝트 폴더, PDF와 직접 만든 디자인 이미지를 Liquid Glass 펜스에 담았습니다." width="1280">
-</p>
-
-## 실제 동작 보기
-
-### 펜스는 하나, 작업 공간은 여러 개
-
-관련 있는 펜스를 탭으로 묶어 두세요. 클릭 한 번으로 Project에서 Ideas로 넘어가고,
-더 넓게 쓰고 싶을 때는 탭을 끌어내어 독립된 펜스로 만들 수 있습니다.
-
-![펜스 두 개를 탭으로 합치고 Project와 Ideas 탭 사이를 전환한 뒤, 탭을 끌어내어 독립된 펜스로 분리하는 모습.](../assets/tabs.gif)
-
-### 단축키 하나로 바탕 화면을 눈앞에
-
-**Ctrl + Alt + 스페이스바**를 누르면 펜스 미리 보기가 열려 현재 앱 위로 펜스가 떠오릅니다.
-필요한 파일을 꺼내 쓴 뒤 **Esc**를 누르면 하던 일로 돌아갑니다.
-
-![펜스 미리 보기로 펜스를 앱 위에 띄우고, 바깥을 클릭하거나 파일을 열면 앱으로 돌아가는 모습.](../assets/peek.gif)
-
-<sub><a href="https://pecofence.jiang.jp/ko/manual/">사용 설명서</a>에 있는 애니메이션입니다. GIF는 자동으로 반복 재생됩니다.</sub>
-
-## 작은 디테일이 매일을 편하게
-
-| 기능 | 이렇게 달라집니다 |
-| :--- | :--- |
-| **AI + CLI** | `pecofence-cli` — **말로 요청하고 바로 설정하세요.** 테마, 불투명도, 아이콘 크기, 앱 전체 설정을 바꾸거나 모든 펜스를 한 번에 조정할 수 있습니다. |
-| **정리는 규칙에 맡기세요** | 파일 유형, 확장자, 이름, 와일드카드, 바로 가기 대상, 시간과 크기로 규칙을 정해 두면 새 파일이 알아서 제 펜스를 찾아갑니다. |
-| **바탕 화면에 어울리는 유리** | Fluent, Liquid Glass, Bookshelf, Invisible Canvas 테마, 밝은/어두운 모드, 펜스별 색조와 불투명도, 아이콘 색조. |
-| **펜스를 내 방식대로** | 펜스별 제목 표시줄 표시(**표시 안 함**까지), 아이콘 레이블 켜기/끄기, 아이콘 크기와 열/행 간격 슬라이더, 스크롤 바·스크롤 잠금·자동 높이 토글. |
-| **익숙한 파일 다루기** | 파일 탐색기 오른쪽 클릭 메뉴, 끌어서 놓기, 복사/붙여넣기, 다중 선택, 썸네일, 아이콘/목록/자세히 보기. |
-| **폴더를 가까이에** | 실제 폴더를 바탕 화면 위에 그대로 올려 두세요. 하위 폴더를 탐색할 수 있고, 변경 사항은 바로 반영됩니다. |
-| **필요할 때는 공간을** | 펜스를 제목만 남기고 접어 두고, 마우스를 올리면 펼치세요. 마음에 드는 배치는 잠가 둘 수 있습니다. 바탕 화면을 두 번 클릭하면 펜스가 모두 숨겨지고, 다시 두 번 클릭하면 돌아옵니다. |
-| **되돌아갈 길** | 배치 스냅샷, 매일 자동 백업, 설정 내보내기 / 가져오기, 디스플레이 간 펜스 교환. |
-| **3D 기울어진 선반(실험적)** | 펜스를 평행사변형으로 전단해 각 줄이 기울어진 배경 무늬의 선반을 따라가게 하고, 가까운 쪽으로 갈수록 아이콘이 커지는 깊이 스케일링을 지원합니다. |
-| **가볍고 빠르게** | Rust로 만든 네이티브 앱. 대기 중 메모리 사용량은 작업 관리자 기준 약 40 MB입니다. WebView2 설정 화면은 열 때만 로드됩니다. |
-
-자동 정리 규칙은 파일을 원래 위치에 그대로 둡니다. 직접 파일을 옮길 때는
-파일 탐색기에서처럼 실제 파일이 이동합니다.
-
-[전체 기능 목록 보기 →](../FEATURES.md)
-
-## PecoFence 시작하기
-
-<a href="https://apps.microsoft.com/detail/9MV6WG3XNWSX?mode=direct"><img src="https://get.microsoft.com/images/ko%20dark.svg" alt="Microsoft Store에서 받기" width="200"></a>
-
-Microsoft Store 버전은 Microsoft가 서명하고 자동으로 업데이트되며 SmartScreen 경고가 나타나지 않습니다. 같은 앱을 다음 방법으로도 설치할 수 있습니다.
-
-- **포터블 ZIP**: 이 저장소의 **Releases** 페이지에서 `pecofence-v<버전>-x64-portable.zip`을 다운로드하고, **ZIP 전체**를 한 폴더에 풀어 `pecofence.exe`를 실행합니다.
-- **설치 프로그램**: 같은 페이지의 `pecofence-v<버전>-x64-setup.exe`는 현재 사용자에게만 설치되며 시작 메뉴 항목과 제거 프로그램이 추가됩니다.
-- **winget**: `winget install DayuanJiang.PecoFence`로 포터블 빌드를 설치할 수 있고, SmartScreen 경고도 나타나지 않습니다.
-
-<details>
-<summary><strong>요구 사항, 설정 위치, 알아 두면 좋은 점</strong></summary>
-
-- Windows 10 22H2 또는 Windows 11 22H2 이상에서 동작합니다. 설정 화면에는 Microsoft Edge WebView2 Runtime이 필요합니다. Windows 11에는 포함되어 있고, Windows 10에서 설정이 열리지 않으면 Microsoft 사이트에서 설치하세요.
-- 처음 실행하면 선택한 언어로 “프로그램”, “폴더”, “파일 및 문서”, “바탕 화면” 펜스가 만들어집니다. 종료하면 Windows 바탕 화면 아이콘이 다시 표시됩니다.
-- 설정은 `%APPDATA%\PecoFence\config.json`에 저장됩니다. `--portable`로 실행하면 실행 파일 옆의 `config` 폴더에 보관합니다.
-- 포터블 빌드와 설치 프로그램은 코드 서명이 되어 있지 않습니다. 첫 실행 때 Windows SmartScreen이 나타나면 **추가 정보 → 실행**을 선택하세요.
-
-[포터블 버전 안내](../PORTABLE.md) · [언어 안내](../LOCALIZATION.md) · [Windows 설치 버전 안내](../INSTALLER.md)
-
-</details>
-
-## 직접 빌드하고, 내 것으로
-
-PecoFence는 Apache 2.0 라이선스로 공개되어 있습니다. 더 정확한 번역 한 줄부터 더 나은
-바탕 화면 상호작용까지, 어떤 기여든 환영합니다.
-
-[기여하기](../../CONTRIBUTING.md) · [번역 개선하기](../LOCALIZATION.md) · [개발 가이드](../DEVELOPMENT.md)
+</div>
 
 ---
 
-**돌아오고 싶어지는 바탕 화면을 위해.**  
-[Apache 2.0 라이선스](../../LICENSE) · [타사 고지](../../third_party/README.md)
+## ✨ 이 에디션이 특별한 이유
 
-[LINUX DO](https://linux.do) 커뮤니티에 감사드립니다.
+PecoFence의 모든 레이어가 재설계되어 데스크톱 아이콘과 Windows 11 셸 자체에 대한 완전한 창의적 제어권을 줍니다 — CPU와 GPU 사용량은 거의 0에 가깝게 유지하면서요.
+
+---
+
+## 🎨 1. 차세대 펜스 스타일 및 비주얼 블렌딩
+
+네 가지 구별되는 비주얼 패러다임으로 표준 컨테이너를 뛰어넘으세요:
+- **Fluent (클래식):** 선명한 테두리가 있는 깔끔한 Windows 11 Fluent 카드.
+- **Liquid Glass:** 정적 또는 라이브 비디오 배경화면을 샘플링하는 실시간 굴절 유리.
+- **Bookshelf (`رف الكتب`) [신규]:** 펜스를 아이콘이 선반 열에 깔끔하게 앉는 촉감 있는 입체 선반으로 바꿉니다.
+- **Invisible Canvas (`لوحة غير مرئية`) [신규]:** 펜스 배경과 테두리를 완전히 숨깁니다 — 자석 스냅, 정렬 규칙, 그리드 정렬의 모든 기능은 그대로 유지하면서 아이콘이 원시 배경화면 위에 자연스럽게 떠 있는 것처럼 보입니다.
+
+### 🦎 카멜레온 아이콘 블렌딩 및 바로가기 정리
+- **카멜레온 모드 (`دمج الأيقونات مع الخلفية`) [신규]:** 커스터마이징 가능한 **블렌드 강도 슬라이더 (0%–100%)**로 아이콘을 동적으로 탈색하고 배경화면에 섞어 차분하고 방해되지 않는 미학을 만듭니다.
+- **바로가기 화살표 토글 (`إظهار/إخفاء أسهم الاختصارات`) [신규]:** 설정에서 어지러운 Windows 바로가기 화살표를 즉시 제거하거나 복원합니다.
+- **완전한 아랍어 로컬라이제이션 및 RTL UI [신규]:** 네이티브 아랍어 인터페이스(`العربية`)와 원활한 오른쪽에서 왼쪽(RTL) 레이아웃, 즉각적인 라이브 언어 전환.
+
+<!-- TODO: ADD IMAGE 2 (Fence Styles & Chameleon Mode) -->
+![Fence Styles Showcase](assets/fence-styles.png)
+*> **[IMAGE PLACEHOLDER 2]:** 4가지 테마 스타일(Fluent, Liquid Glass, Bookshelf, Invisible Canvas)과 카멜레온 블렌딩을 보여주는 일반 탭 스크린샷을 추가하세요.*
+
+---
+
+## 🎬 2. 네이티브 H.264 비디오 배경화면 및 적응형 시계 위젯
+
+### 🎞️ 하드웨어 가속 비디오 배경화면 엔진 [신규]
+- PecoFence에서 직접 임의의 **MP4 (H.264)** 비디오를 버터처럼 부드러운 라이브 배경화면으로 설정하세요.
+- *CloudConvert* 및 *FreeConvert* 내장 퀵 링크로 어떤 비디오든 초경량 GPU 친화적 배경화면으로 쉽게 변환할 수 있습니다.
+
+### 🕰️ 무테두리 데스크톱 시계 위젯 (`ويدجت الساعة المكتبية`) [신규]
+- **20개의 수제 반응형 시계/날짜/요일 디자인**(Gemini 서명 10개 + Devin 서명 10개) 중 선택하거나 `بدون`으로 완전히 끄세요.
+- **진정한 무테두리 상호작용:** 타이틀바나 잡동사니 없음. 위젯 **내부 어디서든** 클릭-드래그로 이동하거나 **임의의 가장자리/모서리**를 잡고 자동 타이포그래피 스케일링으로 부드럽게 크기 조절.
+- **적응형 배경화면 대비 (`تنسيق ألوان الويدجت تلقائياً لتناسب الخلفية`) [신규]:** PecoFence는 시계 위젯 뒤의 정확한 배경화면 픽셀을 지속적으로 샘플링합니다. 눈부신 흰색이든 칠흑 같은 검정이든, 위젯이 텍스트/유리/액센트 대비를 자동으로 반전시켜 시간과 날짜가 항상 100% 선명하게 유지됩니다.
+
+<!-- TODO: ADD IMAGE 3 (Desktop Clock Widget & Video Wallpaper) -->
+![Desktop Clock Widget Showcase](assets/clock-widgets.png)
+*> **[IMAGE PLACEHOLDER 3]:** 데스크톱 위젯과 해당 설정 및 적응형 대비 토글이 보이는 스크린샷을 추가하세요.*
+
+---
+
+## 🪟 3. Windows 11 셸 및 파일 탐색기 유리 심층 커스터마이징
+
+다섯 개의 개별 조정 도구를 설치할 필요 없이, PecoFence가 전체 Windows 11 미학을 한 곳에서 통합합니다.
+
+### 🛠️ 즉각 라이브 셸 스타일링 (Windhawk 기반 프리셋) [신규]
+즉시 테마 전환 — 선택 즉시 적용, 재부팅 없음:
+- **작업 표시줄 스타일 (`نمط شريط المهام`):** *Translucent Taskbar, Window Glass, OS26 Liquid Glass (Clear/Dark Mac Dock & Taskbar 변형), Plasma, Surface, Luminosity, Layer Mica UI, Fluid, Tinted Glass, Frosted Acrylic, Pills, Blob, Minecraft Hotbar, One UI 8.5 Dock* 등.
+- **시작 메뉴 스타일 (`نمط قائمة ابدأ`):** *Down Aero, Translucent Start Menu, No Recommended Section, Side by Side, Windows 10, Fluent 2 Inspired, Rose Pine, Metro 10 Minimal, Everblush, Sun Valley, Liquid Glass, Borderless, Command Center, Full Screen, Frosty Glass*.
+- **알림 센터 스타일 (`نمط مركز الإشعارات`):** *Layer Mica UI, Translucent Shell, Matte, Unified, JumpLists 10, Better Control 11, Fluid, Liquid Glass, Borderless, Dense, Frosty Glass, OS26 Tahoe Glass, Command Center*.
+
+<!-- TODO: ADD IMAGE 4 (Taskbar, Start Menu & Notification Center Themes) -->
+![Windows 11 Shell Customization](assets/windows-shell-customization.png)
+*> **[IMAGE PLACEHOLDER 4]:** 커스텀 시작 메뉴, 알림 센터, 작업 표시줄 테마 드롭다운이 작동 중인 스크린샷을 추가하세요.*
+
+### 🔍 파일 탐색기 유리 스튜디오 및 통합 앱 투명화 [신규]
+- **전용 파일 탐색기 유리 편집기 (`تأثير خلفية مستكشف الملفات`):** 선택 가능한 프리뷰 배경을 갖춘 대화형 **라이브 파일 탐색기 프리뷰 (`معاينة مباشرة`)**가 포함된 **고급 설정 (`الإعدادات المتقدمة`)** 스튜디오를 여세요!
+- **Blur, Acrylic, Mica, Mica Alt, Clear Blur**를 커스터마이징하고, 주소 표시줄/스크롤바/WinUI 툴바 투명화를 토글하며, 커스텀 `#AARRGGBB` 라이트 & 다크 블렌드 틴트와 불투명도를 미세 조정.
+- **진정한 DComp 앱 미러링:** PecoFence의 자체 창(무테두리 타이틀바와 클라이언트 영역 포함)이 스마트 `-70` 불투명도 오프셋으로 파일 탐색기 유리 재질을 실시간 미러링 — 불투명 틴트 범람 없이 앱 전체가 진짜 시스루 하드웨어 유리가 됩니다.
+- **원클릭 외관 새로고침 (`تحديث المظهر`) [신규]:** `explorer.exe`를 즉시 재시작하고 모든 데스크톱 펜스와 활성 비디오 배경화면을 깔끔하게 재후킹합니다.
+
+<!-- TODO: ADD IMAGE 5 (File Explorer Glass Studio & Live Preview) -->
+![File Explorer Glass Editor](assets/explorer-glass-editor.png)
+*> **[IMAGE PLACEHOLDER 5]:** 대화형 라이브 프리뷰와 커스텀 RGBA 컨트롤이 보이는 파일 탐색기 유리 고급 설정 창의 스크린샷을 추가하세요.*
+
+---
+
+## 📐 4. 펜스별 세부 커스터마이징 및 3D 원근 선반
+
+**펜스 (`الأسوار`)** 탭에서 모든 펜스를 픽셀 단위까지 조정:
+
+- **펜스 설정 복제 (`نسخ الإعدادات من سياج آخر`) [신규]:** 완벽한 펜스를 디자인했나요? 한 클릭으로 전체 비주얼 외관과 레이아웃 설정을 다른 펜스에 복사 — 대상 펜스의 이름, 내용, 정렬 규칙은 덮어쓰지 않습니다.
+- **타이틀바 표시 (`إظهار شريط العنوان`):** *항상* 및 *호버 시*에 이어 **"절대 표시 안 함" (`عدم الإظهار أبداً`) [신규]** 추가 — 완전히 헤더 없는 외관.
+- **커스텀 아이콘 프레임 및 컬러 팔레트 (`إطارات الأيقونات`) [신규]:** 개별 아이콘을 **투명 (`شفاف`)** 또는 **풀 컬러 (`ملون بالكامل`)** 라운드 카드로 감싸고, **텍스트 색상 (`لون النص`)**과 **프레임 색상 (`لون الإطار`)** 전용 11색 피커 지원.
+- **밀착 아이콘 모드 (`شكل الأيقونة: ملتصق`) [신규]:** 아이콘을 `2:3` 엣지-투-엣지 포스터로 크롭 — 게임 라이브러리와 미디어 펜스에 완벽!
+- **정밀 픽셀 슬라이더 [신규]:**
+  - **커스텀 아이콘 크기 (`حجم أيقونة مخصص`):** `16px`–`512px` 자유 슬라이더.
+  - **열 간격 (`تباعد الأعمدة`) & 행 간격 (`تباعد الصفوف`):** `0px`까지 줄여 아이콘이 완전히 닿게 하거나 `48px+`까지 넓힙니다.
+- **스크롤바 제어 [신규]:** **스크롤바 숨기기 (`إخفاء شريط التمرير`)**를 독립 토글(마우스 휠 스크롤은 유지)하거나 **스크롤 잠금 (`قفل التمرير`)**으로 콘텐츠를 상단에 고정해 쇼케이스 레이아웃을 만듭니다.
+- **3D 기울임 선반 모드 & 원근 스케일 (`وضع الرف المائل` + `معامل التكبير`) [신규]:** 펜스를 각도진 3D 방 배경화면과 정렬되는 3D 원근 평행사변형으로 기울입니다! **원근 스케일 계수 (`معامل التكبير`)**를 조정해 아이콘이 선반 먼 가장자리로 부드럽게 축소되는 사실적 깊이를 구현.
+
+<!-- TODO: ADD IMAGE 6 (Per-Fence Customization, Icon Frames & Tilted Shelf) -->
+![Advanced Fence Layout & 3D Shelf](assets/fence-advanced-layout.png)
+*> **[IMAGE PLACEHOLDER 6]:** 설정 복제, 아이콘 프레임 & 컬러 피커, 밀착 2:3 모드, 간격 슬라이더, 기울임 선반 모드가 보이는 펜스 탭의 스크린샷을 추가하세요.*
+
+---
+
+## ⚡ 5. 컬러 코드 정렬 엔진 및 강제 적용
+
+**정렬 규칙 (`قواعد الفرز`)** 엔진이 신뢰성과 시각적 명확성을 위해 완전히 재구축되었습니다:
+- **컬러 코드 펜스 배지 [신규]:** 각 펜스에 규칙 목록 내 고유 색상 배지가 할당되어 어느 규칙이 어느 펜스로 가는지 한눈에 식별.
+- **지금 적용 vs 강제 적용 (`تطبيق إجباري على كل العناصر`) [신규]:**
+  - **지금 적용 (`تطبيق الآن`):** 수동 배치한 항목을 존중하면서 정리되지 않은 데스크톱 항목을 부드럽게 라우팅.
+  - **강제 적용 (`تطبيق إجباري`):** 모든 수동 배치를 무시하고 활성 규칙에 따라 데스크톱의 모든 항목을 엄격하게 재정렬.
+- **원클릭 퀵 프리셋 (`إضافة سريعة`):** *사진, 음악, 비디오, 아카이브, 인스톨러* 또는 *데스크톱 정리*(30일 이상 손대지 않은 인스톨러와 아카이브만 쓸어모으되 파일은 하나도 삭제하지 않음)용 펜스와 규칙을 즉시 생성.
+
+<!-- TODO: ADD IMAGE 7 (Color-Coded Sorting Rules & Force Apply) -->
+![Sorting Rules Engine](assets/sorting-rules-colored.png)
+*> **[IMAGE PLACEHOLDER 7]:** 컬러 코드 펜스 배지와 주황색 강제 적용 버튼을 강조한 정렬 규칙 탭의 스크린샷을 추가하세요.*
+
+---
+
+## 📦 6. `.peco` 완전 테마 패키지 및 스마트 배경화면 피팅
+
+기본 `.json` 레이아웃 백업은 잊으세요 — **레이아웃 & 백업 (`التخطيط والنسخ الاحتياطية`)** 탭은 이제 완전한 **비주얼 테마 갤러리 (`معرض الثيمات`)**입니다:
+- **올인원 `.peco` 테마 아카이브 [신규]:** 테마 저장은 **모든 것**을 휴대용 `.peco` 번들에 담습니다 — 펜스의 정확한 좌표, 펜스별 스타일, 커스텀 아이콘 크기, 정렬 규칙, 유리 설정, 그리고 정적 또는 라이브 비디오 배경화면. 자동 데스크톱 미리보기 썸네일 포함!
+- **원클릭 적용, 내보내기 & 가져오기:** 몇 초 만에 전체 데스크톱 설정을 전환하거나 `.peco`를 내보내 누구와도 테마를 공유.
+- **스마트 종횡비 배경화면 피팅 (`ضبط الصورة لتظهر بالكامل مهما كانت أبعاد الشاشة`) [신규]:** 모니터 종횡비와 맞지 않는 배경화면이 있나요? 켜면 화면 중앙에 크롭되지 않은 전체 이미지를 표시하고 가장자리를 분위기 있는 블러 배경으로 채웁니다 — 끄면 표준 엣지-투-엣지 크롭 필로.
+- **매일 자동 저장 (`حفظ تحديث الثيم تلقائياً كل يوم`) [신규]:** 활성 `.peco` 테마 파일을 하루 한 번 제자리에서 자동 업데이트 — 최신 데스크톱 조정이 중복 없이 항상 보존됩니다.
+
+<!-- TODO: ADD IMAGE 8 (Theme Gallery & .peco Packages) -->
+![Theme Gallery Showcase](assets/themes-gallery.png)
+*> **[IMAGE PLACEHOLDER 8]:** 적용/내보내기 .peco/삭제 버튼이 있는 비주얼 테마 카드와 스마트 배경화면 피팅 토글을 보여주는 테마 갤러리의 스크린샷을 추가하세요.*
+
+---
+
+## 🚀 시작하기
+
+1. **Releases** 페이지에서 최신 `setup.exe` 또는 `portable.zip`을 다운로드하세요.
+2. 시스템 트레이에서 **PecoFence**를 실행하고 **설정 (`إعدادات PecoFence`)**을 엽니다.
+3. **테마 스타일**(*Fluent, Liquid Glass, Bookshelf, Invisible Canvas*)을 선택하거나 **데스크톱 시계 위젯**을 활성화하거나 **테마 갤러리**에서 `.peco` 테마를 가져오세요 — 데스크톱이 즉시 변신하는 걸 지켜보세요!

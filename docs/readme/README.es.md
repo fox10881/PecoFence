@@ -1,184 +1,155 @@
-# Wallpaper Engine 自用版
-
-https://github.com/user-attachments/assets/c827f059-cfd7-4f6a-bed3-8b00411a7220
-
-<p align="center">
-  <strong>Una alternativa gratuita y de código abierto a Stardock Fences para Windows 11.</strong><br>
-  Agrupa archivos en paneles de cristal, cambia de proyecto con pestañas y deja que tu agente de IA configure la distribución, la apariencia y las reglas de organización con la CLI integrada.
-</p>
-
-<p align="center">
-  <a href="https://pecofence.jiang.jp/es/"><strong>Sitio web</strong></a>
-  &nbsp;·&nbsp; <a href="#descarga-pecofence"><strong>Descarga PecoFence →</strong></a>
-  &nbsp;·&nbsp; <a href="#tu-escritorio-configurado-por-tu-ia"><strong>IA + CLI</strong></a>
-  &nbsp;·&nbsp; <a href="#míralo-en-acción">Míralo en acción</a>
-  &nbsp;·&nbsp; <a href="../README.md">Documentación</a>
-</p>
-
 <p align="center">
   <a href="../../README.md">English</a>
-  &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a>
-  &nbsp;·&nbsp; <a href="README.zh-TW.md">繁體中文</a>
-  &nbsp;·&nbsp; <a href="README.ja.md">日本語</a>
-  &nbsp;·&nbsp; <a href="README.ko.md">한국어</a>
-  &nbsp;·&nbsp; <a href="README.de.md">Deutsch</a>
-  &nbsp;·&nbsp; <a href="README.fr.md">Français</a>
-  &nbsp;·&nbsp; <strong>Español</strong>
-  &nbsp;·&nbsp; <a href="README.pt-BR.md">Português (Brasil)</a>
-  &nbsp;·&nbsp; <a href="README.ru.md">Русский</a>
-  &nbsp;·&nbsp; <a href="README.ar.md">العربية</a>
+  &nbsp;·&nbsp;   <a href="README.zh-CN.md">简体中文</a>
+  &nbsp;·&nbsp;   <a href="README.zh-TW.md">繁體中文</a>
+  &nbsp;·&nbsp;   <a href="README.ja.md">日本語</a>
+  &nbsp;·&nbsp;   <a href="README.ko.md">한국어</a>
+  &nbsp;·&nbsp;   <a href="README.de.md">Deutsch</a>
+  &nbsp;·&nbsp;   <a href="README.fr.md">Français</a>
+  &nbsp;·&nbsp;   <strong>Español</strong>
+  &nbsp;·&nbsp;   <a href="README.pt-BR.md">Português (Brasil)</a>
+  &nbsp;·&nbsp;   <a href="README.it.md">Italiano</a>
+  &nbsp;·&nbsp;   <a href="README.ru.md">Русский</a>
+  &nbsp;·&nbsp;   <a href="README.ar.md">العربية</a>
 </p>
 
 ---
 
-## La integración definitiva de escritorio estático y estanterías de pósters
+<div align="center">
 
-![La integración definitiva de escritorio estático y estanterías de pósters]
-<img width="3837" height="2160" alt="image" src="https://github.com/user-attachments/assets/1849b142-aa9e-4b5d-802e-4f3519d79c73" />
+# 💠 PecoFence — La suite definitiva de personalización y organización del escritorio
 
-<img width="3837" height="2034" alt="image" src="https://github.com/user-attachments/assets/311962e3-984b-4a7a-bc2c-48ffdaa9379b" />
+**Convierte Windows 11 en un espacio de trabajo de vidrio vivo y ultraorganizado.**
 
-### 🧩 La pieza que faltaba: BoxArt Studio
-PecoFence aporta la cuadrícula rígida y los contenedores de póster 2:3 sin huecos, pero Windows sigue generando iconos cuadrados estándar.
-Para conseguir el aspecto exacto de estantería física de videojuegos que se ve en la captura, necesitas **[BoxArt Studio](https://github.com/fox10881/BoxArt-Studio)**. BoxArt Studio es la herramienta complementaria esencial que convierte por lotes tus accesos directos de juegos y carpetas de Windows en elegantes carátulas 2:3 de alta resolución.
+PecoFence es una suite de organización de escritorio y personalización del shell de Windows 11 de nueva generación, escrita en Rust. Mucho más allá de simples cercas de iconos, combina organización magnética, estantes con perspectiva 3D, fondos de video H.264 en vivo, widgets de reloj adaptativos, personalización profunda del shell (barra de tareas, menú Inicio, centro de notificaciones y el Explorador con Mica/Acrylic) y paquetes completos de temas `.peco` con un clic.
 
-### 📸 Instantáneas de distribución portátiles
+<!-- TODO: ADD IMAGE 1 (Hero Desktop Showcase) -->
+![PecoFence Hero Showcase](assets/hero-showcase.png)
+*> **[IMAGE PLACEHOLDER 1]:** Agrega una captura completa del escritorio con las cercas Invisible/Bookshelf, el widget de reloj y la barra de tareas translúcida.*
 
-Las instantáneas de distribución ahora son copias de seguridad totalmente portátiles: renombra un archivo guardado directamente en la lista de instantáneas y, si quieres, empaqueta el fondo de pantalla actual dentro del propio archivo. La distribución se restaura entonces al píxel en cualquier PC — incluso en uno que nunca haya visto tu fondo.
-
-### 🧊 Estantería 3D inclinada (experimental)
-
-Cizalla cualquier grupo hasta convertirlo en un paralelogramo perfecto para que sus filas sigan las baldas de un fondo de pantalla en ángulo: arrastra los tiradores verticales del borde superior de un lado para inclinar el grupo, y los iconos se escalan progresivamente hacia el borde más cercano y bajo — ajustable con el deslizador **Factor de profundidad** en la configuración del grupo.
-
-> **⚠️ Problema conocido — se agradece ayuda.** El movimiento del ratón, la alineación y la detección de clics dentro del paralelogramo inclinado funcionan perfectamente. Sin embargo, con un fondo de pantalla de perspectiva 3D, la primera fila se alinea perfectamente con la balda, pero las siguientes no, debido a la perspectiva del punto de fuga del fondo. Si algún desarrollador sabe resolver perfectamente esta matemática de perspectiva en varias filas, ¡los pull requests son más que bienvenidos!
-
-### 🖼️ Fondos de pantalla 2D listos para usar
-
-El repositorio incluye un paquete seleccionado de fondos de estanterías en vista frontal plana en [`assets/wallpapers/`](../../assets/wallpapers/), que se alinean a la perfección con los grupos planos sin inclinar: elige uno, coloca tus baldas y listo.
-
-> **💡 Consejo profesional:** Hemos incluido fondos 2D listos para usar que se alinean perfectamente con los grupos planos. Para una configuración espectacular, te recomendamos pasar estas imágenes 2D por un generador de vídeo con IA para animarlas y aplicarlas a tu escritorio con [Lively Wallpaper](https://github.com/rocksdanister/lively).
-
-### 🎛️ Nuevos temas y controles precisos por grupo
-
-Ajustes suma dos estilos más: **Bookshelf** —una clásica estantería de madera donde las carátulas descansan sobre las baldas— e **Invisible Canvas**, un tema totalmente transparente que deja los iconos flotando sobre tu fondo. En la página de cada grupo ahora puedes ocultar del todo la **barra de título** con **Nunca**, desactivar las **etiquetas de icono** y ajustar la cuadrícula con controles deslizantes de **tamaño de icono personalizado**, **espacio entre columnas** y **espacio entre filas**, además de los interruptores **Ocultar barra de desplazamiento**, **Bloquear desplazamiento** y **Altura automática** para lograr una vitrina limpia y estática.
-
-<a id="pídele-a-tu-ia-que-lo-organice"></a>
-
-## Tu escritorio, configurado por tu IA
-
-**CLI incluida. Lista para tu agente de IA.**
-
-Dile a tu agente de IA cómo quieres usar tu escritorio. Con `pecofence-cli`, incluida en la aplicación, Claude Code, Codex y Cursor pueden leer tu configuración actual y aplicar cambios directamente en PecoFence.
-
-- **Configura con tus propias palabras.** Cambia temas, transparencia, tamaño de los iconos y ajustes globales, o modifica todos los grupos a la vez.
-- **Organiza una vez y mantén el orden.** Crea grupos por proyecto, distribuye los iconos y agrega reglas que clasifiquen los archivos nuevos automáticamente.
-- **Guarda tu configuración favorita.** Usa instantáneas para la distribución de los grupos y la exportación e importación de configuración para ajustes, reglas y distribuciones.
-
-**Pruébalo con tu agente de IA**
-
-Abre PecoFence y pega esta petición en tu agente de programación con IA:
-
-> Configura mi escritorio con pecofence-cli. Primero lee la salida de pecofence-cli skill y pecofence-cli describe; luego revisa mis ajustes y grupos actuales. Haz una copia de mi configuración antes de cambiarla. Activa el modo oscuro y haz todos los grupos más transparentes.
-
-La CLI está incluida. La edición de Microsoft Store agrega `pecofence-cli` al PATH. Con el ZIP portátil, indica a tu agente la ruta completa de `pecofence-cli.exe`.
-
-<details>
-<summary><strong>Conversación de ejemplo con un agente de programación</strong></summary>
-
-> Pon los PDF de mi escritorio en un grupo Docs y clasifica allí también los PDF nuevos. Activa el modo oscuro y haz los grupos más transparentes.
-
-```powershell
-pecofence-cli config export "$env:USERPROFILE\pecofence-before-ai.json"
-pecofence-cli snapshot save before-cleanup
-pecofence-cli fence create --title Docs
-pecofence-cli rule add --name PDFs --ext pdf --to Docs --index 0
-pecofence-cli rule apply
-pecofence-cli settings set theme dark
-pecofence-cli fence set --all opacity clear
-```
-
-</details>
-
-Para agentes y scripts: `describe` ofrece el catálogo de comandos y los esquemas JSON; `skill`, la guía del agente. Los resultados JSON indican qué cambió y los errores estructurados de la aplicación ayudan al agente a elegir el siguiente paso.
-
-[Primeros pasos con la CLI →](../CLI.md#start-with-your-ai-agent)
-
-## Dale un lugar a cada cosa
-
-<p align="center">
-  <img src="../assets/hero-es.png" alt="PecoFence — Carpetas de proyecto, un PDF real y diseños originales en grupos nativos de Liquid Glass." width="1280">
-</p>
-
-## Míralo en acción
-
-### Una ventana. Varios espacios de trabajo.
-
-Mantén juntos los grupos relacionados como pestañas. Pasa de Project a Ideas con un clic y,
-cuando necesites más espacio, arrastra una pestaña fuera para convertirla en su propio grupo.
-
-![Dos grupos se unen en pestañas, se cambia entre Project e Ideas y luego una pestaña se separa en un grupo independiente.](../assets/tabs.gif)
-
-### Tu escritorio, a un atajo de distancia.
-
-Presiona **Ctrl + Alt + Espacio** y la vista rápida trae tus grupos por encima de la aplicación actual.
-Toma lo que necesites y presiona **Esc** para volver.
-
-![La vista rápida muestra los grupos del escritorio sobre una aplicación; un clic fuera o abrir un archivo devuelve a la aplicación.](../assets/peek.gif)
-
-<sub>Animaciones del <a href="https://pecofence.jiang.jp/es/manual/">manual</a>. Los GIF se repiten automáticamente.</sub>
-
-## Pequeños detalles que mejoran el día a día
-
-| Experiencia | Qué obtienes |
-| :--- | :--- |
-| **IA + CLI** | `pecofence-cli` — **Configura con tus propias palabras.** Cambia temas, transparencia, tamaño de los iconos y ajustes globales, o modifica todos los grupos a la vez. |
-| **Menos tiempo ordenando** | Reglas por tipo de archivo, extensión, nombre, comodines, destino del acceso directo, hora y tamaño. Los archivos nuevos encuentran su grupo solos. |
-| **Cristal a la medida de tu escritorio** | Temas Fluent, Liquid Glass, Bookshelf e Invisible Canvas, modos claro y oscuro, colores por grupo, opacidad y tinte de iconos. |
-| **Cada grupo, a tu manera** | Visibilidad de la barra de título por grupo (hasta **Nunca**), etiquetas de icono opcionales, deslizadores para tamaño de icono y espaciado de columnas/filas, e interruptores de barra de desplazamiento, bloqueo de desplazamiento y altura automática. |
-| **Archivos como siempre** | Menús contextuales del Explorador de archivos, arrastrar y soltar, copiar y pegar, selección múltiple, miniaturas y vistas de iconos, lista y detalles. |
-| **Ten tus carpetas a mano** | Coloca una carpeta en vivo sobre el escritorio. Navega por sus subcarpetas y ve los cambios al momento. |
-| **Espacio cuando lo necesitas** | Contrae un grupo hasta su título. Pasa el cursor para expandirlo. Bloquea la distribución que te gusta. Haz doble clic en el escritorio para ocultar los grupos. Vuelve a hacer doble clic para recuperarlos. |
-| **Siempre puedes volver atrás** | Instantáneas de distribución, copias de seguridad diarias, importación y exportación de la configuración e intercambio entre pantallas. |
-| **Estantería 3D inclinada (experimental)** | Cizalla un grupo hasta formar un paralelogramo para que sus filas sigan las baldas de un fondo en ángulo, con escalado de profundidad de los iconos hacia el borde cercano. |
-| **Huella mínima** | Una aplicación nativa escrita en Rust que en reposo ocupa unos 40 MB de memoria (según el Administrador de tareas). El panel de Configuración en WebView2 se carga solo cuando hace falta. |
-
-Las reglas de organización automática dejan los archivos en su ubicación original. Los movimientos
-que inicias tú funcionan igual que en el Explorador de archivos.
-
-[Explora la lista completa de funciones →](../FEATURES.md)
-
-## Descarga PecoFence
-
-<a href="https://apps.microsoft.com/detail/9MV6WG3XNWSX?mode=direct"><img src="https://get.microsoft.com/images/es%20dark.svg" alt="Consíguelo en Microsoft Store" width="200"></a>
-
-La versión de Microsoft Store está firmada por Microsoft, se actualiza sola y nunca muestra el aviso de SmartScreen. La misma aplicación también está disponible como:
-
-- **ZIP portátil**: descarga `pecofence-v<versión>-x64-portable.zip` desde la página de **Releases** de este repositorio, extrae el **ZIP completo** en una carpeta y ejecuta `pecofence.exe`.
-- **Instalador**: `pecofence-v<versión>-x64-setup.exe`, en la misma página, instala PecoFence para tu usuario de Windows, con acceso en el menú Inicio y desinstalador.
-- **winget**: `winget install DayuanJiang.PecoFence` instala la versión portátil y evita el aviso de SmartScreen.
-
-<details>
-<summary><strong>Requisitos, configuración y algunas notas útiles</strong></summary>
-
-- Windows 10 22H2, o Windows 11 22H2 o posterior. La Configuración necesita Microsoft Edge WebView2 Runtime. Windows 11 lo incluye; en Windows 10 instálalo desde Microsoft si la Configuración no se abre.
-- El primer inicio crea los grupos «Programas», «Carpetas», «Archivos y documentos» y «Escritorio» en el idioma que elijas. Los iconos del escritorio de Windows se restauran al salir.
-- La configuración se guarda en `%APPDATA%\PecoFence\config.json`. Ejecuta la aplicación con `--portable` para guardarla en una carpeta `config` junto al ejecutable.
-- El ZIP y el instalador no están firmados. Si Windows SmartScreen aparece en el primer inicio, elige **Más información → Ejecutar de todas formas**.
-
-[Guía de la edición portátil](../PORTABLE.md) · [Guía de idiomas](../LOCALIZATION.md) · [Guía del instalador de Windows](../INSTALLER.md)
-
-</details>
-
-## Constrúyelo. Hazlo tuyo.
-
-PecoFence tiene licencia Apache 2.0 y las contribuciones son bienvenidas: desde una traducción más
-precisa hasta una interacción de escritorio mejor resuelta.
-
-[Contribuir](../../CONTRIBUTING.md) · [Mejorar una traducción](../LOCALIZATION.md) · [Guía de desarrollo](../DEVELOPMENT.md)
+</div>
 
 ---
 
-**Hecho para un escritorio al que da gusto volver.**  
-[Licencia Apache 2.0](../../LICENSE) · [Avisos de terceros](../../third_party/README.md)
+## ✨ ¿Qué hace extraordinaria a esta edición?
 
-Gracias a la comunidad [LINUX DO](https://linux.do).
+Cada capa de PecoFence se reingenierizó para darte control creativo total sobre tus iconos y el propio shell de Windows 11, con consumo de CPU y GPU casi nulo.
+
+---
+
+## 🎨 1. Estilos de cerca de nueva generación y fusión visual
+
+Supera los contenedores estándar con cuatro paradigmas visuales:
+- **Fluent (Clásico):** Tarjetas Fluent limpias con bordes nítidos.
+- **Liquid Glass:** Vidrio refractivo en tiempo real que muestrea fondos estáticos o de video en vivo.
+- **Bookshelf (`رف الكتب`) [NUEVO]:** Convierte la cerca en un estante dimensional donde los iconos se sientan en filas.
+- **Invisible Canvas (`لوحة غير مرئية`) [NUEVO]:** Oculta por completo el fondo y bordes de la cerca — conservas el ajuste magnético, las reglas y la cuadrícula mientras los iconos parecen flotar sobre tu fondo.
+
+### 🦎 Fusión camaleónica de iconos y limpieza de accesos directos
+- **Modo Camaleón (`دمج الأيقونات مع الخلفية`) [NUEVO]:** Desatura y fusiona los iconos con tu fondo usando un **control deslizante de intensidad (0%–100%)** para una estética calmada.
+- **Interruptor de flechas de acceso directo (`إظهار/إخفاء أسهم الاختصارات`) [NUEVO]:** Quita o restaura las flechas de acceso directo desde la configuración.
+- **Localización árabe completa e interfaz RTL [NUEVO]:** Interfaz árabe nativa (`العربية`) con diseño de derecha a izquierda y cambio de idioma instantáneo.
+
+<!-- TODO: ADD IMAGE 2 (Fence Styles & Chameleon Mode) -->
+![Fence Styles Showcase](assets/fence-styles.png)
+*> **[IMAGE PLACEHOLDER 2]:** Agrega una captura de la pestaña General con los 4 estilos de tema (Fluent, Liquid Glass, Bookshelf, Invisible Canvas) y la fusión Camaleón.*
+
+---
+
+## 🎬 2. Fondos de video H.264 nativos y widgets de reloj adaptativos
+
+### 🎞️ Motor de fondo de video acelerado por hardware [NUEVO]
+- Usa cualquier video **MP4 (H.264)** como fondo en vivo ultrafluido directamente desde PecoFence.
+- Enlaces rápidos integrados a *CloudConvert* y *FreeConvert* para convertir cualquier video en un fondo liviano y amigable con la GPU.
+
+### 🕰️ Widget de reloj de escritorio sin marco (`ويدجت الساعة المكتبية`) [NUEVO]
+- Elige entre **20 diseños artesanales y responsivos de reloj/fecha/día** (10 firmas Gemini + 10 firmas Devin), o apágalo con (`بدون`).
+- **Interacción real sin marco:** Sin barra de título. Arrastra desde **cualquier punto interior** para moverlo o toma **cualquier borde/esquina** para redimensionarlo suavemente con escala tipográfica automática.
+- **Contraste adaptativo de fondo (`تنسيق ألوان الويدجت تلقائياً لتناسب الخلفية`) [NUEVO]:** PecoFence muestrea continuamente los píxeles exactos del fondo tras el widget. Sea blanco brillante o negro absoluto, el widget invierte automáticamente el contraste de texto, vidrio y acento para que la hora y la fecha sigan 100% legibles.
+
+<!-- TODO: ADD IMAGE 3 (Desktop Clock Widget & Video Wallpaper) -->
+![Desktop Clock Widget Showcase](assets/clock-widgets.png)
+*> **[IMAGE PLACEHOLDER 3]:** Agrega una captura del widget de reloj en el escritorio con sus ajustes y el interruptor de contraste adaptativo.*
+
+---
+
+## 🪟 3. Personalización profunda del shell de Windows 11 y vidrio del Explorador
+
+¿Para qué instalar cinco herramientas si PecoFence unifica toda la estética de Windows 11?
+
+### 🛠️ Estilos de shell en vivo instantáneos (presets Windhawk) [NUEVO]
+Cambia temas al instante — se aplican al seleccionarlos, sin reinicios:
+- **Estilos de barra de tareas (`نمط شريط المهام`):** *Translucent Taskbar, Window Glass, OS26 Liquid Glass (variantes Clear/Dark Mac Dock & Taskbar), Plasma, Surface, Luminosity, Layer Mica UI, Fluid, Tinted Glass, Frosted Acrylic, Pills, Blob, Minecraft Hotbar, One UI 8.5 Dock* y más.
+- **Estilos de menú Inicio (`نمط قائمة ابدأ`):** *Down Aero, Translucent Start Menu, No Recommended Section, Side by Side, Windows 10, Fluent 2 Inspired, Rose Pine, Metro 10 Minimal, Everblush, Sun Valley, Liquid Glass, Borderless, Command Center, Full Screen, Frosty Glass*.
+- **Estilos del centro de notificaciones (`نمط مركز الإشعارات`):** *Layer Mica UI, Translucent Shell, Matte, Unified, JumpLists 10, Better Control 11, Fluid, Liquid Glass, Borderless, Dense, Frosty Glass, OS26 Tahoe Glass, Command Center*.
+
+<!-- TODO: ADD IMAGE 4 (Taskbar, Start Menu & Notification Center Themes) -->
+![Windows 11 Shell Customization](assets/windows-shell-customization.png)
+*> **[IMAGE PLACEHOLDER 4]:** Agrega una captura de los menús desplegables de temas de Inicio, centro de notificaciones y barra de tareas en acción.*
+
+### 🔍 Estudio de vidrio del Explorador y transparencia unificada de la app [NUEVO]
+- **Editor dedicado de vidrio del Explorador (`تأثير خلفية مستكشف الملفات`):** Abre el estudio de **Configuración avanzada (`الإعدادات المتقدمة`)** con **vista previa interactiva del Explorador (`معاينة مباشرة`)** y fondos seleccionables.
+- Personaliza **Blur, Acrylic, Mica, Mica Alt y Clear Blur**, alterna la transparencia de barra de direcciones/scrollbar/barra WinUI y afina tintes `#AARRGGBB` propios en claro y oscuro.
+- **Reflejo DComp real:** Las propias ventanas de PecoFence (incluida la barra de título sin marco y el área cliente) reflejan el material de vidrio del Explorador en tiempo real con un desplazamiento inteligente de opacidad `-70` — vidrio de hardware genuino sin inundación de tinte opaco.
+- **Actualizar apariencia con un clic (`تحديث المظهر`) [NUEVO]:** Reinicia `explorer.exe` al instante y reconecta limpiamente todas las cercas y tu fondo de video activo.
+
+<!-- TODO: ADD IMAGE 5 (File Explorer Glass Studio & Live Preview) -->
+![File Explorer Glass Editor](assets/explorer-glass-editor.png)
+*> **[IMAGE PLACEHOLDER 5]:** Agrega una captura de la ventana de configuración avanzada del vidrio del Explorador con la vista previa interactiva y los controles RGBA.*
+
+---
+
+## 📐 4. Personalización granular por cerca y estantes en perspectiva 3D
+
+Cada cerca se adapta hasta el último píxel en la pestaña **Cercas (`الأسوار`)**:
+
+- **Clonar ajustes de cerca (`نسخ الإعدادات من سياج آخر`) [NUEVO]:** ¿Diseñaste la cerca perfecta? Copia su apariencia y diseño completo a otra con un clic — sin sobrescribir nombre, contenido ni reglas del destino.
+- **Visibilidad de barra de título (`إظهار شريط العنوان`):** Nueva opción **"Nunca mostrar" (`عدم الإظهار أبداً`) [NUEVO]** junto a *Siempre* y *Al pasar el cursor* para un look sin cabecera.
+- **Marcos de icono y paletas personalizadas (`إطارات الأيقونات`) [NUEVO]:** Envuelve iconos en tarjetas redondeadas **transparentes (`شفاف`)** o **totalmente coloreadas (`ملون بالكامل`)** con selectores de 11 colores para **color de texto (`لون النص`)** y **color de marco (`لون الإطار`)**.
+- **Modo de icono contiguo (`شكل الأيقونة: ملتصق`) [NUEVO]:** Recorta iconos como pósters `2:3` de borde a borde — ¡ideal para cercas de juegos y medios!
+- **Controles deslizantes de píxel precisos [NUEVO]:**
+  - **Tamaño de icono personalizado (`حجم أيقونة مخصص`):** Libre de `16px` a `512px`.
+  - **Separación de columnas (`تباعد الأعمدة`) y filas (`تباعد الصفوف`):** Baja a `0px` para iconos contiguos o amplía a `48px+`.
+- **Control de scrollbar [NUEVO]:** **Ocultar scrollbar (`إخفاء شريط التمرير`)** manteniendo la rueda activa, o **Bloquear scroll (`قفل التمرير`)** para fijar el contenido arriba.
+- **Estante inclinado 3D y escala de perspectiva (`وضع الرف المائل` + `معامل التكبير`) [NUEVO]:** Inclina la cerca en un paralelogramo 3D que combina con fondos de habitaciones anguladas. Ajusta el **factor de escala de perspectiva (`معامل التكبير`)** para que los iconos se reduzcan hacia el borde lejano del estante.
+
+<!-- TODO: ADD IMAGE 6 (Per-Fence Customization, Icon Frames & Tilted Shelf) -->
+![Advanced Fence Layout & 3D Shelf](assets/fence-advanced-layout.png)
+*> **[IMAGE PLACEHOLDER 6]:** Agrega una captura de la pestaña Cercas con clonar ajustes, marcos de icono y selectores de color, modo contiguo 2:3, deslizantes de separación y modo de estante inclinado.*
+
+---
+
+## ⚡ 5. Motor de ordenación con código de color y aplicación forzada
+
+El motor de **reglas de ordenación (`قواعد الفرز`)** fue reconstruido por completo:
+- **Insignias de cerca con código de color [NUEVO]:** Cada cerca obtiene una insignia de color distinta en la lista para identificar al instante qué regla va a qué cerca.
+- **Aplicar ahora vs. Aplicación forzada (`تطبيق إجباري على كل العناصر`) [NUEVO]:**
+  - **Aplicar ahora (`تطبيق الآن`):** Dirige los elementos sin organizar respetando lo que colocaste manualmente.
+  - **Aplicación forzada (`تطبيق إجباري`):** Ignora toda ubicación manual y reordena cada elemento estrictamente según tus reglas activas.
+- **Presets rápidos de un clic (`إضافة سريعة`):** Genera al instante cercas y reglas para *Imágenes, Música, Videos, Archivos, Instaladores* o *Limpieza de escritorio* (solo barre instaladores y archivos sin tocar por 30+ días sin borrar ni un archivo).
+
+<!-- TODO: ADD IMAGE 7 (Color-Coded Sorting Rules & Force Apply) -->
+![Sorting Rules Engine](assets/sorting-rules-colored.png)
+*> **[IMAGE PLACEHOLDER 7]:** Agrega una captura de la pestaña de reglas con las insignias de color y el botón naranja de aplicación forzada.*
+
+---
+
+## 📦 6. Paquetes de tema `.peco` completos y ajuste inteligente de fondo
+
+Olvida los respaldos `.json` — la pestaña **Diseño y respaldos (`التخطيط والنسخ الاحتياطية`)** ahora es una **galería visual de temas (`معرض الثيمات`)**:
+- **Archivos `.peco` todo en uno [NUEVO]:** Guardar un tema captura **todo** en un paquete `.peco` portable — coordenadas exactas, estilos por cerca, tamaños de icono, reglas, ajustes de vidrio Y tu fondo estático o de video, ¡con miniatura de vista previa automática!
+- **Aplicar, exportar e importar con un clic:** Cambia entre escritorios completos en segundos o exporta `.peco` para compartirlos.
+- **Ajuste inteligente de proporción (`ضبط الصورة لتظهر بالكامل مهما كانت أبعاد الشاشة`) [NUEVO]:** ¿El fondo no coincide con tu monitor? Actívalo para mostrar la imagen completa centrada con un fondo difuminado en los bordes — o desactívalo para el relleno recortado habitual.
+- **Autoguardado diario (`حفظ تحديث الثيم تلقائياً كل يوم`) [NUEVO]:** Actualiza tu `.peco` activo una vez al día en el mismo archivo, sin crear duplicados.
+
+<!-- TODO: ADD IMAGE 8 (Theme Gallery & .peco Packages) -->
+![Theme Gallery Showcase](assets/themes-gallery.png)
+*> **[IMAGE PLACEHOLDER 8]:** Agrega una captura de la galería de temas con tarjetas visuales, botones Aplicar/Exportar .peco/Eliminar y el interruptor de ajuste inteligente.*
+
+---
+
+## 🚀 Primeros pasos
+
+1. Descarga el `setup.exe` o `portable.zip` más reciente desde la página **Releases**.
+2. Abre **PecoFence** desde la bandeja del sistema y entra a **Configuración (`إعدادات PecoFence`)**.
+3. Elige un **estilo de tema** (*Fluent, Liquid Glass, Bookshelf o Invisible Canvas*), activa un **widget de reloj** o importa un tema `.peco` desde la **galería de temas** — ¡y mira cómo tu escritorio se transforma al instante!
