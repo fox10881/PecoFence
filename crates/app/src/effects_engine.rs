@@ -14,7 +14,9 @@ use pecofence_render::{
 use windows_core::Result;
 
 /// Upper bound of live particles; `intensity` scales the active prefix.
-pub const MAX_PARTICLES: usize = 2048;
+/// The bound itself is structural — it lives in `pecofence_core` so the
+/// externalized `particle_count` parameter clamps against the same ceiling.
+pub const MAX_PARTICLES: usize = pecofence_core::EFFECT_MAX_PARTICLES as usize;
 
 /// Per-gradient alpha quantization (0.125 steps) — smooth enough for particles.
 const ALPHA_BUCKETS: usize = 8;
@@ -81,6 +83,73 @@ impl Effect {
                 | Self::RepulsionDust
         )
     }
+}
+
+/// Externalized tunables for the running engine — resolved once at the
+/// apply boundary from `Settings::effect_params` (`open()` / same-effect
+/// `set_params`). Everything is already sanitized/clamped upstream
+/// (`Config::sanitize_external` → `EffectParams::sanitize`); fields here
+/// are the *resolved* values: `0`/`1.0`/`None` mean "compiled default".
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LiveParams {
+    /// `0` = per-effect base count; else the base itself (intensity still
+    /// scales it, capped by `MAX_PARTICLES`).
+    pub count: u32,
+    /// Simulation-speed multiplier (`1.0` = unchanged).
+    pub speed: f32,
+    /// Additive lateral drift DIP/s applied to every live particle.
+    pub wind: f32,
+    /// Additive vertical acceleration DIP/s² on particle velocity.
+    pub gravity: f32,
+    /// Multiplicative color tint over the effect's lit colors.
+    pub tint: Option<ColorF>,
+    /// Radial-glow size multiplier (`1.0` = unchanged).
+    pub glow: f32,
+}
+
+impl Default for LiveParams {
+    fn default() -> Self {
+        Self {
+            count: 0,
+            speed: 1.0,
+            wind: 0.0,
+            gravity: 0.0,
+            tint: None,
+            glow: 1.0,
+        }
+    }
+}
+
+impl LiveParams {
+    /// `EffectParams` (all-optional, sanitized) → resolved runtime values.
+    pub fn from_params(p: &pecofence_core::EffectParams) -> Self {
+        Self {
+            count: p.particle_count.unwrap_or(0),
+            speed: p.speed.unwrap_or(1.0),
+            wind: p.wind.unwrap_or(0.0),
+            gravity: p.gravity.unwrap_or(0.0),
+            tint: p.primary_color.as_deref().and_then(parse_hex),
+            glow: p.glow_radius.unwrap_or(1.0),
+        }
+    }
+}
+
+/// `#RRGGBB` / `#AARRGGBB` → `ColorF` (alpha byte ignored — each draw keeps
+/// its own alpha ramp). Malformed → `None` (sanitize already filters these).
+fn parse_hex(s: &str) -> Option<ColorF> {
+    let hex = s.strip_prefix('#').unwrap_or(s);
+    if hex.len() != 6 && hex.len() != 8 {
+        return None;
+    }
+    let v = u32::from_str_radix(hex, 16).ok()?;
+    // #RRGGBB and #AARRGGBB share the low 3 bytes: R at >>16, G at >>8, B.
+    let (r, g, b) = ((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF);
+    Some(cf(
+        r as f32 / 255.0,
+        g as f32 / 255.0,
+        b as f32 / 255.0,
+        1.0,
+    ))
 }
 
 /// One particle: 56 bytes; the pool is allocated once — indices are the
@@ -231,6 +300,8 @@ pub struct Engine {
     button_prev: bool,
     /// Round-robin scan head for cursor-spawned slots (trail sparks, shards).
     emit_i: usize,
+    /// Resolved externalized tunables (`Settings::effect_params` → apply).
+    lp: LiveParams,
 }
 
 #[inline]
@@ -261,10 +332,11 @@ fn stop(pos: f32, c: ColorF) -> GradientStop {
 }
 
 impl Engine {
-    pub fn new(effect: Effect, intensity: f32, w: f32, h: f32) -> Self {
+    pub fn new(effect: Effect, intensity: f32, w: f32, h: f32, lp: LiveParams) -> Self {
         let mut e = Self {
             effect,
             intensity: intensity.clamp(0.1, 1.0),
+            lp,
             w,
             h,
             t: 0.0,
@@ -290,6 +362,16 @@ impl Engine {
 
     pub fn effect(&self) -> Effect {
         self.effect
+    }
+
+    /// `cf` + external tint: multiplies lit rgb by `primary_color` (alpha
+    /// untouched so per-draw alpha ramps survive). No-op when untinted.
+    #[inline]
+    fn cf(&self, r: f32, g: f32, b: f32, a: f32) -> ColorF {
+        match self.lp.tint {
+            Some(t) => cf(r * t.r, g * t.g, b * t.b, a),
+            None => cf(r, g, b, a),
+        }
     }
 
     /// xorshift64: no `rand` dependency, deterministic per effect.
@@ -320,6 +402,17 @@ impl Engine {
                 p.y %= h.max(1.0);
             }
         }
+    }
+
+    /// Live `effect_params` for a same-effect re-apply — scalars take
+    /// effect next tick; the host invalidates `FxCache` itself when the
+    /// tint/glow fields changed so baked gradients re-bake lazily.
+    pub fn set_params(&mut self, lp: LiveParams) {
+        self.lp = lp;
+    }
+
+    pub fn params(&self) -> &LiveParams {
+        &self.lp
     }
 
     pub fn set_intensity(&mut self, intensity: f32) {
@@ -355,22 +448,26 @@ impl Engine {
     /// scaled by the 10–100 % slider. `Aurora` and `CyberGridReveal` draw
     /// procedural geometry, not particles.
     fn target_count(&self) -> usize {
-        let base = match self.effect {
-            Effect::Rain | Effect::Thunderstorm => 400,
-            Effect::Snow => 320,
-            Effect::Fireflies => 90,
-            Effect::Embers => 180,
-            Effect::Sakura => 200,
-            Effect::Mist => 8,
-            Effect::Aurora | Effect::CyberGridReveal => 0,
-            Effect::Starfield => 160,
-            Effect::Matrix => 120,
-            Effect::Ripples => 200,
-            Effect::Constellation => 90,
-            Effect::MagicTrail => 260,
-            Effect::ShatterClicks => 220,
-            Effect::QuantumSwarm => 100,
-            Effect::RepulsionDust => MAX_PARTICLES,
+        let base = if self.lp.count > 0 {
+            self.lp.count as usize
+        } else {
+            match self.effect {
+                Effect::Rain | Effect::Thunderstorm => 400,
+                Effect::Snow => 320,
+                Effect::Fireflies => 90,
+                Effect::Embers => 180,
+                Effect::Sakura => 200,
+                Effect::Mist => 8,
+                Effect::Aurora | Effect::CyberGridReveal => 0,
+                Effect::Starfield => 160,
+                Effect::Matrix => 120,
+                Effect::Ripples => 200,
+                Effect::Constellation => 90,
+                Effect::MagicTrail => 260,
+                Effect::ShatterClicks => 220,
+                Effect::QuantumSwarm => 100,
+                Effect::RepulsionDust => MAX_PARTICLES,
+            }
         };
         ((base as f32 * self.intensity) as usize).min(MAX_PARTICLES)
     }
@@ -530,7 +627,9 @@ impl Engine {
     }
 
     pub fn tick(&mut self, dt: f32) {
-        let dt = dt.min(0.1);
+        // `speed` scales the simulation clock itself — one knob covers
+        // velocities, lifetimes and timers without touching per-effect code.
+        let dt = dt.min(0.1) * self.lp.speed;
         self.t += dt;
         let n = self.target_count().min(self.ps.len());
         match self.effect {
@@ -550,6 +649,16 @@ impl Engine {
             Effect::QuantumSwarm => self.tick_swarm(n, dt),
             Effect::CyberGridReveal => {}
             Effect::RepulsionDust => self.tick_dust(n, dt),
+        }
+        // External wind/gravity: additive uniform field over the live prefix.
+        if self.lp.wind != 0.0 || self.lp.gravity != 0.0 {
+            for p in &mut self.ps[..n] {
+                if p.life <= 0.0 {
+                    continue;
+                }
+                p.x += self.lp.wind * dt;
+                p.vy += self.lp.gravity * dt;
+            }
         }
         if self.flash > 0.0 {
             self.flash = (self.flash - dt * 4.0).max(0.0);
@@ -1059,7 +1168,7 @@ impl Engine {
 
     /// Draw the frame into the panel session (surface already clipped to size).
     pub fn draw(&self, s: &DrawingSession<'_>, cache: &mut FxCache) -> Result<()> {
-        s.clear(cf(0.0, 0.0, 0.0, 0.0));
+        s.clear(self.cf(0.0, 0.0, 0.0, 0.0));
         match self.effect {
             Effect::Rain | Effect::Thunderstorm => self.draw_rain(s, cache),
             Effect::Snow => self.draw_snow(s, cache),
@@ -1080,7 +1189,7 @@ impl Engine {
         }
         if self.flash > 0.0 {
             if let Some(b) = cache.pen(s) {
-                b.set_color(cf(0.9, 0.95, 1.0, self.flash));
+                b.set_color(self.cf(0.9, 0.95, 1.0, self.flash));
                 s.fill_rect(&Rect::new(0.0, 0.0, self.w, self.h), b);
             }
         }
@@ -1100,7 +1209,7 @@ impl Engine {
             }
             let Some(b) = cache.pen(s) else { return };
             if splash {
-                b.set_color(cf(0.75, 0.85, 1.0, (p.life * 1.8).min(0.6)));
+                b.set_color(self.cf(0.75, 0.85, 1.0, (p.life * 1.8).min(0.6)));
                 s.draw_line(
                     v2(p.x, p.y),
                     v2(p.x - p.vx * 0.03, p.y - p.vy * 0.03),
@@ -1111,9 +1220,9 @@ impl Engine {
                 let len = p.r;
                 let norm = (1.0f32 + 0.21 * 0.21).sqrt();
                 b.set_color(if i & 1 == 0 {
-                    cf(0.75, 0.85, 1.0, p.a)
+                    self.cf(0.75, 0.85, 1.0, p.a)
                 } else {
-                    cf(0.85, 0.92, 1.0, p.a)
+                    self.cf(0.85, 0.92, 1.0, p.a)
                 });
                 s.draw_line(
                     v2(p.x, p.y),
@@ -1125,9 +1234,9 @@ impl Engine {
         }
         if self.effect == Effect::Thunderstorm && self.bolt_n > 1 {
             let fade = (1.0 - self.bolt_age / 0.5).clamp(0.0, 1.0);
-            let glow = s.create_solid_brush(cf(0.49, 0.83, 0.99, 0.30 * fade));
-            let halo = s.create_solid_brush(cf(0.75, 0.92, 1.0, 0.55 * fade));
-            let core = s.create_solid_brush(cf(1.0, 1.0, 1.0, 0.95 * fade));
+            let glow = s.create_solid_brush(self.cf(0.49, 0.83, 0.99, 0.30 * fade));
+            let halo = s.create_solid_brush(self.cf(0.75, 0.92, 1.0, 0.55 * fade));
+            let core = s.create_solid_brush(self.cf(1.0, 1.0, 1.0, 0.95 * fade));
             if let (Ok(glow), Ok(halo), Ok(core)) = (glow, halo, core) {
                 let mut open = false;
                 let mut prev = v2(0.0, 0.0);
@@ -1154,7 +1263,7 @@ impl Engine {
         for i in 0..n {
             let p = &self.ps[i];
             let a = if p.life <= 0.5 { p.life * p.a } else { p.a };
-            b.set_color(cf(1.0, 1.0, 1.0, a));
+            b.set_color(self.cf(1.0, 1.0, 1.0, a));
             s.fill_ellipse(&ellipse(p.x, p.y, p.r, p.r), b);
         }
     }
@@ -1163,9 +1272,9 @@ impl Engine {
         if !FxCache::radial(
             s,
             &[
-                stop(0.0, cf(0.99, 0.94, 0.54, 1.0)),
-                stop(0.45, cf(0.96, 0.62, 0.04, 0.55)),
-                stop(1.0, cf(0.96, 0.62, 0.04, 0.0)),
+                stop(0.0, self.cf(0.99, 0.94, 0.54, 1.0)),
+                stop(0.45, self.cf(0.96, 0.62, 0.04, 0.55)),
+                stop(1.0, self.cf(0.96, 0.62, 0.04, 0.0)),
             ],
             &mut cache.glow_warm,
         ) {
@@ -1180,10 +1289,10 @@ impl Engine {
             let p = &self.ps[i];
             let pulse = (self.t * p.fq + p.ph).sin() * 0.5 + 0.5;
             let a = pulse * pulse;
-            let r = p.r * (0.7 + 0.5 * pulse);
+            let r = p.r * (0.7 + 0.5 * pulse) * self.lp.glow;
             if p.k > 0.5 {
                 if let Some(c) = cache.pen(s) {
-                    c.set_color(cf(0.53, 0.92, 0.99, a * 0.8));
+                    c.set_color(self.cf(0.53, 0.92, 0.99, a * 0.8));
                     s.fill_ellipse(&ellipse(p.x, p.y, r * 0.5, r * 0.5), c);
                 }
                 continue;
@@ -1198,9 +1307,9 @@ impl Engine {
         if !FxCache::radial(
             s,
             &[
-                stop(0.0, cf(1.0, 0.93, 0.84, 1.0)),
-                stop(0.4, cf(0.97, 0.45, 0.09, 0.7)),
-                stop(1.0, cf(0.86, 0.15, 0.15, 0.0)),
+                stop(0.0, self.cf(1.0, 0.93, 0.84, 1.0)),
+                stop(0.4, self.cf(0.97, 0.45, 0.09, 0.7)),
+                stop(1.0, self.cf(0.86, 0.15, 0.15, 0.0)),
             ],
             &mut cache.glow_ember,
         ) {
@@ -1213,7 +1322,7 @@ impl Engine {
             let life_t = (p.life / 6.0).clamp(0.0, 1.0);
             let flick = 0.75 + 0.25 * p.ph.sin();
             let a = (life_t * flick).min(1.0);
-            let r = p.r * (0.5 + life_t * 0.7);
+            let r = p.r * (0.5 + life_t * 0.7) * self.lp.glow;
             let g = &cache.glow_ember[bucket(a)];
             let m = Matrix3x2::scale(r, r) * Matrix3x2::translation(p.x, p.y) * base;
             s.with_transform(&m, || s.fill_ellipse(&ellipse(0.0, 0.0, 2.4, 2.4), g));
@@ -1224,8 +1333,8 @@ impl Engine {
         if !FxCache::radial(
             s,
             &[
-                stop(0.0, cf(1.0, 0.85, 0.9, 0.95)),
-                stop(1.0, cf(0.96, 0.62, 0.75, 0.75)),
+                stop(0.0, self.cf(1.0, 0.85, 0.9, 0.95)),
+                stop(1.0, self.cf(0.96, 0.62, 0.75, 0.75)),
             ],
             &mut cache.petal,
         ) {
@@ -1251,8 +1360,8 @@ impl Engine {
         if !FxCache::radial(
             s,
             &[
-                stop(0.0, cf(0.85, 0.9, 1.0, 1.0)),
-                stop(1.0, cf(0.85, 0.9, 1.0, 0.0)),
+                stop(0.0, self.cf(0.85, 0.9, 1.0, 1.0)),
+                stop(1.0, self.cf(0.85, 0.9, 1.0, 0.0)),
             ],
             &mut cache.glow_mist,
         ) {
@@ -1263,7 +1372,9 @@ impl Engine {
         for i in 0..n {
             let p = &self.ps[i];
             let g = &cache.glow_mist[bucket(p.a)];
-            let m = Matrix3x2::scale(p.r, p.f2) * Matrix3x2::translation(p.x, p.y) * base;
+            let m = Matrix3x2::scale(p.r * self.lp.glow, p.f2 * self.lp.glow)
+                * Matrix3x2::translation(p.x, p.y)
+                * base;
             s.with_transform(&m, || s.fill_ellipse(&ellipse(0.0, 0.0, 1.0, 1.0), g));
         }
     }
@@ -1274,9 +1385,9 @@ impl Engine {
             v2(0.0, 0.0),
             v2(0.0, -1.0),
             &[
-                stop(0.0, cf(0.20, 0.83, 0.60, 0.55)),
-                stop(0.55, cf(0.22, 0.74, 0.97, 0.32)),
-                stop(1.0, cf(0.66, 0.33, 0.97, 0.0)),
+                stop(0.0, self.cf(0.20, 0.83, 0.60, 0.55)),
+                stop(0.55, self.cf(0.22, 0.74, 0.97, 0.32)),
+                stop(1.0, self.cf(0.66, 0.33, 0.97, 0.0)),
             ],
             &mut cache.ribbon,
         ) {
@@ -1307,7 +1418,7 @@ impl Engine {
             let p = &self.ps[i];
             let tw = (self.t * p.fq + p.ph).sin() * 0.5 + 0.5;
             let Some(b) = cache.pen(s) else { return };
-            b.set_color(cf(0.9, 0.95, 1.0, 0.15 + tw * 0.7));
+            b.set_color(self.cf(0.9, 0.95, 1.0, 0.15 + tw * 0.7));
             s.fill_ellipse(&ellipse(p.x, p.y, p.r, p.r), b);
         }
         if self.met_live {
@@ -1316,8 +1427,8 @@ impl Engine {
                 v2(0.0, 0.0),
                 v2(1.0, 0.0),
                 &[
-                    stop(0.0, cf(1.0, 1.0, 1.0, 0.9)),
-                    stop(1.0, cf(0.6, 0.8, 1.0, 0.0)),
+                    stop(0.0, self.cf(1.0, 1.0, 1.0, 0.9)),
+                    stop(1.0, self.cf(0.6, 0.8, 1.0, 0.0)),
                 ],
                 &mut cache.tail,
             ) {
@@ -1331,7 +1442,7 @@ impl Engine {
             let g = &cache.tail[bucket(life)];
             s.draw_line(v2(m.x, m.y), v2(m.x - ux * tail, m.y - uy * tail), g, 2.2);
             if let Some(b) = cache.pen(s) {
-                b.set_color(cf(1.0, 1.0, 1.0, 0.95 * life));
+                b.set_color(self.cf(1.0, 1.0, 1.0, 0.95 * life));
                 s.fill_ellipse(&ellipse(m.x, m.y, m.r, m.r), b);
             }
         }
@@ -1344,7 +1455,7 @@ impl Engine {
                 let bmp = s.create_bitmap_target().ok()?;
                 s.with_target(&bmp, || {
                     let fmt = TextFormat::new("Segoe UI", 13.0);
-                    let brush = s.create_solid_brush(cf(0.06, 0.9, 0.5, 1.0));
+                    let brush = s.create_solid_brush(self.cf(0.06, 0.9, 0.5, 1.0));
                     if let (Ok(fmt), Ok(brush)) = (fmt, brush) {
                         const GLYPHS: [char; 24] = [
                             'ｱ', 'ｲ', 'ｳ', 'ｴ', 'ｵ', 'ｶ', 'ｷ', 'ｸ', 'ｹ', 'ｺ', 'ｻ', 'ｼ', 'ｽ', 'ｾ',
@@ -1393,7 +1504,7 @@ impl Engine {
                     0.95,
                 );
                 if let Some(hb) = cache.pen(s) {
-                    hb.set_color(cf(0.88, 0.97, 1.0, 0.35));
+                    hb.set_color(self.cf(0.88, 0.97, 1.0, 0.35));
                     s.draw_line(v2(p.x, p.y), v2(p.x, p.y - CELL), hb, CELL * 0.8);
                 }
             }
@@ -1405,9 +1516,9 @@ impl Engine {
             let p = &self.ps[i];
             let Some(b) = cache.pen(s) else { return };
             let tl = p.f2 * CELL;
-            b.set_color(cf(0.05, 0.65, 0.9, 0.5));
+            b.set_color(self.cf(0.05, 0.65, 0.9, 0.5));
             s.draw_line(v2(p.x, p.y), v2(p.x, p.y - tl), b, 9.0);
-            b.set_color(cf(0.88, 0.95, 1.0, 0.9));
+            b.set_color(self.cf(0.88, 0.95, 1.0, 0.9));
             s.draw_line(v2(p.x, p.y), v2(p.x, p.y - CELL), b, 9.0);
         }
     }
@@ -1421,7 +1532,7 @@ impl Engine {
             }
             let Some(b) = cache.pen(s) else { return };
             let t = 1.0 - p.life;
-            b.set_color(cf(0.56, 0.79, 0.99, 0.45 * p.life));
+            b.set_color(self.cf(0.56, 0.79, 0.99, 0.45 * p.life));
             s.draw_ellipse(&ellipse(p.x, p.y, p.r, p.r), b, (2.5 - 2.0 * t).max(0.5));
         }
     }
@@ -1439,7 +1550,7 @@ impl Engine {
                 if d2 < 16900.0 {
                     let d = d2.sqrt();
                     let Some(p) = cache.pen(s) else { return };
-                    p.set_color(cf(0.5, 0.7, 0.9, (1.0 - d / 130.0) * 0.4));
+                    p.set_color(self.cf(0.5, 0.7, 0.9, (1.0 - d / 130.0) * 0.4));
                     s.draw_line(v2(a.x, a.y), v2(b2.x, b2.y), p, 0.8);
                 }
             }
@@ -1449,14 +1560,14 @@ impl Engine {
             if d2 < 32400.0 {
                 let d = d2.sqrt();
                 let Some(p) = cache.pen(s) else { return };
-                p.set_color(cf(0.22, 0.74, 0.97, (1.0 - d / 180.0) * 0.6));
+                p.set_color(self.cf(0.22, 0.74, 0.97, (1.0 - d / 180.0) * 0.6));
                 s.draw_line(v2(a.x, a.y), v2(cx, cy), p, 1.0);
             }
         }
         for i in 0..n {
             let p = &self.ps[i];
             let Some(b) = cache.pen(s) else { return };
-            b.set_color(cf(0.8, 0.9, 1.0, 0.7));
+            b.set_color(self.cf(0.8, 0.9, 1.0, 0.7));
             s.fill_ellipse(&ellipse(p.x, p.y, p.r, p.r), b);
         }
     }
@@ -1476,7 +1587,7 @@ impl Engine {
             let r = p.r * (0.35 + p.life * 0.65);
             // cyan (0.3, 0.9, 1.0) → violet (0.72, 0.38, 1.0)
             let t = p.ph;
-            b.set_color(cf(0.3 + (0.72 - 0.3) * t, 0.9 + (0.38 - 0.9) * t, 1.0, a));
+            b.set_color(self.cf(0.3 + (0.72 - 0.3) * t, 0.9 + (0.38 - 0.9) * t, 1.0, a));
             s.fill_ellipse(&ellipse(p.x, p.y, r, r), b);
         }
     }
@@ -1492,7 +1603,7 @@ impl Engine {
             }
             let Some(b) = cache.pen(s) else { return };
             let fade = (p.life / 1.4).clamp(0.0, 1.0);
-            b.set_color(cf(0.82, 0.94, 1.0, p.a * fade));
+            b.set_color(self.cf(0.82, 0.94, 1.0, p.a * fade));
             let r = p.r;
             let m = Matrix3x2::rotation(p.rot) * Matrix3x2::translation(p.x, p.y) * base;
             s.with_transform(&m, || {
@@ -1520,7 +1631,7 @@ impl Engine {
                 0.0
             };
             let a = (p.a * (0.55 + near * 1.2)).min(1.0);
-            b.set_color(cf(0.45 + near * 0.4, 0.75 + near * 0.2, 1.0, a));
+            b.set_color(self.cf(0.45 + near * 0.4, 0.75 + near * 0.2, 1.0, a));
             let r = p.r * (1.0 + near * 0.9);
             s.fill_ellipse(&ellipse(p.x, p.y, r, r), b);
         }
@@ -1532,9 +1643,9 @@ impl Engine {
             dx * dx + dy * dy
         };
         if speed2 > 4.0 {
-            b.set_color(cf(0.4, 0.75, 1.0, 0.10));
+            b.set_color(self.cf(0.4, 0.75, 1.0, 0.10));
             s.draw_ellipse(&ellipse(cx, cy, 300.0, 300.0), b, 1.0);
-            b.set_color(cf(0.5, 0.85, 1.0, 0.22));
+            b.set_color(self.cf(0.5, 0.85, 1.0, 0.22));
             s.draw_ellipse(&ellipse(cx, cy, 26.0, 26.0), b, 1.4);
         }
     }
@@ -1569,12 +1680,12 @@ impl Engine {
                 if a < 0.015 {
                     continue;
                 }
-                b.set_color(cf(0.35, 0.85, 1.0, a));
+                b.set_color(self.cf(0.35, 0.85, 1.0, a));
                 s.fill_ellipse(&ellipse(x, y, 1.7, 1.7), b);
             }
         }
         // Soft mask edge — a whisper of a ring so the reveal has a boundary.
-        b.set_color(cf(0.35, 0.85, 1.0, 0.12));
+        b.set_color(self.cf(0.35, 0.85, 1.0, 0.12));
         s.draw_ellipse(&ellipse(cx, cy, MASK, MASK), b, 1.0);
     }
 
@@ -1586,8 +1697,116 @@ impl Engine {
         for i in 0..n {
             let p = &self.ps[i];
             let a = (p.a + p.k * 0.5).min(0.85);
-            b.set_color(cf(0.85, 0.9, 1.0, a));
+            b.set_color(self.cf(0.85, 0.9, 1.0, a));
             s.fill_ellipse(&ellipse(p.x, p.y, p.r, p.r), b);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pecofence_core::EffectParams;
+
+    #[test]
+    fn live_params_resolve_defaults() {
+        // Empty/all-None params → compiled defaults verbatim.
+        let lp = LiveParams::from_params(&EffectParams::default());
+        assert_eq!(lp, LiveParams::default());
+        assert_eq!(lp.speed, 1.0);
+        assert_eq!(lp.glow, 1.0);
+        assert_eq!(lp.tint, None);
+    }
+
+    #[test]
+    fn live_params_resolve_values() {
+        let p = EffectParams {
+            particle_count: Some(64),
+            speed: Some(2.0),
+            wind: Some(-50.0),
+            gravity: Some(400.0),
+            primary_color: Some("#804000".into()),
+            glow_radius: Some(1.5),
+        };
+        let lp = LiveParams::from_params(&p);
+        assert_eq!(lp.count, 64);
+        assert_eq!(lp.speed, 2.0);
+        assert_eq!(lp.wind, -50.0);
+        assert_eq!(lp.gravity, 400.0);
+        let t = lp.tint.unwrap();
+        // #804000 → r=0x80, g=0x40, b=0
+        assert!((t.r - 128.0 / 255.0).abs() < 1e-4);
+        assert!((t.g - 64.0 / 255.0).abs() < 1e-4);
+        assert_eq!(t.b, 0.0);
+        assert_eq!(lp.glow, 1.5);
+    }
+
+    #[test]
+    fn hex_parse_accepts_both_widths() {
+        assert!(parse_hex("#FF8800").is_some());
+        assert!(parse_hex("#80FF8800").is_some()); // alpha byte ignored
+        assert!(parse_hex("FF8800").is_some()); // missing '#' tolerated
+        assert_eq!(parse_hex("#12345"), None); // bad width
+        assert_eq!(parse_hex("#GGHHII"), None); // bad digits
+    }
+
+    #[test]
+    fn particle_count_override_caps_at_pool() {
+        // External count replaces the per-effect base — but the fixed pool
+        // is a hard ceiling no input can exceed.
+        let lp = LiveParams::from_params(&EffectParams {
+            particle_count: Some(100),
+            ..Default::default()
+        });
+        let e = Engine::new(Effect::Rain, 1.0, 800.0, 600.0, lp);
+        assert_eq!(e.target_count(), 100);
+
+        let lp2 = LiveParams::from_params(&EffectParams {
+            particle_count: Some(EFFECT_MAX_PARTICLES_FOR_TEST),
+            ..Default::default()
+        });
+        let e2 = Engine::new(Effect::Rain, 1.0, 800.0, 600.0, lp2);
+        assert_eq!(e2.target_count(), MAX_PARTICLES);
+        assert_eq!(e2.ps.len(), MAX_PARTICLES); // pool never grew
+    }
+
+    const EFFECT_MAX_PARTICLES_FOR_TEST: u32 = pecofence_core::EFFECT_MAX_PARTICLES;
+
+    #[test]
+    fn zero_count_falls_back_to_base() {
+        let e = Engine::new(Effect::Snow, 1.0, 800.0, 600.0, LiveParams::default());
+        assert_eq!(e.target_count(), 320); // compiled Snow base
+    }
+
+    #[test]
+    fn tint_multiplies_rgb_keeps_alpha() {
+        let mut e = Engine::new(Effect::Snow, 1.0, 800.0, 600.0, LiveParams::default());
+        let untinted = e.cf(0.8, 0.4, 0.2, 0.5);
+        assert_eq!((untinted.r, untinted.a), (0.8, 0.5));
+        e.lp.tint = Some(cf(1.0, 0.5, 0.0, 1.0));
+        let c = e.cf(0.8, 0.4, 0.2, 0.5);
+        assert!((c.r - 0.8).abs() < 1e-6);
+        assert!((c.g - 0.2).abs() < 1e-6);
+        assert_eq!(c.b, 0.0);
+        assert_eq!(c.a, 0.5);
+    }
+
+    #[test]
+    fn speed_scales_simulation_clock() {
+        let mut slow = Engine::new(
+            Effect::Rain,
+            1.0,
+            800.0,
+            600.0,
+            LiveParams {
+                speed: 0.5,
+                ..Default::default()
+            },
+        );
+        let mut normal = Engine::new(Effect::Rain, 1.0, 800.0, 600.0, LiveParams::default());
+        slow.tick(0.016);
+        normal.tick(0.016);
+        assert!((slow.t - 0.008).abs() < 1e-6);
+        assert!((normal.t - 0.016).abs() < 1e-6);
     }
 }

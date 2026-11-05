@@ -28,7 +28,9 @@ use windows_composition::{ContainerVisual, DesktopWindowTarget};
 use windows_core::Result;
 
 use crate::commands::{Command, CommandQueue};
-use crate::effects_engine::{Effect, Engine, FxCache};
+use pecofence_core::EffectParams;
+
+use crate::effects_engine::{Effect, Engine, FxCache, LiveParams};
 
 const CLASS_NAME: &str = desktop::EFFECTS_OVERLAY_CLASS;
 
@@ -108,22 +110,34 @@ impl EffectsHost {
     /// Apply the persisted pair. `"none"`/unknown ids tear the overlay down
     /// completely (zero memory, zero GPU). Live changes reconfigure in place.
     /// Effects are a pure background layer — they never collide with UI.
-    pub fn apply(&self, effect_id: &str, intensity: f32) {
+    ///
+    /// `params` is the theme's `EffectParams` for this effect id (already
+    /// sanitized; `None` = compiled defaults). It is resolved once here —
+    /// the apply boundary — so param tweaks land on the next Settings Apply
+    /// with zero idle parsing or watching.
+    pub fn apply(&self, effect_id: &str, intensity: f32, params: Option<&EffectParams>) {
         let Some(effect) = Effect::from_id(effect_id) else {
             self.close();
             return;
         };
+        let lp = params.map(LiveParams::from_params).unwrap_or_default();
         {
             let mut c = self.core.borrow_mut();
             if let Some(e) = c.engine.as_mut()
                 && e.effect() == effect
             {
                 e.set_intensity(intensity);
+                if *e.params() != lp {
+                    e.set_params(lp);
+                    // Baked gradients carry tint colors — drop the cache so
+                    // they re-bake lazily on the new values next frame.
+                    c.cache = FxCache::default();
+                }
                 c.wants_cursor = effect.wants_cursor();
                 return;
             }
         }
-        if let Err(e) = self.open(effect, intensity) {
+        if let Err(e) = self.open(effect, intensity, lp) {
             tracing::error!(error = %e, ?effect, "effects: failed to open overlay");
             self.close();
         }
@@ -149,7 +163,7 @@ impl EffectsHost {
     }
 
     /// Create the overlay window + composition tree + engine, start timers.
-    fn open(&self, effect: Effect, intensity: f32) -> Result<()> {
+    fn open(&self, effect: Effect, intensity: f32, lp: LiveParams) -> Result<()> {
         // Tear down any previous instance first (effect switches rebuild).
         self.close();
 
@@ -243,7 +257,13 @@ impl EffectsHost {
         let dpi = window::dpi_of(hwnd);
         panel_resize(&mut panel, w_px, h_px)?;
         let scale = dpi.max(96) as f32 / 96.0;
-        let engine = Engine::new(effect, intensity, w_px as f32 / scale, h_px as f32 / scale);
+        let engine = Engine::new(
+            effect,
+            intensity,
+            w_px as f32 / scale,
+            h_px as f32 / scale,
+            lp,
+        );
 
         {
             let mut c = self.core.borrow_mut();

@@ -531,7 +531,11 @@ impl App {
             return;
         };
         let before = host.hwnd();
-        host.apply(&s.desktop_effect, s.desktop_effect_intensity as f32 / 100.0);
+        host.apply(
+            &s.desktop_effect,
+            s.desktop_effect_intensity as f32 / 100.0,
+            s.effect_params.get(&s.desktop_effect),
+        );
         let after = host.hwnd();
         if before == after {
             return;
@@ -1509,6 +1513,7 @@ impl App {
         }
         if new.desktop_effect != old.desktop_effect
             || new.desktop_effect_intensity != old.desktop_effect_intensity
+            || new.effect_params != old.effect_params
         {
             self.apply_desktop_effect(&new);
         }

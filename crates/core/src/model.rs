@@ -2,7 +2,7 @@
 
 use crate::geometry::{WorkArea, monitor_model};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use uuid::Uuid;
 
 pub const SCHEMA_VERSION: u32 = 1;
@@ -255,6 +255,121 @@ pub struct Settings {
     /// Particle density 10–100 %; scales the live-particle count linearly.
     #[serde(default = "desktop_effect_intensity_default")]
     pub desktop_effect_intensity: u8,
+    /// Per-effect tuning overrides for the native desktop-effects engine,
+    /// keyed by effect id (`"rain"`, `"fireflies"`, … — `EFFECT_IDS`).
+    /// Every field is optional; `None` keeps the compiled default. `.peco`
+    /// themes carry it so a theme preserves the author's tuning exactly.
+    /// Values are validated/clamped by `Config::sanitize_external`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub effect_params: BTreeMap<String, EffectParams>,
+}
+
+/// Structural ceiling for the effects engine's live-particle pool — the
+/// compiled `MAX_PARTICLES` derives from this constant. Externalized
+/// `particle_count` clamps to it, so user input can never grow the pool.
+pub const EFFECT_MAX_PARTICLES: u32 = 2048;
+
+/// Closed set of effect ids the native engine implements — the
+/// `desktop_effect` setting and `effect_params` keys validate against it.
+pub const EFFECT_IDS: &[&str] = &[
+    "rain",
+    "thunderstorm",
+    "snow",
+    "fireflies",
+    "embers",
+    "sakura",
+    "mist",
+    "aurora",
+    "starfield",
+    "matrix",
+    "ripples",
+    "constellation",
+    "magic_trail",
+    "shatter_clicks",
+    "quantum_swarm",
+    "cyber_grid_reveal",
+    "repulsion_dust",
+];
+
+/// Externalizable tuning for one desktop effect (`تأثيرات سطح المكتب`).
+/// Every field is optional — `None` keeps the compiled-in default. Parsed
+/// from `config.json` / `.peco` archives and applied only at the apply
+/// boundary (`effects_host::apply` → `open`); there is no file watcher.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, rename_all = "camelCase")]
+pub struct EffectParams {
+    /// Live-particle count overriding the per-effect base
+    /// (`0..=EFFECT_MAX_PARTICLES`); the 10–100 % intensity slider still
+    /// scales the result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub particle_count: Option<u32>,
+    /// Simulation-speed multiplier (0.25–4.0); scales `dt` for the whole
+    /// effect, so particle lifetimes scale proportionally too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed: Option<f32>,
+    /// Additive lateral drift in DIP/s (-300..=300) applied to every live
+    /// particle after the effect's own physics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wind: Option<f32>,
+    /// Additive vertical acceleration in DIP/s² (-500..=500) applied to
+    /// particle velocity after the effect's own physics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gravity: Option<f32>,
+    /// Dominant color tint (`#RRGGBB` / `#AARRGGBB`) — multiplied onto the
+    /// effect's lit colors, preserving each color's alpha and shading.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_color: Option<String>,
+    /// Radial-glow size multiplier (0.25–4.0) for the baked gradient
+    /// sprites (fireflies, embers, mist, sakura).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub glow_radius: Option<f32>,
+}
+
+impl EffectParams {
+    /// Clamp every populated field into its safe range; malformed colors
+    /// drop to `None` (= compiled default). Called by
+    /// `Config::sanitize_external`.
+    pub fn sanitize(&mut self) {
+        if let Some(c) = &mut self.particle_count {
+            *c = (*c).min(EFFECT_MAX_PARTICLES);
+        }
+        if let Some(v) = &mut self.speed {
+            *v = if v.is_finite() {
+                v.clamp(0.25, 4.0)
+            } else {
+                1.0
+            };
+        }
+        if let Some(v) = &mut self.wind {
+            *v = if v.is_finite() {
+                v.clamp(-300.0, 300.0)
+            } else {
+                0.0
+            };
+        }
+        if let Some(v) = &mut self.gravity {
+            *v = if v.is_finite() {
+                v.clamp(-500.0, 500.0)
+            } else {
+                0.0
+            };
+        }
+        if self
+            .primary_color
+            .as_deref()
+            .is_some_and(|c| !looks_like_rgba(c))
+        {
+            self.primary_color = None;
+        }
+        if let Some(v) = &mut self.glow_radius {
+            *v = if v.is_finite() {
+                v.clamp(0.25, 4.0)
+            } else {
+                1.0
+            };
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -374,6 +489,7 @@ impl Default for Settings {
             clock_adaptive_color: true,
             desktop_effect: "none".to_string(),
             desktop_effect_intensity: 50,
+            effect_params: BTreeMap::new(),
         }
     }
 }
@@ -2073,6 +2189,15 @@ impl Config {
             s.clock_bounds = None;
         }
         s.desktop_effect_intensity = s.desktop_effect_intensity.clamp(10, 100);
+        // Effect-tuning overrides: unknown effect ids drop out (the engine
+        // is a closed enum), populated fields clamp to safe ranges.
+        s.effect_params.retain(|id, p| {
+            let known = EFFECT_IDS.contains(&id.as_str());
+            if known {
+                p.sanitize();
+            }
+            known
+        });
 
         // Fence geometry is stored in logical pixels against the saved
         // `work_w`/`work_h` — NOT normalized fractions. A non-finite or
@@ -3129,6 +3254,90 @@ mod tests {
         )
         .unwrap();
         assert_eq!(back.lock_scroll, None);
+    }
+
+    #[test]
+    fn effect_params_defaults_and_roundtrip() {
+        // All-optional: empty JSON yields all-None; unset fields never
+        // serialize (`.peco` themes stay compact).
+        let p: EffectParams = serde_json::from_str("{}").unwrap();
+        assert_eq!(p, EffectParams::default());
+        assert_eq!(serde_json::to_string(&p).unwrap(), "{}");
+
+        let json = r##"{"particleCount":512,"speed":1.5,"wind":-20.0,
+            "gravity":300.0,"primaryColor":"#FF8800","glowRadius":2.0}"##;
+        let p: EffectParams = serde_json::from_str(json).unwrap();
+        assert_eq!(p.particle_count, Some(512));
+        assert_eq!(p.primary_color.as_deref(), Some("#FF8800"));
+        let back: EffectParams = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
+    }
+
+    #[test]
+    fn effect_params_sanitize_clamps() {
+        let mut p = EffectParams {
+            particle_count: Some(999_999),
+            speed: Some(f32::INFINITY),
+            wind: Some(-9_999.0),
+            gravity: Some(f32::NAN),
+            primary_color: Some("not-a-color".into()),
+            glow_radius: Some(0.0),
+        };
+        p.sanitize();
+        // The structural ceiling — external input can never grow the pool.
+        assert_eq!(p.particle_count, Some(EFFECT_MAX_PARTICLES));
+        assert_eq!(p.speed, Some(1.0)); // non-finite → default multiplier
+        assert_eq!(p.wind, Some(-300.0));
+        assert_eq!(p.gravity, Some(0.0)); // NaN → no gravity
+        assert_eq!(p.primary_color, None); // malformed → compiled palette
+        assert_eq!(p.glow_radius, Some(0.25)); // floored, not zeroed
+
+        let mut ok = EffectParams {
+            primary_color: Some("#A0B1C2".into()),
+            ..Default::default()
+        };
+        ok.sanitize();
+        assert_eq!(ok.primary_color.as_deref(), Some("#A0B1C2"));
+    }
+
+    #[test]
+    fn effect_params_flow_through_config_sanitize() {
+        // Legacy themes: no `effectParams` key → empty map, zero risk.
+        let mut cfg = Config::default();
+        assert!(cfg.settings.effect_params.is_empty());
+        cfg.sanitize_external();
+        assert!(cfg.settings.effect_params.is_empty());
+
+        // Unknown effect ids drop out (closed engine enum); known entries
+        // get field-level clamps.
+        cfg.settings.effect_params.insert(
+            "rain".into(),
+            EffectParams {
+                particle_count: Some(100_000),
+                primary_color: Some("#112233".into()),
+                ..Default::default()
+            },
+        );
+        cfg.settings.effect_params.insert(
+            "bogus_effect".into(),
+            EffectParams {
+                particle_count: Some(50),
+                ..Default::default()
+            },
+        );
+        cfg.sanitize_external();
+        assert_eq!(cfg.settings.effect_params.len(), 1);
+        let p = &cfg.settings.effect_params["rain"];
+        assert_eq!(p.particle_count, Some(EFFECT_MAX_PARTICLES));
+        assert_eq!(p.primary_color.as_deref(), Some("#112233"));
+
+        // `.peco`-shaped round-trip: serialize + parse preserves the tuning.
+        let v = serde_json::to_value(&cfg.settings).unwrap();
+        let s2: Settings = serde_json::from_value(v).unwrap();
+        assert_eq!(
+            s2.effect_params["rain"].particle_count,
+            Some(EFFECT_MAX_PARTICLES)
+        );
     }
 }
 

@@ -29,6 +29,17 @@
   so only non-finite or degenerate values (NaN, non-positive size/work)
   fall back to a visible default — real DPI-scaled and multi-monitor
   positions round-trip untouched.
+- **Externalized desktop-effect tuning (`effectParams`)**: every live
+  effect now accepts optional per-effect overrides — `particleCount`,
+  `speed`, `wind`, `gravity`, `primaryColor` (HEX tint) and `glowRadius` —
+  serialized inside `config.json` and `.peco` themes, so an author's
+  physics and color tweaks round-trip byte-exact. Values are resolved once
+  at the apply boundary (`effects_host::apply` → `open`); there is no file
+  watcher and no idle parsing. The structural constraints stay compiled
+  in: `particleCount` can never exceed the fixed 2048-particle pool,
+  unknown effect ids drop out at sanitize time, and malformed colors fall
+  back to the compiled palette. Re-applying the same effect updates the
+  tunables in place and re-bakes tinted gradients lazily.
 
 ## 0.2.8
 
