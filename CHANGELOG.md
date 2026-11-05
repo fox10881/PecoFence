@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Thunderstorm intensity drives lightning, not rain**: the effect's
+  rain layer is now a fixed 96-drop drizzle (or the modder's absolute
+  `particleCount`) at every slider position — it no longer scales into a
+  downpour. The slider instead paces the storm: 10 % is a distant storm
+  (a strike every ~9–16 s), 100 % is overhead (~0.5–1.8 s). Strike
+  strength scales too — brighter sky flash, faster bolt decay, and a
+  chance of near-instant strobe re-strikes at high intensity. Sliding the
+  slider re-paces a pending strike instead of waiting out the stale
+  cooldown. `rain` and all other effects keep their existing intensity
+  scaling.
 - **Video wallpaper survives cold boot/restart**: the retire-on-static-
   wallpaper checks mistook Explorer's own startup transients for a user
   apply — the shell re-points `IDesktopWallpaper` at differently-named

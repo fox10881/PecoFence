@@ -21,6 +21,12 @@ pub const MAX_PARTICLES: usize = pecofence_core::EFFECT_MAX_PARTICLES as usize;
 /// Per-gradient alpha quantization (0.125 steps) — smooth enough for particles.
 const ALPHA_BUCKETS: usize = 8;
 
+/// Thunderstorm's rain layer is a fixed drizzle: for that effect the
+/// intensity slider drives lightning aggression instead of drop count.
+/// (`rain` keeps full intensity scaling; `particle_count` still wins
+/// outright when a modder sets it.)
+const THUNDERSTORM_RAIN_DROPS: usize = 96;
+
 /// The selectable effects; `"none"` never reaches this enum.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Effect {
@@ -315,6 +321,7 @@ pub struct Engine {
     bolt: [Vector2; 64],
     bolt_n: usize,
     bolt_age: f32,
+    bolt_life: f32,
     next_bolt: f32,
     flash: f32,
     met: P,
@@ -372,6 +379,7 @@ impl Engine {
             bolt: [Vector2 { x: 0.0, y: 0.0 }; 64],
             bolt_n: 0,
             bolt_age: 1.0,
+            bolt_life: 0.5,
             next_bolt: 0.0,
             flash: 0.0,
             met: P::default(),
@@ -445,6 +453,11 @@ impl Engine {
     pub fn set_intensity(&mut self, intensity: f32) {
         self.intensity = intensity.clamp(0.1, 1.0);
         self.seed();
+        // Slider → storm re-pace: without this a 16 s low-intensity gap
+        // could outlive a jump to 100 %.
+        if self.effect == Effect::Thunderstorm {
+            self.next_bolt = self.next_bolt.min(self.bolt_interval());
+        }
     }
 
     /// Cursor position in surface coordinates each tick.
@@ -473,8 +486,17 @@ impl Engine {
 
     /// Live particle count for the current intensity — a per-effect base
     /// scaled by the 10–100 % slider. `Aurora` and `CyberGridReveal` draw
-    /// procedural geometry, not particles.
+    /// procedural geometry, not particles. `Thunderstorm` is the exception:
+    /// its slider drives lightning, so rain holds at a fixed drizzle (or
+    /// the modder's explicit count, absolute) at every intensity.
     fn target_count(&self) -> usize {
+        if self.effect == Effect::Thunderstorm {
+            return if self.lp.count > 0 {
+                (self.lp.count as usize).min(MAX_PARTICLES)
+            } else {
+                THUNDERSTORM_RAIN_DROPS
+            };
+        }
         let base = if self.lp.count > 0 {
             self.lp.count as usize
         } else {
@@ -678,7 +700,7 @@ impl Engine {
         }
         if self.bolt_n > 0 {
             self.bolt_age += dt;
-            if self.bolt_age > 0.5 {
+            if self.bolt_age > self.bolt_life {
                 self.bolt_n = 0;
             }
         }
@@ -716,10 +738,23 @@ impl Engine {
         if self.effect == Effect::Thunderstorm {
             self.next_bolt -= dt;
             if self.next_bolt <= 0.0 {
-                self.next_bolt = self.range(5.0, 11.0);
+                self.next_bolt = self.bolt_interval();
                 self.strike_lightning();
             }
         }
+    }
+
+    /// Slider position normalized to `0..=1` for the storm aggression maps
+    /// (`intensity` arrives clamped to `0.1..=1.0`).
+    fn storm_t(&self) -> f32 {
+        ((self.intensity - 0.1) / 0.9).clamp(0.0, 1.0)
+    }
+
+    /// Seconds until the next strike. `storm_t` = 0 is a distant storm
+    /// (a strike every ~9–16 s); = 1 is overhead (~0.5–1.8 s).
+    fn bolt_interval(&mut self) -> f32 {
+        let t = self.storm_t();
+        self.range(9.0 - 8.5 * t, 16.0 - 14.2 * t)
     }
 
     /// Midpoint-displacement fractal bolt into the fixed `bolt` buffer
@@ -775,7 +810,15 @@ impl Engine {
             self.bolt_n += 1;
         }
         self.bolt_age = 0.0;
-        self.flash = 0.16;
+        // Aggression scales the strike itself, not just the pacing: an
+        // overhead storm flashes brighter, decays faster and can strobe a
+        // near-instant re-strike.
+        let t = self.storm_t();
+        self.bolt_life = 0.55 - 0.23 * t;
+        self.flash = 0.16 + 0.14 * t;
+        if self.rnd() < t * 0.35 {
+            self.next_bolt = self.next_bolt.min(self.range(0.06, 0.22));
+        }
     }
 
     fn tick_snow(&mut self, n: usize, dt: f32) {
@@ -1246,7 +1289,7 @@ impl Engine {
             }
         }
         if self.effect == Effect::Thunderstorm && self.bolt_n > 1 {
-            let fade = (1.0 - self.bolt_age / 0.5).clamp(0.0, 1.0);
+            let fade = (1.0 - self.bolt_age / self.bolt_life).clamp(0.0, 1.0);
             let glow = s.create_solid_brush(self.cf(0.49, 0.83, 0.99, 0.30 * fade));
             let halo = s.create_solid_brush(self.cf(0.75, 0.92, 1.0, 0.55 * fade));
             let core = s.create_solid_brush(self.cf(1.0, 1.0, 1.0, 0.95 * fade));
@@ -1789,6 +1832,57 @@ mod tests {
     fn zero_count_falls_back_to_base() {
         let e = Engine::new(Effect::Snow, 1.0, 800.0, 600.0, LiveParams::default());
         assert_eq!(e.target_count(), 320); // compiled Snow base
+    }
+
+    #[test]
+    fn thunderstorm_rain_ignores_intensity() {
+        let lp = LiveParams::default();
+        let low = Engine::new(Effect::Thunderstorm, 0.1, 800.0, 600.0, lp);
+        let high = Engine::new(Effect::Thunderstorm, 1.0, 800.0, 600.0, lp);
+        assert_eq!(low.target_count(), THUNDERSTORM_RAIN_DROPS);
+        assert_eq!(high.target_count(), THUNDERSTORM_RAIN_DROPS);
+        // A modder's explicit count is absolute for this effect — still no
+        // intensity scaling, just a different fixed level.
+        let lp = LiveParams::from_params(&EffectParams {
+            particle_count: Some(240),
+            ..Default::default()
+        });
+        let custom = Engine::new(Effect::Thunderstorm, 0.4, 800.0, 600.0, lp);
+        assert_eq!(custom.target_count(), 240);
+        // Sanity: the plain rain effect keeps scaling with the slider.
+        let rain_low = Engine::new(Effect::Rain, 0.1, 800.0, 600.0, LiveParams::default());
+        let rain_high = Engine::new(Effect::Rain, 1.0, 800.0, 600.0, LiveParams::default());
+        assert!(rain_high.target_count() > rain_low.target_count());
+    }
+
+    #[test]
+    fn thunderstorm_lightning_pace_and_punch_scale() {
+        let lp = LiveParams::default();
+        let mut calm = Engine::new(Effect::Thunderstorm, 0.1, 800.0, 600.0, lp);
+        let mut wild = Engine::new(Effect::Thunderstorm, 1.0, 800.0, 600.0, lp);
+        // Calm strikes wait whole seconds; an overhead storm strikes fast.
+        let iv_calm = calm.bolt_interval();
+        assert!((9.0..=16.0).contains(&iv_calm));
+        let iv_wild = wild.bolt_interval();
+        assert!((0.5..=1.8).contains(&iv_wild));
+        // The strike itself intensifies: brighter flash, quicker decay.
+        calm.strike_lightning();
+        wild.strike_lightning();
+        assert!(wild.flash > calm.flash);
+        assert!(wild.bolt_life < calm.bolt_life);
+        // A strobe re-strike shortens the pending gap, never lengthens it.
+        assert!(wild.next_bolt <= 1.8 + f32::EPSILON);
+    }
+
+    #[test]
+    fn thunderstorm_intensity_change_repaces_pending_bolt() {
+        let lp = LiveParams::default();
+        let mut e = Engine::new(Effect::Thunderstorm, 0.1, 800.0, 600.0, lp);
+        e.next_bolt = 15.0; // deep inside a calm-storm gap
+        e.set_intensity(1.0);
+        // Sliding to max re-paces the wait into the aggressive band instead
+        // of letting the stale 15 s cooldown run out.
+        assert!(e.next_bolt <= 1.8 + f32::EPSILON);
     }
 
     #[test]
