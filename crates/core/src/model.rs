@@ -260,8 +260,16 @@ pub struct Settings {
     /// Every field is optional; `None` keeps the compiled default. `.peco`
     /// themes carry it so a theme preserves the author's tuning exactly.
     /// Values are validated/clamped by `Config::sanitize_external`.
+    /// Serialized to `Live_Effects_config.json` at the file boundary.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub effect_params: BTreeMap<String, EffectParams>,
+    /// Per-design widget tuning, keyed by clock design id (`"g10"`, `"d4"`…
+    /// — `CLOCK_WIDGET_IDS`). Serialized to `Widget_config.json`. The
+    /// active design's entry resolves onto `clock_bounds`/
+    /// `clock_adaptive_color` at apply time; ids the catalog doesn't know
+    /// are dropped by `Config::sanitize_external`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub widget_params: BTreeMap<String, WidgetParams>,
 }
 
 /// Structural ceiling for the effects engine's live-particle pool — the
@@ -368,6 +376,58 @@ impl EffectParams {
             } else {
                 1.0
             };
+        }
+    }
+}
+
+/// Clock designs the widget host implements — `Widget_config.json` is a
+/// dictionary keyed by these ids; `"none"` is not a widget and is absent.
+pub const CLOCK_WIDGET_IDS: &[&str] = &[
+    "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9", "g10", //
+    "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d10",
+];
+
+/// `true` for a known clock-design id (`g1..g10`, `d1..d10`).
+pub fn is_clock_widget_id(id: &str) -> bool {
+    CLOCK_WIDGET_IDS.contains(&id)
+}
+
+/// Per-design widget tuning stored in `Widget_config.json`. Every field is
+/// optional — `None` keeps the resolved live state, so a file can carry
+/// only the knobs a modder actually overrides.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, rename_all = "camelCase")]
+pub struct WidgetParams {
+    /// Window rect `[x, y, w, h]` physical pixels for this design —
+    /// remembered per design, so each style keeps its own spot on the
+    /// desktop. `None` = follow the live/default placement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounds: Option<[i32; 4]>,
+    /// Adaptive light/dark contrast for this design; `None` = follow the
+    /// live `clockAdaptiveColor` flag.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adaptive_color: Option<bool>,
+}
+
+impl WidgetParams {
+    /// Snapshot of the live widget state under `s.clock_style` — used when
+    /// mirroring runtime into the dict (design switch) and on save.
+    pub fn from_runtime(s: &Settings) -> Self {
+        Self {
+            bounds: s.clock_bounds,
+            adaptive_color: Some(s.clock_adaptive_color),
+        }
+    }
+
+    /// Same range check `clock_bounds` gets: only the size is bounded —
+    /// x/y go negative legitimately on multi-monitor setups.
+    pub fn sanitize(&mut self) {
+        if self
+            .bounds
+            .is_some_and(|[_, _, w, h]| !(16..=8192).contains(&w) || !(16..=8192).contains(&h))
+        {
+            self.bounds = None;
         }
     }
 }
@@ -490,6 +550,7 @@ impl Default for Settings {
             desktop_effect: "none".to_string(),
             desktop_effect_intensity: 50,
             effect_params: BTreeMap::new(),
+            widget_params: BTreeMap::new(),
         }
     }
 }
@@ -1900,6 +1961,44 @@ pub fn last_shown(layouts: &[Layout]) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
+impl Settings {
+    /// Layered-dictionary resolution: the `widget_params` entry for the
+    /// *active* `clock_style` overlays its populated fields onto the
+    /// runtime `clock_bounds`/`clock_adaptive_color`. An entry that is
+    /// absent (or leaves a field `None`) keeps the live state — the
+    /// compiled default is only the final floor, so switching to an
+    /// unconfigured design never teleports or re-tints the widget.
+    /// Layered-dictionary resolution for effects: the `effect_params`
+    /// entry for `effect_id`, cloned and sanitized. `None` when the user
+    /// layer has no entry — the engine then runs compiled defaults.
+    /// Unknown ids simply miss the map; field clamps happen here so a
+    /// hand-edited file can never reach the engine unclamped.
+    pub fn resolve_effect_params(&self, effect_id: &str) -> Option<EffectParams> {
+        self.effect_params.get(effect_id).map(|p| {
+            let mut p = p.clone();
+            p.sanitize();
+            p
+        })
+    }
+
+    /// Layered-dictionary resolution: the `widget_params` entry for the
+    /// *active* `clock_style` overlays its populated fields onto the
+    /// runtime `clock_bounds`/`clock_adaptive_color`. An entry that is
+    /// absent (or leaves a field `None`) keeps the live state — the
+    /// compiled default is only the final floor, so switching to an
+    /// unconfigured design never teleports or re-tints the widget.
+    pub fn resolve_widget_params(&mut self) {
+        if let Some(p) = self.widget_params.get(&self.clock_style) {
+            let mut p = p.clone();
+            p.sanitize();
+            self.clock_bounds = p.bounds.or(self.clock_bounds);
+            if let Some(a) = p.adaptive_color {
+                self.clock_adaptive_color = a;
+            }
+        }
+    }
+}
+
 impl Config {
     /// See [`layout_for`].
     pub fn layout_for(&self, monitors: &[WorkArea]) -> Option<LayoutMatch> {
@@ -2198,6 +2297,18 @@ impl Config {
             }
             known
         });
+        // Same closed-catalog rule for the widget dictionary: unknown
+        // design ids drop, known entries get field-level clamps.
+        s.widget_params.retain(|id, p| {
+            let known = is_clock_widget_id(id);
+            if known {
+                p.sanitize();
+            }
+            known
+        });
+        // The active design's dict entry resolves onto the runtime fields
+        // before the apply diffs read them.
+        s.resolve_widget_params();
 
         // Fence geometry is stored in logical pixels against the saved
         // `work_w`/`work_h` — NOT normalized fractions. A non-finite or

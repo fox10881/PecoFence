@@ -409,35 +409,31 @@ impl ConfigStore {
 pub const WIDGET_CONFIG_FILE: &str = "Widget_config.json";
 pub const LIVE_EFFECTS_CONFIG_FILE: &str = "Live_Effects_config.json";
 
-/// `settings.*` camelCase keys owned by [`WIDGET_CONFIG_FILE`].
-const WIDGET_SETTINGS_KEYS: &[&str] = &["clockStyle", "clockBounds", "clockAdaptiveColor"];
-/// `settings.*` camelCase keys owned by [`LIVE_EFFECTS_CONFIG_FILE`].
-const EFFECTS_SETTINGS_KEYS: &[&str] = &["desktopEffect", "desktopEffectIntensity", "effectParams"];
+/// `settings.*` key each sidecar owns — the whole per-id dictionary.
+const WIDGET_DICT_KEY: &str = "widgetParams";
+const EFFECTS_DICT_KEY: &str = "effectParams";
+
+/// Scalar keys the first split release wrote *inside* the sidecars before
+/// they became pure dictionaries — read back into `settings` for migration,
+/// so a file written by that build loses nothing.
+const WIDGET_LEGACY_SCALARS: &[&str] = &["clockStyle", "clockBounds", "clockAdaptiveColor"];
+const EFFECTS_LEGACY_SCALARS: &[&str] = &["desktopEffect", "desktopEffectIntensity"];
 
 /// A serialized [`Config`] broken into the on-disk trio: `main` is the
-/// `config.json` text without the sidecar-owned keys; `widget`/`effects`
-/// always emit every owned key so the files double as editable templates.
+/// `config.json` text (active selections included); `widget`/`effects`
+/// are the per-id parameter dictionaries.
 pub struct SplitConfigJson {
     pub main: String,
     pub widget: String,
     pub effects: String,
 }
 
-/// Splits a serialized config document into [`SplitConfigJson`]. The owned
-/// keys are *moved* out of `settings`, so `main` never duplicates them;
-/// keys `skip_serializing_if` hid get a type-correct placeholder so the
-/// sidecars always show the complete editable surface.
+/// Splits a serialized config document into [`SplitConfigJson`]. The two
+/// dictionary keys are *moved* out of `settings`; every catalog id is
+/// emitted (`{}` = system defaults) so the files double as the complete
+/// editable surface, and the active widget's entry mirrors the live
+/// `clockBounds`/`clockAdaptiveColor` so its slot stays truthful.
 pub fn split_config_json(text: &str) -> SplitConfigJson {
-    let placeholder = |key: &str| -> serde_json::Value {
-        match key {
-            // Keep value types honest — a sidecar value overlays verbatim.
-            "effectParams" => serde_json::json!({}),
-            "clockBounds" => serde_json::Value::Null,
-            "clockStyle" | "desktopEffect" => serde_json::json!("none"),
-            "desktopEffectIntensity" => serde_json::json!(50),
-            _ => serde_json::Value::Null,
-        }
-    };
     let mut doc: serde_json::Value = match serde_json::from_str(text) {
         Ok(d) => d,
         Err(_) => {
@@ -448,49 +444,75 @@ pub fn split_config_json(text: &str) -> SplitConfigJson {
             };
         }
     };
-    let mut widget = serde_json::Map::new();
-    let mut effects = serde_json::Map::new();
+    let mut widget_dict = serde_json::Map::new();
+    let mut effects_dict = serde_json::Map::new();
     if let Some(settings) = doc
         .get_mut("settings")
         .and_then(serde_json::Value::as_object_mut)
     {
-        for key in WIDGET_SETTINGS_KEYS {
-            let v = settings.remove(*key).unwrap_or_else(|| placeholder(key));
-            widget.insert((*key).to_string(), v);
+        if let Some(serde_json::Value::Object(m)) = settings.remove(WIDGET_DICT_KEY) {
+            widget_dict = m;
         }
-        for key in EFFECTS_SETTINGS_KEYS {
-            let v = settings.remove(*key).unwrap_or_else(|| placeholder(key));
-            effects.insert((*key).to_string(), v);
+        if let Some(serde_json::Value::Object(m)) = settings.remove(EFFECTS_DICT_KEY) {
+            effects_dict = m;
         }
-    } else {
-        for key in WIDGET_SETTINGS_KEYS {
-            widget.insert((*key).to_string(), placeholder(key));
+        // Active design: write the live placement/flag into its dict slot.
+        if let Some(style) = settings
+            .get("clockStyle")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            && crate::is_clock_widget_id(&style)
+        {
+            let entry = widget_dict
+                .entry(style)
+                .or_insert_with(|| serde_json::json!({}));
+            if let Some(obj) = entry.as_object_mut() {
+                if let Some(b) = settings.get("clockBounds") {
+                    obj.insert("bounds".into(), b.clone());
+                }
+                if let Some(a) = settings.get("clockAdaptiveColor") {
+                    obj.insert("adaptiveColor".into(), a.clone());
+                }
+            }
         }
-        for key in EFFECTS_SETTINGS_KEYS {
-            effects.insert((*key).to_string(), placeholder(key));
-        }
+    }
+    for id in crate::CLOCK_WIDGET_IDS {
+        widget_dict
+            .entry(id.to_string())
+            .or_insert_with(|| serde_json::json!({}));
+    }
+    for id in crate::EFFECT_IDS {
+        effects_dict
+            .entry(id.to_string())
+            .or_insert_with(|| serde_json::json!({}));
     }
     SplitConfigJson {
         main: serde_json::to_string_pretty(&doc).unwrap_or_else(|_| text.into()),
-        widget: serde_json::to_string_pretty(&serde_json::Value::Object(widget))
+        widget: serde_json::to_string_pretty(&serde_json::Value::Object(widget_dict))
             .unwrap_or_else(|_| "{\n}\n".into()),
-        effects: serde_json::to_string_pretty(&serde_json::Value::Object(effects))
+        effects: serde_json::to_string_pretty(&serde_json::Value::Object(effects_dict))
             .unwrap_or_else(|_| "{\n}\n".into()),
     }
 }
 
-/// Merges each sidecar's owned keys into a parsed config document. The
-/// files are looked up *beside the config being read* — `%APPDATA%` on
-/// boot, an imported export's directory, or a `.peco`'s temp extraction —
-/// so a legacy theme that never had them simply keeps its embedded values.
-/// Malformed sidecars are skipped, never fatal.
+/// Merges each sidecar's dictionary into a parsed config document. Files
+/// are looked up *beside the config being read* — `%APPDATA%` on boot, an
+/// imported export's directory, or a `.peco`'s temp extraction. Entries are
+/// partitioned: legacy scalar keys (first-gen sidecar shape) go back to
+/// `settings`, everything else accumulates into the dictionary key —
+/// entries already in the doc are overridden by the sidecar. Malformed
+/// sidecars are skipped, never fatal.
 fn overlay_split_files(config_path: &Path, doc: &mut serde_json::Value) {
     let Some(dir) = config_path.parent() else {
         return;
     };
-    for (file, keys) in [
-        (WIDGET_CONFIG_FILE, WIDGET_SETTINGS_KEYS),
-        (LIVE_EFFECTS_CONFIG_FILE, EFFECTS_SETTINGS_KEYS),
+    for (file, dict_key, scalars) in [
+        (WIDGET_CONFIG_FILE, WIDGET_DICT_KEY, WIDGET_LEGACY_SCALARS),
+        (
+            LIVE_EFFECTS_CONFIG_FILE,
+            EFFECTS_DICT_KEY,
+            EFFECTS_LEGACY_SCALARS,
+        ),
     ] {
         let Ok(text) = fs::read_to_string(dir.join(file)) else {
             continue;
@@ -521,9 +543,33 @@ fn overlay_split_files(config_path: &Path, doc: &mut serde_json::Value) {
         else {
             return;
         };
-        for key in keys {
-            if let Some(v) = side_obj.get(*key) {
-                target.insert((*key).to_string(), v.clone());
+        let mut dict = serde_json::Map::new();
+        for (k, v) in side_obj {
+            if scalars.contains(&k.as_str()) {
+                target.insert(k.clone(), v.clone());
+            } else if k == dict_key {
+                // First-gen nested wrapper: {"effectParams": {…}} — unwrap.
+                if let Some(inner) = v.as_object() {
+                    for (k2, v2) in inner {
+                        if v2.as_object().is_some_and(|o| !o.is_empty()) {
+                            dict.insert(k2.clone(), v2.clone());
+                        }
+                    }
+                }
+            } else if v.as_object().is_some_and(|o| !o.is_empty()) {
+                // Only non-empty objects merge: "{}" placeholders written on
+                // save mean "system defaults" (identical to absence) and a
+                // non-object entry can't parse as a params struct — keep it
+                // from failing the whole config document.
+                dict.insert(k.clone(), v.clone());
+            }
+        }
+        if !dict.is_empty() {
+            let dest = target
+                .entry(dict_key.to_string())
+                .or_insert_with(|| serde_json::json!({}));
+            if let Some(d) = dest.as_object_mut() {
+                d.extend(dict);
             }
         }
     }
@@ -848,6 +894,9 @@ pub fn migrate(mut cfg: Config) -> Config {
     }
     cfg.settings.stretch_tolerance_pct = 0;
     dedupe_restore_backups(&mut cfg);
+    // User-layer widget dictionary resolves onto the runtime fields at
+    // parse — every load/import applies the active design's entry.
+    cfg.settings.resolve_widget_params();
     cfg
 }
 
@@ -952,7 +1001,7 @@ mod tests {
     }
 
     #[test]
-    fn split_moves_modder_keys_out_of_config_json() {
+    fn split_keeps_active_selection_and_moves_dicts() {
         let mut c = sample();
         c.settings.desktop_effect = "rain".into();
         c.settings.desktop_effect_intensity = 80;
@@ -971,27 +1020,44 @@ mod tests {
         let split = split_config_json(&ConfigStore::to_json(&c).unwrap());
         let main: serde_json::Value = serde_json::from_str(&split.main).unwrap();
         let s = &main["settings"];
+        // Active selections and live widget state stay in config.json.
         for k in [
             "clockStyle",
             "clockBounds",
             "clockAdaptiveColor",
             "desktopEffect",
             "desktopEffectIntensity",
-            "effectParams",
         ] {
-            assert!(s.get(k).is_none(), "{k} must leave config.json");
+            assert!(s.get(k).is_some(), "{k} must stay in config.json");
         }
-        // Non-split keys stay.
-        assert!(s.get("taskbarStyle").is_some() || s.get("iconSize").is_some());
+        // The dictionaries move out to the sidecars.
+        assert!(s.get("effectParams").is_none());
+        assert!(s.get("widgetParams").is_none());
+
+        // Sidecars are flat per-id dictionaries — every catalog id is
+        // emitted (empty object = system defaults) so a modder sees the
+        // full editable surface at once.
+        let effects: serde_json::Value = serde_json::from_str(&split.effects).unwrap();
+        for id in crate::EFFECT_IDS {
+            assert!(effects.get(*id).is_some(), "missing effect entry {id}");
+        }
+        assert!(effects.get("desktopEffect").is_none());
+        assert_eq!(effects["rain"]["particleCount"], 512);
+        assert_eq!(effects["rain"]["speed"], 2.0);
+        assert_eq!(effects["snow"], serde_json::json!({}));
 
         let widget: serde_json::Value = serde_json::from_str(&split.widget).unwrap();
-        assert_eq!(widget["clockStyle"], "d1");
-        assert_eq!(widget["clockBounds"], serde_json::json!([10, 20, 400, 240]));
-        assert_eq!(widget["clockAdaptiveColor"], false);
-        let effects: serde_json::Value = serde_json::from_str(&split.effects).unwrap();
-        assert_eq!(effects["desktopEffect"], "rain");
-        assert_eq!(effects["desktopEffectIntensity"], 80);
-        assert_eq!(effects["effectParams"]["rain"]["particleCount"], 512);
+        for id in crate::CLOCK_WIDGET_IDS {
+            assert!(widget.get(*id).is_some(), "missing widget entry {id}");
+        }
+        assert!(widget.get("clockStyle").is_none());
+        // The active design's slot mirrors the live runtime fields.
+        assert_eq!(
+            widget["d1"]["bounds"],
+            serde_json::json!([10, 20, 400, 240])
+        );
+        assert_eq!(widget["d1"]["adaptiveColor"], false);
+        assert_eq!(widget["g5"], serde_json::json!({}));
     }
 
     #[test]
@@ -1010,13 +1076,19 @@ mod tests {
         );
         store.save(&c).unwrap();
 
-        // config.json is lean; the sidecars carry the modding surface.
+        // config.json carries the active selection; sidecars carry the dicts.
         let main_text = fs::read_to_string(store.primary_path()).unwrap();
         assert!(!main_text.contains("effectParams"));
-        assert!(!main_text.contains("desktopEffect"));
-        assert!(!main_text.contains("clockStyle"));
+        assert!(!main_text.contains("widgetParams"));
+        assert!(main_text.contains("desktopEffect"));
+        assert!(main_text.contains("clockStyle"));
         assert!(store.dir().join(WIDGET_CONFIG_FILE).exists());
         assert!(store.dir().join(LIVE_EFFECTS_CONFIG_FILE).exists());
+        let widget: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(store.dir().join(WIDGET_CONFIG_FILE)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(widget["g2"]["bounds"], serde_json::json!([1, 2, 300, 200]));
 
         match store.load() {
             LoadOutcome::Primary(loaded) => {
@@ -1035,18 +1107,111 @@ mod tests {
     #[test]
     fn hand_edited_sidecar_overrides_saved_values_on_load() {
         let store = ConfigStore::new(tmpdir("sidecar-edit"));
-        store.save(&sample()).unwrap();
-        // A modder hand-edits the file — boot picks it up (Path 3: no watcher,
-        // parse happens at load/apply boundaries only).
+        let mut c = sample();
+        c.settings.desktop_effect = "matrix".into();
+        store.save(&c).unwrap();
+        // A modder hand-edits the flat dict — boot picks it up (Path 3: no
+        // watcher, parse happens at load/apply boundaries only). The active
+        // selection stays owned by config.json.
         fs::write(
             store.dir().join(LIVE_EFFECTS_CONFIG_FILE),
-            r#"{"desktopEffect":"matrix","effectParams":{"matrix":{"particleCount":999}}}"#,
+            r#"{"matrix":{"particleCount":999},"snow":{"glowRadius":3.0}}"#,
         )
         .unwrap();
         match store.load() {
             LoadOutcome::Primary(c) => {
                 assert_eq!(c.settings.desktop_effect, "matrix");
                 assert_eq!(c.settings.effect_params["matrix"].particle_count, Some(999));
+                assert_eq!(c.settings.effect_params["snow"].glow_radius, Some(3.0));
+                // The resolved apply-time value is the sanitized dict entry.
+                assert_eq!(
+                    c.settings
+                        .resolve_effect_params("matrix")
+                        .unwrap()
+                        .particle_count,
+                    Some(999)
+                );
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_wrapper_sidecar_migrates() {
+        // First-gen sidecars held scalars + a nested dict — they still load.
+        let store = ConfigStore::new(tmpdir("legacy-wrap"));
+        store.save(&sample()).unwrap();
+        fs::write(
+            store.dir().join(LIVE_EFFECTS_CONFIG_FILE),
+            r#"{"desktopEffect":"aurora","desktopEffectIntensity":70,"effectParams":{"aurora":{"speed":1.5}}}"#,
+        )
+        .unwrap();
+        fs::write(
+            store.dir().join(WIDGET_CONFIG_FILE),
+            r#"{"clockStyle":"d5","clockBounds":[9,9,500,300],"clockAdaptiveColor":false}"#,
+        )
+        .unwrap();
+        match store.load() {
+            LoadOutcome::Primary(c) => {
+                assert_eq!(c.settings.desktop_effect, "aurora");
+                assert_eq!(c.settings.desktop_effect_intensity, 70);
+                assert_eq!(c.settings.effect_params["aurora"].speed, Some(1.5));
+                assert_eq!(c.settings.clock_style, "d5");
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn widget_dict_entry_resolves_onto_runtime_on_load() {
+        let store = ConfigStore::new(tmpdir("widget-resolve"));
+        let mut c = sample();
+        c.settings.clock_style = "g2".into();
+        c.settings.clock_bounds = Some([1, 2, 300, 200]);
+        store.save(&c).unwrap();
+        // Modder pre-configures g2 with its own spot + adaptive off.
+        fs::write(
+            store.dir().join(WIDGET_CONFIG_FILE),
+            r#"{"g2":{"bounds":[50,60,640,400],"adaptiveColor":false}}"#,
+        )
+        .unwrap();
+        match store.load() {
+            LoadOutcome::Primary(c) => {
+                assert_eq!(c.settings.clock_bounds, Some([50, 60, 640, 400]));
+                assert!(!c.settings.clock_adaptive_color);
+                assert_eq!(
+                    c.settings.widget_params["g2"].bounds,
+                    Some([50, 60, 640, 400])
+                );
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn corrupt_or_unknown_dict_entries_fall_back() {
+        let store = ConfigStore::new(tmpdir("dict-fallback"));
+        let mut c = sample();
+        c.settings.desktop_effect = "rain".into();
+        store.save(&c).unwrap();
+        // Out-of-range values and a bogus id — load clamps/drops, no crash.
+        fs::write(
+            store.dir().join(LIVE_EFFECTS_CONFIG_FILE),
+            r#"{"rain":{"particleCount":999999,"primaryColor":"not-a-color"},"bogus_fx":{"speed":9}}"#,
+        )
+        .unwrap();
+        match store.load() {
+            LoadOutcome::Primary(c) => {
+                // Resolution (the apply boundary) clamps to the safe ranges.
+                let p = c.settings.resolve_effect_params("rain").unwrap();
+                assert_eq!(p.particle_count, Some(crate::EFFECT_MAX_PARTICLES));
+                assert_eq!(p.primary_color, None);
+                // sanitize_external (the adopt boundary) drops unknown ids.
+                let mut adopted = c.clone();
+                adopted.sanitize_external();
+                assert!(!adopted.settings.effect_params.contains_key("bogus_fx"));
+                // Missing entries resolve to None → compiled engine defaults.
+                assert!(c.settings.resolve_effect_params("snow").is_none());
             }
             other => panic!("unexpected {other:?}"),
         }

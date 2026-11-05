@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Layered modding dictionaries**: `Widget_config.json` and
+  `Live_Effects_config.json` are now flat per-id dictionaries covering the
+  entire catalogs — all 20 clock designs and all 17 effects are pre-seeded
+  so every widget/effect can be configured at once instead of only the
+  active one. The active selections (`clockStyle`, `desktopEffect`) and
+  live widget state stay in `config.json`. Applying a selection resolves
+  its dictionary entry through `sanitize()`; missing, malformed, or
+  out-of-range entries fall back to compiled defaults without failing the
+  rest of the document, and first-generation sidecars (scalars + nested
+  params) still load. Each clock design remembers its own
+  placement/adaptive flag across style switches, and a theme's authored
+  entry for the active design wins over the live state on import.
 - **`.peco` themes now carry the complete ExplorerBlurMica recipe** — the
   `fe_*` fields (effect, address-bar/bar/WinUI background clearing, split
   line, light & dark RGBA) were previously stripped at export and locally

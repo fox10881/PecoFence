@@ -534,7 +534,7 @@ impl App {
         host.apply(
             &s.desktop_effect,
             s.desktop_effect_intensity as f32 / 100.0,
-            s.effect_params.get(&s.desktop_effect),
+            s.resolve_effect_params(&s.desktop_effect).as_ref(),
         );
         let after = host.hwnd();
         if before == after {
@@ -1384,6 +1384,23 @@ impl App {
         let old = self.state.config.settings.clone();
         if new == old {
             return;
+        }
+        // Layered widget dictionary: a style switch first mirrors the
+        // outgoing design's live placement into its dict slot (per-design
+        // persistence), then the incoming design's entry resolves onto the
+        // runtime fields so the bounds/adaptive diffs below see user-layer
+        // values. A same-style dict change (import/theme) resolves without
+        // the mirror — the file's entry wins, not the live state.
+        if new.clock_style != old.clock_style
+            && pecofence_core::is_clock_widget_id(&old.clock_style)
+        {
+            new.widget_params.insert(
+                old.clock_style.clone(),
+                pecofence_core::WidgetParams::from_runtime(&old),
+            );
+        }
+        if new.clock_style != old.clock_style || new.widget_params != old.widget_params {
+            new.resolve_widget_params();
         }
         if new.autostart != old.autostart {
             if let Err(e) =
