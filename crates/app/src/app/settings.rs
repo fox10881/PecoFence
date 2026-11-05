@@ -32,7 +32,7 @@ fn clock_style_json(s: &pecofence_core::Settings) -> String {
         "t": "clockStyle",
         "style": s.clock_style,
         "adaptive": s.clock_adaptive_color,
-        "use24Hour": s.active_widget_params().use24_hour.unwrap_or(true),
+        "use24Hour": s.clock_use_24_hour,
         "els": clock_els_json(s),
     })
     .to_string()
@@ -65,7 +65,7 @@ fn clock_theme_json(
     let mut v = serde_json::json!({
         "t": "clockTheme",
         "adaptive": s.clock_adaptive_color,
-        "use24Hour": s.active_widget_params().use24_hour.unwrap_or(true),
+        "use24Hour": s.clock_use_24_hour,
         "els": clock_els_json(s),
     });
     if let Some(sample) = sample {
@@ -1596,6 +1596,7 @@ impl App {
         // probe/apply paths read `clock_adaptive_color` off state.
         self.state.config.settings.clock_style = new.clock_style.clone();
         self.state.config.settings.clock_adaptive_color = new.clock_adaptive_color;
+        self.state.config.settings.clock_use_24_hour = new.clock_use_24_hour;
         self.state.config.settings.widget_params = new.widget_params.clone();
         if new.clock_style != old.clock_style {
             self.apply_clock_style(&new.clock_style);
@@ -1627,6 +1628,13 @@ impl App {
                 // also falls back to its dark palette.
                 h.post_json(&clock_theme_json(&new, None));
             }
+        }
+        // Global 12/24-hour toggle: same params-only push — the page
+        // re-formats the readout in place (AM/PM nodes re-shown/hidden).
+        if new.clock_use_24_hour != old.clock_use_24_hour
+            && let Some(h) = &self.clock
+        {
+            h.post_json(&clock_theme_json(&new, None));
         }
         // Same-style dictionary edit (import / theme apply): push the
         // resolved element params. A style switch already carries them in

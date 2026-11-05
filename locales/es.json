@@ -714,6 +714,8 @@
   "紧凑胶囊": "Chip compacto",
   "自动适配壁纸配色": "Adaptar colores del widget al fondo",
   "根据时钟背后壁纸的明暗与主色调自动切换深浅配色并调整强调色，保证文字始终清晰可读": "Ajusta automáticamente el color del texto y del cristal (oscuro o claro) según el brillo y los colores del fondo detrás del reloj para que siempre sea legible.",
+  "24 小时制时间": "Formato de 24 horas",
+  "在 12 小时制（含上午/下午）和 24 小时制之间切换时间显示": "Alterna entre el formato de 12 horas (con a. m./p. m.) y el de 24 horas.",
   "桌面动态效果": "Efectos de escritorio en vivo",
   "原生 Direct2D 粒子与天气引擎 — 零 WebView2 开销；窗口最大化或进入游戏时自动暂停至零占用": "Motor nativo de partículas y clima con Direct2D — sin WebView2; se pausa a cero consumo al maximizar una ventana o abrir un juego en pantalla completa",
   "效果强度": "Intensidad del efecto",

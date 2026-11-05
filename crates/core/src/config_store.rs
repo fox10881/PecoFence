@@ -472,7 +472,6 @@ fn widget_template(id: &str) -> serde_json::Map<String, serde_json::Value> {
         "name": crate::widget_display_name(id),
         "bounds": null,
         "adaptiveColor": null,
-        "use24Hour": true,
         "elements": serde_json::Value::Object(elements),
     })
     .as_object()
@@ -543,6 +542,12 @@ fn delta_from_template(
             // malformed value can never reach memory (and a canonical one
             // falls out via the template comparison below anyway).
             if k == "name" {
+                return None;
+            }
+            // `use24Hour` retired to a global `clockUse24Hour` setting —
+            // dropped here so files/themes carrying the old per-design
+            // key self-clean instead of resurfacing via merge-on-save.
+            if dict_key == WIDGET_DICT_KEY && *k == "use24Hour" {
                 return None;
             }
             if tmpl.get(k) == Some(fv) {
@@ -1350,7 +1355,6 @@ mod tests {
                 "name": "Liquid Morphic Pill",
                 "bounds": null,
                 "adaptiveColor": null,
-                "use24Hour": true,
                 "elements": {
                     "time": {"scale": 1.0, "color": null, "offsetX": 0, "offsetY": 0},
                     "day": {"scale": 1.0, "color": null, "offsetX": 0, "offsetY": 0},
@@ -1412,6 +1416,37 @@ mod tests {
         assert_eq!(disk["g10"]["bounds"], serde_json::json!([5, 5, 400, 200]));
         // Unvisited design's authored edit survived too.
         assert_eq!(disk["d3"]["elements"]["day"]["offsetX"], 40);
+    }
+
+    #[test]
+    fn retired_use24hour_drops_and_self_cleans() {
+        // `use24Hour` moved to the global `clockUse24Hour` setting — a
+        // sidecar (or .peco theme) authored with the old per-design key
+        // must not reach memory or resurface in the next save.
+        let store = ConfigStore::new(tmpdir("retired-use24"));
+        fs::create_dir_all(store.dir()).unwrap();
+        fs::write(
+            store.primary_path(),
+            ConfigStore::to_json(&sample()).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            store.dir().join(WIDGET_CONFIG_FILE),
+            r#"{"g10":{"use24Hour":false,"bounds":[1,2,300,200]}}"#,
+        )
+        .unwrap();
+        let loaded = match store.load() {
+            LoadOutcome::Primary(c) => c,
+            other => panic!("unexpected {other:?}"),
+        };
+        let g10 = loaded.settings.widget_params.get("g10").unwrap();
+        assert_eq!(g10.bounds, Some([1, 2, 300, 200]));
+        store.save(&loaded).unwrap();
+        let disk: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(store.dir().join(WIDGET_CONFIG_FILE)).unwrap(),
+        )
+        .unwrap();
+        assert!(disk["g10"].get("use24Hour").is_none());
     }
 
     #[test]

@@ -246,6 +246,11 @@ pub struct Settings {
     /// palettes so text stays readable.
     #[serde(default = "default_true")]
     pub clock_adaptive_color: bool,
+    /// Global 24-hour time format for the clock widget (default on).
+    /// `false` renders `h:mm` with an AM/PM marker where the design has
+    /// one (`js-ap`); other designs suffix it onto the time readout.
+    #[serde(default = "default_true")]
+    pub clock_use_24_hour: bool,
     /// Native desktop particle/weather effect: `"none"` (default) or one of the
     /// 12 effect ids — `rain`, `thunderstorm`, `snow`, `fireflies`, `embers`,
     /// `sakura`, `mist`, `aurora`, `starfield`, `matrix`, `ripples`,
@@ -614,11 +619,6 @@ pub struct WidgetParams {
     /// live `clockAdaptiveColor` flag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adaptive_color: Option<bool>,
-    /// 24-hour clock display; `None`/absent = the default (24-hour).
-    /// `false` renders `h:mm` with an AM/PM marker where the design has
-    /// one (`js-ap`); `true` keeps `HH:mm`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub use24_hour: Option<bool>,
     /// Sub-element styling keyed by `WIDGET_ELEMENT_IDS` — applied to the
     /// live page when this design is active; unknown keys are dropped by
     /// `Config::sanitize_external`.
@@ -635,7 +635,6 @@ impl WidgetParams {
         Self {
             bounds: s.clock_bounds,
             adaptive_color: Some(s.clock_adaptive_color),
-            use24_hour: None,
             elements: BTreeMap::new(),
         }
     }
@@ -660,21 +659,18 @@ impl WidgetParams {
     }
 
     /// Merge a sidecar-disk entry under apply-time semantics: authored
-    /// knobs (`use24_hour`, `elements`) are file-owned — a populated disk
-    /// field wins. `bounds`/`adaptive_color` are live-mirrored fields: the
-    /// in-memory value wins when set, so a stale file can't snap the
-    /// widget back mid-drag (the file only fills them when memory is
-    /// unset — e.g. an unvisited design whose authored placement then
-    /// resolves on selection).
+    /// knobs (`elements`) are file-owned — a populated disk field wins.
+    /// `bounds`/`adaptive_color` are live-mirrored fields: the in-memory
+    /// value wins when set, so a stale file can't snap the widget back
+    /// mid-drag (the file only fills them when memory is unset — e.g. an
+    /// unvisited design whose authored placement then resolves on
+    /// selection).
     pub fn merge_disk(&mut self, disk: &WidgetParams) {
         if self.bounds.is_none() {
             self.bounds = disk.bounds;
         }
         if self.adaptive_color.is_none() {
             self.adaptive_color = disk.adaptive_color;
-        }
-        if disk.use24_hour.is_some() {
-            self.use24_hour = disk.use24_hour;
         }
         for (tid, tp) in &disk.elements {
             self.elements.entry(tid.clone()).or_default().merge_disk(tp);
@@ -797,6 +793,7 @@ impl Default for Settings {
             clock_style: "none".to_string(),
             clock_bounds: None,
             clock_adaptive_color: true,
+            clock_use_24_hour: true,
             desktop_effect: "none".to_string(),
             desktop_effect_intensity: 50,
             effect_params: BTreeMap::new(),
@@ -3708,6 +3705,24 @@ mod tests {
         w.sanitize();
         assert!(!w.elements.contains_key("title"));
         assert_eq!(w.elements["time"].scale, Some(4.0));
+    }
+
+    #[test]
+    fn clock_use_24_hour_defaults_and_roundtrips() {
+        // Global 24-hour format: on by default, camelCase on the wire,
+        // and absent (older configs/.peco themes) keeps the default.
+        let s = Settings::default();
+        assert!(s.clock_use_24_hour);
+        let mut v = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["clockUse24Hour"], true);
+        v.as_object_mut().unwrap().remove("clockUse24Hour");
+        let s2: Settings = serde_json::from_value(v).unwrap();
+        assert!(s2.clock_use_24_hour);
+        // An explicit false survives the round trip.
+        let mut v3 = serde_json::to_value(&s).unwrap();
+        v3["clockUse24Hour"] = serde_json::json!(false);
+        let s3: Settings = serde_json::from_value(v3).unwrap();
+        assert!(!s3.clock_use_24_hour);
     }
 
     #[test]
