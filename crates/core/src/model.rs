@@ -336,6 +336,43 @@ pub fn effect_base_particles(effect_id: &str) -> u32 {
         .unwrap_or(0)
 }
 
+/// English display names for effect ids — same strings the Settings UI
+/// shows (mirrors `locales/en.json`). Emitted into
+/// `Live_Effects_config.json` as `"name"` so modders can tell
+/// `"repulsion_dust"` from `"quantum_swarm"` without guessing. Strictly
+/// informational: the field lives only in the file template — the params
+/// structs don't deserialize it, so edits or deletions can't stick and
+/// can never break parsing.
+pub const EFFECT_DISPLAY_NAMES: &[(&str, &str)] = &[
+    ("rain", "Flowing rain"),
+    ("thunderstorm", "Thunderstorm"),
+    ("snow", "Snowfall"),
+    ("fireflies", "Fireflies"),
+    ("embers", "Rising embers"),
+    ("sakura", "Sakura drift"),
+    ("mist", "Drifting mist"),
+    ("aurora", "Aurora"),
+    ("starfield", "Starfield & meteors"),
+    ("matrix", "Cyber matrix"),
+    ("ripples", "Water ripples"),
+    ("constellation", "Constellation"),
+    ("magic_trail", "Magic neon trail"),
+    ("shatter_clicks", "Click glass shatter"),
+    ("quantum_swarm", "Quantum magnetic swarm"),
+    ("cyber_grid_reveal", "Cyber grid reveal"),
+    ("repulsion_dust", "Repulsion dust"),
+];
+
+/// English display name for a live-effect id (`"Live effect"` fallback —
+/// unreachable while callers iterate `EFFECT_IDS`).
+pub fn effect_display_name(effect_id: &str) -> &'static str {
+    EFFECT_DISPLAY_NAMES
+        .iter()
+        .find(|(id, _)| *id == effect_id)
+        .map(|(_, n)| *n)
+        .unwrap_or("Live effect")
+}
+
 /// Externalizable tuning for one desktop effect (`تأثيرات سطح المكتب`).
 /// Every field is optional — `None` keeps the compiled-in default. Parsed
 /// from `config.json` / `.peco` archives and applied only at the apply
@@ -429,6 +466,43 @@ pub fn is_clock_widget_id(id: &str) -> bool {
     CLOCK_WIDGET_IDS.contains(&id)
 }
 
+/// English display names for clock-design ids — same strings the Settings
+/// UI shows (mirrors `locales/en.json`). Emitted into `Widget_config.json`
+/// as `"name"` so `"g10"` reads "Zen Minimal Ribbon". Strictly
+/// informational — never deserialized, edits can't stick.
+pub const WIDGET_DISPLAY_NAMES: &[(&str, &str)] = &[
+    ("g1", "Cyber Glass Flip"),
+    ("g2", "Neon Chrono Rings"),
+    ("g3", "Swiss Bauhaus"),
+    ("g4", "Dot-Matrix Cyber LED"),
+    ("g5", "Liquid Morphic Pill"),
+    ("g6", "Luxury Skeleton Analog"),
+    ("g7", "Brutalist Split Grid"),
+    ("g8", "Horizon Sun/Moon"),
+    ("g9", "Isometric 3D Stack"),
+    ("g10", "Zen Minimal Ribbon"),
+    ("d1", "Aurora Frost"),
+    ("d2", "Neon Terminal"),
+    ("d3", "Chrono Orbit"),
+    ("d4", "Editorial Serif"),
+    ("d5", "Soft Gauge Dial"),
+    ("d6", "HUD Brackets"),
+    ("d7", "Calendar Page"),
+    ("d8", "Gradient Slab"),
+    ("d9", "Date Poster"),
+    ("d10", "Compact Chip"),
+];
+
+/// English display name for a clock-design id (`"Clock widget"` fallback —
+/// unreachable while callers iterate `CLOCK_WIDGET_IDS`).
+pub fn widget_display_name(id: &str) -> &'static str {
+    WIDGET_DISPLAY_NAMES
+        .iter()
+        .find(|(i, _)| *i == id)
+        .map(|(_, n)| *n)
+        .unwrap_or("Clock widget")
+}
+
 /// Sub-element targets inside a clock design — `WidgetParams.elements`
 /// is keyed by these. `"time"` covers every time-of-day node (combined
 /// `hh:mm`, split digits, am/pm), `"day"` the weekday name, `"date"` the
@@ -470,7 +544,10 @@ impl WidgetElementParams {
         if self.color.as_deref().is_some_and(|c| !looks_like_rgba(c)) {
             self.color = None;
         }
-        for v in [&mut self.offset_x, &mut self.offset_y].into_iter().flatten() {
+        for v in [&mut self.offset_x, &mut self.offset_y]
+            .into_iter()
+            .flatten()
+        {
             *v = if v.is_finite() {
                 v.clamp(-2000.0, 2000.0)
             } else {

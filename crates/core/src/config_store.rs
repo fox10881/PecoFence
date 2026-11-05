@@ -434,6 +434,7 @@ pub struct SplitConfigJson {
 /// base), never an opaque `{}`. `primaryColor: null` = no tint.
 fn effect_template(id: &str) -> serde_json::Map<String, serde_json::Value> {
     serde_json::json!({
+        "name": crate::effect_display_name(id),
         "particleCount": crate::effect_base_particles(id),
         "speed": 1.0,
         "wind": 0.0,
@@ -449,16 +450,18 @@ fn effect_template(id: &str) -> serde_json::Map<String, serde_json::Value> {
 /// Baseline for one `Widget_config.json` entry — `null` means "follow the
 /// live/default state", so selecting an unconfigured design never
 /// teleports or re-tints the widget. The `elements` block renders every
-/// per-element knob (`time`/`day`/`date`) at its neutral baseline.
-fn widget_template() -> serde_json::Map<String, serde_json::Value> {
+/// per-element knob (`time`/`day`/`date`) at its neutral baseline. `name`
+/// is the design's English label — file-owned, never part of the model.
+fn widget_template(id: &str) -> serde_json::Map<String, serde_json::Value> {
     let mut elements = serde_json::Map::new();
-    for id in crate::WIDGET_ELEMENT_IDS {
+    for eid in crate::WIDGET_ELEMENT_IDS {
         elements.insert(
-            id.to_string(),
+            eid.to_string(),
             serde_json::Value::Object(element_template()),
         );
     }
     serde_json::json!({
+        "name": crate::widget_display_name(id),
         "bounds": null,
         "adaptiveColor": null,
         "elements": serde_json::Value::Object(elements),
@@ -471,7 +474,7 @@ fn widget_template() -> serde_json::Map<String, serde_json::Value> {
 /// The template a sidecar dict entry is measured against.
 fn template_for(dict_key: &str, id: &str) -> serde_json::Map<String, serde_json::Value> {
     if dict_key == WIDGET_DICT_KEY {
-        widget_template()
+        widget_template(id)
     } else {
         effect_template(id)
     }
@@ -527,6 +530,12 @@ fn delta_from_template(
     let kept: serde_json::Map<String, serde_json::Value> = obj
         .iter()
         .filter_map(|(k, fv)| {
+            // `name` is a file-layer label, not model data — a renamed or
+            // malformed value can never reach memory (and a canonical one
+            // falls out via the template comparison below anyway).
+            if k == "name" {
+                return None;
+            }
             if tmpl.get(k) == Some(fv) {
                 return None;
             }
@@ -608,7 +617,7 @@ pub fn split_config_json(text: &str) -> SplitConfigJson {
     for id in crate::CLOCK_WIDGET_IDS {
         widget_dict
             .entry(id.to_string())
-            .or_insert_with(|| serde_json::Value::Object(widget_template()));
+            .or_insert_with(|| serde_json::Value::Object(widget_template(id)));
     }
     for id in crate::EFFECT_IDS {
         effects_dict
@@ -1182,6 +1191,7 @@ mod tests {
         assert_eq!(
             effects["snow"],
             serde_json::json!({
+                "name": "Snowfall",
                 "particleCount": 320,
                 "speed": 1.0,
                 "wind": 0.0,
@@ -1207,6 +1217,7 @@ mod tests {
         assert_eq!(
             widget["g5"],
             serde_json::json!({
+                "name": "Liquid Morphic Pill",
                 "bounds": null,
                 "adaptiveColor": null,
                 "elements": {
@@ -1216,6 +1227,47 @@ mod tests {
                 }
             })
         );
+    }
+
+    #[test]
+    fn display_names_are_file_only_never_model() {
+        // A renamed/malformed/deleted `name` must not reach memory or
+        // break the parse — it's a label owned by the file layer.
+        let store = ConfigStore::new(tmpdir("name-labels"));
+        fs::create_dir_all(store.dir()).unwrap();
+        fs::write(
+            store.primary_path(),
+            ConfigStore::to_json(&sample()).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            store.dir().join(WIDGET_CONFIG_FILE),
+            r#"{"g10":{"name":"My Renamed Label","bounds":[1,2,300,200]},
+                "d3":{"name":42},"g5":{}}"#,
+        )
+        .unwrap();
+        fs::write(
+            store.dir().join(LIVE_EFFECTS_CONFIG_FILE),
+            r#"{"snow":{"name":{"nested":"junk"},"speed":2.5}}"#,
+        )
+        .unwrap();
+        let loaded = match store.load() {
+            LoadOutcome::Primary(c) => c,
+            other => panic!("unexpected {other:?}"),
+        };
+        // Params landed; the labels did not.
+        assert_eq!(
+            loaded.settings.widget_params["g10"].bounds,
+            Some([1, 2, 300, 200])
+        );
+        assert_eq!(loaded.settings.effect_params["snow"].speed, Some(2.5));
+        // Re-emitting re-canonicalizes the labels from the table.
+        let split = split_config_json(&ConfigStore::to_json(&loaded).unwrap());
+        let widget: serde_json::Value = serde_json::from_str(&split.widget).unwrap();
+        let effects: serde_json::Value = serde_json::from_str(&split.effects).unwrap();
+        assert_eq!(widget["g10"]["name"], "Zen Minimal Ribbon");
+        assert_eq!(widget["d3"]["name"], "Chrono Orbit");
+        assert_eq!(effects["snow"]["name"], "Snowfall");
     }
 
     #[test]

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Self-labeling sidecar entries**: every dict entry in
+  `Widget_config.json` and `Live_Effects_config.json` now carries a
+  `"name"` field with the design/effect's English display name (the same
+  strings the Settings UI shows, mirrored from `locales/en.json`), so
+  `"g10"` reads "Zen Minimal Ribbon" and `"repulsion_dust"` reads
+  "Repulsion dust". `name` is file-owned and strictly informational —
+  never deserialized into the params structs, so renaming, deleting, or
+  corrupting it can't break parsing and simply re-canonicalizes on the
+  next save.
 - **Per-element clock styling**: `Widget_config.json` now exposes an
   `elements` block under every design with `time`, `day`, and `date`
   targets — each supporting optional `scale` (font multiplier, clamped
