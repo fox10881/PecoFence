@@ -239,6 +239,32 @@ static VIDEO_SWAP_LOCK: Mutex<()> = Mutex::new(());
 /// epoch disposes its fresh player itself — the UI thread never joins it.
 static VIDEO_SWAP_EPOCH: AtomicU64 = AtomicU64::new(0);
 
+/// Post-install suppression window for the video-wallpaper retire checks: a
+/// shell rebuild concurrent with our launch can write a fresh `Transcoded_*`
+/// cache — indistinguishable from a user apply by mtime alone — so for the
+/// first seconds after install a differing static report keeps the video.
+const VIDEO_RETIRE_GRACE: Duration = Duration::from_secs(30);
+
+/// Consecutive shell-up start failures before `ensure_video_wallpaper` stops
+/// auto-retrying — a genuinely broken file would otherwise churn a worker
+/// spawn plus first-frame decode on every poll, forever.
+const MAX_VIDEO_START_FAILURES: u8 = 8;
+
+/// The static wallpaper recorded when the video player installed, plus the
+/// recording instants. A reported file predating the install cannot be the
+/// user's response to the video — it is the shell re-asserting a cached
+/// transcode: Explorer re-points `IDesktopWallpaper` at differently-named
+/// `Transcoded_*` files during every rebuild, including the rebuild that
+/// overlaps our own cold boot (where no `shell_respawn_wall` marker exists
+/// yet). The instants carry the pre-existing-file check and the grace window.
+#[derive(Debug)]
+pub(super) struct StaticBaseline {
+    path: PathBuf,
+    mtime: Option<std::time::SystemTime>,
+    recorded_at: std::time::SystemTime,
+    recorded_instant: std::time::Instant,
+}
+
 /// A `WmfWallpaperPlayer::start` in flight on a worker; `poll_video_swap`
 /// installs the result only while the epoch still matches config.
 pub(super) struct VideoSwap {
@@ -1851,6 +1877,7 @@ impl App {
         self.video_swap = None;
         self.video_transcode = None;
         self.pending_video_toast = false;
+        self.video_start_failures = 0;
     }
 
     /// Installs a finished swap when it still matches the config. Runs off the
@@ -1874,7 +1901,14 @@ impl App {
                     == Some(player.path())
                     && player.letterbox() == self.contain_background();
                 if still_wanted && VIDEO_SWAP_EPOCH.load(Ordering::SeqCst) == swap.epoch {
-                    self.static_under_video = Self::static_wallpaper_now();
+                    self.static_under_video =
+                        Self::static_wallpaper_now().map(|(path, mtime)| StaticBaseline {
+                            path,
+                            mtime,
+                            recorded_at: std::time::SystemTime::now(),
+                            recorded_instant: std::time::Instant::now(),
+                        });
+                    self.video_start_failures = 0;
                     self.wmf_player = Some(player);
                     self.capture_live_wallpapers(Duration::ZERO);
                     if swap.reattach {
@@ -1888,12 +1922,26 @@ impl App {
                 }
             }
             Ok(Err(Some(error))) => {
-                self.video_swap = None;
-                tracing::error!(%error, "WMF video wallpaper failed to start");
-                self.settings_error(&pecofence_core::i18n::format(
-                    "无法使用此文件：{0}",
-                    std::slice::from_ref(&error),
-                ));
+                let toast = self.video_swap.take().is_some_and(|s| s.toast);
+                // Only failures while the shell is up count toward the
+                // auto-retry cap — a missing desktop layer at cold boot is
+                // transient and `ensure_video_wallpaper` keeps retrying it.
+                if !pecofence_platform::desktop::shell_window().0.is_null() {
+                    self.video_start_failures = self.video_start_failures.saturating_add(1);
+                }
+                tracing::error!(
+                    %error,
+                    failures = self.video_start_failures,
+                    "WMF video wallpaper failed to start"
+                );
+                // A user pick surfaces the reason; boot/re-attach retries
+                // stay quiet — the next poll may heal them.
+                if toast {
+                    self.settings_error(&pecofence_core::i18n::format(
+                        "无法使用此文件：{0}",
+                        std::slice::from_ref(&error),
+                    ));
+                }
             }
             Ok(Err(None)) => {
                 self.video_swap = None; // superseded by a newer request
@@ -2000,6 +2048,12 @@ impl App {
         if pecofence_platform::desktop::shell_window().0.is_null() {
             return;
         }
+        // Consecutive shell-up failures (unreadable file, dead pipeline) give
+        // up quietly until wallpaper intent changes — every attempt costs a
+        // worker spawn and a first-frame decode.
+        if self.video_start_failures >= MAX_VIDEO_START_FAILURES {
+            return;
+        }
         let old = self.wmf_player.take();
         self.static_under_video = None;
         if !path.is_file() {
@@ -2060,7 +2114,7 @@ impl App {
         }
         let now = Self::static_wallpaper_now();
         let differs = match (self.static_under_video.as_ref(), now.as_ref()) {
-            (Some(b), Some(n)) => b != n,
+            (Some(b), Some((p, m))) => (b.path.as_path(), b.mtime) != (p.as_path(), *m),
             _ => true,
         };
         if !differs {
@@ -2076,6 +2130,32 @@ impl App {
                 "wallpaper signal inside shell-rebuild window; keeping video"
             );
             return;
+        }
+        if let Some(b) = self.static_under_video.as_ref() {
+            // The reported file predates the player's baseline — Explorer
+            // re-asserted a pre-existing transcode cache, not a user apply
+            // (a real apply writes a fresh `Transcoded_*` file).
+            if now
+                .as_ref()
+                .and_then(|(_, m)| *m)
+                .is_some_and(|m| m <= b.recorded_at)
+            {
+                tracing::debug!(
+                    wallpaper = ?now,
+                    "wallpaper signal predates video baseline; keeping video intent"
+                );
+                return;
+            }
+            // Inside the post-install window a fresh transcode from a
+            // concurrent shell rebuild is indistinguishable from a user
+            // apply — keep the video; a real apply re-arrives later.
+            if b.recorded_instant.elapsed() < VIDEO_RETIRE_GRACE {
+                tracing::debug!(
+                    wallpaper = ?now,
+                    "wallpaper signal inside post-install grace; keeping video intent"
+                );
+                return;
+            }
         }
         if pecofence_platform::wallpaper::slideshow_active() {
             // A running Windows slideshow broadcasts SETDESKWALLPAPER on every
@@ -2157,7 +2237,9 @@ impl App {
     /// goes through `IDesktopWallpaper`). Detected by the reported static path differing
     /// from `static_under_video`, recorded when the player started. `desktops_differ`
     /// guards virtual-desktop switches, which legitimately report another image;
-    /// `is_shell_reassert` covers the transient inside a shell-rebuild window.
+    /// `is_shell_reassert` covers the transient inside a shell-rebuild window, and the
+    /// baseline's `recorded_at`/grace window covers shell rebuilds that overlap our own
+    /// launch (a `Transcoded_*` rename or a fresh cache write at cold boot).
     pub(super) fn retire_video_for_static(&mut self, static_path: Option<&Path>) {
         let player_alive = self.wmf_player.as_ref().is_some_and(|p| p.is_alive());
         let (Some(baseline), Some(path)) = (self.static_under_video.as_ref(), static_path) else {
@@ -2167,13 +2249,32 @@ impl App {
             path.to_path_buf(),
             std::fs::metadata(path).and_then(|m| m.modified()).ok(),
         );
-        if !player_alive || &now == baseline {
+        if !player_alive || (now.0 == baseline.path && now.1 == baseline.mtime) {
             return;
         }
         if self.is_shell_reassert(&Some(now.clone())) {
             tracing::debug!(
                 applied = %now.0.display(),
                 "static wallpaper differs but inside shell-rebuild window; keeping video"
+            );
+            return;
+        }
+        // The reported file predates the player's baseline — Explorer
+        // re-pointed IDesktopWallpaper at a pre-existing `Transcoded_*`
+        // cache (its per-monitor naming differs from the SPI path's).
+        if now.1.is_some_and(|m| m <= baseline.recorded_at) {
+            tracing::debug!(
+                applied = %now.0.display(),
+                "static wallpaper report predates video baseline; keeping video"
+            );
+            return;
+        }
+        // Inside the post-install window a fresh transcode from a
+        // concurrent shell rebuild is indistinguishable from a user apply.
+        if baseline.recorded_instant.elapsed() < VIDEO_RETIRE_GRACE {
+            tracing::debug!(
+                applied = %now.0.display(),
+                "static wallpaper changed inside post-install grace; keeping video"
             );
             return;
         }
@@ -2194,7 +2295,7 @@ impl App {
         }
         tracing::info!(
             applied = %now.0.display(),
-            was = %baseline.0.display(),
+            was = %baseline.path.display(),
             video = %self.wmf_player.as_ref().map(|p| p.path().display().to_string()).unwrap_or_default(),
             "static image applied over video wallpaper; retiring player"
         );

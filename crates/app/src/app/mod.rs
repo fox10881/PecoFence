@@ -375,11 +375,14 @@ pub struct App {
     /// The static desktop wallpaper recorded when the video player started. A different
     /// image reported later means the user applied it over the video (Explorer applies do
     /// not broadcast `SPI_SETDESKWALLPAPER`) — the image wins and the video retires.
-    /// Baseline static wallpaper under a playing video — `(path, file mtime)`.
-    /// The mtime distinguishes a shell-restart re-assert (the same already-
-    /// existing file) from a user picking an image, which updates the file
-    /// record. `None` when no video has run.
-    static_under_video: Option<(std::path::PathBuf, Option<std::time::SystemTime>)>,
+    /// Baseline static wallpaper under a playing video — `(path, file mtime)` plus the
+    /// recording instants, which anchor the shell re-assert checks at cold boot.
+    /// `None` when no video has run.
+    static_under_video: Option<settings::StaticBaseline>,
+    /// Consecutive WMF start failures observed while the shell was up —
+    /// `ensure_video_wallpaper` stops auto-retrying at the cap until
+    /// wallpaper intent changes (`invalidate_video_swap` resets it).
+    video_start_failures: u8,
     /// Wall clock of the last `TaskbarCreated` (Explorer respawn). Wallpaper
     /// signals inside the rebuild window that only re-assert an already-
     /// existing file are the shell restoring the desktop, not a user change.
@@ -1393,7 +1396,12 @@ impl App {
             video_transcode: None,
             pending_video_toast: false,
             static_under_video: None,
-            shell_respawn_wall: None,
+            video_start_failures: 0,
+            // A fresh process start counts as a shell-rebuild window: on cold
+            // boot (and on restarts while our own shell stylers re-arm) the
+            // wallpaper-signal suppression must cover Explorer's concurrent
+            // init transients exactly like a mid-session TaskbarCreated.
+            shell_respawn_wall: Some(std::time::SystemTime::now()),
             last_theme_meta: None,
             theme_dirty: std::cell::Cell::new(false),
         };

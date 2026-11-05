@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Video wallpaper survives cold boot/restart**: the retire-on-static-
+  wallpaper checks mistook Explorer's own startup transients for a user
+  apply — the shell re-points `IDesktopWallpaper` at differently-named
+  `Transcoded_*` caches during its rebuild, and `retire_video_for_static`
+  then wiped `videoWallpaperPath` and killed the player seconds after it
+  attached. The baseline now records when it was taken: a reported file
+  that predates the install cannot be a response to it, a 30 s
+  post-install window covers fresh transcodes written during a concurrent
+  rebuild, and `shell_respawn_wall` is seeded at process start so fresh
+  processes get the same suppression window mid-session rebuilds get.
+  Boot/re-attach start failures no longer spam error toasts (only user
+  picks surface them), and consecutive shell-up start failures cap out
+  instead of retrying a broken file on every poll.
 - **Sidecar edits apply live**: hand-editing `Widget_config.json` or
   `Live_Effects_config.json` while the app runs is no longer stomped —
   `ConfigStore::save` merges authored deltas still on disk back into the
