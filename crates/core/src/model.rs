@@ -299,6 +299,43 @@ pub const EFFECT_IDS: &[&str] = &[
     "repulsion_dust",
 ];
 
+/// Per-effect baseline live-particle counts — the compiled default each
+/// effect spawns at 100 % intensity before the `particleCount` override.
+/// Single source of truth: the engine's `target_count()` reads these, and
+/// `Live_Effects_config.json` emits them as the template so a modder sees
+/// the real starting value (e.g. `"snow": { "particleCount": 320, … }`).
+/// `0` entries are effects that don't run a particle loop (aurora,
+/// cyber-grid) — the field is present for schema completeness.
+pub const EFFECT_BASE_PARTICLES: &[(&str, u32)] = &[
+    ("rain", 400),
+    ("thunderstorm", 400),
+    ("snow", 320),
+    ("fireflies", 90),
+    ("embers", 180),
+    ("sakura", 200),
+    ("mist", 8),
+    ("aurora", 0),
+    ("starfield", 160),
+    ("matrix", 120),
+    ("ripples", 200),
+    ("constellation", 90),
+    ("magic_trail", 260),
+    ("shatter_clicks", 220),
+    ("quantum_swarm", 100),
+    ("cyber_grid_reveal", 0),
+    ("repulsion_dust", EFFECT_MAX_PARTICLES),
+];
+
+/// Baseline live-particle count for `effect_id` (`0` = no particle loop /
+/// unknown id — callers map unknowns through `EFFECT_IDS` first).
+pub fn effect_base_particles(effect_id: &str) -> u32 {
+    EFFECT_BASE_PARTICLES
+        .iter()
+        .find(|(id, _)| *id == effect_id)
+        .map(|(_, n)| *n)
+        .unwrap_or(0)
+}
+
 /// Externalizable tuning for one desktop effect (`تأثيرات سطح المكتب`).
 /// Every field is optional — `None` keeps the compiled-in default. Parsed
 /// from `config.json` / `.peco` archives and applied only at the apply

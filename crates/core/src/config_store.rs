@@ -428,11 +428,77 @@ pub struct SplitConfigJson {
     pub effects: String,
 }
 
+/// Fully-populated baseline for one `Live_Effects_config.json` entry —
+/// the compiled defaults rendered as an editable template so a modder
+/// sees every knob and its real starting value (e.g. snow's 320-particle
+/// base), never an opaque `{}`. `primaryColor: null` = no tint.
+fn effect_template(id: &str) -> serde_json::Map<String, serde_json::Value> {
+    serde_json::json!({
+        "particleCount": crate::effect_base_particles(id),
+        "speed": 1.0,
+        "wind": 0.0,
+        "gravity": 0.0,
+        "primaryColor": null,
+        "glowRadius": 1.0,
+    })
+    .as_object()
+    .cloned()
+    .unwrap_or_default()
+}
+
+/// Baseline for one `Widget_config.json` entry — `null` means "follow the
+/// live/default state", so selecting an unconfigured design never
+/// teleports or re-tints the widget.
+fn widget_template() -> serde_json::Map<String, serde_json::Value> {
+    serde_json::json!({"bounds": null, "adaptiveColor": null})
+        .as_object()
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The template a sidecar dict entry is measured against.
+fn template_for(dict_key: &str, id: &str) -> serde_json::Map<String, serde_json::Value> {
+    if dict_key == WIDGET_DICT_KEY {
+        widget_template()
+    } else {
+        effect_template(id)
+    }
+}
+
+/// Layers `entry`'s fields over its template — the file always shows the
+/// complete schema with user overrides in place.
+fn merged_with_template(dict_key: &str, id: &str, v: &serde_json::Value) -> serde_json::Value {
+    let mut merged = template_for(dict_key, id);
+    if let Some(obj) = v.as_object() {
+        merged.extend(obj.iter().map(|(k, v)| (k.clone(), v.clone())));
+    }
+    serde_json::Value::Object(merged)
+}
+
+/// Strips fields equal to the template — a pristine template entry (or a
+/// field the user set back to its baseline) is semantically identical to
+/// absence, so memory and `config export` stay delta-sparse.
+fn delta_from_template(
+    dict_key: &str,
+    id: &str,
+    v: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    let obj = v.as_object()?;
+    let tmpl = template_for(dict_key, id);
+    let kept: serde_json::Map<String, serde_json::Value> = obj
+        .iter()
+        .filter(|(k, fv)| tmpl.get(*k) != Some(*fv))
+        .map(|(k, fv)| (k.clone(), fv.clone()))
+        .collect();
+    (!kept.is_empty()).then_some(serde_json::Value::Object(kept))
+}
+
 /// Splits a serialized config document into [`SplitConfigJson`]. The two
 /// dictionary keys are *moved* out of `settings`; every catalog id is
-/// emitted (`{}` = system defaults) so the files double as the complete
-/// editable surface, and the active widget's entry mirrors the live
-/// `clockBounds`/`clockAdaptiveColor` so its slot stays truthful.
+/// emitted as a fully-populated template (compiled defaults, user
+/// overrides layered on top) so the files are self-documenting, and the
+/// active widget's entry mirrors the live `clockBounds`/
+/// `clockAdaptiveColor` so its slot stays truthful.
 pub fn split_config_json(text: &str) -> SplitConfigJson {
     let mut doc: serde_json::Value = match serde_json::from_str(text) {
         Ok(d) => d,
@@ -476,15 +542,23 @@ pub fn split_config_json(text: &str) -> SplitConfigJson {
             }
         }
     }
+    // Every existing entry renders fully (template under the user's
+    // fields); ids with no entry get the pristine template.
+    for (id, v) in widget_dict.iter_mut() {
+        *v = merged_with_template(WIDGET_DICT_KEY, id, v);
+    }
+    for (id, v) in effects_dict.iter_mut() {
+        *v = merged_with_template(EFFECTS_DICT_KEY, id, v);
+    }
     for id in crate::CLOCK_WIDGET_IDS {
         widget_dict
             .entry(id.to_string())
-            .or_insert_with(|| serde_json::json!({}));
+            .or_insert_with(|| serde_json::Value::Object(widget_template()));
     }
     for id in crate::EFFECT_IDS {
         effects_dict
             .entry(id.to_string())
-            .or_insert_with(|| serde_json::json!({}));
+            .or_insert_with(|| serde_json::Value::Object(effect_template(id)));
     }
     SplitConfigJson {
         main: serde_json::to_string_pretty(&doc).unwrap_or_else(|_| text.into()),
@@ -551,17 +625,18 @@ fn overlay_split_files(config_path: &Path, doc: &mut serde_json::Value) {
                 // First-gen nested wrapper: {"effectParams": {…}} — unwrap.
                 if let Some(inner) = v.as_object() {
                     for (k2, v2) in inner {
-                        if v2.as_object().is_some_and(|o| !o.is_empty()) {
-                            dict.insert(k2.clone(), v2.clone());
+                        if let Some(delta) = delta_from_template(dict_key, k2, v2) {
+                            dict.insert(k2.clone(), delta);
                         }
                     }
                 }
-            } else if v.as_object().is_some_and(|o| !o.is_empty()) {
-                // Only non-empty objects merge: "{}" placeholders written on
-                // save mean "system defaults" (identical to absence) and a
-                // non-object entry can't parse as a params struct — keep it
-                // from failing the whole config document.
-                dict.insert(k.clone(), v.clone());
+            } else if let Some(delta) = delta_from_template(dict_key, k, v) {
+                // Delta-normalized merge: fields equal to the baseline (and
+                // whole pristine template entries) are semantically absent,
+                // so memory stays sparse; non-object entries can't parse as
+                // a params struct and are ignored rather than failing the
+                // whole config document.
+                dict.insert(k.clone(), delta);
             }
         }
         if !dict.is_empty() {
@@ -1035,16 +1110,31 @@ mod tests {
         assert!(s.get("widgetParams").is_none());
 
         // Sidecars are flat per-id dictionaries — every catalog id is
-        // emitted (empty object = system defaults) so a modder sees the
-        // full editable surface at once.
+        // emitted as a fully-populated template so the file itself
+        // documents every knob and its compiled baseline.
         let effects: serde_json::Value = serde_json::from_str(&split.effects).unwrap();
         for id in crate::EFFECT_IDS {
             assert!(effects.get(*id).is_some(), "missing effect entry {id}");
         }
         assert!(effects.get("desktopEffect").is_none());
+        // User overrides layer on the full template — every field visible.
         assert_eq!(effects["rain"]["particleCount"], 512);
         assert_eq!(effects["rain"]["speed"], 2.0);
-        assert_eq!(effects["snow"], serde_json::json!({}));
+        assert_eq!(effects["rain"]["wind"], 0.0);
+        assert_eq!(effects["rain"]["glowRadius"], 1.0);
+        // Untouched ids render the compiled baseline (snow's real
+        // 320-particle base, not "{}").
+        assert_eq!(
+            effects["snow"],
+            serde_json::json!({
+                "particleCount": 320,
+                "speed": 1.0,
+                "wind": 0.0,
+                "gravity": 0.0,
+                "primaryColor": null,
+                "glowRadius": 1.0
+            })
+        );
 
         let widget: serde_json::Value = serde_json::from_str(&split.widget).unwrap();
         for id in crate::CLOCK_WIDGET_IDS {
@@ -1057,7 +1147,11 @@ mod tests {
             serde_json::json!([10, 20, 400, 240])
         );
         assert_eq!(widget["d1"]["adaptiveColor"], false);
-        assert_eq!(widget["g5"], serde_json::json!({}));
+        // Untouched designs render the follow-live baseline.
+        assert_eq!(
+            widget["g5"],
+            serde_json::json!({"bounds": null, "adaptiveColor": null})
+        );
     }
 
     #[test]
@@ -1212,6 +1306,47 @@ mod tests {
                 assert!(!adopted.settings.effect_params.contains_key("bogus_fx"));
                 // Missing entries resolve to None → compiled engine defaults.
                 assert!(c.settings.resolve_effect_params("snow").is_none());
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn template_entries_normalize_to_sparse_memory_on_load() {
+        let store = ConfigStore::new(tmpdir("tmpl-delta"));
+        let mut c = sample();
+        c.settings.clock_style = "g10".into();
+        store.save(&c).unwrap();
+        // The on-disk file shows full templates…
+        let effects: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(store.dir().join(LIVE_EFFECTS_CONFIG_FILE)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(effects["snow"]["particleCount"], 320);
+        // …but loading strips baseline-equal fields back to deltas, so
+        // memory (and any re-export) stays free of template noise.
+        match store.load() {
+            LoadOutcome::Primary(c) => {
+                assert!(c.settings.effect_params.is_empty());
+                // Only the active design's mirrored slot is a real entry.
+                assert_eq!(c.settings.widget_params.len(), 1);
+                assert!(c.settings.widget_params.contains_key("g10"));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        // A user editing one field inside the template keeps just that
+        // field as the delta — the baseline fields stay implicit.
+        fs::write(
+            store.dir().join(LIVE_EFFECTS_CONFIG_FILE),
+            r#"{"snow":{"particleCount":320,"speed":2.5,"wind":0.0,"gravity":0.0,"primaryColor":null,"glowRadius":1.0}}"#,
+        )
+        .unwrap();
+        match store.load() {
+            LoadOutcome::Primary(c) => {
+                assert_eq!(
+                    serde_json::to_value(&c.settings.effect_params["snow"]).unwrap(),
+                    serde_json::json!({"speed": 2.5})
+                );
             }
             other => panic!("unexpected {other:?}"),
         }

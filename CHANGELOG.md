@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Self-documenting modding files**: the sidecar dictionaries now render
+  fully-populated templates instead of `{}` — every effect shows its real
+  compiled baseline (`"snow": { "particleCount": 320, "speed": 1.0,
+  "wind": 0.0, "gravity": 0.0, "primaryColor": null, "glowRadius": 1.0 }`,
+  single-sourced from the new `EFFECT_BASE_PARTICLES` table the engine
+  itself reads), and every clock design shows `{ "bounds": null,
+  "adaptiveColor": null }` (follow-live). User overrides layer over the
+  template on write; on load, baseline-equal fields normalize back to
+  deltas so memory and exports stay sparse. `{}` and missing fields still
+  fall back to compiled defaults.
 - **Layered modding dictionaries**: `Widget_config.json` and
   `Live_Effects_config.json` are now flat per-id dictionaries covering the
   entire catalogs — all 20 clock designs and all 17 effects are pre-seeded

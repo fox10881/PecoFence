@@ -70,6 +70,29 @@ impl Effect {
         })
     }
 
+    /// Inverse of [`Self::from_id`] — the settings id for this effect.
+    pub fn id(&self) -> &'static str {
+        match self {
+            Self::Rain => "rain",
+            Self::Thunderstorm => "thunderstorm",
+            Self::Snow => "snow",
+            Self::Fireflies => "fireflies",
+            Self::Embers => "embers",
+            Self::Sakura => "sakura",
+            Self::Mist => "mist",
+            Self::Aurora => "aurora",
+            Self::Starfield => "starfield",
+            Self::Matrix => "matrix",
+            Self::Ripples => "ripples",
+            Self::Constellation => "constellation",
+            Self::MagicTrail => "magic_trail",
+            Self::ShatterClicks => "shatter_clicks",
+            Self::QuantumSwarm => "quantum_swarm",
+            Self::CyberGridReveal => "cyber_grid_reveal",
+            Self::RepulsionDust => "repulsion_dust",
+        }
+    }
+
     /// Cursor-driven effects may sleep the tick loop while the pointer is still.
     pub fn wants_cursor(&self) -> bool {
         matches!(
@@ -455,23 +478,9 @@ impl Engine {
         let base = if self.lp.count > 0 {
             self.lp.count as usize
         } else {
-            match self.effect {
-                Effect::Rain | Effect::Thunderstorm => 400,
-                Effect::Snow => 320,
-                Effect::Fireflies => 90,
-                Effect::Embers => 180,
-                Effect::Sakura => 200,
-                Effect::Mist => 8,
-                Effect::Aurora | Effect::CyberGridReveal => 0,
-                Effect::Starfield => 160,
-                Effect::Matrix => 120,
-                Effect::Ripples => 200,
-                Effect::Constellation => 90,
-                Effect::MagicTrail => 260,
-                Effect::ShatterClicks => 220,
-                Effect::QuantumSwarm => 100,
-                Effect::RepulsionDust => MAX_PARTICLES,
-            }
+            // Compiled baselines live in core (`EFFECT_BASE_PARTICLES`) so
+            // the sidecar template renders exactly what the engine spawns.
+            pecofence_core::effect_base_particles(self.effect.id()) as usize
         };
         ((base as f32 * self.intensity) as usize).min(MAX_PARTICLES)
     }
