@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **Sidecar edits apply live**: hand-editing `Widget_config.json` or
+  `Live_Effects_config.json` while the app runs is no longer stomped —
+  `ConfigStore::save` merges authored deltas still on disk back into the
+  emitted file (baseline-aware: memory wins fields it changed, disk fills
+  the rest), and `apply_settings`/widget refresh overlay disk deltas so
+  authored knobs (`elements`, `use24Hour`, effect params) apply on the
+  next apply gesture without a restart. `bounds`/`adaptiveColor` stay
+  live-mirrored — a stale file can't snap the widget back mid-drag.
+  `settings set` no longer reports a phantom `widgetParams`/`effectParams`
+  rollback when the merge legitimately changes them.
+- **Fit-to-bounds clock layout**: every clock design now scales to the
+  actual widget box instead of `vmin`'s smaller-dimension cap — the page
+  measures the design's real content extent and uniformly transform-scales
+  the root to fill the bounds (0.97 headroom, shrink-to-fit on overflow),
+  re-fitting on resize, ticks, and param pushes. The dead `#widget-root`
+  margins are gone (`100vw`/`100vh`).
+- **12/24-hour widget toggle**: `use24Hour` per design in
+  `Widget_config.json` (`true` = `HH:mm`, `false` = `h:mm` + localized
+  AM/PM on `.js-ap` designs, else suffixed onto the time readout). Carried
+  over `clockStyle`/`clockTheme` and applied without a widget restart.
 - **Self-labeling sidecar entries**: every dict entry in
   `Widget_config.json` and `Live_Effects_config.json` now carries a
   `"name"` field with the design/effect's English display name (the same

@@ -452,6 +452,30 @@ impl EffectParams {
             };
         }
     }
+
+    /// Merge a sidecar-disk entry under apply-time semantics — every
+    /// field is an authored knob the file owns, so a populated disk field
+    /// wins; fields the file leaves unset keep the in-memory value.
+    pub fn merge_disk(&mut self, disk: &EffectParams) {
+        if disk.particle_count.is_some() {
+            self.particle_count = disk.particle_count;
+        }
+        if disk.speed.is_some() {
+            self.speed = disk.speed;
+        }
+        if disk.wind.is_some() {
+            self.wind = disk.wind;
+        }
+        if disk.gravity.is_some() {
+            self.gravity = disk.gravity;
+        }
+        if disk.primary_color.is_some() {
+            self.primary_color = disk.primary_color.clone();
+        }
+        if disk.glow_radius.is_some() {
+            self.glow_radius = disk.glow_radius;
+        }
+    }
 }
 
 /// Clock designs the widget host implements — `Widget_config.json` is a
@@ -555,6 +579,23 @@ impl WidgetElementParams {
             };
         }
     }
+
+    /// Merge a sidecar-disk entry under apply-time semantics — populated
+    /// disk fields win (the file owns authored knobs).
+    pub fn merge_disk(&mut self, disk: &WidgetElementParams) {
+        if disk.scale.is_some() {
+            self.scale = disk.scale;
+        }
+        if disk.color.is_some() {
+            self.color = disk.color.clone();
+        }
+        if disk.offset_x.is_some() {
+            self.offset_x = disk.offset_x;
+        }
+        if disk.offset_y.is_some() {
+            self.offset_y = disk.offset_y;
+        }
+    }
 }
 
 /// Per-design widget tuning stored in `Widget_config.json`. Every field is
@@ -573,6 +614,11 @@ pub struct WidgetParams {
     /// live `clockAdaptiveColor` flag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adaptive_color: Option<bool>,
+    /// 24-hour clock display; `None`/absent = the default (24-hour).
+    /// `false` renders `h:mm` with an AM/PM marker where the design has
+    /// one (`js-ap`); `true` keeps `HH:mm`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub use24_hour: Option<bool>,
     /// Sub-element styling keyed by `WIDGET_ELEMENT_IDS` — applied to the
     /// live page when this design is active; unknown keys are dropped by
     /// `Config::sanitize_external`.
@@ -589,6 +635,7 @@ impl WidgetParams {
         Self {
             bounds: s.clock_bounds,
             adaptive_color: Some(s.clock_adaptive_color),
+            use24_hour: None,
             elements: BTreeMap::new(),
         }
     }
@@ -610,6 +657,28 @@ impl WidgetParams {
             }
             known
         });
+    }
+
+    /// Merge a sidecar-disk entry under apply-time semantics: authored
+    /// knobs (`use24_hour`, `elements`) are file-owned — a populated disk
+    /// field wins. `bounds`/`adaptive_color` are live-mirrored fields: the
+    /// in-memory value wins when set, so a stale file can't snap the
+    /// widget back mid-drag (the file only fills them when memory is
+    /// unset — e.g. an unvisited design whose authored placement then
+    /// resolves on selection).
+    pub fn merge_disk(&mut self, disk: &WidgetParams) {
+        if self.bounds.is_none() {
+            self.bounds = disk.bounds;
+        }
+        if self.adaptive_color.is_none() {
+            self.adaptive_color = disk.adaptive_color;
+        }
+        if disk.use24_hour.is_some() {
+            self.use24_hour = disk.use24_hour;
+        }
+        for (tid, tp) in &disk.elements {
+            self.elements.entry(tid.clone()).or_default().merge_disk(tp);
+        }
     }
 }
 

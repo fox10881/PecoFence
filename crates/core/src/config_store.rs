@@ -4,6 +4,7 @@
 
 use crate::geometry::MAX_DIP;
 use crate::model::{Config, ItemSourceSpec, NormGeometry, SCHEMA_VERSION};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -391,10 +392,17 @@ impl ConfigStore {
         }
         // The modder-facing sidecars are regenerated from `cfg` every save —
         // a write failure logs but doesn't fail the (already complete) save.
-        for (name, text) in [
-            (WIDGET_CONFIG_FILE, &split.widget),
-            (LIVE_EFFECTS_CONFIG_FILE, &split.effects),
+        // Authored deltas still on disk are merged back in first so a
+        // hand-edit made while the app was running survives the save instead
+        // of being stomped by the (stale) in-memory view.
+        for (name, text, dict_key) in [
+            (WIDGET_CONFIG_FILE, &split.widget, WIDGET_DICT_KEY),
+            (LIVE_EFFECTS_CONFIG_FILE, &split.effects, EFFECTS_DICT_KEY),
         ] {
+            let mut doc: serde_json::Value =
+                serde_json::from_str(text).unwrap_or_else(|_| serde_json::json!({}));
+            merge_disk_sidecar(&mut doc, &self.dir.join(name), dict_key);
+            let text = serde_json::to_string_pretty(&doc).unwrap_or_else(|_| text.clone());
             if let Err(e) = fs::write(self.dir.join(name), text) {
                 tracing::warn!(file = name, error = %e, "config sidecar write failed");
             }
@@ -464,6 +472,7 @@ fn widget_template(id: &str) -> serde_json::Map<String, serde_json::Value> {
         "name": crate::widget_display_name(id),
         "bounds": null,
         "adaptiveColor": null,
+        "use24Hour": true,
         "elements": serde_json::Value::Object(elements),
     })
     .as_object()
@@ -555,6 +564,127 @@ fn delta_from_template(
         })
         .collect();
     (!kept.is_empty()).then_some(serde_json::Value::Object(kept))
+}
+
+/// Per-id authored deltas in one sidecar file (`id → delta Value`),
+/// template-normalized. Missing or unparseable files contribute nothing.
+fn sidecar_delta_values(path: &Path, dict_key: &str) -> BTreeMap<String, serde_json::Value> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return BTreeMap::new();
+    };
+    let Ok(disk) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return BTreeMap::new();
+    };
+    let Some(obj) = disk.as_object() else {
+        return BTreeMap::new();
+    };
+    obj.iter()
+        .filter_map(|(id, v)| delta_from_template(dict_key, id, v).map(|d| (id.clone(), d)))
+        .collect()
+}
+
+/// Authored `WidgetParams` deltas still on disk — read at apply/refresh
+/// time so a hand-edit made while the app ran applies without a restart.
+/// Callers merge via `WidgetParams::merge_disk` — authored knobs: disk
+/// wins; live-mirror fields (bounds/adaptiveColor): memory wins.
+pub fn read_widget_sidecar_deltas(path: &Path) -> BTreeMap<String, crate::WidgetParams> {
+    sidecar_delta_values(path, WIDGET_DICT_KEY)
+        .into_iter()
+        .filter_map(|(id, v)| {
+            serde_json::from_value::<crate::WidgetParams>(v)
+                .ok()
+                .map(|mut p| {
+                    p.sanitize();
+                    (id, p)
+                })
+        })
+        .collect()
+}
+
+/// Same as [`read_widget_sidecar_deltas`] for `Live_Effects_config.json`.
+pub fn read_effect_sidecar_deltas(path: &Path) -> BTreeMap<String, crate::EffectParams> {
+    sidecar_delta_values(path, EFFECTS_DICT_KEY)
+        .into_iter()
+        .filter_map(|(id, v)| {
+            serde_json::from_value::<crate::EffectParams>(v)
+                .ok()
+                .map(|mut p| {
+                    p.sanitize();
+                    (id, p)
+                })
+        })
+        .collect()
+}
+
+/// Gap-fill `emitted` (the sidecar doc about to be written) with authored
+/// deltas still on disk at `disk_path`. A hand-edit made while the app was
+/// running isn't in memory — without this merge the save would stomp it
+/// back to the template. Emitted (memory) fields win every conflict; disk
+/// only supplies keys the emitted entry lacks, and `elements` merges one
+/// level deeper per target. `name` never merges — it's file-owned.
+fn merge_disk_sidecar(emitted: &mut serde_json::Value, disk_path: &Path, dict_key: &str) {
+    let Ok(text) = fs::read_to_string(disk_path) else {
+        return;
+    };
+    let Ok(disk) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return;
+    };
+    let (Some(disk_obj), Some(emitted_obj)) = (disk.as_object(), emitted.as_object_mut()) else {
+        return;
+    };
+    for (id, dv) in disk_obj {
+        let Some(delta) = delta_from_template(dict_key, id, dv) else {
+            continue;
+        };
+        let Some(dobj) = delta.as_object() else {
+            continue;
+        };
+        match emitted_obj.get_mut(id).and_then(|e| e.as_object_mut()) {
+            Some(eobj) => {
+                // "Lacks" = absent OR still sitting at its template
+                // baseline — only a value that differs from the baseline
+                // is something memory actually authored and must win.
+                let tmpl = template_for(dict_key, id);
+                for (k, v) in dobj {
+                    if dict_key == WIDGET_DICT_KEY && k == "elements" {
+                        if let (Some(te), Some(de)) = (
+                            eobj.get_mut("elements").and_then(|x| x.as_object_mut()),
+                            v.as_object(),
+                        ) {
+                            let etmpl = element_template();
+                            for (tid, tv) in de {
+                                match te.get_mut(tid).and_then(|x| x.as_object_mut()) {
+                                    Some(to) => {
+                                        if let Some(tvo) = tv.as_object() {
+                                            for (fk, fv2) in tvo {
+                                                let authored = to
+                                                    .get(fk)
+                                                    .is_some_and(|c| Some(c) != etmpl.get(fk));
+                                                if !authored {
+                                                    to.insert(fk.clone(), fv2.clone());
+                                                }
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        te.insert(tid.clone(), tv.clone());
+                                    }
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                    let authored = eobj.get(k).is_some_and(|c| Some(c) != tmpl.get(k));
+                    if !authored {
+                        eobj.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            None => {
+                emitted_obj.insert(id.clone(), merged_with_template(dict_key, id, &delta));
+            }
+        }
+    }
 }
 
 /// Splits a serialized config document into [`SplitConfigJson`]. The two
@@ -1220,6 +1350,7 @@ mod tests {
                 "name": "Liquid Morphic Pill",
                 "bounds": null,
                 "adaptiveColor": null,
+                "use24Hour": true,
                 "elements": {
                     "time": {"scale": 1.0, "color": null, "offsetX": 0, "offsetY": 0},
                     "day": {"scale": 1.0, "color": null, "offsetX": 0, "offsetY": 0},
@@ -1227,6 +1358,60 @@ mod tests {
                 }
             })
         );
+    }
+
+    #[test]
+    fn int_scale_parses_and_survives() {
+        // Regression: `"scale": 3` (a JSON integer) must land as 3.0 —
+        // serde deserializes ints into f32, and the delta/merge path must
+        // not collapse it back to the 1.0 template.
+        let mut v = crate::WidgetElementParams::default();
+        let raw: serde_json::Value =
+            serde_json::from_str(r#"{"scale":3,"offsetX":20,"offsetY":-15}"#).unwrap();
+        let p: crate::WidgetElementParams = serde_json::from_value(raw).unwrap();
+        v.merge_disk(&p);
+        assert_eq!(v.scale, Some(3.0));
+        assert_eq!(v.offset_x, Some(20.0));
+        assert_eq!(v.offset_y, Some(-15.0));
+    }
+
+    #[test]
+    fn save_gap_fills_disk_authored_deltas() {
+        // The stomp bug: user hand-edits the sidecar while the app runs,
+        // then any unrelated save used to rewrite the file from stale
+        // memory. Now the save merges disk deltas back (memory wins
+        // conflicts) so authored edits survive.
+        let store = ConfigStore::new(tmpdir("disk-merge-save"));
+        fs::create_dir_all(store.dir()).unwrap();
+        let mut c = sample();
+        c.settings.clock_style = "g10".into();
+        // Seed the file with a hand-edit memory doesn't know about.
+        fs::write(
+            store.dir().join(WIDGET_CONFIG_FILE),
+            r##"{"g10":{"elements":{"time":{"scale":2.5,"color":"#FF8800"}}},
+                 "d3":{"elements":{"day":{"offsetX":40}}}}"##,
+        )
+        .unwrap();
+        // Memory carries only the live mirror — no elements.
+        c.settings.widget_params.insert(
+            "g10".into(),
+            crate::WidgetParams {
+                bounds: Some([5, 5, 400, 200]),
+                adaptive_color: Some(true),
+                ..Default::default()
+            },
+        );
+        store.save(&c).unwrap();
+        let disk: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(store.dir().join(WIDGET_CONFIG_FILE)).unwrap(),
+        )
+        .unwrap();
+        // Disk-authored elements survived the save under the live mirror.
+        assert_eq!(disk["g10"]["elements"]["time"]["scale"], 2.5);
+        assert_eq!(disk["g10"]["elements"]["time"]["color"], "#FF8800");
+        assert_eq!(disk["g10"]["bounds"], serde_json::json!([5, 5, 400, 200]));
+        // Unvisited design's authored edit survived too.
+        assert_eq!(disk["d3"]["elements"]["day"]["offsetX"], 40);
     }
 
     #[test]

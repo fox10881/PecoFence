@@ -25,8 +25,10 @@
     display: flex; align-items: center; justify-content: center;
   }
   #widget-root {
-    width: 92vw; height: 88vh;
+    width: 100vw; height: 100vh;
     display: flex; align-items: center; justify-content: center; position: relative;
+    /* fitToBounds() sets this once the design's natural extent is measured */
+    transform-origin: center;
   }
   /* ===================== Gemini g1–g10 ===================== */
   /* G1 — الساعة القلابة الزجاجية */
@@ -544,6 +546,10 @@
      is the master toggle — while adaptive color is armed the wallpaper
      palette owns every text color and manual `color` fields are ignored. */
   let elsCfg = {}, adaptiveOn = false;
+  /* `use24Hour` — true (default) renders HH:mm; false renders h:mm with a
+     localized AM/PM marker on designs that carry .js-ap, else suffixed
+     onto the hour readout. */
+  let fmt24 = true;
   const EL_SELS = {
     time: '.js-t,.js-hh,.js-mm,.js-ss,.js-ap',
     day: '.js-day',
@@ -571,22 +577,68 @@
     }
   }
 
+  /* Fit the design to the actual bounds: vmin units only ever reach the
+     *smaller* viewport dimension, so a wide/tall bounds box used to leave
+     dead space around a square-ish layout. Measure the children's real
+     extent and uniformly scale the root so the content fills the box
+     (uniform scale keeps each design's aspect — overflow-safe via 0.97
+     headroom, shrink-to-fit when content already overflows). */
+  function fitToBounds() {
+    const kids = root.children;
+    if (!kids.length) return;
+    root.style.transform = '';
+    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+    for (const k of kids) {
+      const r = k.getBoundingClientRect();
+      if (r.width <= 0 && r.height <= 0) continue;
+      if (r.left < minX) minX = r.left;
+      if (r.top < minY) minY = r.top;
+      if (r.right > maxX) maxX = r.right;
+      if (r.bottom > maxY) maxY = r.bottom;
+    }
+    const natW = maxX - minX, natH = maxY - minY;
+    if (!(natW > 0) || !(natH > 0)) return;
+    let s = Math.min(root.clientWidth / natW, root.clientHeight / natH);
+    if (s > 1) s *= 0.97;
+    s = Math.min(Math.max(s, 0.4), 6);
+    root.style.transform = `scale(${s.toFixed(4)})`;
+  }
+
+  let fitQueued = false;
+  function refit() {
+    if (fitQueued) return;
+    fitQueued = true;
+    requestAnimationFrame(() => { fitQueued = false; fitToBounds(); });
+  }
+
   function setDesign(id) {
     style = id;
     root.className = 'style-' + id + (id === 'd10' ? ' style-d10-wrap' : '');
     root.innerHTML = BUILDS[id] ? BUILDS[id]() : '';
     tick();
+    applyEls();
+    refit();
   }
 
   function tick() {
     const d = new Date();
     const h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
-    const hh = pad(h), mm = pad(m), ss = pad(s);
+    const hh = fmt24 ? pad(h) : pad(h % 12 || 12), mm = pad(m), ss = pad(s);
     const day = dayFmt.format(d), date = d.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
     const setText = (sel, txt) => $$('.js-' + sel).forEach((e) => (e.textContent = txt));
-    setText('t', hh + ':' + mm); setText('hh', hh); setText('mm', mm); setText('ss', ss);
-    setText('ap', ampm(d)); setText('day', day); setText('date', date);
+    // Meridiem: a design's own .js-ap node wins; otherwise suffix the tail
+    // readout (.js-t > .js-ss > .js-mm) so 12h never loses AM/PM.
+    const ap = fmt24 ? '' : ampm(d);
+    const tail = !fmt24 && !$('.js-ap')
+      ? ($('.js-t') ? 't' : $('.js-ss') ? 'ss' : 'mm')
+      : '';
+    setText('t', hh + ':' + mm + (tail === 't' ? ' ' + ap : ''));
+    setText('hh', hh);
+    setText('mm', mm + (tail === 'mm' ? ' ' + ap : ''));
+    setText('ss', ss + (tail === 'ss' ? ' ' + ap : ''));
+    setText('ap', ap); setText('day', day); setText('date', date);
     setText('dom', d.getDate()); setText('mon', monFmt.format(d)); setText('year', d.getFullYear());
+    refit(); // text width shifts (digit/day/meridiem changes) re-fit the box
     const sf = s / 60;
     $$('.js-secfill').forEach((e) => { e.style.width = sf * 100 + '%'; e.style.height = sf * 100 + '%'; });
     const pulse = $('.js-pulse'); if (pulse) pulse.style.height = sf * 100 + '%';
@@ -636,6 +688,7 @@
       if (m.t === 'clockStyle' && BUILDS[m.style]) {
         if (m.els) elsCfg = m.els;
         if (m.adaptive !== undefined) adaptiveOn = m.adaptive !== false;
+        if (m.use24Hour !== undefined) fmt24 = m.use24Hour !== false;
         setDesign(m.style);
         applyEls();
       }
@@ -643,6 +696,10 @@
         const on = m.adaptive !== false;
         adaptiveOn = on;
         if (m.els) elsCfg = m.els;
+        if (m.use24Hour !== undefined && fmt24 !== (m.use24Hour !== false)) {
+          fmt24 = m.use24Hour !== false;
+          tick();
+        }
         // Palette fields only move when the probe actually sends them —
         // params-only pushes (adaptive/els) must not flash the backdrop.
         if (m.isLightBackdrop !== undefined)
@@ -667,6 +724,9 @@
     });
     wv.postMessage({ type: 'clockReady' });
   }
+  // Bounds drags resize the WebView: vmin bases change → re-derive the
+  // element font bases, then re-fit the content into the new box.
+  window.addEventListener('resize', () => { applyEls(); refit(); });
   setInterval(tick, 500);
 })();
 </script>

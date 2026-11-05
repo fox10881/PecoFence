@@ -32,9 +32,27 @@ fn clock_style_json(s: &pecofence_core::Settings) -> String {
         "t": "clockStyle",
         "style": s.clock_style,
         "adaptive": s.clock_adaptive_color,
+        "use24Hour": s.active_widget_params().use24_hour.unwrap_or(true),
         "els": clock_els_json(s),
     })
     .to_string()
+}
+
+/// Overlay sidecar-on-disk authored deltas under `s`'s in-memory dicts —
+/// disk fills fields the memory entries lack; memory/IPC values win every
+/// conflict. Run before resolving/applying so a hand-edit made while the
+/// app ran is honored without a restart.
+fn merge_sidecar_deltas(s: &mut pecofence_core::Settings, dir: &std::path::Path) {
+    for (id, p) in pecofence_core::config_store::read_effect_sidecar_deltas(
+        &dir.join(pecofence_core::config_store::LIVE_EFFECTS_CONFIG_FILE),
+    ) {
+        s.effect_params.entry(id).or_default().merge_disk(&p);
+    }
+    for (id, p) in pecofence_core::config_store::read_widget_sidecar_deltas(
+        &dir.join(pecofence_core::config_store::WIDGET_CONFIG_FILE),
+    ) {
+        s.widget_params.entry(id).or_default().merge_disk(&p);
+    }
 }
 
 /// `{"t":"clockTheme"}` post — `sample` `Some` carries the probe result
@@ -47,6 +65,7 @@ fn clock_theme_json(
     let mut v = serde_json::json!({
         "t": "clockTheme",
         "adaptive": s.clock_adaptive_color,
+        "use24Hour": s.active_widget_params().use24_hour.unwrap_or(true),
         "els": clock_els_json(s),
     });
     if let Some(sample) = sample {
@@ -564,6 +583,11 @@ impl App {
         let live = [r.left, r.top, r.right - r.left, r.bottom - r.top];
         if live[2] > 0 && live[3] > 0 {
             self.state.config.settings.clock_bounds = Some(live);
+        }
+        // Right-click refresh is the modder's "pick up my edits" gesture —
+        // pull sidecar deltas authored while the app ran before rebuilding.
+        if let Some(dir) = self.state.config_path().parent().map(|p| p.to_path_buf()) {
+            merge_sidecar_deltas(&mut self.state.config.settings, &dir);
         }
         h.close();
         let style = self.state.config.settings.clock_style.clone();
@@ -1426,6 +1450,14 @@ impl App {
         let old = self.state.config.settings.clone();
         if new == old {
             return;
+        }
+        // Hand-edits to the sidecar files made while the app runs: the
+        // on-disk authored deltas fill fields the in-memory dict hasn't
+        // claimed (memory/IPC values win every conflict), so a modder's
+        // tweak applies on the next apply gesture without a restart — and
+        // the merge-on-save keeps it on disk instead of stomping it.
+        if let Some(dir) = self.state.config_path().parent().map(|p| p.to_path_buf()) {
+            merge_sidecar_deltas(&mut new, &dir);
         }
         // Layered widget dictionary: a style switch first mirrors the
         // outgoing design's live placement into its dict slot (per-design

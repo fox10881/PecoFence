@@ -447,7 +447,12 @@ pub(super) fn rolled_back_settings(requested: &Settings, applied: &Settings) -> 
         return Vec::new();
     };
     want.iter()
-        .filter(|(k, v)| got.get(*k) != Some(v))
+        // The modding dicts legitimately *gain* entries during apply — the
+        // sidecar delta-merge runs inside `apply_settings`, so `applied`
+        // differing from `requested` here is the merge working, not a
+        // rollback. Neither dict has a fallible apply step that could
+        // revert, so a real rollback is impossible.
+        .filter(|(k, v)| *k != "widgetParams" && *k != "effectParams" && got.get(*k) != Some(v))
         .map(|(k, _)| k.clone())
         .collect()
 }
