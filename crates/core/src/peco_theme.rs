@@ -224,17 +224,22 @@ pub fn unpack_uncompressed_zip(archive: &[u8]) -> Result<Vec<PecoArchiveEntry>, 
     Ok(entries)
 }
 
-/// Writes a `.peco` theme archive containing `config.json`, optional `theme.json`,
-/// optional `background.<ext>`, and `preview.jpg`.
+/// Writes a `.peco` theme archive containing `config.json`, the modder
+/// sidecars (`sidecars` — `Widget_config.json`, `Live_Effects_config.json`),
+/// optional `theme.json`, optional `background.<ext>`, and `preview.jpg`.
 pub fn write_peco_file(
     path: &Path,
     config_json: &str,
+    sidecars: &[(&str, &str)],
     meta_json: Option<&str>,
     background: Option<(&str, &[u8])>,
     preview_jpg: &[u8],
 ) -> io::Result<()> {
-    let mut entries: Vec<(&str, &[u8])> = Vec::with_capacity(4);
+    let mut entries: Vec<(&str, &[u8])> = Vec::with_capacity(6);
     entries.push(("config.json", config_json.as_bytes()));
+    for (name, text) in sidecars {
+        entries.push((*name, text.as_bytes()));
+    }
     if let Some(meta) = meta_json {
         entries.push(("theme.json", meta.as_bytes()));
     }
@@ -628,6 +633,7 @@ mod tests {
         write_peco_file(
             &with_meta,
             cfg_json,
+            &[],
             Some(&meta_json),
             None,
             b"\xFF\xD8\xFF\xE0p",
@@ -641,10 +647,99 @@ mod tests {
         let _ = fs::remove_dir_all(&ex.temp_dir);
 
         let legacy = dir.join("legacy.peco");
-        write_peco_file(&legacy, cfg_json, None, None, b"\xFF\xD8\xFF\xE0p").unwrap();
+        write_peco_file(&legacy, cfg_json, &[], None, None, b"\xFF\xD8\xFF\xE0p").unwrap();
         let ex = extract_peco_to_temp(&legacy).unwrap();
         assert!(ex.meta.is_none());
         let _ = fs::remove_dir_all(&ex.temp_dir);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// The modder-split `.peco`: `Widget_config.json`/`Live_Effects_config.json`
+    /// ride the archive as sibling entries and overlay onto the imported
+    /// config at parse — while a legacy single-file archive still yields a
+    /// complete `Config` from its embedded fields (serde defaults elsewhere).
+    #[test]
+    fn sidecar_entries_overlay_on_import_and_legacy_still_parses() {
+        let dir = std::env::temp_dir().join(format!("peco-split-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+
+        // New-format archive: lean config.json + both sidecars.
+        let mut cfg = Config::default();
+        cfg.settings.desktop_effect = "matrix".into();
+        cfg.settings.desktop_effect_intensity = 80;
+        cfg.settings.clock_style = "g5".into();
+        cfg.settings.effect_params.insert(
+            "matrix".into(),
+            crate::EffectParams {
+                particle_count: Some(777),
+                ..Default::default()
+            },
+        );
+        let split =
+            crate::config_store::split_config_json(&crate::ConfigStore::to_json(&cfg).unwrap());
+        let peco = dir.join("split.peco");
+        write_peco_file(
+            &peco,
+            &split.main,
+            &[
+                (crate::config_store::WIDGET_CONFIG_FILE, &split.widget),
+                (
+                    crate::config_store::LIVE_EFFECTS_CONFIG_FILE,
+                    &split.effects,
+                ),
+            ],
+            None,
+            None,
+            b"\xFF\xD8\xFF\xE0p",
+        )
+        .unwrap();
+        let ex = extract_peco_to_temp(&peco).unwrap();
+        // Sidecar entries materialized as sibling files — the import overlay
+        // reads exactly these.
+        assert!(
+            ex.temp_dir
+                .join(crate::config_store::WIDGET_CONFIG_FILE)
+                .exists()
+        );
+        assert!(
+            ex.temp_dir
+                .join(crate::config_store::LIVE_EFFECTS_CONFIG_FILE)
+                .exists()
+        );
+        let store = crate::ConfigStore::new(ex.temp_dir.join("store"));
+        let imported = store.import_file(&ex.config_path).unwrap();
+        assert_eq!(imported.settings.desktop_effect, "matrix");
+        assert_eq!(imported.settings.desktop_effect_intensity, 80);
+        assert_eq!(imported.settings.clock_style, "g5");
+        assert_eq!(
+            imported.settings.effect_params["matrix"].particle_count,
+            Some(777)
+        );
+        let _ = fs::remove_dir_all(&ex.temp_dir);
+
+        // Legacy archive: monolithic config.json, zero sidecars — the
+        // embedded fields still populate, missing ones get serde defaults.
+        let legacy = dir.join("legacy.peco");
+        let mut legacy_cfg = Config::default();
+        legacy_cfg.settings.desktop_effect = "sakura".into();
+        legacy_cfg.settings.clock_style = "d9".into();
+        legacy_cfg.settings.effect_params.insert(
+            "sakura".into(),
+            crate::EffectParams {
+                wind: Some(-40.0),
+                ..Default::default()
+            },
+        );
+        // The FULL document — what old builds packed before the split existed.
+        let mono = crate::ConfigStore::to_json(&legacy_cfg).unwrap();
+        write_peco_file(&legacy, &mono, &[], None, None, b"\xFF\xD8\xFF\xE0p").unwrap();
+        let ex2 = extract_peco_to_temp(&legacy).unwrap();
+        let imported2 = store.import_file(&ex2.config_path).unwrap();
+        assert_eq!(imported2.settings.desktop_effect, "sakura");
+        assert_eq!(imported2.settings.clock_style, "d9");
+        assert_eq!(imported2.settings.effect_params["sakura"].wind, Some(-40.0));
+        assert_eq!(imported2.settings.desktop_effect_intensity, 50); // default
+        let _ = fs::remove_dir_all(&ex2.temp_dir);
         let _ = fs::remove_dir_all(&dir);
     }
 

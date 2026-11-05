@@ -2247,12 +2247,22 @@ impl App {
     /// Serializes `cfg` and builds a `.peco` payload: an optional `background.<ext>` entry
     /// copied from `bg_source` plus a 640x360 `preview.jpg` of the layout rendered over a
     /// frame of that background (`preview_frame` wins when the caller has live pixels).
+    /// The returned [`SplitConfigJson`] carries `config.json` minus the modder keys plus
+    /// the `Widget_config.json`/`Live_Effects_config.json` sidecar documents — all three
+    /// are packed into the archive.
     fn peco_payload(
         &self,
         cfg: &pecofence_core::Config,
         bg_source: Option<&Path>,
         preview_frame: Option<(u32, u32, Vec<u8>)>,
-    ) -> std::result::Result<(String, Option<(String, Vec<u8>)>, Vec<u8>), String> {
+    ) -> std::result::Result<
+        (
+            pecofence_core::config_store::SplitConfigJson,
+            Option<(String, Vec<u8>)>,
+            Vec<u8>,
+        ),
+        String,
+    > {
         let mut cfg = cfg.clone();
         cfg.make_theme_portable();
         // A bundle whose background is not the video must not resurrect a stale
@@ -2321,34 +2331,46 @@ impl App {
             );
         }
         let config_json = pecofence_core::ConfigStore::to_json(&cfg).map_err(|e| e.to_string())?;
+        let split = pecofence_core::config_store::split_config_json(&config_json);
         let bg_ref = frame.as_ref().map(|(w, h, px)| (*w, *h, px.as_slice()));
         let preview_bgra =
             pecofence_core::peco_theme::render_layout_preview_bgra(&cfg, bg_ref, 640, 360);
         let preview_jpg = pecofence_platform::wmf_wallpaper::encode_jpeg(640, 360, &preview_bgra)
             .map_err(|e| e.to_string())?;
-        Ok((config_json, bg_entry, preview_jpg))
+        Ok((split, bg_entry, preview_jpg))
     }
 
-    /// Writes `config_json`/`bg_entry`/`preview_jpg` to `dest` and reports through the page.
+    /// Writes the split config trio + `bg_entry`/`preview_jpg` to `dest` and reports through the page.
     fn write_theme_archive(
         &mut self,
         dest: &Path,
-        config_json: &str,
+        split: &pecofence_core::config_store::SplitConfigJson,
         meta_json: Option<&str>,
         bg_entry: Option<(String, Vec<u8>)>,
         preview_jpg: &[u8],
     ) -> bool {
         let bg_slice = bg_entry.as_ref().map(|(n, b)| (n.as_str(), b.as_slice()));
+        let sidecars: [(&str, &str); 2] = [
+            (
+                pecofence_core::config_store::WIDGET_CONFIG_FILE,
+                split.widget.as_str(),
+            ),
+            (
+                pecofence_core::config_store::LIVE_EFFECTS_CONFIG_FILE,
+                split.effects.as_str(),
+            ),
+        ];
         tracing::info!(
             dest = %dest.display(),
             background = ?bg_slice.map(|(n, b)| (n, b.len())),
-            config_bytes = config_json.len(),
+            config_bytes = split.main.len(),
             preview_bytes = preview_jpg.len(),
             "writing .peco archive"
         );
         match pecofence_core::peco_theme::write_peco_file(
             dest,
-            config_json,
+            &split.main,
+            &sidecars,
             meta_json,
             bg_slice,
             preview_jpg,
@@ -2394,10 +2416,10 @@ impl App {
             .then(|| serde_json::to_string(&meta).ok())
             .flatten();
         match self.peco_payload(&self.state.config, bg.as_deref(), live) {
-            Ok((config_json, bg_entry, preview_jpg)) => {
+            Ok((split, bg_entry, preview_jpg)) => {
                 self.write_theme_archive(
                     dest,
-                    &config_json,
+                    &split,
                     meta_json.as_deref(),
                     bg_entry,
                     &preview_jpg,
@@ -2845,23 +2867,33 @@ impl App {
             })
             .flatten();
         let meta = self.theme_meta(bg.as_deref());
-        let (config_json, bg_entry, preview_jpg) =
-            match self.peco_payload(&cfg, bg.as_deref(), live) {
-                Ok(p) => p,
-                Err(e) => {
-                    self.settings_error(&pecofence_core::i18n::format("保存主题失败：{0}", &[e]));
-                    return false;
-                }
-            };
+        let (split, bg_entry, preview_jpg) = match self.peco_payload(&cfg, bg.as_deref(), live) {
+            Ok(p) => p,
+            Err(e) => {
+                self.settings_error(&pecofence_core::i18n::format("保存主题失败：{0}", &[e]));
+                return false;
+            }
+        };
         let bg_slice = bg_entry.as_ref().map(|(n, b)| (n.as_str(), b.as_slice()));
         let meta_json = meta
             .source
             .is_some()
             .then(|| serde_json::to_string(&meta).ok())
             .flatten();
+        let sidecars: [(&str, &str); 2] = [
+            (
+                pecofence_core::config_store::WIDGET_CONFIG_FILE,
+                split.widget.as_str(),
+            ),
+            (
+                pecofence_core::config_store::LIVE_EFFECTS_CONFIG_FILE,
+                split.effects.as_str(),
+            ),
+        ];
         match pecofence_core::peco_theme::write_peco_file(
             dest,
-            &config_json,
+            &split.main,
+            &sidecars,
             meta_json.as_deref(),
             bg_slice,
             &preview_jpg,
@@ -2999,8 +3031,8 @@ impl App {
             "snapshot export: background source selected"
         );
         match self.peco_payload(&cfg, bg.as_deref(), None) {
-            Ok((config_json, bg_entry, preview_jpg)) => {
-                self.write_theme_archive(&dest, &config_json, None, bg_entry, &preview_jpg);
+            Ok((split, bg_entry, preview_jpg)) => {
+                self.write_theme_archive(&dest, &split, None, bg_entry, &preview_jpg);
             }
             Err(e) => self.settings_error(&pecofence_core::i18n::format("导出失败：{0}", &[e])),
         }

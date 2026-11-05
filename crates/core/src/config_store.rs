@@ -97,11 +97,16 @@ impl ConfigStore {
     }
 
     /// Reads and validates any config file (import / backup restore), with the reason on error.
+    /// Sidecar files ([`WIDGET_CONFIG_FILE`], [`LIVE_EFFECTS_CONFIG_FILE`]) sitting next to
+    /// it overlay their owned keys — covering both the live config directory and a `.peco`
+    /// theme's extracted contents.
     pub fn parse_file(path: &Path) -> Result<Config, String> {
         let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
         // Windows PowerShell 5.1 `Set-Content -Encoding utf8` and Notepad can add a BOM.
         let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
-        let cfg: Config = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let mut doc: serde_json::Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        overlay_split_files(path, &mut doc);
+        let cfg: Config = serde_json::from_value(doc).map_err(|e| e.to_string())?;
         validate(&cfg)?;
         Ok(migrate(cfg))
     }
@@ -170,6 +175,7 @@ impl ConfigStore {
         let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
         let mut doc: serde_json::Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
         self.materialize_wallpapers(&mut doc);
+        overlay_split_files(path, &mut doc);
         let cfg: Config = serde_json::from_value(doc).map_err(|e| e.to_string())?;
         validate(&cfg)?;
         Ok(migrate(cfg))
@@ -343,9 +349,12 @@ impl ConfigStore {
             .map_err(at("validate"))?;
         fs::create_dir_all(&self.dir).map_err(at("create folder"))?;
         let json = Self::to_json(cfg).map_err(at("serialize"))?;
+        // `config.json` keeps the lean document; the modder-facing keys go
+        // to `Widget_config.json` / `Live_Effects_config.json` beside it.
+        let split = split_config_json(&json);
         {
             let mut f = fs::File::create(self.tmp_path()).map_err(at("create temp file"))?;
-            io::Write::write_all(&mut f, json.as_bytes()).map_err(at("write temp file"))?;
+            io::Write::write_all(&mut f, split.main.as_bytes()).map_err(at("write temp file"))?;
             f.sync_all().map_err(at("flush temp file"))?;
         }
         let primary = self.primary_path();
@@ -367,7 +376,8 @@ impl ConfigStore {
                     fs::copy(&primary, self.bak_path()).map_err(at("keep config.bak"))?;
                 }
                 let mut f = fs::File::create(&primary).map_err(at("write config.json"))?;
-                io::Write::write_all(&mut f, json.as_bytes()).map_err(at("write config.json"))?;
+                io::Write::write_all(&mut f, split.main.as_bytes())
+                    .map_err(at("write config.json"))?;
                 f.sync_all().map_err(at("flush config.json"))?;
                 let _ = fs::remove_file(self.tmp_path());
             }
@@ -379,7 +389,143 @@ impl ConfigStore {
                 return Err(at("replace config.json")(e));
             }
         }
+        // The modder-facing sidecars are regenerated from `cfg` every save —
+        // a write failure logs but doesn't fail the (already complete) save.
+        for (name, text) in [
+            (WIDGET_CONFIG_FILE, &split.widget),
+            (LIVE_EFFECTS_CONFIG_FILE, &split.effects),
+        ] {
+            if let Err(e) = fs::write(self.dir.join(name), text) {
+                tracing::warn!(file = name, error = %e, "config sidecar write failed");
+            }
+        }
         Ok(())
+    }
+}
+
+/// Modder-facing split files that live next to `config.json` (and inside
+/// `.peco` theme archives): the clock-widget surface and the live-effects
+/// tuning surface, in plain human-editable JSON.
+pub const WIDGET_CONFIG_FILE: &str = "Widget_config.json";
+pub const LIVE_EFFECTS_CONFIG_FILE: &str = "Live_Effects_config.json";
+
+/// `settings.*` camelCase keys owned by [`WIDGET_CONFIG_FILE`].
+const WIDGET_SETTINGS_KEYS: &[&str] = &["clockStyle", "clockBounds", "clockAdaptiveColor"];
+/// `settings.*` camelCase keys owned by [`LIVE_EFFECTS_CONFIG_FILE`].
+const EFFECTS_SETTINGS_KEYS: &[&str] = &["desktopEffect", "desktopEffectIntensity", "effectParams"];
+
+/// A serialized [`Config`] broken into the on-disk trio: `main` is the
+/// `config.json` text without the sidecar-owned keys; `widget`/`effects`
+/// always emit every owned key so the files double as editable templates.
+pub struct SplitConfigJson {
+    pub main: String,
+    pub widget: String,
+    pub effects: String,
+}
+
+/// Splits a serialized config document into [`SplitConfigJson`]. The owned
+/// keys are *moved* out of `settings`, so `main` never duplicates them;
+/// keys `skip_serializing_if` hid get a type-correct placeholder so the
+/// sidecars always show the complete editable surface.
+pub fn split_config_json(text: &str) -> SplitConfigJson {
+    let placeholder = |key: &str| -> serde_json::Value {
+        match key {
+            // Keep value types honest — a sidecar value overlays verbatim.
+            "effectParams" => serde_json::json!({}),
+            "clockBounds" => serde_json::Value::Null,
+            "clockStyle" | "desktopEffect" => serde_json::json!("none"),
+            "desktopEffectIntensity" => serde_json::json!(50),
+            _ => serde_json::Value::Null,
+        }
+    };
+    let mut doc: serde_json::Value = match serde_json::from_str(text) {
+        Ok(d) => d,
+        Err(_) => {
+            return SplitConfigJson {
+                main: text.into(),
+                widget: "{\n}\n".into(),
+                effects: "{\n}\n".into(),
+            };
+        }
+    };
+    let mut widget = serde_json::Map::new();
+    let mut effects = serde_json::Map::new();
+    if let Some(settings) = doc
+        .get_mut("settings")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        for key in WIDGET_SETTINGS_KEYS {
+            let v = settings.remove(*key).unwrap_or_else(|| placeholder(key));
+            widget.insert((*key).to_string(), v);
+        }
+        for key in EFFECTS_SETTINGS_KEYS {
+            let v = settings.remove(*key).unwrap_or_else(|| placeholder(key));
+            effects.insert((*key).to_string(), v);
+        }
+    } else {
+        for key in WIDGET_SETTINGS_KEYS {
+            widget.insert((*key).to_string(), placeholder(key));
+        }
+        for key in EFFECTS_SETTINGS_KEYS {
+            effects.insert((*key).to_string(), placeholder(key));
+        }
+    }
+    SplitConfigJson {
+        main: serde_json::to_string_pretty(&doc).unwrap_or_else(|_| text.into()),
+        widget: serde_json::to_string_pretty(&serde_json::Value::Object(widget))
+            .unwrap_or_else(|_| "{\n}\n".into()),
+        effects: serde_json::to_string_pretty(&serde_json::Value::Object(effects))
+            .unwrap_or_else(|_| "{\n}\n".into()),
+    }
+}
+
+/// Merges each sidecar's owned keys into a parsed config document. The
+/// files are looked up *beside the config being read* — `%APPDATA%` on
+/// boot, an imported export's directory, or a `.peco`'s temp extraction —
+/// so a legacy theme that never had them simply keeps its embedded values.
+/// Malformed sidecars are skipped, never fatal.
+fn overlay_split_files(config_path: &Path, doc: &mut serde_json::Value) {
+    let Some(dir) = config_path.parent() else {
+        return;
+    };
+    for (file, keys) in [
+        (WIDGET_CONFIG_FILE, WIDGET_SETTINGS_KEYS),
+        (LIVE_EFFECTS_CONFIG_FILE, EFFECTS_SETTINGS_KEYS),
+    ] {
+        let Ok(text) = fs::read_to_string(dir.join(file)) else {
+            continue;
+        };
+        let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
+        let side: serde_json::Value = match serde_json::from_str(text) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(file, error = %e, "ignoring unparseable config sidecar");
+                continue;
+            }
+        };
+        let Some(side_obj) = side.as_object() else {
+            continue;
+        };
+        let Some(root) = doc.as_object_mut() else {
+            return;
+        };
+        if !root.contains_key("settings") {
+            root.insert(
+                "settings".to_string(),
+                serde_json::Value::Object(serde_json::Map::new()),
+            );
+        }
+        let Some(target) = root
+            .get_mut("settings")
+            .and_then(serde_json::Value::as_object_mut)
+        else {
+            return;
+        };
+        for key in keys {
+            if let Some(v) = side_obj.get(*key) {
+                target.insert((*key).to_string(), v.clone());
+            }
+        }
     }
 }
 
@@ -803,6 +949,134 @@ mod tests {
             )],
         });
         c
+    }
+
+    #[test]
+    fn split_moves_modder_keys_out_of_config_json() {
+        let mut c = sample();
+        c.settings.desktop_effect = "rain".into();
+        c.settings.desktop_effect_intensity = 80;
+        c.settings.clock_style = "d1".into();
+        c.settings.clock_bounds = Some([10, 20, 400, 240]);
+        c.settings.clock_adaptive_color = false;
+        c.settings.effect_params.insert(
+            "rain".into(),
+            EffectParams {
+                particle_count: Some(512),
+                speed: Some(2.0),
+                ..Default::default()
+            },
+        );
+
+        let split = split_config_json(&ConfigStore::to_json(&c).unwrap());
+        let main: serde_json::Value = serde_json::from_str(&split.main).unwrap();
+        let s = &main["settings"];
+        for k in [
+            "clockStyle",
+            "clockBounds",
+            "clockAdaptiveColor",
+            "desktopEffect",
+            "desktopEffectIntensity",
+            "effectParams",
+        ] {
+            assert!(s.get(k).is_none(), "{k} must leave config.json");
+        }
+        // Non-split keys stay.
+        assert!(s.get("taskbarStyle").is_some() || s.get("iconSize").is_some());
+
+        let widget: serde_json::Value = serde_json::from_str(&split.widget).unwrap();
+        assert_eq!(widget["clockStyle"], "d1");
+        assert_eq!(widget["clockBounds"], serde_json::json!([10, 20, 400, 240]));
+        assert_eq!(widget["clockAdaptiveColor"], false);
+        let effects: serde_json::Value = serde_json::from_str(&split.effects).unwrap();
+        assert_eq!(effects["desktopEffect"], "rain");
+        assert_eq!(effects["desktopEffectIntensity"], 80);
+        assert_eq!(effects["effectParams"]["rain"]["particleCount"], 512);
+    }
+
+    #[test]
+    fn save_writes_three_files_and_load_merges() {
+        let store = ConfigStore::new(tmpdir("split3"));
+        let mut c = sample();
+        c.settings.desktop_effect = "snow".into();
+        c.settings.clock_style = "g2".into();
+        c.settings.clock_bounds = Some([1, 2, 300, 200]);
+        c.settings.effect_params.insert(
+            "snow".into(),
+            EffectParams {
+                particle_count: Some(64),
+                ..Default::default()
+            },
+        );
+        store.save(&c).unwrap();
+
+        // config.json is lean; the sidecars carry the modding surface.
+        let main_text = fs::read_to_string(store.primary_path()).unwrap();
+        assert!(!main_text.contains("effectParams"));
+        assert!(!main_text.contains("desktopEffect"));
+        assert!(!main_text.contains("clockStyle"));
+        assert!(store.dir().join(WIDGET_CONFIG_FILE).exists());
+        assert!(store.dir().join(LIVE_EFFECTS_CONFIG_FILE).exists());
+
+        match store.load() {
+            LoadOutcome::Primary(loaded) => {
+                assert_eq!(loaded.settings.desktop_effect, "snow");
+                assert_eq!(loaded.settings.clock_style, "g2");
+                assert_eq!(loaded.settings.clock_bounds, Some([1, 2, 300, 200]));
+                assert_eq!(
+                    loaded.settings.effect_params["snow"].particle_count,
+                    Some(64)
+                );
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn hand_edited_sidecar_overrides_saved_values_on_load() {
+        let store = ConfigStore::new(tmpdir("sidecar-edit"));
+        store.save(&sample()).unwrap();
+        // A modder hand-edits the file — boot picks it up (Path 3: no watcher,
+        // parse happens at load/apply boundaries only).
+        fs::write(
+            store.dir().join(LIVE_EFFECTS_CONFIG_FILE),
+            r#"{"desktopEffect":"matrix","effectParams":{"matrix":{"particleCount":999}}}"#,
+        )
+        .unwrap();
+        match store.load() {
+            LoadOutcome::Primary(c) => {
+                assert_eq!(c.settings.desktop_effect, "matrix");
+                assert_eq!(c.settings.effect_params["matrix"].particle_count, Some(999));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_monolithic_config_still_parses_fields() {
+        // A legacy config.json with the keys embedded — no sidecars — keeps working.
+        let store = ConfigStore::new(tmpdir("legacy-mono"));
+        fs::create_dir_all(store.dir()).unwrap();
+        let mut c = sample();
+        c.settings.desktop_effect = "aurora".into();
+        c.settings.clock_style = "d7".into();
+        // Write the FULL serialized doc (as an old build would have).
+        fs::write(store.primary_path(), ConfigStore::to_json(&c).unwrap()).unwrap();
+        match store.load() {
+            LoadOutcome::Primary(loaded) => {
+                assert_eq!(loaded.settings.desktop_effect, "aurora");
+                assert_eq!(loaded.settings.clock_style, "d7");
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn malformed_sidecar_is_skipped_not_fatal() {
+        let store = ConfigStore::new(tmpdir("bad-sidecar"));
+        store.save(&sample()).unwrap();
+        fs::write(store.dir().join(WIDGET_CONFIG_FILE), "{ not json").unwrap();
+        assert!(matches!(store.load(), LoadOutcome::Primary(_)));
     }
 
     #[test]

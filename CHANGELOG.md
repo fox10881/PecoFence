@@ -29,6 +29,19 @@
   so only non-finite or degenerate values (NaN, non-positive size/work)
   fall back to a visible default — real DPI-scaled and multi-monitor
   positions round-trip untouched.
+- **Modder-facing config split**: the clock-widget surface (`clockStyle`,
+  `clockBounds`, `clockAdaptiveColor`) and the live-effects surface
+  (`desktopEffect`, `desktopEffectIntensity`, `effectParams`) now live in
+  dedicated human-editable files — `Widget_config.json` and
+  `Live_Effects_config.json` beside `config.json`, which no longer carries
+  them. The files are parsed only at boot and at the apply boundary (no
+  watchers): a hand edit takes effect on the next launch or Settings
+  Apply, and `LiveParams` re-clamps defensively at apply so edited values
+  stay inside the compiled limits. `.peco` themes pack all three files —
+  new archives carry the sidecars as sibling entries that overlay onto
+  the extracted `config.json`, while legacy archives keep working
+  untouched (embedded fields still parse; absent keys fall back to
+  defaults). Single-file `config export` remains a complete document.
 - **Externalized desktop-effect tuning (`effectParams`)**: every live
   effect now accepts optional per-effect overrides — `particleCount`,
   `speed`, `wind`, `gravity`, `primaryColor` (HEX tint) and `glowRadius` —

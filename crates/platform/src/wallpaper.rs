@@ -928,6 +928,7 @@ mod tests {
         pecofence_core::peco_theme::write_peco_file(
             &peco,
             &cfg_json,
+            &[],
             None,
             Some((&name, &data)),
             b"\xFF\xD8\xFF\xE0preview",

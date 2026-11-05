@@ -121,8 +121,12 @@ impl Default for LiveParams {
 }
 
 impl LiveParams {
-    /// `EffectParams` (all-optional, sanitized) → resolved runtime values.
+    /// `EffectParams` (all-optional) → resolved runtime values. Sanitized
+    /// again here: a hand-edited `Live_Effects_config.json` reaches this
+    /// path via boot load, bypassing `Config::sanitize_external`.
     pub fn from_params(p: &pecofence_core::EffectParams) -> Self {
+        let mut p = p.clone();
+        p.sanitize();
         Self {
             count: p.particle_count.unwrap_or(0),
             speed: p.speed.unwrap_or(1.0),
