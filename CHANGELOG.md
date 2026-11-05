@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Per-element clock styling**: `Widget_config.json` now exposes an
+  `elements` block under every design with `time`, `day`, and `date`
+  targets — each supporting optional `scale` (font multiplier, clamped
+  0.1–4), `color` (hex, validated), and `offsetX`/`offsetY` (px,
+  clamped ±2000). Resolved settings ride the existing WebView2 messages:
+  `clockStyle` and `clockTheme` carry an `els` map the frontend applies to
+  the design's `.js-*` elements (font-size, color, translate). Manual
+  colors are only sent/applied when `adaptiveColor` is `false`; when the
+  wallpaper-driven palette is active it stays authoritative, while scale
+  and offsets always apply. Non-object element entries are dropped at the
+  file boundary; style switches, adaptive toggles, and same-style
+  sidecar imports all repost the resolved payload without a widget restart.
 - **Self-documenting modding files**: the sidecar dictionaries now render
   fully-populated templates instead of `{}` — every effect shows its real
   compiled baseline (`"snow": { "particleCount": 320, "speed": 1.0,

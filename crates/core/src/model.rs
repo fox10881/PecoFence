@@ -429,6 +429,57 @@ pub fn is_clock_widget_id(id: &str) -> bool {
     CLOCK_WIDGET_IDS.contains(&id)
 }
 
+/// Sub-element targets inside a clock design — `WidgetParams.elements`
+/// is keyed by these. `"time"` covers every time-of-day node (combined
+/// `hh:mm`, split digits, am/pm), `"day"` the weekday name, `"date"` the
+/// date readouts (date string, day-of-month, month, year).
+pub const WIDGET_ELEMENT_IDS: &[&str] = &["time", "day", "date"];
+
+/// Granular per-element styling inside a clock design's bounding box —
+/// a `Widget_config.json` `elements.<time|day|date>` entry. Every field
+/// is optional; `None` leaves the design's own CSS in charge.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[serde(default, rename_all = "camelCase")]
+pub struct WidgetElementParams {
+    /// Font-size multiplier over the design's computed size (0.25–4.0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f32>,
+    /// Element text color `#RRGGBB` / `#AARRGGBB` — applied only while
+    /// `adaptiveColor` is off; the adaptive palette always wins live.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Horizontal nudge in CSS px (-2000..=2000); `0` = design position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset_x: Option<f32>,
+    /// Vertical nudge in CSS px (-2000..=2000); `0` = design position.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset_y: Option<f32>,
+}
+
+impl WidgetElementParams {
+    /// Clamp every populated field; malformed colors drop to `None`.
+    pub fn sanitize(&mut self) {
+        if let Some(v) = &mut self.scale {
+            *v = if v.is_finite() {
+                v.clamp(0.25, 4.0)
+            } else {
+                1.0
+            };
+        }
+        if self.color.as_deref().is_some_and(|c| !looks_like_rgba(c)) {
+            self.color = None;
+        }
+        for v in [&mut self.offset_x, &mut self.offset_y].into_iter().flatten() {
+            *v = if v.is_finite() {
+                v.clamp(-2000.0, 2000.0)
+            } else {
+                0.0
+            };
+        }
+    }
+}
+
 /// Per-design widget tuning stored in `Widget_config.json`. Every field is
 /// optional — `None` keeps the resolved live state, so a file can carry
 /// only the knobs a modder actually overrides.
@@ -445,20 +496,29 @@ pub struct WidgetParams {
     /// live `clockAdaptiveColor` flag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adaptive_color: Option<bool>,
+    /// Sub-element styling keyed by `WIDGET_ELEMENT_IDS` — applied to the
+    /// live page when this design is active; unknown keys are dropped by
+    /// `Config::sanitize_external`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub elements: BTreeMap<String, WidgetElementParams>,
 }
 
 impl WidgetParams {
     /// Snapshot of the live widget state under `s.clock_style` — used when
     /// mirroring runtime into the dict (design switch) and on save.
+    /// `elements` is left empty here: there is no live element state, only
+    /// the authored dict — callers merge the previous entry's elements.
     pub fn from_runtime(s: &Settings) -> Self {
         Self {
             bounds: s.clock_bounds,
             adaptive_color: Some(s.clock_adaptive_color),
+            elements: BTreeMap::new(),
         }
     }
 
     /// Same range check `clock_bounds` gets: only the size is bounded —
-    /// x/y go negative legitimately on multi-monitor setups.
+    /// x/y go negative legitimately on multi-monitor setups. Element keys
+    /// outside `WIDGET_ELEMENT_IDS` drop out; kept entries clamp per field.
     pub fn sanitize(&mut self) {
         if self
             .bounds
@@ -466,6 +526,13 @@ impl WidgetParams {
         {
             self.bounds = None;
         }
+        self.elements.retain(|id, p| {
+            let known = WIDGET_ELEMENT_IDS.contains(&id.as_str());
+            if known {
+                p.sanitize();
+            }
+            known
+        });
     }
 }
 
@@ -2034,6 +2101,20 @@ impl Settings {
             }
         }
     }
+
+    /// The sanitized user-layer entry for the active design, or the
+    /// default when unconfigured — the apply path's view of the widget
+    /// dictionary (bounds/adaptive already ride the runtime fields via
+    /// `resolve_widget_params`; `elements` is read off the returned clone).
+    pub fn active_widget_params(&self) -> WidgetParams {
+        let mut p = self
+            .widget_params
+            .get(&self.clock_style)
+            .cloned()
+            .unwrap_or_default();
+        p.sanitize();
+        p
+    }
 }
 
 impl Config {
@@ -3446,6 +3527,41 @@ mod tests {
         };
         ok.sanitize();
         assert_eq!(ok.primary_color.as_deref(), Some("#A0B1C2"));
+    }
+
+    #[test]
+    fn widget_element_params_sanitize_clamps() {
+        let mut p = WidgetElementParams {
+            scale: Some(f32::NEG_INFINITY),
+            color: Some("blue".into()), // named colors not accepted — hex only
+            offset_x: Some(99_999.0),
+            offset_y: Some(f32::NAN),
+        };
+        p.sanitize();
+        assert_eq!(p.scale, Some(1.0)); // non-finite → neutral multiplier
+        assert_eq!(p.color, None); // malformed → design palette
+        assert_eq!(p.offset_x, Some(2000.0));
+        assert_eq!(p.offset_y, Some(0.0)); // NaN → no offset
+
+        // WidgetParams drops unknown element ids, keeps + clamps known.
+        let mut w = WidgetParams::default();
+        w.elements.insert(
+            "title".into(),
+            WidgetElementParams {
+                scale: Some(2.0),
+                ..Default::default()
+            },
+        );
+        w.elements.insert(
+            "time".into(),
+            WidgetElementParams {
+                scale: Some(9.0),
+                ..Default::default()
+            },
+        );
+        w.sanitize();
+        assert!(!w.elements.contains_key("title"));
+        assert_eq!(w.elements["time"].scale, Some(4.0));
     }
 
     #[test]

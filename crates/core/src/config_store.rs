@@ -448,12 +448,24 @@ fn effect_template(id: &str) -> serde_json::Map<String, serde_json::Value> {
 
 /// Baseline for one `Widget_config.json` entry — `null` means "follow the
 /// live/default state", so selecting an unconfigured design never
-/// teleports or re-tints the widget.
+/// teleports or re-tints the widget. The `elements` block renders every
+/// per-element knob (`time`/`day`/`date`) at its neutral baseline.
 fn widget_template() -> serde_json::Map<String, serde_json::Value> {
-    serde_json::json!({"bounds": null, "adaptiveColor": null})
-        .as_object()
-        .cloned()
-        .unwrap_or_default()
+    let mut elements = serde_json::Map::new();
+    for id in crate::WIDGET_ELEMENT_IDS {
+        elements.insert(
+            id.to_string(),
+            serde_json::Value::Object(element_template()),
+        );
+    }
+    serde_json::json!({
+        "bounds": null,
+        "adaptiveColor": null,
+        "elements": serde_json::Value::Object(elements),
+    })
+    .as_object()
+    .cloned()
+    .unwrap_or_default()
 }
 
 /// The template a sidecar dict entry is measured against.
@@ -465,12 +477,39 @@ fn template_for(dict_key: &str, id: &str) -> serde_json::Map<String, serde_json:
     }
 }
 
+/// Baseline for one `elements.<target>` block — every knob at its neutral
+/// value (`scale 1`, no color override, `0` offsets).
+fn element_template() -> serde_json::Map<String, serde_json::Value> {
+    serde_json::json!({"scale": 1.0, "color": null, "offsetX": 0, "offsetY": 0})
+        .as_object()
+        .cloned()
+        .unwrap_or_default()
+}
+
 /// Layers `entry`'s fields over its template — the file always shows the
-/// complete schema with user overrides in place.
+/// complete schema with user overrides in place. `elements` merges one
+/// level deeper: each target renders its full knob set.
 fn merged_with_template(dict_key: &str, id: &str, v: &serde_json::Value) -> serde_json::Value {
     let mut merged = template_for(dict_key, id);
     if let Some(obj) = v.as_object() {
-        merged.extend(obj.iter().map(|(k, v)| (k.clone(), v.clone())));
+        for (k, fv) in obj {
+            if dict_key == WIDGET_DICT_KEY && k == "elements" {
+                if let (Some(t), Some(e)) = (
+                    merged.get_mut("elements").and_then(|t| t.as_object_mut()),
+                    fv.as_object(),
+                ) {
+                    for (eid, ev) in e {
+                        let mut em = element_template();
+                        if let Some(eo) = ev.as_object() {
+                            em.extend(eo.iter().map(|(k2, v2)| (k2.clone(), v2.clone())));
+                        }
+                        t.insert(eid.clone(), serde_json::Value::Object(em));
+                    }
+                    continue;
+                }
+            }
+            merged.insert(k.clone(), fv.clone());
+        }
     }
     serde_json::Value::Object(merged)
 }
@@ -487,8 +526,24 @@ fn delta_from_template(
     let tmpl = template_for(dict_key, id);
     let kept: serde_json::Map<String, serde_json::Value> = obj
         .iter()
-        .filter(|(k, fv)| tmpl.get(*k) != Some(*fv))
-        .map(|(k, fv)| (k.clone(), fv.clone()))
+        .filter_map(|(k, fv)| {
+            if tmpl.get(k) == Some(fv) {
+                return None;
+            }
+            // `elements` must be an object of per-target objects —
+            // a scalar there would fail the whole `WidgetParams` parse,
+            // so non-object values (and entries) are dropped here instead.
+            if dict_key == WIDGET_DICT_KEY && *k == "elements" {
+                let els = fv
+                    .as_object()?
+                    .iter()
+                    .filter(|(_, ev)| ev.is_object())
+                    .map(|(ek, ev)| (ek.clone(), ev.clone()))
+                    .collect::<serde_json::Map<_, _>>();
+                return (!els.is_empty()).then(|| (k.clone(), serde_json::Value::Object(els)));
+            }
+            Some((k.clone(), fv.clone()))
+        })
         .collect();
     (!kept.is_empty()).then_some(serde_json::Value::Object(kept))
 }
@@ -1147,11 +1202,76 @@ mod tests {
             serde_json::json!([10, 20, 400, 240])
         );
         assert_eq!(widget["d1"]["adaptiveColor"], false);
-        // Untouched designs render the follow-live baseline.
+        // Untouched designs render the follow-live baseline with the full
+        // sub-element schema discoverable in the file.
         assert_eq!(
             widget["g5"],
-            serde_json::json!({"bounds": null, "adaptiveColor": null})
+            serde_json::json!({
+                "bounds": null,
+                "adaptiveColor": null,
+                "elements": {
+                    "time": {"scale": 1.0, "color": null, "offsetX": 0, "offsetY": 0},
+                    "day": {"scale": 1.0, "color": null, "offsetX": 0, "offsetY": 0},
+                    "date": {"scale": 1.0, "color": null, "offsetX": 0, "offsetY": 0}
+                }
+            })
         );
+    }
+
+    #[test]
+    fn widget_elements_merge_over_template_and_normalize_back() {
+        let mut c = sample();
+        c.settings.clock_style = "g10".into();
+        let mut p = crate::WidgetParams::default();
+        p.elements.insert(
+            "time".to_string(),
+            crate::WidgetElementParams {
+                scale: Some(1.5),
+                color: Some("#FF8800".into()),
+                offset_y: Some(-12.0),
+                ..Default::default()
+            },
+        );
+        c.settings.widget_params.insert("g10".into(), p);
+
+        let split = split_config_json(&ConfigStore::to_json(&c).unwrap());
+        let widget: serde_json::Value = serde_json::from_str(&split.widget).unwrap();
+        // Authored fields override; the rest of the element schema fills in.
+        assert_eq!(widget["g10"]["elements"]["time"]["scale"], 1.5);
+        assert_eq!(widget["g10"]["elements"]["time"]["color"], "#FF8800");
+        assert_eq!(widget["g10"]["elements"]["time"]["offsetX"], 0);
+        assert_eq!(widget["g10"]["elements"]["day"]["scale"], 1.0);
+
+        let store = ConfigStore::new(tmpdir("els-merge"));
+        fs::create_dir_all(store.dir()).unwrap();
+        fs::write(store.primary_path(), &split.main).unwrap();
+        fs::write(store.dir().join(WIDGET_CONFIG_FILE), &split.widget).unwrap();
+        fs::write(store.dir().join(LIVE_EFFECTS_CONFIG_FILE), &split.effects).unwrap();
+        match store.load() {
+            LoadOutcome::Primary(loaded) => {
+                let e = &loaded.settings.widget_params["g10"].elements["time"];
+                assert_eq!(e.scale, Some(1.5));
+                assert_eq!(e.color.as_deref(), Some("#FF8800"));
+                assert_eq!(e.offset_y, Some(-12.0));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+
+        // Non-object element values are dropped at the file boundary —
+        // they can't poison the Config parse.
+        fs::write(
+            store.dir().join(WIDGET_CONFIG_FILE),
+            r#"{"g10":{"elements":{"time":42,"day":{"offsetX":30}}}}"#,
+        )
+        .unwrap();
+        match store.load() {
+            LoadOutcome::Primary(loaded) => {
+                let els = &loaded.settings.widget_params["g10"].elements;
+                assert!(!els.contains_key("time"));
+                assert_eq!(els["day"].offset_x, Some(30.0));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
     }
 
     #[test]

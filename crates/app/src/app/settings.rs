@@ -16,6 +16,55 @@ pub(super) fn snap_gap_dip(snapping: &pecofence_core::SnappingSettings) -> i32 {
 /// A script error on the settings page (`pageError`): its JavaScript error type and position
 /// go to the log as fixed names and numbers; the page never sends the message, which can
 /// quote what the user typed.
+/// The widget dictionary's view of the *active* design's element params —
+/// `{"time":{…},"day":{…},"date":{…}}` with each populated field a knob
+/// the page applies. `{}` when nothing is configured.
+fn clock_els_json(s: &pecofence_core::Settings) -> serde_json::Value {
+    serde_json::to_value(s.active_widget_params().elements)
+        .unwrap_or_else(|_| serde_json::json!({}))
+}
+
+/// `{"t":"clockStyle"}` post — design id plus the resolved element params
+/// and the adaptive master flag so the page renders modder styling on
+/// every design swap and fresh `clockReady`.
+fn clock_style_json(s: &pecofence_core::Settings) -> String {
+    serde_json::json!({
+        "t": "clockStyle",
+        "style": s.clock_style,
+        "adaptive": s.clock_adaptive_color,
+        "els": clock_els_json(s),
+    })
+    .to_string()
+}
+
+/// `{"t":"clockTheme"}` post — `sample` `Some` carries the probe result
+/// (accent + backdrop luminance); `None` is the params/adaptive push used
+/// on toggles and dict edits, which leaves the palette fields untouched.
+fn clock_theme_json(
+    s: &pecofence_core::Settings,
+    sample: Option<&backdrop_probe::Sample>,
+) -> String {
+    let mut v = serde_json::json!({
+        "t": "clockTheme",
+        "adaptive": s.clock_adaptive_color,
+        "els": clock_els_json(s),
+    });
+    if let Some(sample) = sample {
+        let o = v.as_object_mut().unwrap();
+        o.insert("isLightBackdrop".into(), (sample.luminance > 150).into());
+        o.insert("luminance".into(), sample.luminance.into());
+        o.insert(
+            "accent".into(),
+            format!(
+                "#{:02x}{:02x}{:02x}",
+                sample.accent[0], sample.accent[1], sample.accent[2]
+            )
+            .into(),
+        );
+    }
+    v.to_string()
+}
+
 fn log_page_error(v: &serde_json::Value) {
     const KINDS: &[&str] = &[
         "Error",
@@ -475,7 +524,7 @@ impl App {
             return;
         }
         if let Some(h) = &self.clock {
-            h.post_json(&serde_json::json!({ "t": "clockStyle", "style": s }).to_string());
+            h.post_json(&clock_style_json(&self.state.config.settings));
             // Re-assert the transparent surface — cheap insurance for the
             // alpha-loss case the soft restart also covers.
             h.rearm_transparency();
@@ -585,16 +634,10 @@ impl App {
         if !self.state.config.settings.clock_adaptive_color {
             return;
         }
-        h.post_json(
-            &serde_json::json!({
-                "t": "clockTheme",
-                "adaptive": true,
-                "isLightBackdrop": sample.luminance > 150,
-                "accent": format!("#{:02x}{:02x}{:02x}", sample.accent[0], sample.accent[1], sample.accent[2]),
-                "luminance": sample.luminance,
-            })
-            .to_string(),
-        );
+        h.post_json(&clock_theme_json(
+            &self.state.config.settings,
+            Some(&sample),
+        ));
     }
 
     /// The dedicated ExplorerBlurMica editor (settings card's 高级设置 button):
@@ -968,8 +1011,7 @@ impl App {
             // The clock widget page is live: arm its design, then reveal.
             Some("clockReady") => {
                 if let Some(h) = &self.clock {
-                    let s = self.state.config.settings.clock_style.clone();
-                    h.post_json(&serde_json::json!({ "t": "clockStyle", "style": s }).to_string());
+                    h.post_json(&clock_style_json(&self.state.config.settings));
                     window::show_normal(h.hwnd());
                 }
                 self.probe_clock_backdrop();
@@ -1394,10 +1436,15 @@ impl App {
         if new.clock_style != old.clock_style
             && pecofence_core::is_clock_widget_id(&old.clock_style)
         {
-            new.widget_params.insert(
-                old.clock_style.clone(),
-                pecofence_core::WidgetParams::from_runtime(&old),
-            );
+            let mut mirrored = pecofence_core::WidgetParams::from_runtime(&old);
+            // `from_runtime` has no live element state — keep the incoming
+            // dict's authored elements for the outgoing design.
+            mirrored.elements = new
+                .widget_params
+                .get(&old.clock_style)
+                .map(|p| p.elements.clone())
+                .unwrap_or_default();
+            new.widget_params.insert(old.clock_style.clone(), mirrored);
         }
         if new.clock_style != old.clock_style || new.widget_params != old.widget_params {
             new.resolve_widget_params();
@@ -1512,6 +1559,12 @@ impl App {
         // so a fresh `ClockHost::open` spawns at the themed spot (state still
         // holds `old` during this diff — `apply_clock_style` reads it).
         self.state.config.settings.clock_bounds = new.clock_bounds;
+        // Same early-sync for the widget dictionary surface: `apply_clock_style`
+        // resolves element params via `active_widget_params()`, and the
+        // probe/apply paths read `clock_adaptive_color` off state.
+        self.state.config.settings.clock_style = new.clock_style.clone();
+        self.state.config.settings.clock_adaptive_color = new.clock_adaptive_color;
+        self.state.config.settings.widget_params = new.widget_params.clone();
         if new.clock_style != old.clock_style {
             self.apply_clock_style(&new.clock_style);
         }
@@ -1538,8 +1591,17 @@ impl App {
             if new.clock_adaptive_color {
                 self.probe_clock_backdrop();
             } else if let Some(h) = &self.clock {
-                // Adaptive off → the page falls back to its dark palette.
-                h.post_json("{\"t\":\"clockTheme\",\"adaptive\":false}");
+                // Adaptive off → manual element colors take over; the page
+                // also falls back to its dark palette.
+                h.post_json(&clock_theme_json(&new, None));
+            }
+        }
+        // Same-style dictionary edit (import / theme apply): push the
+        // resolved element params. A style switch already carries them in
+        // the `clockStyle` post above.
+        if new.widget_params != old.widget_params && new.clock_style == old.clock_style {
+            if let Some(h) = &self.clock {
+                h.post_json(&clock_theme_json(&new, None));
             }
         }
         let icons_toggled = new.hide_real_icons != old.hide_real_icons;

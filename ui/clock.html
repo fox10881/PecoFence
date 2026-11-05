@@ -539,6 +539,38 @@
   const $ = (sel) => root.querySelector(sel);
   const $$ = (sel) => root.querySelectorAll(sel);
 
+  /* ---- Sub-element modding (Widget_config.json `elements`) ----
+     `elsCfg` = resolved per-design params pushed by the host; `adaptiveOn`
+     is the master toggle — while adaptive color is armed the wallpaper
+     palette owns every text color and manual `color` fields are ignored. */
+  let elsCfg = {}, adaptiveOn = false;
+  const EL_SELS = {
+    time: '.js-t,.js-hh,.js-mm,.js-ss,.js-ap',
+    day: '.js-day',
+    date: '.js-date,.js-dom,.js-mon,.js-year',
+  };
+  function applyEls() {
+    for (const name in EL_SELS) {
+      const p = elsCfg[name] || {};
+      const sc = (typeof p.scale === 'number' && isFinite(p.scale) && p.scale > 0) ? p.scale : 1;
+      const dx = (typeof p.offsetX === 'number' && isFinite(p.offsetX)) ? p.offsetX : 0;
+      const dy = (typeof p.offsetY === 'number' && isFinite(p.offsetY)) ? p.offsetY : 0;
+      $$(EL_SELS[name]).forEach((el) => {
+        // Reset → read the design's *current* computed size → multiply:
+        // fresh on every apply (vmin scales with widget resizes) and
+        // idempotent no matter how often params re-post.
+        el.style.fontSize = '';
+        const base = parseFloat(getComputedStyle(el).fontSize) || 0;
+        el.style.fontSize = sc !== 1 ? base * sc + 'px' : '';
+        // Adaptive palette owns color while armed — clear any manual inline.
+        el.style.color = adaptiveOn ? '' : (typeof p.color === 'string' ? p.color : '');
+        el.style.transform = (dx || dy) ? `translate(${dx}px, ${dy}px)` : '';
+        // Inline elements ignore transforms — give them a box when offset.
+        el.style.display = (dx || dy) ? 'inline-block' : '';
+      });
+    }
+  }
+
   function setDesign(id) {
     style = id;
     root.className = 'style-' + id + (id === 'd10' ? ' style-d10-wrap' : '');
@@ -601,15 +633,30 @@
   if (wv) {
     wv.addEventListener('message', (e) => {
       const m = e.data || {};
-      if (m.t === 'clockStyle' && BUILDS[m.style]) setDesign(m.style);
+      if (m.t === 'clockStyle' && BUILDS[m.style]) {
+        if (m.els) elsCfg = m.els;
+        if (m.adaptive !== undefined) adaptiveOn = m.adaptive !== false;
+        setDesign(m.style);
+        applyEls();
+      }
       else if (m.t === 'clockTheme') {
         const on = m.adaptive !== false;
-        document.body.classList.toggle('light-backdrop', on && !!m.isLightBackdrop);
-        const root = document.documentElement.style;
-        const accent = on && /^#[0-9a-fA-F]{6}$/.test(m.accent || '') ? m.accent : '#38bdf8';
-        root.setProperty('--accent', accent);
-        const r = parseInt(accent.slice(1, 3), 16), g = parseInt(accent.slice(3, 5), 16), b = parseInt(accent.slice(5, 7), 16);
-        root.setProperty('--accent-glow', `rgba(${r}, ${g}, ${b}, 0.45)`);
+        adaptiveOn = on;
+        if (m.els) elsCfg = m.els;
+        // Palette fields only move when the probe actually sends them —
+        // params-only pushes (adaptive/els) must not flash the backdrop.
+        if (m.isLightBackdrop !== undefined)
+          document.body.classList.toggle('light-backdrop', on && !!m.isLightBackdrop);
+        else if (!on)
+          document.body.classList.remove('light-backdrop');
+        if (!on || m.accent !== undefined) {
+          const root = document.documentElement.style;
+          const accent = on && /^#[0-9a-fA-F]{6}$/.test(m.accent || '') ? m.accent : '#38bdf8';
+          root.setProperty('--accent', accent);
+          const r = parseInt(accent.slice(1, 3), 16), g = parseInt(accent.slice(3, 5), 16), b = parseInt(accent.slice(5, 7), 16);
+          root.setProperty('--accent-glow', `rgba(${r}, ${g}, ${b}, 0.45)`);
+        }
+        applyEls();
       }
       else if (m.t === 'clockLocale') {
         window.PECOFENCE_LOCALE = { locale: m.locale, translations: m.translations };
