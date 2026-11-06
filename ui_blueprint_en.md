@@ -1,4 +1,4 @@
-# PecoFence UI Blueprint
+# CoreDesk UI Blueprint
 
 > Complete hierarchy of every UI surface: settings window, tray menu, context menus, dialogs. Control types in parentheses.
 
@@ -6,7 +6,7 @@
 ## Settings Window
 
   - **Settings navigation (left sidebar)**
-    - Brand mark: PecoFence icon + name
+    - Brand mark: CoreDesk icon + name
     - General
     - Fences
     - Sorting rules
@@ -157,10 +157,10 @@
     - **Theme gallery**
       - Theme name (optional)
       - Save current configuration
-      - Import .peco theme
+      - Import .cde theme
       - Open themes folder
       - Dynamic: theme card grid (preview thumbnail + name)
-          - *Per-card: Apply · Export .peco · Delete*
+          - *Per-card: Apply · Export .cde · Delete*
     - Always show full background regardless of aspect ratio
     - Auto-update the current theme daily
     - **Multi-monitor**
@@ -169,10 +169,10 @@
 
 ### 📄 About
 
-    - App info card (icon + PecoFence version + description + Apache 2.0 license + memory usage)
+    - App info card (icon + CoreDesk version + description + Apache 2.0 license + memory usage)
     - Update
     - User manual (animated demo per feature)
-    - Enjoying PecoFence?
+    - Enjoying CoreDesk?
     - **Feedback**
       - Crash-recovery note (shown after unexpected shutdown)
       - Type
@@ -200,7 +200,7 @@
   - Repair desktop icons (when they vanish)
   - Send feedback…
   - Settings…
-  - Exit PecoFence
+  - Exit CoreDesk
 
 ## Fence Right-Click Menu
 

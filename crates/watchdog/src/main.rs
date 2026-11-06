@@ -1,11 +1,11 @@
-//! pecofence-watchdog: waits for the main process to exit and, if it died without restoring the
+//! coredesk-watchdog: waits for the main process to exit and, if it died without restoring the
 //! desktop icons (marker file still present), sends the "show desktop icons" toggle itself.
 //!
-//! Usage: `pecofence-watchdog <parent-pid> <marker-path>`
+//! Usage: `coredesk-watchdog <parent-pid> <marker-path>`
 
 #![windows_subsystem = "windows"]
 
-use pecofence_platform::{desktop, process, shell_icons, window};
+use coredesk_platform::{desktop, process, shell_icons, window};
 use std::path::PathBuf;
 
 fn main() {
@@ -25,10 +25,13 @@ fn main() {
     }
     // Give Explorer a moment, then restore if still hidden. Explorer may be restarting or hung,
     // so keep trying for a while; if it never works the marker stays, and the next start adopts
-    // the hidden icons and restores them at exit. A PecoFence started meanwhile takes them
+    // the hidden icons and restores them at exit. A CoreDesk Engine started meanwhile takes them
     // over: the icons and the marker are its own then.
-    let instance = pecofence_core::brand::var("PECOFENCE_INSTANCE").ok();
-    let [mutex, _] = pecofence_core::brand::instance_mutex_names(instance.as_deref());
+    let instance = coredesk_core::brand::var("COREDESK_INSTANCE").ok();
+    let mutex = coredesk_core::brand::instance_mutex_names(instance.as_deref())
+        .into_iter()
+        .next()
+        .unwrap_or_default();
     std::thread::sleep(std::time::Duration::from_millis(300));
     for attempt in 0..10 {
         if attempt > 0 {

@@ -5,7 +5,7 @@ if ($env:GITHUB_ACTIONS -ne "true" -or -not $env:RUNNER_TEMP -or -not $env:GITHU
 }
 $lock = Get-Content -LiteralPath "$PSScriptRoot/../packaging/inno/toolchain.json" -Raw | ConvertFrom-Json
 $download = Join-Path $env:RUNNER_TEMP "innosetup-$($lock.version).exe"
-$destination = Join-Path $env:RUNNER_TEMP "pecofence-inno-$($lock.version)"
+$destination = Join-Path $env:RUNNER_TEMP "coredesk-inno-$($lock.version)"
 Invoke-WebRequest -Uri $lock.url -OutFile $download
 if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ine $lock.sha256) { throw "Inno Setup SHA-256 mismatch" }
 $process = Start-Process -FilePath $download -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/NOICONS', "/DIR=`"$destination`"") -WindowStyle Hidden -Wait -PassThru

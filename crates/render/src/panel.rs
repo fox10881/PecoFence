@@ -22,7 +22,7 @@ impl Clip<'_> {
     /// Runs `f` with drawing clipped to `rect` (DIPs, the same space as the session's drawing
     /// calls); the clip is popped afterwards even when `f` fails.
     pub fn scoped(&self, rect: &Rect, f: impl FnOnce() -> Result<()>) -> Result<()> {
-        let _clip = pecofence_platform::d2d::push_axis_aligned_clip(
+        let _clip = coredesk_platform::d2d::push_axis_aligned_clip(
             self.context,
             rect.left,
             rect.top,

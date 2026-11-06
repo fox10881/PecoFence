@@ -42,9 +42,9 @@ $plateX=[int](($screen.Width-$plateW)/2);$plateY=[int](($screen.Height-$plateH)/
 $reference=Get-Content -LiteralPath (Join-Path $projectDir ".capture\launch\hero\app\config\config.json") -Raw|ConvertFrom-Json -AsHashtable
 $fingerprint=$reference.layouts[0].fingerprint
 $dpiScale=$fingerprint[0].dpi/96.0
-$binary=Join-Path $projectDir ".capture\reviewed-build\target\debug\pecofence.exe"
+$binary=Join-Path $projectDir ".capture\reviewed-build\target\debug\coredesk.exe"
 $viewer=Join-Path $projectDir ".capture\reviewed-build\DemoDocumentViewer.exe"
-Copy-Item -LiteralPath $binary -Destination (Join-Path $appDir "pecofence.exe")
+Copy-Item -LiteralPath $binary -Destination (Join-Path $appDir "coredesk.exe")
 Copy-Item -LiteralPath (Join-Path $workspaceDir "target\release\WebView2Loader.dll") -Destination (Join-Path $appDir "WebView2Loader.dll")
 $proofPath=Join-Path $caseDir "viewer-opened.json"
 $brief=Join-Path $payloadDir "Brief.txt"
@@ -100,7 +100,7 @@ $settings=$reference.settings|ConvertTo-Json -Depth 20|ConvertFrom-Json -AsHasht
 $settings.language="en";$settings.theme="dark";$settings.themeStyle="liquidGlass"
 $settings.desktopPath=$filesDir;$settings.hideRealIcons=$false;$settings.showRealIconsWhenFencesHidden=$false
 $settings.peek.enabled=$false;$settings.peek.dim=$true;$settings.snapping.sizeToCells=$false
-$reg=Get-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name PecoFence -ErrorAction SilentlyContinue
+$reg=Get-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name CoreDesk -ErrorAction SilentlyContinue
 $settings.autostart=($null -ne $reg)
 $config=@{schemaVersion=1;settings=$settings;items=$items;layouts=@(@{fingerprint=$fingerprint;fences=@($unsorted,$work,$art,$inbox)});rules=@{defaultTarget="inbox";keepUpdated=$false;list=@()};undoLog=@();snapshots=@()}
 $configPath=Join-Path $appDir "config\config.json"
@@ -131,7 +131,7 @@ function Verify-Membership([hashtable]$State){
     return $result
 }
 $priorForeground=[ReviewNative]::GetForegroundWindow()
-$saved=@{instance=$env:PECOFENCE_INSTANCE;test=$env:PECOFENCE_UI_TEST_WINDOWS;local=$env:LOCALAPPDATA;fixture=$env:PECOFENCE_DEMO_DESKTOP}
+$saved=@{instance=$env:COREDESK_INSTANCE;test=$env:COREDESK_UI_TEST_WINDOWS;local=$env:LOCALAPPDATA;fixture=$env:COREDESK_DEMO_DESKTOP}
 $sceneReports=@()
 try {
  foreach($scene in @("flow","peek")){
@@ -151,7 +151,7 @@ try {
     $background.Bounds=$screen
     $background.BackgroundImage=[Drawing.Image]::FromFile((Join-Path $projectDir "public\wallpaper.png"))
     $background.BackgroundImageLayout="Stretch"
-    $background.Text="PecoFence isolated capture"
+    $background.Text="CoreDesk isolated capture"
     $board=$null;$app=$null;$recorder=$null
     $done=@{};$shown=@{};$events=[Collections.Generic.List[object]]::new()
     $caseLength=if($scene -eq "flow"){20.0}else{17.0}
@@ -159,13 +159,13 @@ try {
         $background.Show()
         [ReviewNative]::SetWindowPos($background.Handle,[IntPtr](-1),0,0,0,0,0x13)|Out-Null
         [Windows.Forms.Application]::DoEvents()
-        $env:PECOFENCE_INSTANCE="review-$Take-$scene"
-        $env:PECOFENCE_UI_TEST_WINDOWS="1"
-        $env:PECOFENCE_DEMO_DESKTOP=$filesDir
+        $env:COREDESK_INSTANCE="review-$Take-$scene"
+        $env:COREDESK_UI_TEST_WINDOWS="1"
+        $env:COREDESK_DEMO_DESKTOP=$filesDir
         $env:LOCALAPPDATA=Join-Path $sceneDir "appdata"
         New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force|Out-Null
         $arguments=@("--portable","--no-hide-icons","--dark","--wallpaper",('"'+(Join-Path $projectDir "public\wallpaper.png")+'"'),"--test-script",('"'+$scriptFile+'"'),"--exit-after","30000")
-        $app=Start-Process -FilePath (Join-Path $appDir "pecofence.exe") -ArgumentList $arguments -WindowStyle Hidden -PassThru
+        $app=Start-Process -FilePath (Join-Path $appDir "coredesk.exe") -ArgumentList $arguments -WindowStyle Hidden -PassThru
         $timer=[Diagnostics.Stopwatch]::StartNew()
         Write-Output "Capturing isolated $scene / $Take"
         while($timer.Elapsed.TotalSeconds -lt $caseLength -and -not $app.HasExited){
@@ -173,7 +173,7 @@ try {
             foreach($window in [ReviewNative]::Windows([uint32]$app.Id)){
                 $title=[ReviewNative]::Title($window)
                 if($title -eq "Demo inbox"){[ReviewNative]::ShowWindow($window,0)|Out-Null;continue}
-                if([ReviewNative]::Class($window) -eq "PecoFence.Fence"){
+                if([ReviewNative]::Class($window) -eq "CoreDeskEngine.Fence"){
                     if(-not $shown[$window.ToInt64()] -and $timer.Elapsed.TotalSeconds -gt 1.7){
                         [ReviewNative]::ShowWindow($window,4)|Out-Null;$shown[$window.ToInt64()]=$true
                     }
@@ -278,7 +278,7 @@ try {
     stagedApplications=@("Launchpad project-board window","File-backed demo document viewer")
  }|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $assetDir "capture-manifest.json") -Encoding utf8
 }finally{
-    $env:PECOFENCE_INSTANCE=$saved.instance;$env:PECOFENCE_UI_TEST_WINDOWS=$saved.test
-    $env:LOCALAPPDATA=$saved.local;$env:PECOFENCE_DEMO_DESKTOP=$saved.fixture
+    $env:COREDESK_INSTANCE=$saved.instance;$env:COREDESK_UI_TEST_WINDOWS=$saved.test
+    $env:LOCALAPPDATA=$saved.local;$env:COREDESK_DEMO_DESKTOP=$saved.fixture
     [ReviewNative]::SetForegroundWindow($priorForeground)|Out-Null
 }

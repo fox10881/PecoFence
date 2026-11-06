@@ -1,5 +1,5 @@
 //! Keyboard shortcuts for Peek: the text form `peek.customHotkey` stores ("Ctrl+Alt+Space"),
-//! the keys a shortcut may end with, and the combinations PecoFence refuses to take.
+//! the keys a shortcut may end with, and the combinations CoreDesk Engine refuses to take.
 
 /// Modifier bits, the values `RegisterHotKey` takes (`MOD_ALT`, `MOD_CONTROL`, `MOD_SHIFT`,
 /// `MOD_WIN`).
@@ -149,7 +149,7 @@ fn key_code(name: &str) -> Option<u32> {
         .map(|(k, _)| *k)
 }
 
-/// `name` with an alias replaced by the name PecoFence writes.
+/// `name` with an alias replaced by the name CoreDesk Engine writes.
 fn canonical(name: &str) -> &str {
     ALIASES
         .iter()

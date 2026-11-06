@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PecoFence 使用手册</title>
-<meta name="description" content="PecoFence 使用手册：每一节都配了一段动画，演示怎么新建、整理、收起栅栏，以及怎么让 AI 帮你配置。">
+<title>CoreDesk 使用手册</title>
+<meta name="description" content="CoreDesk 使用手册：每一节都配了一段动画，演示怎么新建、整理、收起栅栏，以及怎么让 AI 帮你配置。">
 <!--manual:head-->
 <link rel="icon" href="assets/mark.svg">
 <link rel="stylesheet" href="manual.css">
@@ -37,11 +37,11 @@
 
 <div class="manual-hero">
   <section class="intro">
-    <h1>PecoFence 使用手册</h1>
+    <h1>CoreDesk 使用手册</h1>
     <p>每一节都配了一段动画，跟着做一遍就会。点任意一步，动画就跳到那里；看不清就点「慢放」。</p>
     <a class="intro-ai" href="#ai">
         <span class="intro-ai-mark" aria-hidden="true">AI</span>
-        <span class="intro-ai-text"><b>嫌一项项设置麻烦？</b>把想要的效果告诉 Claude Code、Codex 这类 AI 助手，它会帮你把 PecoFence 配好。</span>
+        <span class="intro-ai-text"><b>嫌一项项设置麻烦？</b>把想要的效果告诉 Claude Code、Codex 这类 AI 助手，它会帮你把 CoreDesk 配好。</span>
         <span class="intro-ai-go">看看怎么做 →</span>
       </a>
   </section>
@@ -111,11 +111,11 @@
       <header class="lesson-head">
         <p class="kicker">1.1 · 上手</p>
         <h2>第一次打开</h2>
-        <p class="lede">打开 PecoFence，桌面上的图标会自动分好类。</p>
+        <p class="lede">打开 CoreDesk，桌面上的图标会自动分好类。</p>
       </header>
       <div class="lesson-body">
         <figure class="demo">
-          <div class="stage" role="img" aria-label="动画：双击打开 PecoFence，桌面图标飞进右边的四个栅栏；新文件自动进了「文件与文档」；从托盘菜单退出后，图标回到桌面原来的位置"></div>
+          <div class="stage" role="img" aria-label="动画：双击打开 CoreDesk，桌面图标飞进右边的四个栅栏；新文件自动进了「文件与文档」；从托盘菜单退出后，图标回到桌面原来的位置"></div>
           <div class="controls">
             <button class="btn play" type="button" data-play aria-label="暂停">
               <svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="2.5" width="3" height="11" rx="1"/><rect x="9.5" y="2.5" width="3" height="11" rx="1"/></svg>
@@ -127,10 +127,10 @@
         </figure>
         <div class="side">
           <ol class="steps">
-            <li data-at="0.3"><span class="n">1</span><p>打开 PecoFence，从开始菜单或桌面快捷方式打开都行。</p></li>
+            <li data-at="0.3"><span class="n">1</span><p>打开 CoreDesk，从开始菜单或桌面快捷方式打开都行。</p></li>
             <li data-at="1.8"><span class="n">2</span><p>第一次打开时，它会在屏幕右边建好四个栅栏，把桌面图标按类型放进去。</p></li>
             <li data-at="4.9"><span class="n">3</span><p>以后桌面上有了新文件，也会自动放进对应的栅栏。</p></li>
-            <li data-at="6.9"><span class="n">4</span><p>想恢复原样，就右键托盘图标（任务栏右下角的 PecoFence 图标，没看到就先点 <b>^</b>），选<b>「退出 PecoFence」</b>。文件一直在桌面文件夹里，PecoFence 只是把它们放进栅栏显示。</p></li>
+            <li data-at="6.9"><span class="n">4</span><p>想恢复原样，就右键托盘图标（任务栏右下角的 CoreDesk 图标，没看到就先点 <b>^</b>），选<b>「退出 CoreDesk」</b>。文件一直在桌面文件夹里，CoreDesk 只是把它们放进栅栏显示。</p></li>
           </ol>
           <aside class="tip">
             <h3>小提示</h3>
@@ -241,11 +241,11 @@
       <header class="lesson-head">
         <p class="kicker">2.1 · 交给 AI</p>
         <h2>让 AI 帮你配置</h2>
-        <p class="lede">把想要的效果告诉 AI 助手，它会用 PecoFence 自带的命令行工具 pecofence-cli 帮你改好。</p>
+        <p class="lede">把想要的效果告诉 AI 助手，它会用 CoreDesk 自带的命令行工具 coredesk-cli 帮你改好。</p>
       </header>
       <div class="lesson-body">
         <figure class="demo">
-          <div class="stage" role="img" aria-label="动画：在 AI 编程助手里粘贴需求并发送；助手先运行 pecofence-cli skill 和 pecofence-cli describe，查看栅栏，导出配置并保存布局快照，再切换为深色模式、把所有栅栏调得更透明；右边桌面上的栅栏随之变暗、变透明"></div>
+          <div class="stage" role="img" aria-label="动画：在 AI 编程助手里粘贴需求并发送；助手先运行 coredesk-cli skill 和 coredesk-cli describe，查看栅栏，导出配置并保存布局快照，再切换为深色模式、把所有栅栏调得更透明；右边桌面上的栅栏随之变暗、变透明"></div>
           <div class="controls">
             <button class="btn play" type="button" data-play aria-label="暂停">
               <svg class="i-pause" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="2.5" width="3" height="11" rx="1"/><rect x="9.5" y="2.5" width="3" height="11" rx="1"/></svg>
@@ -257,8 +257,8 @@
         </figure>
         <div class="side">
           <ol class="steps">
-            <li data-at="0.3"><span class="n">1</span><p>打开 PecoFence，再打开你的 AI 编程助手（Claude Code、Codex、Cursor 都可以），把需求发给它。</p></li>
-            <li data-at="2.3"><span class="n">2</span><p>按这段话，助手会先运行 <code>pecofence-cli skill</code> 和 <code>pecofence-cli describe</code>，弄清怎么用，然后查看现在的配置，改之前先备份一份。</p></li>
+            <li data-at="0.3"><span class="n">1</span><p>打开 CoreDesk，再打开你的 AI 编程助手（Claude Code、Codex、Cursor 都可以），把需求发给它。</p></li>
+            <li data-at="2.3"><span class="n">2</span><p>按这段话，助手会先运行 <code>coredesk-cli skill</code> 和 <code>coredesk-cli describe</code>，弄清怎么用，然后查看现在的配置，改之前先备份一份。</p></li>
             <li data-at="5.6"><span class="n">3</span><p>接着它运行命令修改配置。每改一项，桌面上的栅栏马上跟着变。</p></li>
           </ol>
           <div class="xa-prompt">
@@ -266,11 +266,11 @@
               <h3>可以这样写</h3>
               <button class="xa-copy" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.6"/><path d="M10.5 3.5v-.4A1.6 1.6 0 0 0 8.9 1.5H4.1a1.6 1.6 0 0 0-1.6 1.6v4.8a1.6 1.6 0 0 0 1.6 1.6h.4"/></svg><span>复制</span></button>
             </div>
-            <p>先阅读 pecofence-cli skill 和 pecofence-cli describe，查看并备份我的配置，再切换为深色模式，把所有栅栏调得更透明。</p>
+            <p>先阅读 coredesk-cli skill 和 coredesk-cli describe，查看并备份我的配置，再切换为深色模式，把所有栅栏调得更透明。</p>
           </div>
           <aside class="tip">
             <h3>小提示</h3>
-            <p>Microsoft Store 版装好就能直接用 <code>pecofence-cli</code>。安装版和便携版要把 <code>pecofence-cli.exe</code> 的完整路径告诉助手：安装版默认在 <code>%LOCALAPPDATA%\<wbr>Programs\<wbr>PecoFence</code>，便携版在你解压的文件夹里。</p>
+            <p>Microsoft Store 版装好就能直接用 <code>coredesk-cli</code>。安装版和便携版要把 <code>coredesk-cli.exe</code> 的完整路径告诉助手：安装版默认在 <code>%LOCALAPPDATA%\<wbr>Programs\<wbr>CoreDesk</code>，便携版在你解压的文件夹里。</p>
           </aside>
         </div>
       </div>
@@ -429,7 +429,7 @@
             <li data-at="0.3"><span class="n">1</span><p>在桌面空白处双击，栅栏就都藏起来了。</p></li>
             <li data-at="1.7"><span class="n">2</span><p>设了<b>「双击桌面隐藏时保留此栅栏」</b>的栅栏会留在桌面上，比如这里的「常用」。这个开关在它的<b>「栅栏选项…」</b>里。</p></li>
             <li data-at="3.5"><span class="n">3</span><p>再双击一次，栅栏就回来了。</p></li>
-            <li data-at="4.6"><span class="n">4</span><p>也可以右键托盘图标（任务栏右下角的 PecoFence 图标），选<b>「隐藏所有栅栏」</b>。</p></li>
+            <li data-at="4.6"><span class="n">4</span><p>也可以右键托盘图标（任务栏右下角的 CoreDesk 图标），选<b>「隐藏所有栅栏」</b>。</p></li>
           </ol>
           <aside class="tip">
             <h3>小提示</h3>
@@ -465,7 +465,7 @@
           </ol>
           <aside class="tip">
             <h3>小提示</h3>
-            <p>也可以右键托盘图标（任务栏右下角的 PecoFence 图标），选「速览所有栅栏」。快捷键在「设置」→「常规」→「速览栅栏」里换。点一下那里的快捷键方框，按下想用的组合键就行。</p>
+            <p>也可以右键托盘图标（任务栏右下角的 CoreDesk 图标），选「速览所有栅栏」。快捷键在「设置」→「常规」→「速览栅栏」里换。点一下那里的快捷键方框，按下想用的组合键就行。</p>
           </aside>
         </div>
       </div>
@@ -596,7 +596,7 @@
           </ol>
           <aside class="tip">
             <h3>小提示</h3>
-            <p>快照只管栅栏布局。设置和整理规则可以用「导出…」存成文件，换电脑时再「导入…」。PecoFence 每天还会自动备份一份完整配置，保留最近 7 份；恢复备份会把设置和规则也换掉。</p>
+            <p>快照只管栅栏布局。设置和整理规则可以用「导出…」存成文件，换电脑时再「导入…」。CoreDesk 每天还会自动备份一份完整配置，保留最近 7 份；恢复备份会把设置和规则也换掉。</p>
           </aside>
         </div>
       </div>
@@ -756,7 +756,7 @@
       <header class="lesson-head">
         <p class="kicker">附录 B</p>
         <h2>常见问题</h2>
-        <p class="lede">用 PecoFence 时大家常问的几件事。</p>
+        <p class="lede">用 CoreDesk 时大家常问的几件事。</p>
       </header>
       <div class="ap-faq">
         <section class="ap-q">
@@ -765,15 +765,15 @@
         </section>
         <section class="ap-q">
           <h3>栅栏突然全不见了？</h3>
-          <p>多半是不小心双击了桌面空白处，把栅栏隐藏了。再双击一次就回来了，也可以右键托盘图标（任务栏右下角的 PecoFence 图标），选<b>「显示所有栅栏」</b>。用不上这个功能的话，到「设置」→「常规」关掉<b>「双击桌面空白处隐藏或显示栅栏」</b>。</p>
+          <p>多半是不小心双击了桌面空白处，把栅栏隐藏了。再双击一次就回来了，也可以右键托盘图标（任务栏右下角的 CoreDesk 图标），选<b>「显示所有栅栏」</b>。用不上这个功能的话，到「设置」→「常规」关掉<b>「双击桌面空白处隐藏或显示栅栏」</b>。</p>
         </section>
         <section class="ap-q">
           <h3>桌面图标全不见了怎么办？</h3>
-          <p>PecoFence 运行时会隐藏 Windows 自己的桌面图标，图标都显示在栅栏里。要是退出后图标没回来，右键桌面，选<b>「查看」</b>→<b>「显示桌面图标」</b>就行。PecoFence 开着时，也可以右键托盘图标，选<b>「修复桌面图标（图标消失时使用）」</b>。</p>
+          <p>CoreDesk 运行时会隐藏 Windows 自己的桌面图标，图标都显示在栅栏里。要是退出后图标没回来，右键桌面，选<b>「查看」</b>→<b>「显示桌面图标」</b>就行。CoreDesk 开着时，也可以右键托盘图标，选<b>「修复桌面图标（图标消失时使用）」</b>。</p>
         </section>
         <section class="ap-q">
           <h3>退出或卸载以后，桌面会变成什么样？</h3>
-          <p>退出后栅栏消失，桌面图标重新显示出来，和用 PecoFence 之前一样。卸载只删除程序本身，桌面上的文件不受影响。安装版卸载后设置还留着，Microsoft Store 版会连设置一起删掉，需要的话先导出配置。便携版没有卸载程序：先在「设置」→「常规」关掉<b>「随 Windows 启动」</b>，退出后再删掉文件夹。</p>
+          <p>退出后栅栏消失，桌面图标重新显示出来，和用 CoreDesk 之前一样。卸载只删除程序本身，桌面上的文件不受影响。安装版卸载后设置还留着，Microsoft Store 版会连设置一起删掉，需要的话先导出配置。便携版没有卸载程序：先在「设置」→「常规」关掉<b>「随 Windows 启动」</b>，退出后再删掉文件夹。</p>
         </section>
         <section class="ap-q">
           <h3>按 <kbd>Win</kbd>+<kbd>D</kbd> 时，栅栏会消失吗？</h3>
@@ -781,27 +781,27 @@
         </section>
         <section class="ap-q">
           <h3>有多台显示器怎么办？</h3>
-          <p>笔记本接上或拔掉外接显示器，栅栏还是那一套，只是摆放的位置不同。每换一种显示器组合、分辨率或缩放，PecoFence 都会单独记住栅栏怎么摆，换回来就是原样。想把两台显示器上的栅栏对调，到「设置」→「布局与备份」点<b>「交换」</b>。</p>
+          <p>笔记本接上或拔掉外接显示器，栅栏还是那一套，只是摆放的位置不同。每换一种显示器组合、分辨率或缩放，CoreDesk 都会单独记住栅栏怎么摆，换回来就是原样。想把两台显示器上的栅栏对调，到「设置」→「布局与备份」点<b>「交换」</b>。</p>
         </section>
         <section class="ap-q">
           <h3>新文件为什么进了「桌面」栅栏？</h3>
-          <p>新文件出现在桌面上时，PecoFence 会按整理规则给它找栅栏，一条都对不上就放进「桌面」栅栏。到「设置」→「整理规则」加一条规则，以后同类文件就会自动去别的栅栏。也可以直接把图标拖到想放的栅栏里，规则不会再把它挪走。</p>
+          <p>新文件出现在桌面上时，CoreDesk 会按整理规则给它找栅栏，一条都对不上就放进「桌面」栅栏。到「设置」→「整理规则」加一条规则，以后同类文件就会自动去别的栅栏。也可以直接把图标拖到想放的栅栏里，规则不会再把它挪走。</p>
         </section>
         <section class="ap-q">
           <h3>配置文件在哪？便携版呢？</h3>
-          <p>打开「设置」→「关于」就能看到配置文件的位置，点<b>「打开配置文件夹」</b>可以直接打开。一般在 <code>%APPDATA%\PecoFence</code>，Microsoft Store 版在 <code>%LOCALAPPDATA%\<wbr>Packages\<wbr>DayuanJiang.PecoFence_0bme5nfnaj27p\<wbr>LocalCache\<wbr>Roaming\<wbr>PecoFence</code>。便携版加上 <code>--portable</code> 参数启动时，会改用程序旁边的 <code>config</code> 文件夹。</p>
+          <p>打开「设置」→「关于」就能看到配置文件的位置，点<b>「打开配置文件夹」</b>可以直接打开。一般在 <code>%APPDATA%\CoreDesk</code>，Microsoft Store 版在 <code>%LOCALAPPDATA%\<wbr>Packages\<wbr>DayuanJiang.CoreDesk_0bme5nfnaj27p\<wbr>LocalCache\<wbr>Roaming\<wbr>CoreDesk</code>。便携版加上 <code>--portable</code> 参数启动时，会改用程序旁边的 <code>config</code> 文件夹。</p>
         </section>
         <section class="ap-q">
           <h3>怎么备份？换电脑时怎么办？</h3>
-          <p>到「设置」→「布局与备份」，点<b>「导出…」</b>，把设置、整理规则和栅栏布局存成一个文件，在新电脑上点<b>「导入…」</b>就行。桌面上的文件不在里面，要自己拷过去。PecoFence 每天还会自动备份一次，最近 7 份都列在这一页，点<b>「恢复」</b>就能用。恢复备份会连设置和规则一起换掉。</p>
+          <p>到「设置」→「布局与备份」，点<b>「导出…」</b>，把设置、整理规则和栅栏布局存成一个文件，在新电脑上点<b>「导入…」</b>就行。桌面上的文件不在里面，要自己拷过去。CoreDesk 每天还会自动备份一次，最近 7 份都列在这一页，点<b>「恢复」</b>就能用。恢复备份会连设置和规则一起换掉。</p>
         </section>
         <section class="ap-q">
           <h3>怎么设置开机启动？</h3>
-          <p>默认就会随 Windows 启动，开关在「设置」→「常规」→<b>「随 Windows 启动」</b>。用 <code>--portable</code> 启动的便携版不会自己设置，要手动打开这个开关。Microsoft Store 版点这个开关，会跳到 Windows 设置的<b>「应用」</b>→<b>「启动」</b>页，在那里打开或关闭 PecoFence。</p>
+          <p>默认就会随 Windows 启动，开关在「设置」→「常规」→<b>「随 Windows 启动」</b>。用 <code>--portable</code> 启动的便携版不会自己设置，要手动打开这个开关。Microsoft Store 版点这个开关，会跳到 Windows 设置的<b>「应用」</b>→<b>「启动」</b>页，在那里打开或关闭 CoreDesk。</p>
         </section>
         <section class="ap-q">
           <h3>速览的快捷键按了没反应？</h3>
-          <p>右键托盘图标，「速览所有栅栏」后面显示的就是现在能用的快捷键。你选的快捷键被系统或别的程序占用时，PecoFence 会自动换一个能用的，并弹出提示。后面什么都没写，说明速览关掉了，或者快捷键全被占了，这时直接点这个菜单项也行。开关和快捷键都在「设置」→「常规」→<b>「速览栅栏」</b>里。那里的快捷键方框显示的也是现在能用的那个，想换就点一下方框，按下新的组合键。</p>
+          <p>右键托盘图标，「速览所有栅栏」后面显示的就是现在能用的快捷键。你选的快捷键被系统或别的程序占用时，CoreDesk 会自动换一个能用的，并弹出提示。后面什么都没写，说明速览关掉了，或者快捷键全被占了，这时直接点这个菜单项也行。开关和快捷键都在「设置」→「常规」→<b>「速览栅栏」</b>里。那里的快捷键方框显示的也是现在能用的那个，想换就点一下方框，按下新的组合键。</p>
         </section>
         <section class="ap-q">
           <h3>遇到问题怎么反馈？</h3>

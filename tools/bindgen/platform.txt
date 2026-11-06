@@ -356,7 +356,7 @@
     PROCESS_MEMORY_COUNTERS
     QueryWorkingSet
 
-    // ---- CLI named pipe (pecofence-cli IPC)
+    // ---- CLI named pipe (coredesk-cli IPC)
     CreateNamedPipeW
     ConnectNamedPipe
     DisconnectNamedPipe

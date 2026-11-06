@@ -4,6 +4,7 @@
 pub mod adaptive;
 pub mod base64;
 pub mod brand;
+pub mod cde_theme;
 pub mod config_store;
 pub mod date_group;
 pub mod geometry;
@@ -11,7 +12,6 @@ pub mod hotkey;
 pub mod i18n;
 pub mod model;
 pub mod notification_center_themes;
-pub mod peco_theme;
 pub mod rules;
 pub mod start_menu_themes;
 pub mod taskbar_themes;

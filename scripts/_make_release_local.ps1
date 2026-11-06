@@ -7,4 +7,4 @@ $env:PATH = "$env:USERPROFILE\.rustup\toolchains\$tc\bin;" + $env:PATH
 $cargo = (Get-Command cargo).Source
 Write-Output "cargo: $cargo"
 & cargo --version
-& "$PSScriptRoot\make-windows.ps1" -Repository fox10881/PecoFence -Iscc "C:\Users\yahya\AppData\Local\Temp\pecofence-inno-7.1.0\ISCC.exe"
+& "$PSScriptRoot\make-windows.ps1" -Repository fox10881/CoreDesk -Iscc "C:\Users\yahya\AppData\Local\Temp\coredesk-inno-7.1.0\ISCC.exe"

@@ -9,7 +9,7 @@ pub(super) const MAX_SNAP_GAP_DIP: i32 = 64;
 
 /// `snapping.gapPx` as the gap (DIPs) fence windows keep to each other and the work-area edges
 /// while snapping.
-pub(super) fn snap_gap_dip(snapping: &pecofence_core::SnappingSettings) -> i32 {
+pub(super) fn snap_gap_dip(snapping: &coredesk_core::SnappingSettings) -> i32 {
     snapping.gap_px.clamp(0, MAX_SNAP_GAP_DIP)
 }
 
@@ -19,7 +19,7 @@ pub(super) fn snap_gap_dip(snapping: &pecofence_core::SnappingSettings) -> i32 {
 /// The widget dictionary's view of the *active* design's element params —
 /// `{"time":{…},"day":{…},"date":{…}}` with each populated field a knob
 /// the page applies. `{}` when nothing is configured.
-fn clock_els_json(s: &pecofence_core::Settings) -> serde_json::Value {
+fn clock_els_json(s: &coredesk_core::Settings) -> serde_json::Value {
     serde_json::to_value(s.active_widget_params().elements)
         .unwrap_or_else(|_| serde_json::json!({}))
 }
@@ -27,7 +27,7 @@ fn clock_els_json(s: &pecofence_core::Settings) -> serde_json::Value {
 /// `{"t":"clockStyle"}` post — design id plus the resolved element params
 /// and the adaptive master flag so the page renders modder styling on
 /// every design swap and fresh `clockReady`.
-fn clock_style_json(s: &pecofence_core::Settings) -> String {
+fn clock_style_json(s: &coredesk_core::Settings) -> String {
     serde_json::json!({
         "t": "clockStyle",
         "style": s.clock_style,
@@ -53,8 +53,8 @@ fn clock_style_json(s: &pecofence_core::Settings) -> String {
 ///
 /// Without a recorded baseline (`sidecar_diff` → `None`, e.g. a store
 /// that never loaded) the legacy fill-if-unset merge runs instead.
-fn merge_sidecar_deltas(s: &mut pecofence_core::Settings, store: &pecofence_core::ConfigStore) {
-    use pecofence_core::config_store as cs;
+fn merge_sidecar_deltas(s: &mut coredesk_core::Settings, store: &coredesk_core::ConfigStore) {
+    use coredesk_core::config_store as cs;
     let empty = serde_json::json!({});
     if let Some(diff) = store.sidecar_diff(cs::LIVE_EFFECTS_CONFIG_FILE, cs::EFFECTS_DICT_KEY) {
         for id in &diff.changed {
@@ -75,9 +75,7 @@ fn merge_sidecar_deltas(s: &mut pecofence_core::Settings, store: &pecofence_core
             let params = diff
                 .deltas
                 .get(id)
-                .and_then(|d| {
-                    serde_json::from_value::<pecofence_core::EffectParams>(d.clone()).ok()
-                })
+                .and_then(|d| serde_json::from_value::<coredesk_core::EffectParams>(d.clone()).ok())
                 .map(|mut p| {
                     p.sanitize();
                     p
@@ -111,9 +109,7 @@ fn merge_sidecar_deltas(s: &mut pecofence_core::Settings, store: &pecofence_core
             let mut params = diff
                 .deltas
                 .get(id)
-                .and_then(|d| {
-                    serde_json::from_value::<pecofence_core::WidgetParams>(d.clone()).ok()
-                })
+                .and_then(|d| serde_json::from_value::<coredesk_core::WidgetParams>(d.clone()).ok())
                 .map(|mut p| {
                     p.sanitize();
                     p
@@ -140,7 +136,7 @@ fn merge_sidecar_deltas(s: &mut pecofence_core::Settings, store: &pecofence_core
 /// (accent + backdrop luminance); `None` is the params/adaptive push used
 /// on toggles and dict edits, which leaves the palette fields untouched.
 fn clock_theme_json(
-    s: &pecofence_core::Settings,
+    s: &coredesk_core::Settings,
     sample: Option<&backdrop_probe::Sample>,
 ) -> String {
     let mut v = serde_json::json!({
@@ -213,17 +209,17 @@ pub(super) enum ConfigSource {
 impl ConfigSource {
     fn done(self) -> &'static str {
         match self {
-            Self::Import => pecofence_core::i18n::text("已导入配置"),
-            Self::Backup => pecofence_core::i18n::text("已恢复备份"),
-            Self::Theme => pecofence_core::i18n::text("已导入主题"),
-            Self::Retune => pecofence_core::i18n::text("已应用背景显示方式"),
+            Self::Import => coredesk_core::i18n::text("已导入配置"),
+            Self::Backup => coredesk_core::i18n::text("已恢复备份"),
+            Self::Theme => coredesk_core::i18n::text("已导入主题"),
+            Self::Retune => coredesk_core::i18n::text("已应用背景显示方式"),
         }
     }
 
     fn before(self) -> &'static str {
         match self {
-            Self::Import | Self::Theme | Self::Retune => pecofence_core::i18n::text("导入配置前"),
-            Self::Backup => pecofence_core::i18n::text("恢复备份前"),
+            Self::Import | Self::Theme | Self::Retune => coredesk_core::i18n::text("导入配置前"),
+            Self::Backup => coredesk_core::i18n::text("恢复备份前"),
         }
     }
 }
@@ -234,15 +230,15 @@ impl ConfigSource {
 /// `protect` (the snapshot about to be restored) always stays. Automatic names saved in another
 /// UI language count as the user's.
 pub(super) fn auto_snapshot_room(
-    snapshots: &mut Vec<pecofence_core::Snapshot>,
+    snapshots: &mut Vec<coredesk_core::Snapshot>,
     protect: Option<uuid::Uuid>,
 ) -> bool {
     let auto = [
-        pecofence_core::i18n::text("恢复快照前"),
+        coredesk_core::i18n::text("恢复快照前"),
         ConfigSource::Import.before(),
         ConfigSource::Backup.before(),
     ];
-    if snapshots.len() >= pecofence_core::MAX_SNAPSHOTS
+    if snapshots.len() >= coredesk_core::MAX_SNAPSHOTS
         && let Some(i) = snapshots.iter().position(|s| {
             Some(s.id) != protect
                 && (s.is_auto_backup == Some(true)
@@ -252,7 +248,7 @@ pub(super) fn auto_snapshot_room(
     {
         snapshots.remove(i);
     }
-    snapshots.len() < pecofence_core::MAX_SNAPSHOTS
+    snapshots.len() < coredesk_core::MAX_SNAPSHOTS
 }
 
 /// What the gallery calls an automatic "…前" backup. Entries saved by this build store the
@@ -265,21 +261,21 @@ pub(super) fn auto_backup_label(name: &str) -> String {
         "恢复备份前" => "恢复备份前",
         _ => "恢复快照前",
     };
-    pecofence_core::i18n::text(key).to_string()
+    coredesk_core::i18n::text(key).to_string()
 }
 
 fn snapshot_limit_text() -> String {
-    pecofence_core::i18n::format(
+    coredesk_core::i18n::format(
         "快照已达上限（{0} 个），未保存新快照。请删除不需要的快照。",
-        &[pecofence_core::MAX_SNAPSHOTS.to_string()],
+        &[coredesk_core::MAX_SNAPSHOTS.to_string()],
     )
 }
 
-/// Remaps an imported `.peco` theme's layout monitor IDs to `work_areas` when the theme was
+/// Remaps an imported `.cde` theme's layout monitor IDs to `work_areas` when the theme was
 /// saved on a different monitor setup, preserving every fence's normalized coordinates and size.
 fn remap_theme_monitors(
-    cfg: &mut pecofence_core::Config,
-    work_areas: &[pecofence_core::geometry::WorkArea],
+    cfg: &mut coredesk_core::Config,
+    work_areas: &[coredesk_core::geometry::WorkArea],
 ) {
     if work_areas.is_empty() || cfg.layout_for(work_areas).is_some() {
         return;
@@ -308,7 +304,7 @@ fn remap_theme_monitors(
     }
     layout.fingerprint = work_areas
         .iter()
-        .map(pecofence_core::MonitorIdentity::of)
+        .map(coredesk_core::MonitorIdentity::of)
         .collect();
 }
 
@@ -361,7 +357,7 @@ pub(super) struct VideoSwap {
     reattach: bool,
     toast: bool,
     rx: std::sync::mpsc::Receiver<
-        std::result::Result<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer, Option<String>>,
+        std::result::Result<coredesk_platform::wmf_wallpaper::WmfWallpaperPlayer, Option<String>>,
     >,
 }
 
@@ -388,9 +384,9 @@ fn spawn_video_transcode(
 ) -> std::sync::mpsc::Receiver<std::result::Result<Option<PathBuf>, String>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let _ = std::thread::Builder::new()
-        .name("pecofence-video-transcode".into())
+        .name("coredesk-video-transcode".into())
         .spawn(move || {
-            let _ = tx.send(pecofence_platform::wmf_transcode::transcode_for_display(
+            let _ = tx.send(coredesk_platform::wmf_transcode::transcode_for_display(
                 &src, &cache_dir, target.0, target.1,
             ));
         });
@@ -399,9 +395,9 @@ fn spawn_video_transcode(
 
 /// Stops a player off the UI thread (stop+join ≈70 ms), serialized with swap
 /// workers so a teardown never races the next pipeline's allocation.
-fn reap_video_player(player: pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer) {
+fn reap_video_player(player: coredesk_platform::wmf_wallpaper::WmfWallpaperPlayer) {
     let _ = std::thread::Builder::new()
-        .name("pecofence-video-reap".into())
+        .name("coredesk-video-reap".into())
         .spawn(move || {
             let _g = VIDEO_SWAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             drop(player);
@@ -411,21 +407,21 @@ fn reap_video_player(player: pecofence_platform::wmf_wallpaper::WmfWallpaperPlay
 /// Worker-side swap: stops the old player (join off the UI thread), starts the
 /// new one. `Err(None)` marks a superseded request — not a failure to report.
 fn spawn_video_swap(
-    old: Option<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer>,
+    old: Option<coredesk_platform::wmf_wallpaper::WmfWallpaperPlayer>,
     path: PathBuf,
     letterbox: bool,
     epoch: u64,
 ) -> std::sync::mpsc::Receiver<
-    std::result::Result<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer, Option<String>>,
+    std::result::Result<coredesk_platform::wmf_wallpaper::WmfWallpaperPlayer, Option<String>>,
 > {
     let (tx, rx) = std::sync::mpsc::channel();
     let _ = std::thread::Builder::new()
-        .name("pecofence-video-swap".into())
+        .name("coredesk-video-swap".into())
         .spawn(move || {
             let _g = VIDEO_SWAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             drop(old);
             let result =
-                pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path, letterbox)
+                coredesk_platform::wmf_wallpaper::WmfWallpaperPlayer::start(&path, letterbox)
                     .map_err(Some);
             let result = match result {
                 Ok(player) if VIDEO_SWAP_EPOCH.load(Ordering::SeqCst) != epoch => {
@@ -441,9 +437,9 @@ fn spawn_video_swap(
 
 impl App {
     /// Replaces the configuration wholesale (import / backup) and rebuilds everything.
-    pub(super) fn adopt_config(&mut self, mut cfg: pecofence_core::Config, source: ConfigSource) {
+    pub(super) fn adopt_config(&mut self, mut cfg: coredesk_core::Config, source: ConfigSource) {
         self.end_peek_now();
-        // An external config (`.peco` archive or imported file) can carry
+        // An external config (`.cde` archive or imported file) can carry
         // unknown styling ids or corrupt geometry from another version or a
         // hand edit — normalize before anything diffs/applies it, or the
         // shell surfaces get fed values this build can't honour.
@@ -461,7 +457,7 @@ impl App {
         // What the file (plus the desktop-path migration) wants the settings to be. The Store
         // edition's startup switch is Windows': a file does not change it (nor open its page).
         let mut new_settings = self.state.config.settings.clone();
-        if pecofence_platform::process::is_packaged() {
+        if coredesk_platform::process::is_packaged() {
             new_settings.autostart = old_settings.autostart;
         }
         if !matches!(source, ConfigSource::Theme | ConfigSource::Retune) {
@@ -470,7 +466,7 @@ impl App {
             new_settings.active_theme_path = None;
         }
         self.sync_desktop_if_available("config adopted");
-        // `.peco` manifests bind fence contents to this desktop's actual files (names that
+        // `.cde` manifests bind fence contents to this desktop's actual files (names that
         // match nothing are dropped); a theme's folder portal whose directory is missing
         // here degrades to a virtual fence rather than flashing "folder not found".
         let desktop_dirs: Vec<PathBuf> = [shell::user_desktop(), shell::public_desktop()]
@@ -528,8 +524,8 @@ impl App {
                 tracing::error!(error = %e, "WebView2 environment failed");
                 if let Some(t) = &self.tray {
                     t.show_info(
-                        "PecoFence",
-                        pecofence_core::i18n::text(
+                        "CoreDesk Engine",
+                        coredesk_core::i18n::text(
                             "无法创建 WebView2 环境，请确认已安装 Microsoft Edge WebView2 运行时。",
                         ),
                         true,
@@ -577,8 +573,8 @@ impl App {
                 tracing::error!(error = %e, "settings window failed");
                 if let Some(t) = &self.tray {
                     t.show_info(
-                        "PecoFence",
-                        pecofence_core::i18n::text("无法打开设置窗口（WebView2 初始化失败），请检查 Microsoft Edge WebView2 运行时。"),
+                        "CoreDesk Engine",
+                        coredesk_core::i18n::text("无法打开设置窗口（WebView2 初始化失败），请检查 Microsoft Edge WebView2 运行时。"),
                         true,
                     );
                 }
@@ -679,7 +675,7 @@ impl App {
 
     /// Soft restart for the widget: destroys it and respawns at its *live*
     /// rect — the window's own rect, not the config's, so a restart mid-drag
-    /// still lands it exactly where it was. The `.peco` theme-apply fail-safe
+    /// still lands it exactly where it was. The `.cde` theme-apply fail-safe
     /// and the widget's 「تحديث」 context menu both run this; the fresh page's
     /// `clockReady` re-arms the persisted style, locale, and backdrop probe.
     pub(super) fn soft_restart_clock(&mut self) {
@@ -704,7 +700,7 @@ impl App {
     /// the anchor's desktop-surface band — directly above the icon host (and
     /// any video wallpaper, which is a child of that host) and below fences.
     /// Called from `apply_settings`' diff and once at startup.
-    pub(super) fn apply_desktop_effect(&mut self, s: &pecofence_core::Settings) {
+    pub(super) fn apply_desktop_effect(&mut self, s: &coredesk_core::Settings) {
         let Some(host) = &self.effects else {
             return;
         };
@@ -743,9 +739,9 @@ impl App {
         let (rect, widget) = (window::window_rect(h.hwnd()), h.hwnd().0 as isize);
         let control = self.control.hwnd().0 as isize;
         std::thread::Builder::new()
-            .name("pecofence-clock-probe".into())
+            .name("coredesk-clock-probe".into())
             .spawn(move || {
-                let _com = pecofence_platform::com::MtaGuard::init();
+                let _com = coredesk_platform::com::MtaGuard::init();
                 let sample =
                     backdrop_probe::sample(HWND(widget as _), rect, &monitors::enumerate());
                 let boxed = Box::into_raw(Box::new(sample));
@@ -803,7 +799,7 @@ impl App {
             Err(_) if window::quit_posted() => window::post_quit(0),
             Err(e) => {
                 tracing::error!(error = %e, "fe glass window failed");
-                self.settings_error(pecofence_core::i18n::text(
+                self.settings_error(coredesk_core::i18n::text(
                     "无法打开设置窗口（WebView2 初始化失败），请检查 Microsoft Edge WebView2 运行时。",
                 ));
             }
@@ -814,7 +810,7 @@ impl App {
     /// fields plus `systemLight` (`AppsUseLightTheme`), which decides which
     /// RGBA row is editable and which palette the preview tints with.
     pub(super) fn fe_glass_state_json(&self) -> String {
-        let localization = pecofence_core::i18n::ui_payload();
+        let localization = coredesk_core::i18n::ui_payload();
         let s = &self.state.config.settings;
         serde_json::json!({
             "type": "feState",
@@ -849,7 +845,7 @@ impl App {
             s.fe_light_rgba,
             s.fe_dark_rgba,
             systheme::apps_use_light_theme(),
-            pecofence_core::i18n::ui_payload()["locale"],
+            coredesk_core::i18n::ui_payload()["locale"],
         )
     }
 
@@ -896,7 +892,7 @@ impl App {
         if let Some(h) = &self.fe_glass {
             let (text, error) = if !applied {
                 (
-                    pecofence_core::i18n::text("资源管理器背景效果未能更改，请稍后重试。")
+                    coredesk_core::i18n::text("资源管理器背景效果未能更改，请稍后重试。")
                         .to_string(),
                     true,
                 )
@@ -904,7 +900,7 @@ impl App {
                 // No toast on a no-op; applied changes get a plain confirmation —
                 // the resident reloads the EBM config live, so no Explorer restart
                 // is needed (the manual failsafe action below still offers one).
-                (pecofence_core::i18n::text("已应用").to_string(), false)
+                (coredesk_core::i18n::text("已应用").to_string(), false)
             };
             h.post_json(
                 &serde_json::json!({ "type": "feToast", "text": text, "error": error }).to_string(),
@@ -913,14 +909,14 @@ impl App {
     }
 
     pub(super) fn settings_state_json(&self) -> String {
-        let localization = pecofence_core::i18n::ui_payload();
+        let localization = coredesk_core::i18n::ui_payload();
         let fences: Vec<serde_json::Value> = self
             .state
             .fences()
             .iter()
             .map(|f| self.fence_options_json(f))
             .collect();
-        let mem_mb = pecofence_platform::memstats::MemoryStats::current()
+        let mem_mb = coredesk_platform::memstats::MemoryStats::current()
             .map(|m| m.private_working_set as f64 / (1024.0 * 1024.0))
             .unwrap_or(0.0);
         let snapshots: Vec<serde_json::Value> = self
@@ -937,7 +933,7 @@ impl App {
                         s.name.clone()
                     },
                     "ts": s.ts,
-                    "date": pecofence_platform::fileinfo::format_local_datetime(s.ts),
+                    "date": coredesk_platform::fileinfo::format_local_datetime(s.ts),
                     "fenceCount": super::ipc::snapshot_dto(s, &self.state.work_areas).fence_count,
                     "wallpaperPath": s.wallpaper_path,
                     "isAutoBackup": s.is_auto_backup == Some(true),
@@ -959,7 +955,7 @@ impl App {
             "locale": localization["locale"],
             "translations": localization["translations"],
             "settings": self.state.config.settings,
-            "desktopIconsHidden": pecofence_platform::shell_icons::desktop_icons_hidden(),
+            "desktopIconsHidden": coredesk_platform::shell_icons::desktop_icons_hidden(),
             "rules": self.state.config.rules,
             "fences": fences,
             "snapshots": snapshots,
@@ -967,7 +963,7 @@ impl App {
             "monitors": monitors,
             "tintPalette": fence_options::tint_palette_json(),
             "version": env!("CARGO_PKG_VERSION"),
-            "storeEdition": pecofence_platform::process::is_packaged(),
+            "storeEdition": coredesk_platform::process::is_packaged(),
             "configPath": self.state.config_path_on_disk().to_string_lossy(),
             "memoryMb": mem_mb,
             "itemCount": self.state.workspace_item_count(),
@@ -978,11 +974,11 @@ impl App {
             "themeDirty": self.theme_dirty.get(),
             // Start Menu Style dropdown: only {id, label} reach the page — the
             // converted rule payload stays behind start_menu_themes::theme().
-            "startMenuStyles": pecofence_core::start_menu_themes::style_options_json(),
+            "startMenuStyles": coredesk_core::start_menu_themes::style_options_json(),
             // Taskbar Style dropdown — same isolation for the taskbar catalog.
-            "taskbarStyles": pecofence_core::taskbar_themes::style_options_json(),
+            "taskbarStyles": coredesk_core::taskbar_themes::style_options_json(),
             // Notification Center Style dropdown — same isolation again.
-            "notificationCenterStyles": pecofence_core::notification_center_themes::style_options_json(),
+            "notificationCenterStyles": coredesk_core::notification_center_themes::style_options_json(),
         })
         .to_string()
     }
@@ -1021,15 +1017,15 @@ impl App {
     /// Store edition: reads Windows' startup switch for the package on a worker; the result comes
     /// back through `WM_APP_STARTUP_TASK` to [`Self::finish_store_startup`].
     pub(super) fn query_store_startup(&self) {
-        if !pecofence_platform::process::is_packaged() {
+        if !coredesk_platform::process::is_packaged() {
             return;
         }
         let result = self.store_startup.clone();
         let control = self.control.hwnd().0 as isize;
         let _ = std::thread::Builder::new()
-            .name("pecofence-startup-task".into())
+            .name("coredesk-startup-task".into())
             .spawn(
-                move || match pecofence_platform::store::startup_task_enabled() {
+                move || match coredesk_platform::store::startup_task_enabled() {
                     Ok(on) => {
                         result.store(1 + on as u8, std::sync::atomic::Ordering::Relaxed);
                         window::post_message(
@@ -1112,7 +1108,7 @@ impl App {
                 if let Some(h) = self.settings.as_ref() {
                     h.post_json(&format!(
                         "{{\"t\":\"wstate\",\"max\":{}}}",
-                        pecofence_platform::frameless::is_zoomed(h.hwnd())
+                        coredesk_platform::frameless::is_zoomed(h.hwnd())
                     ));
                 }
             }
@@ -1133,7 +1129,7 @@ impl App {
                 if let Some(h) = self.fe_glass.as_ref() {
                     h.post_json(&format!(
                         "{{\"t\":\"wstate\",\"max\":{}}}",
-                        pecofence_platform::frameless::is_zoomed(h.hwnd())
+                        coredesk_platform::frameless::is_zoomed(h.hwnd())
                     ));
                 }
             }
@@ -1173,14 +1169,14 @@ impl App {
                 let Some(new_settings) = v.get("settings").cloned() else {
                     return;
                 };
-                match serde_json::from_value::<pecofence_core::Settings>(new_settings) {
+                match serde_json::from_value::<coredesk_core::Settings>(new_settings) {
                     Ok(new_settings) => self.apply_settings(new_settings),
                     Err(e) => tracing::warn!(error = %e, "bad settings from page"),
                 }
             }
             Some("setRules") => {
                 if let Some(rules) = v.get("rules").cloned()
-                    && let Ok(rules) = serde_json::from_value::<pecofence_core::RuleSet>(rules)
+                    && let Ok(rules) = serde_json::from_value::<coredesk_core::RuleSet>(rules)
                 {
                     self.set_rules(rules);
                 }
@@ -1191,7 +1187,7 @@ impl App {
                     let moved = self.state.apply_rules_all(&entries);
                     self.refresh_all();
                     self.schedule_save();
-                    self.settings_toast(&pecofence_core::i18n::format(
+                    self.settings_toast(&coredesk_core::i18n::format(
                         "已按规则整理 {0} 个项目",
                         &[moved.to_string()],
                     ));
@@ -1206,7 +1202,7 @@ impl App {
                         || self.state.fences().iter().any(|f| {
                             f.items
                                 .iter()
-                                .any(|r| r.assigned_by == pecofence_core::AssignedBy::User)
+                                .any(|r| r.assigned_by == coredesk_core::AssignedBy::User)
                         });
                     if pinned {
                         self.auto_snapshot();
@@ -1215,7 +1211,7 @@ impl App {
                     let moved = self.state.apply_rules_force_all(&entries);
                     self.refresh_all();
                     self.schedule_save();
-                    self.settings_toast(&pecofence_core::i18n::format(
+                    self.settings_toast(&coredesk_core::i18n::format(
                         "已按规则整理 {0} 个项目",
                         &[moved.to_string()],
                     ));
@@ -1224,7 +1220,7 @@ impl App {
                     if let Some(template) = v
                         .get("template")
                         .and_then(|t| t.as_str())
-                        .and_then(pecofence_core::rules::Template::parse)
+                        .and_then(coredesk_core::rules::Template::parse)
                     {
                         self.add_template(template);
                     }
@@ -1336,7 +1332,7 @@ impl App {
                 Some("saveSnapshot") => {
                     // A full list refuses a new snapshot (as the CLI does) instead of
                     // dropping the oldest one.
-                    if self.state.config.snapshots.len() >= pecofence_core::MAX_SNAPSHOTS {
+                    if self.state.config.snapshots.len() >= coredesk_core::MAX_SNAPSHOTS {
                         self.settings_error(&snapshot_limit_text());
                     } else {
                         let name = v.get("snapshotName").and_then(|n| n.as_str()).unwrap_or("");
@@ -1345,12 +1341,12 @@ impl App {
                             .and_then(|f| f.as_bool())
                             .unwrap_or(false);
                         let wallpaper = include_wallpaper
-                            .then(pecofence_platform::sysparams::desktop_wallpaper)
+                            .then(coredesk_platform::sysparams::desktop_wallpaper)
                             .flatten();
                         self.state.save_snapshot(name, wallpaper);
                         self.schedule_save();
                         self.push_settings_state();
-                        self.settings_toast(pecofence_core::i18n::text("已保存快照"));
+                        self.settings_toast(coredesk_core::i18n::text("已保存快照"));
                     }
                 }
                 Some("restoreSnapshot") => {
@@ -1369,7 +1365,7 @@ impl App {
                             .config
                             .snapshots
                             .iter()
-                            .any(|s| s.id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID);
+                            .any(|s| s.id == coredesk_core::AUTO_BACKUP_SNAPSHOT_ID);
                         if !has_backup
                             && !auto_snapshot_room(&mut self.state.config.snapshots, Some(id))
                         {
@@ -1392,7 +1388,7 @@ impl App {
                         }
                         self.schedule_save();
                         self.push_settings_state();
-                        self.settings_toast(pecofence_core::i18n::text("已恢复快照"));
+                        self.settings_toast(coredesk_core::i18n::text("已恢复快照"));
                     }
                 }
                 Some("deleteSnapshot") => {
@@ -1463,15 +1459,15 @@ impl App {
                     // daily action). Kill the shell and let Windows' own
                     // respawn (or our detached spawn) bring it back; the video
                     // player's pending-reattach loop rides out the gap.
-                    self.settings_toast(pecofence_core::i18n::text("正在重启资源管理器…"));
-                    std::thread::spawn(pecofence_platform::tap::restart_explorer);
+                    self.settings_toast(coredesk_core::i18n::text("正在重启资源管理器…"));
+                    std::thread::spawn(coredesk_platform::tap::restart_explorer);
                 }
                 Some("repairIcons") => self.set_desktop_icons_hidden(false),
                 Some("hideDesktopIcons") => self.set_desktop_icons_hidden(true),
                 Some("rateInStore") => self.open_store_rating(),
                 Some("openManual") => self.open_manual(),
                 Some("openRepository") => {
-                    let url = pecofence_core::brand::REPOSITORY_URL;
+                    let url = coredesk_core::brand::REPOSITORY_URL;
                     let _ = shell::shell_execute(std::path::Path::new(url), None, None);
                 }
                 _ => {}
@@ -1483,7 +1479,7 @@ impl App {
     /// Replaces the rule set (settings page / CLI). A folder portal never shows `fence.items`:
     /// a rule routing into one would make matched items vanish from every fence, so such
     /// targets fall back to the inbox.
-    pub(super) fn set_rules(&mut self, mut rules: pecofence_core::RuleSet) {
+    pub(super) fn set_rules(&mut self, mut rules: coredesk_core::RuleSet) {
         let targets = std::iter::once(&mut rules.default_target)
             .chain(rules.list.iter_mut().map(|r| &mut r.target));
         for t in targets {
@@ -1502,20 +1498,20 @@ impl App {
     }
 
     /// Both rescue buttons and the tray use the same idempotent operation. A second
-    /// request must still repair Explorer's state if it changed outside PecoFence.
+    /// request must still repair Explorer's state if it changed outside CoreDeskEngine.
     pub(super) fn set_desktop_icons_hidden(&mut self, hidden: bool) {
         if self.apply_desktop_icons_hidden(hidden) {
             self.state.config.settings.hide_real_icons = hidden;
             self.settings_mutated();
             self.desktop_icons_setting_changed();
             self.settings_toast(if hidden {
-                pecofence_core::i18n::text("Windows 桌面图标已重新隐藏。")
+                coredesk_core::i18n::text("Windows 桌面图标已重新隐藏。")
             } else {
-                pecofence_core::i18n::text("桌面图标已显示，可点击“重新隐藏桌面图标”恢复隐藏。")
+                coredesk_core::i18n::text("桌面图标已显示，可点击“重新隐藏桌面图标”恢复隐藏。")
             });
         } else {
             self.push_settings_state();
-            self.settings_error(pecofence_core::i18n::text(
+            self.settings_error(coredesk_core::i18n::text(
                 "桌面图标状态未能更改，请等待资源管理器恢复后重试。",
             ));
         }
@@ -1538,20 +1534,19 @@ impl App {
             return a.hide_desktop_icons();
         }
         a.restore_desktop_icons();
-        if pecofence_platform::shell_icons::desktop_icons_hidden()
+        if coredesk_platform::shell_icons::desktop_icons_hidden()
             && let Some(h) = desktop::resolve_icon_host(a.generation)
         {
-            let _ = pecofence_platform::shell_icons::set_desktop_icons_hidden(
-                false, h.def_view, h.host,
-            );
+            let _ =
+                coredesk_platform::shell_icons::set_desktop_icons_hidden(false, h.def_view, h.host);
             // Clear our recovery marker only after Explorer actually restored the icons.
             a.restore_desktop_icons();
         }
-        !pecofence_platform::shell_icons::desktop_icons_hidden()
+        !coredesk_platform::shell_icons::desktop_icons_hidden()
     }
 
     /// Applies a full settings object from the page, reacting to what changed.
-    pub(super) fn apply_settings(&mut self, mut new: pecofence_core::Settings) {
+    pub(super) fn apply_settings(&mut self, mut new: coredesk_core::Settings) {
         let old = self.state.config.settings.clone();
         if new == old {
             return;
@@ -1569,10 +1564,9 @@ impl App {
         // runtime fields so the bounds/adaptive diffs below see user-layer
         // values. A same-style dict change (import/theme) resolves without
         // the mirror — the file's entry wins, not the live state.
-        if new.clock_style != old.clock_style
-            && pecofence_core::is_clock_widget_id(&old.clock_style)
+        if new.clock_style != old.clock_style && coredesk_core::is_clock_widget_id(&old.clock_style)
         {
-            let mut mirrored = pecofence_core::WidgetParams::from_runtime(&old);
+            let mut mirrored = coredesk_core::WidgetParams::from_runtime(&old);
             // `from_runtime` has no live element state — keep the incoming
             // dict's authored elements for the outgoing design.
             mirrored.elements = new
@@ -1587,14 +1581,14 @@ impl App {
         }
         if new.autostart != old.autostart {
             if let Err(e) =
-                pecofence_platform::autostart::set_product_enabled(new.autostart, self.portable)
+                coredesk_platform::autostart::set_product_enabled(new.autostart, self.portable)
             {
                 tracing::warn!(error = %e, "autostart change failed");
                 new.autostart = old.autostart;
-                self.settings_error(pecofence_core::i18n::text(
+                self.settings_error(coredesk_core::i18n::text(
                     "未能更改“随 Windows 启动”，请稍后重试。",
                 ));
-            } else if pecofence_platform::process::is_packaged() {
+            } else if coredesk_platform::process::is_packaged() {
                 // Store installs: Windows owns the startup task, so hand the user the switch.
                 // The switch here keeps showing Windows' state; it is read again when the user
                 // comes back to this window.
@@ -1610,7 +1604,7 @@ impl App {
             && !self.apply_desktop_icons_hidden(new.hide_real_icons)
         {
             new.hide_real_icons = old.hide_real_icons;
-            self.settings_error(pecofence_core::i18n::text(
+            self.settings_error(coredesk_core::i18n::text(
                 "桌面图标状态未能更改，请稍后重试。",
             ));
         }
@@ -1618,34 +1612,34 @@ impl App {
             // The dropdown only offers catalog ids; an unknown id here means a
             // hand-edited patchSettings — same treatment as a failed write.
             let id = new.start_menu_style.as_str();
-            let applied = pecofence_core::start_menu_themes::is_style_id(id)
-                && pecofence_platform::start_menu::apply_start_menu_theme(id);
+            let applied = coredesk_core::start_menu_themes::is_style_id(id)
+                && coredesk_platform::start_menu::apply_start_menu_theme(id);
             if !applied {
                 new.start_menu_style.clone_from(&old.start_menu_style);
-                self.settings_error(pecofence_core::i18n::text(
+                self.settings_error(coredesk_core::i18n::text(
                     "开始菜单样式未能更改，请稍后重试。",
                 ));
             }
         }
         if new.taskbar_style != old.taskbar_style {
             let id = new.taskbar_style.as_str();
-            let applied = pecofence_core::taskbar_themes::is_style_id(id)
-                && pecofence_platform::taskbar_styler::apply(id);
+            let applied = coredesk_core::taskbar_themes::is_style_id(id)
+                && coredesk_platform::taskbar_styler::apply(id);
             if !applied {
                 new.taskbar_style.clone_from(&old.taskbar_style);
-                self.settings_error(pecofence_core::i18n::text(
+                self.settings_error(coredesk_core::i18n::text(
                     "任务栏样式未能更改，请稍后重试。",
                 ));
             }
         }
         if new.notification_center_style != old.notification_center_style {
             let id = new.notification_center_style.as_str();
-            let applied = pecofence_core::notification_center_themes::is_style_id(id)
-                && pecofence_platform::notification_center::apply(id);
+            let applied = coredesk_core::notification_center_themes::is_style_id(id)
+                && coredesk_platform::notification_center::apply(id);
             if !applied {
                 new.notification_center_style
                     .clone_from(&old.notification_center_style);
-                self.settings_error(pecofence_core::i18n::text(
+                self.settings_error(coredesk_core::i18n::text(
                     "通知中心样式未能更改，请稍后重试。",
                 ));
             }
@@ -1662,8 +1656,8 @@ impl App {
             || new.fe_light_rgba != old.fe_light_rgba
             || new.fe_dark_rgba != old.fe_dark_rgba;
         if fe_changed {
-            let applied = pecofence_platform::file_explorer_styler::apply_effect(
-                &pecofence_platform::file_explorer_styler::FeGlassConfig {
+            let applied = coredesk_platform::file_explorer_styler::apply_effect(
+                &coredesk_platform::file_explorer_styler::FeGlassConfig {
                     effect: new.fe_effect.as_str(),
                     clear_address: new.fe_clear_address,
                     clear_bar_bg: new.fe_clear_bar_bg,
@@ -1686,12 +1680,12 @@ impl App {
                 // Deploy/config.ini failure — revert so the page shows
                 // what is actually running.
                 new.fe_effect.clone_from(&old.fe_effect);
-                self.settings_error(pecofence_core::i18n::text(
+                self.settings_error(coredesk_core::i18n::text(
                     "资源管理器背景效果未能更改，请稍后重试。",
                 ));
             }
         }
-        // Clock bounds ride `.peco` themes: adopt them before the style diff
+        // Clock bounds ride `.cde` themes: adopt them before the style diff
         // so a fresh `ClockHost::open` spawns at the themed spot (state still
         // holds `old` during this diff — `apply_clock_style` reads it).
         self.state.config.settings.clock_bounds = new.clock_bounds;
@@ -1755,7 +1749,7 @@ impl App {
             // Microsoft's transparent stock icon.
             let shown = new.icons.shortcut_arrows;
             std::thread::spawn(move || {
-                pecofence_platform::shell::set_link_overlay_shown(shown);
+                coredesk_platform::shell::set_link_overlay_shown(shown);
             });
         }
         if new.quick_hide.enabled != old.quick_hide.enabled
@@ -1993,7 +1987,7 @@ impl App {
                         tracing::info!("wmf video wallpaper re-attached after desktop restart");
                     }
                     if swap.toast || std::mem::take(&mut self.pending_video_toast) {
-                        self.settings_toast(pecofence_core::i18n::text("已将视频设为桌面壁纸"));
+                        self.settings_toast(coredesk_core::i18n::text("已将视频设为桌面壁纸"));
                     }
                 } else {
                     reap_video_player(player);
@@ -2004,7 +1998,7 @@ impl App {
                 // Only failures while the shell is up count toward the
                 // auto-retry cap — a missing desktop layer at cold boot is
                 // transient and `ensure_video_wallpaper` keeps retrying it.
-                if !pecofence_platform::desktop::shell_window().0.is_null() {
+                if !coredesk_platform::desktop::shell_window().0.is_null() {
                     self.video_start_failures = self.video_start_failures.saturating_add(1);
                 }
                 tracing::error!(
@@ -2015,7 +2009,7 @@ impl App {
                 // A user pick surfaces the reason; boot/re-attach retries
                 // stay quiet — the next poll may heal them.
                 if toast {
-                    self.settings_error(&pecofence_core::i18n::format(
+                    self.settings_error(&coredesk_core::i18n::format(
                         "无法使用此文件：{0}",
                         std::slice::from_ref(&error),
                     ));
@@ -2123,7 +2117,7 @@ impl App {
         }
         // Shell down (GetShellWindow is a live query) — attach would just fail;
         // the next poll retries once Progman exists again.
-        if pecofence_platform::desktop::shell_window().0.is_null() {
+        if coredesk_platform::desktop::shell_window().0.is_null() {
             return;
         }
         // Consecutive shell-up failures (unreadable file, dead pipeline) give
@@ -2171,7 +2165,7 @@ impl App {
         {
             self.settings_mutated();
         }
-        pecofence_platform::sysparams::set_desktop_wallpaper(path)
+        coredesk_platform::sysparams::set_desktop_wallpaper(path)
     }
 
     /// `WM_SETTINGCHANGE`/`SPI_SETDESKWALLPAPER`: a static wallpaper was applied — by us
@@ -2235,7 +2229,7 @@ impl App {
                 return;
             }
         }
-        if pecofence_platform::wallpaper::slideshow_active() {
+        if coredesk_platform::wallpaper::slideshow_active() {
             // A running Windows slideshow broadcasts SETDESKWALLPAPER on every
             // rotation — a new path/mtime that is not a user apply. Picking a
             // single picture exits slideshow mode, so real applies still land.
@@ -2245,7 +2239,7 @@ impl App {
             );
             return;
         }
-        if pecofence_platform::wallpaper::desktops_differ() {
+        if coredesk_platform::wallpaper::desktops_differ() {
             tracing::debug!(
                 applied = ?now,
                 "wallpaper signal differs but virtual desktops differ; keeping video"
@@ -2295,12 +2289,12 @@ impl App {
     /// SPI↔IDW divergence (`TranscodedWallpaper` vs the source path) cannot look like a
     /// user apply. The mtime tells a shell re-assert (pre-existing file) from a user pick.
     fn static_wallpaper_now() -> Option<(PathBuf, Option<std::time::SystemTime>)> {
-        pecofence_platform::wallpaper::query()
+        coredesk_platform::wallpaper::query()
             .ok()
             .and_then(|q| q.monitors.into_iter().find_map(|m| m.path))
             .filter(|p| p.is_file())
             .or_else(|| {
-                pecofence_platform::sysparams::desktop_wallpaper()
+                coredesk_platform::sysparams::desktop_wallpaper()
                     .map(PathBuf::from)
                     .filter(|p| p.is_file())
             })
@@ -2356,7 +2350,7 @@ impl App {
             );
             return;
         }
-        if pecofence_platform::wallpaper::slideshow_active() {
+        if coredesk_platform::wallpaper::slideshow_active() {
             // Slideshow rotation, not a user apply — see `on_wallpaper_changed`.
             tracing::debug!(
                 applied = %now.0.display(),
@@ -2364,7 +2358,7 @@ impl App {
             );
             return;
         }
-        if pecofence_platform::wallpaper::desktops_differ() {
+        if coredesk_platform::wallpaper::desktops_differ() {
             tracing::debug!(
                 applied = %now.0.display(),
                 "static wallpaper changed but virtual desktops differ; keeping video"
@@ -2388,13 +2382,13 @@ impl App {
 
     pub(super) fn pick_video_wallpaper(&mut self) {
         let owner = self.settings.as_ref().map(|h| h.hwnd());
-        match pecofence_platform::filedialog::open_mp4(
+        match coredesk_platform::filedialog::open_mp4(
             owner,
-            pecofence_core::i18n::text("将视频设为桌面壁纸"),
+            coredesk_core::i18n::text("将视频设为桌面壁纸"),
         ) {
             Ok(Some(path)) => self.apply_video_wallpaper(&path),
             Ok(None) => {}
-            Err(e) => self.settings_error(&pecofence_core::i18n::format(
+            Err(e) => self.settings_error(&coredesk_core::i18n::format(
                 "无法打开文件对话框：{0}",
                 &[e.to_string()],
             )),
@@ -2425,7 +2419,7 @@ impl App {
         self.static_under_video = None;
         // The config holds the original until the optimized file lands —
         // `poll_video_transcode` flips it, and the swap pipeline starts the
-        // player from there. `.peco` exports therefore always bundle the
+        // player from there. `.cde` exports therefore always bundle the
         // downscaled asset, never the 4K source.
         self.state.config.settings.video_wallpaper_path = Some(path.to_string_lossy().into_owned());
         self.settings_mutated();
@@ -2468,17 +2462,17 @@ impl App {
     pub(super) fn export_theme(&mut self) {
         let owner = self.settings.as_ref().map(|h| h.hwnd());
         let name = format!(
-            "pecofence-theme-{}.peco",
-            pecofence_core::config_store::today_yyyy_mm_dd()
+            "coredesk-theme-{}.cde",
+            coredesk_core::config_store::today_yyyy_mm_dd()
         );
-        match pecofence_platform::filedialog::save_peco(
+        match coredesk_platform::filedialog::save_cde(
             owner,
-            pecofence_core::i18n::text("导出为 .peco 主题"),
+            coredesk_core::i18n::text("导出为 .cde 主题"),
             &name,
         ) {
             Ok(Some(path)) => self.export_theme_to(&path),
             Ok(None) => {}
-            Err(e) => self.settings_error(&pecofence_core::i18n::format(
+            Err(e) => self.settings_error(&coredesk_core::i18n::format(
                 "无法打开保存对话框：{0}",
                 &[e.to_string()],
             )),
@@ -2490,11 +2484,11 @@ impl App {
     /// last-used path even after playback stopped or a static wallpaper took over, so the
     /// live player — not the config string — decides.
     fn current_background_source(&mut self) -> Option<PathBuf> {
-        let spi = pecofence_platform::sysparams::desktop_wallpaper()
+        let spi = coredesk_platform::sysparams::desktop_wallpaper()
             .map(PathBuf::from)
             .filter(|p| p.is_file());
         let idw = spi.is_none().then(|| {
-            pecofence_platform::wallpaper::query()
+            coredesk_platform::wallpaper::query()
                 .ok()
                 .and_then(|q| q.monitors.into_iter().find_map(|m| m.path))
                 .filter(|p| p.is_file())
@@ -2542,20 +2536,20 @@ impl App {
         chosen
     }
 
-    /// Serializes `cfg` and builds a `.peco` payload: an optional `background.<ext>` entry
+    /// Serializes `cfg` and builds a `.cde` payload: an optional `background.<ext>` entry
     /// copied from `bg_source` plus a 640x360 `preview.jpg` of the layout rendered over a
     /// frame of that background (`preview_frame` wins when the caller has live pixels).
     /// The returned [`SplitConfigJson`] carries `config.json` minus the modder keys plus
     /// the `Widget_config.json`/`Live_Effects_config.json` sidecar documents — all three
     /// are packed into the archive.
-    fn peco_payload(
+    fn cde_payload(
         &self,
-        cfg: &pecofence_core::Config,
+        cfg: &coredesk_core::Config,
         bg_source: Option<&Path>,
         preview_frame: Option<(u32, u32, Vec<u8>)>,
     ) -> std::result::Result<
         (
-            pecofence_core::config_store::SplitConfigJson,
+            coredesk_core::config_store::SplitConfigJson,
             Option<(String, Vec<u8>)>,
             Vec<u8>,
         ),
@@ -2582,7 +2576,7 @@ impl App {
         // whatever desktop files match instead of showing "folder not found".
         for layout in &mut cfg.layouts {
             for fence in &mut layout.fences {
-                if fence.kind == pecofence_core::FenceKind::FolderPortal {
+                if fence.kind == coredesk_core::FenceKind::FolderPortal {
                     fence.contained_files = self
                         .state
                         .unsorted_items_of(fence)
@@ -2594,7 +2588,7 @@ impl App {
         let mut bg_entry: Option<(String, Vec<u8>)> = None;
         let mut frame = preview_frame;
         if let Some(src) = bg_source.filter(|p| p.is_file()) {
-            bg_entry = pecofence_core::peco_theme::background_entry(&mut cfg, src);
+            bg_entry = coredesk_core::cde_theme::background_entry(&mut cfg, src);
             match &bg_entry {
                 Some((name, data)) => tracing::info!(
                     asset_type = if video_bg { "video" } else { "image" },
@@ -2613,11 +2607,11 @@ impl App {
                     .and_then(|e| e.to_str())
                     .is_some_and(|e| e.eq_ignore_ascii_case("mp4"))
                 {
-                    pecofence_platform::wmf_wallpaper::decode_video_first_frame(src)
+                    coredesk_platform::wmf_wallpaper::decode_video_first_frame(src)
                         .ok()
                         .map(|f| (f.width, f.height, f.bgra))
                 } else {
-                    pecofence_platform::wallpaper::decode_scaled(src, 640, 360)
+                    coredesk_platform::wallpaper::decode_scaled(src, 640, 360)
                         .ok()
                         .map(|d| (d.width, d.height, d.bgra))
                 };
@@ -2628,12 +2622,12 @@ impl App {
                 "packing theme asset: none — no usable background"
             );
         }
-        let config_json = pecofence_core::ConfigStore::to_json(&cfg).map_err(|e| e.to_string())?;
-        let split = pecofence_core::config_store::split_config_json(&config_json);
+        let config_json = coredesk_core::ConfigStore::to_json(&cfg).map_err(|e| e.to_string())?;
+        let split = coredesk_core::config_store::split_config_json(&config_json);
         let bg_ref = frame.as_ref().map(|(w, h, px)| (*w, *h, px.as_slice()));
         let preview_bgra =
-            pecofence_core::peco_theme::render_layout_preview_bgra(&cfg, bg_ref, 640, 360);
-        let preview_jpg = pecofence_platform::wmf_wallpaper::encode_jpeg(640, 360, &preview_bgra)
+            coredesk_core::cde_theme::render_layout_preview_bgra(&cfg, bg_ref, 640, 360);
+        let preview_jpg = coredesk_platform::wmf_wallpaper::encode_jpeg(640, 360, &preview_bgra)
             .map_err(|e| e.to_string())?;
         Ok((split, bg_entry, preview_jpg))
     }
@@ -2642,7 +2636,7 @@ impl App {
     fn write_theme_archive(
         &mut self,
         dest: &Path,
-        split: &pecofence_core::config_store::SplitConfigJson,
+        split: &coredesk_core::config_store::SplitConfigJson,
         meta_json: Option<&str>,
         bg_entry: Option<(String, Vec<u8>)>,
         preview_jpg: &[u8],
@@ -2650,11 +2644,11 @@ impl App {
         let bg_slice = bg_entry.as_ref().map(|(n, b)| (n.as_str(), b.as_slice()));
         let sidecars: [(&str, &str); 2] = [
             (
-                pecofence_core::config_store::WIDGET_CONFIG_FILE,
+                coredesk_core::config_store::WIDGET_CONFIG_FILE,
                 split.widget.as_str(),
             ),
             (
-                pecofence_core::config_store::LIVE_EFFECTS_CONFIG_FILE,
+                coredesk_core::config_store::LIVE_EFFECTS_CONFIG_FILE,
                 split.effects.as_str(),
             ),
         ];
@@ -2663,9 +2657,9 @@ impl App {
             background = ?bg_slice.map(|(n, b)| (n, b.len())),
             config_bytes = split.main.len(),
             preview_bytes = preview_jpg.len(),
-            "writing .peco archive"
+            "writing .cde archive"
         );
-        match pecofence_core::peco_theme::write_peco_file(
+        match coredesk_core::cde_theme::write_cde_file(
             dest,
             &split.main,
             &sidecars,
@@ -2674,14 +2668,14 @@ impl App {
             preview_jpg,
         ) {
             Ok(()) => {
-                self.settings_toast(&pecofence_core::i18n::format(
+                self.settings_toast(&coredesk_core::i18n::format(
                     "已导出到 {0}",
                     &[format!("{}", dest.display())],
                 ));
                 true
             }
             Err(e) => {
-                self.settings_error(&pecofence_core::i18n::format(
+                self.settings_error(&coredesk_core::i18n::format(
                     "导出失败：{0}",
                     &[e.to_string()],
                 ));
@@ -2713,7 +2707,7 @@ impl App {
             .is_some()
             .then(|| serde_json::to_string(&meta).ok())
             .flatten();
-        match self.peco_payload(&self.state.config, bg.as_deref(), live) {
+        match self.cde_payload(&self.state.config, bg.as_deref(), live) {
             Ok((split, bg_entry, preview_jpg)) => {
                 self.write_theme_archive(
                     dest,
@@ -2723,11 +2717,11 @@ impl App {
                     &preview_jpg,
                 );
             }
-            Err(e) => self.settings_error(&pecofence_core::i18n::format("导出失败：{0}", &[e])),
+            Err(e) => self.settings_error(&coredesk_core::i18n::format("导出失败：{0}", &[e])),
         }
     }
 
-    /// File stem usable for a `.peco` filename: path-hostile characters become `-`, leading
+    /// File stem usable for a `.cde` filename: path-hostile characters become `-`, leading
     /// dots/spaces are trimmed, and an empty result falls back to "Theme <date> <time>".
     fn sanitize_theme_stem(name: &str) -> String {
         let mut out = String::with_capacity(name.len());
@@ -2741,22 +2735,22 @@ impl App {
         let clean = out.trim_matches([' ', '.', '-']).to_string();
         if clean.is_empty() {
             let stamp =
-                pecofence_platform::fileinfo::format_local_datetime(pecofence_core::now_unix())
+                coredesk_platform::fileinfo::format_local_datetime(coredesk_core::now_unix())
                     .replace(['/', '\\', ':'], "-");
-            format!("{} {}", pecofence_core::i18n::text("主题"), stamp)
+            format!("{} {}", coredesk_core::i18n::text("主题"), stamp)
         } else {
             clean
         }
     }
 
-    /// A free `stem.peco` / `stem (n).peco` path inside the theme library.
+    /// A free `stem.cde` / `stem (n).cde` path inside the theme library.
     fn unique_theme_path(&self, stem: &str) -> PathBuf {
         let dir = self.themes_dir();
         let _ = std::fs::create_dir_all(&dir);
-        let mut dest = dir.join(format!("{stem}.peco"));
+        let mut dest = dir.join(format!("{stem}.cde"));
         if dest.exists() {
             for i in 2..1000 {
-                let candidate = dir.join(format!("{stem} ({i}).peco"));
+                let candidate = dir.join(format!("{stem} ({i}).cde"));
                 if !candidate.exists() {
                     dest = candidate;
                     break;
@@ -2766,14 +2760,14 @@ impl App {
         dest
     }
 
-    /// Adaptive-engine metadata for a `.peco` export: the monitor the theme was captured
+    /// Adaptive-engine metadata for a `.cde` export: the monitor the theme was captured
     /// on, where its background asset lands there under the capped fit, and every fence's
     /// rect normalized onto that asset — so fences re-attach to the same visual feature
     /// (shelves, frame graphics) wherever the theme is applied. Empty when no bundled
     /// background can be measured.
-    fn theme_meta(&self, bg_source: Option<&Path>) -> pecofence_core::adaptive::ThemeMeta {
-        use pecofence_core::adaptive as ad;
-        use pecofence_core::geometry;
+    fn theme_meta(&self, bg_source: Option<&Path>) -> coredesk_core::adaptive::ThemeMeta {
+        use coredesk_core::adaptive as ad;
+        use coredesk_core::geometry;
         let mut meta = ad::ThemeMeta::default();
         let areas = &self.state.work_areas;
         let Some(primary) = areas.first() else {
@@ -2789,12 +2783,12 @@ impl App {
                     .and_then(|pl| pl.latest_frame())
                     .map(|f| (f.width, f.height))
                     .or_else(|| {
-                        pecofence_platform::wmf_wallpaper::decode_video_first_frame(p)
+                        coredesk_platform::wmf_wallpaper::decode_video_first_frame(p)
                             .ok()
                             .map(|f| (f.width, f.height))
                     })
             } else {
-                pecofence_platform::wallpaper::image_dimensions(p).ok()
+                coredesk_platform::wallpaper::image_dimensions(p).ok()
             }
         });
         // Media-anchored canvas needs the asset's own pixel dims — without them there is
@@ -2873,12 +2867,12 @@ impl App {
     /// through to the ordinary path).
     fn apply_adaptive_layout(
         &mut self,
-        cfg: &mut pecofence_core::Config,
-        meta: &pecofence_core::adaptive::ThemeMeta,
+        cfg: &mut coredesk_core::Config,
+        meta: &coredesk_core::adaptive::ThemeMeta,
         bg: Option<&Path>,
         is_video: bool,
     ) -> Option<(u32, u32)> {
-        use pecofence_core::adaptive as ad;
+        use coredesk_core::adaptive as ad;
         let source = meta.source.as_ref()?;
         let media_anchored = meta.canvas_space == ad::CanvasSpace::Media;
         // Media-anchored coords need the asset's own dims — probe the bundled file,
@@ -2887,13 +2881,13 @@ impl App {
         let meta_asset = source.asset.map(|[w, h]| (w, h));
         let asset = if is_video {
             bg.and_then(|p| {
-                pecofence_platform::wmf_wallpaper::decode_video_first_frame(p)
+                coredesk_platform::wmf_wallpaper::decode_video_first_frame(p)
                     .ok()
                     .map(|f| (f.width, f.height))
             })
             .or(meta_asset)
         } else {
-            bg.and_then(|p| pecofence_platform::wallpaper::image_dimensions(p).ok())
+            bg.and_then(|p| coredesk_platform::wallpaper::image_dimensions(p).ok())
                 .or(meta_asset)
         };
         if asset.is_none() && (!is_video || media_anchored) {
@@ -2931,8 +2925,7 @@ impl App {
                 let Some(n) = meta.canvas.get(&fence.id.to_string()).copied() else {
                     continue;
                 };
-                let Some(work) =
-                    pecofence_core::geometry::resolve_work_area(&fence.geometry, areas)
+                let Some(work) = coredesk_core::geometry::resolve_work_area(&fence.geometry, areas)
                 else {
                     continue;
                 };
@@ -2973,19 +2966,19 @@ impl App {
                     };
                     ad::from_canvas(n, fbg)
                 };
-                let rect = pecofence_core::geometry::PxRect {
+                let rect = coredesk_core::geometry::PxRect {
                     left: px[0] + work.mon_left,
                     top: px[1] + work.mon_top,
                     right: px[2] + work.mon_left,
                     bottom: px[3] + work.mon_top,
                 };
-                let mut g = pecofence_core::geometry::normalize(rect, work);
+                let mut g = coredesk_core::geometry::normalize(rect, work);
                 // Canvas coordinates are anchored to the wallpaper, which is drawn on the
                 // monitor — a work-area change (a taskbar style swap, auto-hide toggling)
                 // moves nothing under it. The picked edge-gap anchor would re-anchor the
                 // fence to the new work area and slide it off the art; anchoring each axis
                 // to the edge the taskbar does NOT reserve keeps the absolute position.
-                g.anchor = pecofence_core::geometry::canvas_anchor(&g, work);
+                g.anchor = coredesk_core::geometry::canvas_anchor(&g, work);
                 g.skew_left = fence.geometry.skew_left;
                 g.skew_right = fence.geometry.skew_right;
                 // Spacing compensation is decoupled from the background engine: the
@@ -3023,7 +3016,7 @@ impl App {
     /// uniform crop); Contain composites the frame centered over a blurred copy of
     /// itself — shelves inside the image keep their canvas mapping either way.
     fn apply_adaptive_wallpapers(&mut self, bg: &Path, asset_w: u32, asset_h: u32) {
-        use pecofence_core::adaptive as ad;
+        use coredesk_core::adaptive as ad;
         // Same retirement the plain route performs — the video engine yields to images.
         self.invalidate_video_swap();
         if let Some(p) = self.wmf_player.take() {
@@ -3040,7 +3033,7 @@ impl App {
         {
             self.settings_mutated();
         }
-        let snap = pecofence_platform::wallpaper::query().ok();
+        let snap = coredesk_platform::wallpaper::query().ok();
         let dir = self
             .state
             .config_path()
@@ -3061,9 +3054,9 @@ impl App {
                     .as_ref()
                     .and_then(|d| {
                         let dest = d.join(format!("adaptive-{i}.jpg"));
-                        pecofence_platform::wallpaper::adaptive_wallpaper(bg, mw, mh, rect)
+                        coredesk_platform::wallpaper::adaptive_wallpaper(bg, mw, mh, rect)
                             .and_then(|img| {
-                                pecofence_platform::wmf_wallpaper::encode_jpeg(
+                                coredesk_platform::wmf_wallpaper::encode_jpeg(
                                     img.width, img.height, &img.bgra,
                                 )
                                 .map(|jpg| (dest, jpg))
@@ -3086,7 +3079,7 @@ impl App {
             });
             match id {
                 Some(id) => {
-                    if let Err(e) = pecofence_platform::wallpaper::set_monitor_wallpaper(&id, &path)
+                    if let Err(e) = coredesk_platform::wallpaper::set_monitor_wallpaper(&id, &path)
                     {
                         tracing::warn!(error = %e, "adaptive wallpaper: set failed");
                     } else {
@@ -3094,7 +3087,7 @@ impl App {
                     }
                 }
                 None => {
-                    let _ = pecofence_platform::sysparams::set_desktop_wallpaper(
+                    let _ = coredesk_platform::sysparams::set_desktop_wallpaper(
                         &path.to_string_lossy(),
                     );
                     applied += 1;
@@ -3104,7 +3097,7 @@ impl App {
         // Fill is mandatory under the canvas math: both Cover (raw asset, OS crops)
         // and the Contain composite are drawn for the exact monitor rect, and a
         // remembered Center/Tile position would misplace them.
-        let _ = pecofence_platform::wallpaper::set_position_fill();
+        let _ = coredesk_platform::wallpaper::set_position_fill();
         tracing::info!(applied, "adaptive wallpapers committed");
     }
 
@@ -3142,7 +3135,7 @@ impl App {
             return;
         }
         // No theme canvas — the wallpaper itself still refits (cover ↔ contain).
-        if !is_video && let Ok((aw, ah)) = pecofence_platform::wallpaper::image_dimensions(&bg) {
+        if !is_video && let Ok((aw, ah)) = coredesk_platform::wallpaper::image_dimensions(&bg) {
             self.apply_adaptive_wallpapers(&bg, aw, ah);
         }
     }
@@ -3165,10 +3158,10 @@ impl App {
             })
             .flatten();
         let meta = self.theme_meta(bg.as_deref());
-        let (split, bg_entry, preview_jpg) = match self.peco_payload(&cfg, bg.as_deref(), live) {
+        let (split, bg_entry, preview_jpg) = match self.cde_payload(&cfg, bg.as_deref(), live) {
             Ok(p) => p,
             Err(e) => {
-                self.settings_error(&pecofence_core::i18n::format("保存主题失败：{0}", &[e]));
+                self.settings_error(&coredesk_core::i18n::format("保存主题失败：{0}", &[e]));
                 return false;
             }
         };
@@ -3180,15 +3173,15 @@ impl App {
             .flatten();
         let sidecars: [(&str, &str); 2] = [
             (
-                pecofence_core::config_store::WIDGET_CONFIG_FILE,
+                coredesk_core::config_store::WIDGET_CONFIG_FILE,
                 split.widget.as_str(),
             ),
             (
-                pecofence_core::config_store::LIVE_EFFECTS_CONFIG_FILE,
+                coredesk_core::config_store::LIVE_EFFECTS_CONFIG_FILE,
                 split.effects.as_str(),
             ),
         ];
-        match pecofence_core::peco_theme::write_peco_file(
+        match coredesk_core::cde_theme::write_cde_file(
             dest,
             &split.main,
             &sidecars,
@@ -3198,7 +3191,7 @@ impl App {
         ) {
             Ok(()) => true,
             Err(e) => {
-                self.settings_error(&pecofence_core::i18n::format(
+                self.settings_error(&coredesk_core::i18n::format(
                     "保存主题失败：{0}",
                     &[e.to_string()],
                 ));
@@ -3207,20 +3200,20 @@ impl App {
         }
     }
 
-    /// Gallery "Save Current Setup": the live configuration becomes a `.peco` in the theme
+    /// Gallery "Save Current Setup": the live configuration becomes a `.cde` in the theme
     /// library — a card with a generated thumbnail. The active video or wallpaper is always
     /// embedded; there is no way to save a theme without its background. The saved file
     /// becomes the active theme: it is the current setup's own archive now.
     fn save_theme_to_library(&mut self, name: &str) {
         tracing::info!(theme = name, "theme library save requested");
-        // Meta first: `My Setup` becomes `My Setup_3840x2160_100%.peco` — the source
+        // Meta first: `My Setup` becomes `My Setup_3840x2160_100%.cde` — the source
         // canvas rides in the filename so the card says what the theme was authored on.
         let bg = self.current_background_source();
         let meta = self.theme_meta(bg.as_deref());
         let mut stem = Self::sanitize_theme_stem(name);
         if let Some(s) = &meta.source {
             stem.push('_');
-            stem.push_str(&pecofence_core::adaptive::source_suffix(s));
+            stem.push_str(&coredesk_core::adaptive::source_suffix(s));
         }
         let dest = self.unique_theme_path(&stem);
         if !self.write_current_theme(&dest) {
@@ -3231,10 +3224,10 @@ impl App {
         // The new archive now describes the live state — clean baseline (clear AFTER the
         // mutation plumbing ran: schedule_save re-arms the flag).
         self.theme_dirty.set(false);
-        self.settings_toast(pecofence_core::i18n::text("已保存主题"));
+        self.settings_toast(coredesk_core::i18n::text("已保存主题"));
     }
 
-    /// `path` is a `.peco` file directly inside the theme library — the only paths a gallery
+    /// `path` is a `.cde` file directly inside the theme library — the only paths a gallery
     /// card may ever hand to delete/copy operations.
     fn theme_in_library(&self, path: &Path) -> bool {
         let dir = self.themes_dir();
@@ -3243,10 +3236,10 @@ impl App {
             .is_some_and(|parent| canon(parent) == canon(&dir))
             && path
                 .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("peco"))
+                .is_some_and(|e| e.eq_ignore_ascii_case("cde"))
     }
 
-    /// Card "Export .peco" on a library theme: the archive already is the `.peco` — offer a copy.
+    /// Card "Export .cde" on a library theme: the archive already is the `.cde` — offer a copy.
     fn export_library_theme(&mut self, path: &Path) {
         if !self.theme_in_library(path) {
             return;
@@ -3257,31 +3250,31 @@ impl App {
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "theme".to_string());
         let owner = self.settings.as_ref().map(|h| h.hwnd());
-        match pecofence_platform::filedialog::save_peco(
+        match coredesk_platform::filedialog::save_cde(
             owner,
-            pecofence_core::i18n::text("导出为 .peco 主题"),
-            &format!("{stem}.peco"),
+            coredesk_core::i18n::text("导出为 .cde 主题"),
+            &format!("{stem}.cde"),
         ) {
             Ok(Some(dest)) => match std::fs::copy(path, &dest) {
-                Ok(_) => self.settings_toast(&pecofence_core::i18n::format(
+                Ok(_) => self.settings_toast(&coredesk_core::i18n::format(
                     "已导出到 {0}",
                     &[format!("{}", dest.display())],
                 )),
-                Err(e) => self.settings_error(&pecofence_core::i18n::format(
+                Err(e) => self.settings_error(&coredesk_core::i18n::format(
                     "导出失败：{0}",
                     &[e.to_string()],
                 )),
             },
             Ok(None) => {}
-            Err(e) => self.settings_error(&pecofence_core::i18n::format(
+            Err(e) => self.settings_error(&coredesk_core::i18n::format(
                 "无法打开保存对话框：{0}",
                 &[e.to_string()],
             )),
         }
     }
 
-    /// Card "Export .peco" on a layout snapshot: packs the snapshot's stored layouts (with the
-    /// current visual settings) and its captured wallpaper into a fresh `.peco` archive.
+    /// Card "Export .cde" on a layout snapshot: packs the snapshot's stored layouts (with the
+    /// current visual settings) and its captured wallpaper into a fresh `.cde` archive.
     fn export_snapshot_theme(&mut self, id: uuid::Uuid) {
         let Some(snap) = self
             .state
@@ -3298,17 +3291,17 @@ impl App {
         } else {
             snap.name.clone()
         };
-        let suggested = format!("{}.peco", Self::sanitize_theme_stem(&name));
+        let suggested = format!("{}.cde", Self::sanitize_theme_stem(&name));
         let owner = self.settings.as_ref().map(|h| h.hwnd());
-        let dest = match pecofence_platform::filedialog::save_peco(
+        let dest = match coredesk_platform::filedialog::save_cde(
             owner,
-            pecofence_core::i18n::text("导出为 .peco 主题"),
+            coredesk_core::i18n::text("导出为 .cde 主题"),
             &suggested,
         ) {
             Ok(Some(d)) => d,
             Ok(None) => return,
             Err(e) => {
-                self.settings_error(&pecofence_core::i18n::format(
+                self.settings_error(&coredesk_core::i18n::format(
                     "无法打开保存对话框：{0}",
                     &[e.to_string()],
                 ));
@@ -3328,30 +3321,28 @@ impl App {
             background = ?bg,
             "snapshot export: background source selected"
         );
-        match self.peco_payload(&cfg, bg.as_deref(), None) {
+        match self.cde_payload(&cfg, bg.as_deref(), None) {
             Ok((split, bg_entry, preview_jpg)) => {
                 self.write_theme_archive(&dest, &split, None, bg_entry, &preview_jpg);
             }
-            Err(e) => self.settings_error(&pecofence_core::i18n::format("导出失败：{0}", &[e])),
+            Err(e) => self.settings_error(&coredesk_core::i18n::format("导出失败：{0}", &[e])),
         }
     }
 
     pub(super) fn import_theme(&mut self) {
         let owner = self.settings.as_ref().map(|h| h.hwnd());
-        match pecofence_platform::filedialog::open_peco(
-            owner,
-            pecofence_core::i18n::text("导入主题"),
-        ) {
+        match coredesk_platform::filedialog::open_cde(owner, coredesk_core::i18n::text("导入主题"))
+        {
             Ok(Some(path)) => self.import_theme_from(&path),
             Ok(None) => {}
-            Err(e) => self.settings_error(&pecofence_core::i18n::format(
+            Err(e) => self.settings_error(&coredesk_core::i18n::format(
                 "无法打开文件对话框：{0}",
                 &[e.to_string()],
             )),
         }
     }
 
-    /// The `.peco` theme library folder next to `config.json` (portable and packaged stores
+    /// The `.cde` theme library folder next to `config.json` (portable and packaged stores
     /// get their own, like `imported_wallpapers/`).
     pub(super) fn themes_dir(&self) -> PathBuf {
         self.state
@@ -3361,16 +3352,73 @@ impl App {
             .join("themes")
     }
 
-    /// The theme gallery's cards: every `*.peco` in the library with its embedded
+    /// One-time library migration: PecoFence-era `*.peco` archives are the same
+    /// uncompressed-ZIP container as `.cde`, so adoption is a rename. `active_theme_path`
+    /// moves with the file it pointed at; anything already migrated is left alone.
+    pub(crate) fn migrate_theme_library(&mut self) {
+        let dir = self.themes_dir();
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            return;
+        };
+        for entry in rd.flatten() {
+            let src = entry.path();
+            if !src
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("peco"))
+            {
+                continue;
+            }
+            let mut dest = src.with_extension("cde");
+            if dest.exists() {
+                // Both spellings already exist: keep the .cde, drop the stale .peco
+                // when identical, otherwise park the .peco beside it under a suffix.
+                if std::fs::read(&src).ok() == std::fs::read(&dest).ok() {
+                    let _ = std::fs::remove_file(&src);
+                    continue;
+                }
+                let stem = dest
+                    .file_stem()
+                    .map(|s| s.to_os_string())
+                    .unwrap_or_default();
+                for i in 2..100 {
+                    let candidate = dest.with_file_name({
+                        let mut s = stem.clone();
+                        s.push(format!(" ({i})"));
+                        s
+                    });
+                    if !candidate.exists() {
+                        dest = candidate;
+                        break;
+                    }
+                }
+            }
+            if let Err(e) = std::fs::rename(&src, &dest) {
+                tracing::warn!(error = %e, from = %src.display(), "theme library .peco migration skipped");
+                continue;
+            }
+            tracing::info!(from = %src.display(), to = %dest.display(), "theme library migrated .peco -> .cde");
+            if self
+                .state
+                .config
+                .settings
+                .active_theme_path
+                .as_deref()
+                .is_some_and(|p| Path::new(p) == src)
+            {
+                self.state.config.settings.active_theme_path =
+                    Some(dest.to_string_lossy().into_owned());
+                self.state.mark_dirty();
+            }
+        }
+    }
+
+    /// The theme gallery's cards: every `*.cde` in the library with its embedded
     /// `preview.jpg` as a data URI (empty string when the archive has none).
     fn themes_json(&self) -> Vec<serde_json::Value> {
         let mut files: Vec<PathBuf> = std::fs::read_dir(self.themes_dir())
             .map(|rd| {
                 rd.filter_map(|e| e.ok().map(|e| e.path()))
-                    .filter(|p| {
-                        p.extension()
-                            .is_some_and(|e| e.eq_ignore_ascii_case("peco"))
-                    })
+                    .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("cde")))
                     .collect()
             })
             .unwrap_or_default();
@@ -3382,22 +3430,22 @@ impl App {
                     .file_stem()
                     .map(|s| s.to_string_lossy().into_owned())
                     .unwrap_or_default();
-                let preview = pecofence_core::peco_theme::read_peco_preview(&p)
+                let preview = coredesk_core::cde_theme::read_cde_preview(&p)
                     .map(|jpg| {
                         format!(
                             "data:image/jpeg;base64,{}",
-                            pecofence_core::base64::encode(&jpg)
+                            coredesk_core::base64::encode(&jpg)
                         )
                     })
                     .unwrap_or_default();
-                // The gallery sorts cards newest-first; a .peco's moment is its mtime.
+                // The gallery sorts cards newest-first; a .cde's moment is its mtime.
                 let (ts, date) = std::fs::metadata(&p)
                     .and_then(|m| m.modified())
                     .ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                     .map(|d| {
                         let ts = d.as_secs().min(i64::MAX as u64) as i64;
-                        (ts, pecofence_platform::fileinfo::format_local_datetime(ts))
+                        (ts, coredesk_platform::fileinfo::format_local_datetime(ts))
                     })
                     .unwrap_or_default();
                 serde_json::json!({
@@ -3411,7 +3459,7 @@ impl App {
             .collect()
     }
 
-    /// Copies an imported `.peco` into the theme library so it appears as a card. A file
+    /// Copies an imported `.cde` into the theme library so it appears as a card. A file
     /// already inside the library, or one whose bytes match an existing entry, is kept as is;
     /// name collisions get a " (n)" suffix. Returns the library path that represents the
     /// theme — the anchor `active_theme_path` records (never the original file outside
@@ -3439,13 +3487,13 @@ impl App {
                 .zip(std::fs::read(b).ok())
                 .is_some_and(|(x, y)| x == y)
         };
-        let mut dest = dir.join(format!("{stem}.peco"));
+        let mut dest = dir.join(format!("{stem}.cde"));
         if dest.exists() {
             if same_bytes(src, &dest) {
                 return dest;
             }
             for i in 2..100 {
-                let candidate = dir.join(format!("{stem} ({i}).peco"));
+                let candidate = dir.join(format!("{stem} ({i}).cde"));
                 if !candidate.exists() {
                     dest = candidate;
                     break;
@@ -3461,7 +3509,7 @@ impl App {
         dest
     }
 
-    /// Applies a `.peco` already living in the theme library (a gallery card click).
+    /// Applies a `.cde` already living in the theme library (a gallery card click).
     pub(super) fn apply_theme_from_library(&mut self, path: &Path) {
         self.apply_theme_path(path, false);
     }
@@ -3523,12 +3571,12 @@ impl App {
         if !self.theme_in_library(&path) || !path.is_file() {
             return;
         }
-        let today = pecofence_core::config_store::today_yyyy_mm_dd();
+        let today = coredesk_core::config_store::today_yyyy_mm_dd();
         let file_day = std::fs::metadata(&path)
             .and_then(|m| m.modified())
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| pecofence_core::config_store::yyyy_mm_dd_of(d.as_secs() as i64));
+            .map(|d| coredesk_core::config_store::yyyy_mm_dd_of(d.as_secs() as i64));
         if file_day.as_deref() == Some(today.as_str()) {
             return;
         }
@@ -3540,7 +3588,7 @@ impl App {
         }
     }
 
-    /// Deletes a `.peco` from the theme library. Only files directly inside the library
+    /// Deletes a `.cde` from the theme library. Only files directly inside the library
     /// folder are removable — a page-supplied path can never reach outside it. Removing
     /// the active theme's archive severs its anchor: nothing remains to overwrite.
     pub(super) fn delete_library_theme(&mut self, path: &Path) {
@@ -3563,17 +3611,17 @@ impl App {
         self.push_settings_state();
     }
 
-    pub(super) fn import_theme_from(&mut self, path: &Path) {
+    pub(crate) fn import_theme_from(&mut self, path: &Path) {
         self.apply_theme_path(path, true);
     }
 
     /// Shared import/apply flow: `save_to_library` distinguishes a file the user picked
     /// (`importTheme`, kept as a gallery card) from a card that was clicked (`applyTheme`).
     fn apply_theme_path(&mut self, path: &Path, save_to_library: bool) {
-        let extracted = match pecofence_core::peco_theme::extract_peco_to_temp(path) {
+        let extracted = match coredesk_core::cde_theme::extract_cde_to_temp(path) {
             Ok(ex) => ex,
             Err(e) => {
-                self.settings_error(&pecofence_core::i18n::format(
+                self.settings_error(&coredesk_core::i18n::format(
                     "无法使用此文件：{0}",
                     std::slice::from_ref(&e),
                 ));
@@ -3585,7 +3633,7 @@ impl App {
             Ok(c) => c,
             Err(e) => {
                 let _ = std::fs::remove_dir_all(&extracted.temp_dir);
-                self.settings_error(&pecofence_core::i18n::format(
+                self.settings_error(&coredesk_core::i18n::format(
                     "无法使用此文件：{0}",
                     std::slice::from_ref(&e),
                 ));
@@ -3687,11 +3735,11 @@ impl App {
             .config
             .settings
             .language
-            .resolve(pecofence_platform::locale::ui_language());
-        if language == pecofence_core::i18n::language() {
+            .resolve(coredesk_platform::locale::ui_language());
+        if language == coredesk_core::i18n::language() {
             return;
         }
-        pecofence_core::i18n::set_language(language);
+        coredesk_core::i18n::set_language(language);
         tracing::info!(language = language.tag(), "interface language changed");
         if let Some(host) = &self.settings {
             host.update_language();
@@ -3715,11 +3763,11 @@ mod tests {
 
     #[test]
     fn remapping_theme_monitors_preserves_fence_geometry_on_new_display() {
-        let mut cfg = pecofence_core::Config::default();
-        let mut f = pecofence_core::Fence::new(
+        let mut cfg = coredesk_core::Config::default();
+        let mut f = coredesk_core::Fence::new(
             "Shelf",
-            pecofence_core::FenceKind::Virtual,
-            pecofence_core::NormGeometry {
+            coredesk_core::FenceKind::Virtual,
+            coredesk_core::NormGeometry {
                 monitor: "OLD_MON#1".into(),
                 x: 120.0,
                 y: 80.0,
@@ -3727,14 +3775,14 @@ mod tests {
                 h: 300.0,
                 work_w: 1920.0,
                 work_h: 1080.0,
-                anchor: pecofence_core::Anchor::LeftTop,
+                anchor: coredesk_core::Anchor::LeftTop,
                 skew_left: Some(-12.0),
                 skew_right: Some(12.0),
             },
         );
         f.view.shelf_3d = Some(true);
-        cfg.layouts.push(pecofence_core::Layout {
-            fingerprint: vec![pecofence_core::MonitorIdentity {
+        cfg.layouts.push(coredesk_core::Layout {
+            fingerprint: vec![coredesk_core::MonitorIdentity {
                 device_path: "OLD_MON#1".into(),
                 gdi_name: r"\\.\DISPLAY1".into(),
                 work_dip: [1920.0, 1080.0],
@@ -3745,7 +3793,7 @@ mod tests {
             desktop_items: Default::default(),
             shown: 1,
         });
-        let work = vec![pecofence_core::geometry::WorkArea {
+        let work = vec![coredesk_core::geometry::WorkArea {
             device_path: "NEW_MON#2".into(),
             gdi_name: r"\\.\DISPLAY1".into(),
             left: 0,

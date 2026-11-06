@@ -13,7 +13,7 @@ param(
   [string]$Identity = "packaging/msix/identity.json",
   [switch]$SkipBuild,
   [switch]$TestSign,
-  [string]$TestCertPassword = "pecofence-test"
+  [string]$TestCertPassword = "coredesk-test"
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -38,12 +38,12 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
   $env:PATH = (Join-Path $env:USERPROFILE ".cargo\bin") + ";" + $env:PATH
 }
 if (-not $SkipBuild) {
-  cargo build --locked --release -p pecofence -p pecofence-watchdog --target-dir $TargetDir
+  cargo build --locked --release -p coredesk -p coredesk-watchdog --target-dir $TargetDir
   if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
   # Separate invocation: building the CLI together with the app would unify its `describe`
-  # feature (schemars) into pecofence.exe.
-  cargo build --locked --release -p pecofence-cli --target-dir $TargetDir
-  if ($LASTEXITCODE -ne 0) { throw "cargo build (pecofence-cli) failed" }
+  # feature (schemars) into coredesk.exe.
+  cargo build --locked --release -p coredesk-cli --target-dir $TargetDir
+  if ($LASTEXITCODE -ne 0) { throw "cargo build (coredesk-cli) failed" }
 }
 
 if (-not $Version) {
@@ -59,16 +59,16 @@ foreach ($field in "identityName", "publisher", "publisherDisplayName") {
 }
 
 $distRoot = [IO.Path]::GetFullPath((Join-Path $root "dist"))
-$stage = [IO.Path]::GetFullPath((Join-Path $distRoot "pecofence-$Version-msix"))
+$stage = [IO.Path]::GetFullPath((Join-Path $distRoot "coredesk-$Version-msix"))
 if (-not $stage.StartsWith($distRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe package destination" }
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage | Out-Null
 
 # Payload: identical to the portable ZIP minus the portable README.
 $release = Join-Path $TargetDir "release"
-Copy-Item -LiteralPath (Join-Path $release "pecofence.exe") -Destination $stage
-Copy-Item -LiteralPath (Join-Path $release "pecofence-watchdog.exe") -Destination $stage
-Copy-Item -LiteralPath (Join-Path $release "pecofence-cli.exe") -Destination $stage
+Copy-Item -LiteralPath (Join-Path $release "coredesk.exe") -Destination $stage
+Copy-Item -LiteralPath (Join-Path $release "coredesk-watchdog.exe") -Destination $stage
+Copy-Item -LiteralPath (Join-Path $release "coredesk-cli.exe") -Destination $stage
 Copy-Item -LiteralPath "third_party/webview2/WebView2Loader.x64.dll" -Destination (Join-Path $stage "WebView2Loader.dll")
 Copy-Item -LiteralPath "third_party/webview2/LICENSE.txt" -Destination (Join-Path $stage "LICENSE-WebView2Loader.txt")
 Copy-Item -LiteralPath "LICENSE" -Destination (Join-Path $stage "LICENSE.txt")
@@ -90,7 +90,7 @@ $manifestPath = Join-Path $stage "AppxManifest.xml"
 [IO.File]::WriteAllText($manifestPath, $manifest, (New-Object Text.UTF8Encoding $false))
 
 # Resource index so scale-qualified assets resolve.
-$priConfig = Join-Path $distRoot "pecofence-$Version-priconfig.xml"
+$priConfig = Join-Path $distRoot "coredesk-$Version-priconfig.xml"
 if (Test-Path -LiteralPath $priConfig) { Remove-Item -LiteralPath $priConfig }
 & $makepri createconfig /cf $priConfig /dq en-US /pv 10.0.0 /o
 if ($LASTEXITCODE -ne 0) { throw "makepri createconfig failed" }
@@ -98,7 +98,7 @@ if ($LASTEXITCODE -ne 0) { throw "makepri createconfig failed" }
 if ($LASTEXITCODE -ne 0) { throw "makepri new failed" }
 Remove-Item -LiteralPath $priConfig
 
-$msix = Join-Path $distRoot "pecofence-$Version-x64.msix"
+$msix = Join-Path $distRoot "coredesk-$Version-x64.msix"
 if (Test-Path -LiteralPath $msix) { Remove-Item -LiteralPath $msix }
 & $makeappx pack /d $stage /p $msix /o
 if ($LASTEXITCODE -ne 0) { throw "makeappx pack failed" }
@@ -112,11 +112,11 @@ if ($TestSign) {
   # Add-AppxPackage tests only. Install the .cer into Trusted People first.
   $signtool = Find-SdkTool "signtool.exe"
   $cert = New-SelfSignedCertificate -Type Custom -Subject ([string]$id.publisher) `
-    -KeyUsage DigitalSignature -FriendlyName "PecoFence MSIX test signing" `
+    -KeyUsage DigitalSignature -FriendlyName "CoreDesk MSIX test signing" `
     -CertStoreLocation "Cert:\CurrentUser\My" `
     -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
-  $pfx = Join-Path $distRoot "pecofence-test-signing.pfx"
-  $cer = Join-Path $distRoot "pecofence-test-signing.cer"
+  $pfx = Join-Path $distRoot "coredesk-test-signing.pfx"
+  $cer = Join-Path $distRoot "coredesk-test-signing.cer"
   $secure = ConvertTo-SecureString -String $TestCertPassword -Force -AsPlainText
   Export-PfxCertificate -Cert $cert -FilePath $pfx -Password $secure | Out-Null
   Export-Certificate -Cert $cert -FilePath $cer | Out-Null

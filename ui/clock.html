@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- PECOFENCE_LOCALE -->
+<!-- COREDESK_LOCALE -->
 <title data-i18n="桌面时钟小组件">桌面时钟小组件</title>
 <script src="i18n.js"></script>
 <style>
@@ -491,7 +491,7 @@
 (() => {
   const root = document.getElementById('widget-root');
   const wv = window.chrome && window.chrome.webview;
-  let locale = (window.PECOFENCE_LOCALE && PECOFENCE_LOCALE.locale) || 'en';
+  let locale = (window.COREDESK_LOCALE && COREDESK_LOCALE.locale) || 'en';
   let dayFmt, monFmt, ampmFmt;
   function applyLocale(tag) {
     locale = tag || 'en';
@@ -579,7 +579,7 @@
       <div class="d1-inner"><div class="d1-time"><span class="js-hh"></span><b>:<span class="js-mm"></span></b></div>
       <div class="d1-row"><span class="day js-day"></span><span class="sep"></span><span class="js-date"></span></div></div>`,
     d2: () => `
-      <div class="d2-line"><span class="prompt">&gt;</span> peco.clock --now</div>
+      <div class="d2-line"><span class="prompt">&gt;</span> cde.clock --now</div>
       <div class="d2-line big"><span class="js-hh"></span>:<span class="js-mm"></span>:<span class="js-ss"></span><span class="d2-cursor"></span></div>
       <div class="d2-line"><span class="prompt">&gt;</span> <span class="js-day"></span> | <span class="js-date"></span></div>`,
     d3: () => {
@@ -869,8 +869,8 @@
         applyEls();
       }
       else if (m.t === 'clockLocale') {
-        window.PECOFENCE_LOCALE = { locale: m.locale, translations: m.translations };
-        if (window.PecoFenceI18n) PecoFenceI18n.set(m.locale, m.translations);
+        window.COREDESK_LOCALE = { locale: m.locale, translations: m.translations };
+        if (window.CoreDeskI18n) CoreDeskI18n.set(m.locale, m.translations);
         applyLocale(m.locale);
         tick();
       }

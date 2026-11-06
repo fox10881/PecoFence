@@ -20,10 +20,10 @@ Microsoft Store pages and their expanded screenshots were inspected:
 These are observations of published visuals, not evidence of conversion performance
 or a guarantee that another submission will receive the same certification result.
 BeWidgets also demonstrates that a large icon can work as hero art when related
-objects provide useful context; the problem with PecoFence's first hero is repetitive
+objects provide useful context; the problem with CoreDesk Engine's first hero is repetitive
 decoration without additional product meaning.
 
-## Problems in the PecoFence draft
+## Problems in the CoreDesk Engine draft
 
 1. All five screenshots reuse the same blue wallpaper and very similar panel framing.
    At Store thumbnail sizes they are difficult to distinguish.
@@ -56,7 +56,7 @@ decoration without additional product meaning.
 The local visual comparison is in `dist/store-review/index.html`; full-page captures,
 expanded screenshots and retrieval notes are under `.cache/store-benchmark/`.
 Reference screenshots are only for this review. They are not part of the upload pack
-or the public PecoFence website.
+or the public CoreDesk Engine website.
 
 ## Revision 2 continuation
 

@@ -14,14 +14,14 @@
 ```powershell
 cargo build --locked
 Copy-Item third_party/webview2/WebView2Loader.x64.dll target/debug/WebView2Loader.dll
-./target/debug/pecofence.exe
+./target/debug/coredesk.exe
 ```
 
 The WebView2 loader is imported at process startup and must be next to the executable,
 even if Settings is not opened. The watchdog should also be packaged beside the app.
 
 For an isolated test instance, use a separate directory, `--portable`,
-`--no-hide-icons` and a unique `PECOFENCE_INSTANCE`. Keep autostart disabled in its
+`--no-hide-icons` and a unique `COREDESK_INSTANCE`. Keep autostart disabled in its
 configuration. Portable startup leaves the Windows autostart entry alone.
 `--exit-after <milliseconds>` closes a smoke-test instance automatically.
 
@@ -48,8 +48,8 @@ opens an isolated portable Settings window, changes all ten languages through th
 real IPC handler, and checks saved preferences and preservation of names/autostart.
 It keeps its generated configuration and report under `.cache/`.
 
-`powershell -File scripts/cli-smoke.ps1` starts an isolated `PECOFENCE_INSTANCE=clitest`
-instance from a scratch copy of the debug binaries and drives it with `pecofence-cli`
+`powershell -File scripts/cli-smoke.ps1` starts an isolated `COREDESK_INSTANCE=clitest`
+instance from a scratch copy of the debug binaries and drives it with `coredesk-cli`
 (create, move, resize, set options, settings, rules, snapshots, delete), asserting the JSON
 replies and exit codes. It never touches the real configuration or desktop icons.
 
@@ -73,16 +73,16 @@ CI uses the pinned URL/SHA-256 in `packaging/inno/toolchain.json`.
 
 For a fork, pass `-Repository owner/repo` and pass the same value to the test with
 `--repository owner/repo`. The default is `GITHUB_REPOSITORY`, then
-`DayuanJiang/PecoFence` outside Actions. This sets the installer's links; it does
+`DayuanJiang/CoreDesk Engine` outside Actions. This sets the installer's links; it does
 not change application identity. Fork setup
-EXEs still target the same installed PecoFence product. Use the test script for
+EXEs still target the same installed CoreDesk Engine product. Use the test script for
 isolated validation instead of installing a fork package over a real installation.
 
 The packaging test checks the ZIP and setup payloads, binary equality and checksums.
 It then compiles the production `.iss` with a random **test-only** identity and two
 synthetic versions, installs to `.cache/`, upgrades and uninstalls. It exercises
 shortcuts, startup ownership, retained data, mutex blocking, destination/version
-guards and upgrading a folder that holds an extracted ZIP, without starting PecoFence. Temporary test shortcuts/registry entries are
+guards and upgrading a folder that holds an extracted ZIP, without starting CoreDeskEngine. Temporary test shortcuts/registry entries are
 cleaned up; reports and logs remain under `.cache/installer-*/`. Never distribute
 these synthetic test installers. Manually inspect the setup wizard and supported
 Windows/DPI combinations before release.
@@ -97,7 +97,7 @@ Windows/DPI combinations before release.
 | `crates/app` | Native windows, input, application state and Settings IPC |
 | `crates/watchdog` | Restores desktop icons after an abnormal app exit |
 | `crates/ipc` | Wire protocol shared by the app and the CLI: methods, DTOs, selectors, JSON Schema export |
-| `crates/cli` | `pecofence-cli.exe`: console front end that drives a running instance over a named pipe (see [CLI.md](CLI.md)) |
+| `crates/cli` | `coredesk-cli.exe`: console front end that drives a running instance over a named pipe (see [CLI.md](CLI.md)) |
 | `ui` | Offline settings HTML and localization helper embedded into the executable |
 | `locales` | Shared native and settings messages |
 | `site` | Static product website, built by `scripts/build-site.py` (see [WEBSITE.md](WEBSITE.md)) |

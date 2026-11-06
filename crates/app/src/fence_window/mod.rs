@@ -14,30 +14,30 @@ use crate::layout::{
     RowMetrics, group_spans,
 };
 use crate::shadow::{ShadowStyle, ShadowWindow};
-use pecofence_core::{
+use coredesk_core::{
     CivilDate, DateBucket, FenceId, IconFrameStyle, IconKey, IconShape, ItemId, ItemKey,
     LabelVisibility, SortMode, Spacing, ViewLayout, date_bucket,
 };
-use pecofence_platform::dragdrop::{
+use coredesk_platform::dragdrop::{
     self as dragdrop, DragImage, DragPoint, DropEffect, DropHandler, DropImage,
     DropTargetRegistration, IDataObject,
 };
-use pecofence_platform::fileinfo;
-use pecofence_platform::frameclock::FrameClock;
-use pecofence_platform::tooltip::Tooltip;
-use pecofence_platform::tray::PopupMenu;
-use pecofence_platform::window::{
+use coredesk_platform::fileinfo;
+use coredesk_platform::frameclock::FrameClock;
+use coredesk_platform::tooltip::Tooltip;
+use coredesk_platform::tray::PopupMenu;
+use coredesk_platform::window::{
     self, MessageHandler, StandardCursor, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, RECT, desktop, dwm, hotkey, monitors, msg};
-use pecofence_render::fence_chrome::{
+use coredesk_platform::{HWND, RECT, desktop, dwm, hotkey, monitors, msg};
+use coredesk_render::fence_chrome::{
     Backdrop, BackdropCrop, ContentDraw, FenceChrome, FenceStyle, GroupHeaderDraw, HeaderColumn,
     ItemCell, RAIL_BOTTOM, RAIL_COLLAPSED_BOTTOM, RAIL_ROW_H, RAIL_ROW_INSET, RAIL_ROW_RIGHT,
     RAIL_TOP, RowCell, RowColumns, RowsDraw, SOLID_FRAME_TOP_PAD, ScrollbarDraw, StripClip,
     TabDraw, TitleDeco, TitleState,
 };
-use pecofence_render::motion::{self, Curve, Fades, Motion, Prop, Tween};
-use pecofence_render::{
+use coredesk_render::motion::{self, Curve, Fades, Motion, Prop, Tween};
+use coredesk_render::{
     BitmapCache, ColorF, ContainerVisual, DesktopWindowTarget, DrawingSession, Image, Matrix3x2,
     MonitorBackdrop, Panel, Rect, RenderStack, TextFormat, Theme,
 };
@@ -103,7 +103,7 @@ pub struct FenceContext {
     pub shadow_class: WindowClass,
     pub shadow_style: std::cell::Cell<ShadowStyle>,
     pub behavior: Rc<Behavior>,
-    /// Compositor animations + Fluent constants (see `pecofence_render::motion`).
+    /// Compositor animations + Fluent constants (see `coredesk_render::motion`).
     pub motion: Rc<Motion>,
     /// Frame ticks for client-side tweens; call `request()` whenever a tween is running.
     pub frames: Rc<FrameClock>,
@@ -128,11 +128,11 @@ pub struct Behavior {
     /// Title row drawn only while hovered; at rest the plate starts at the content.
     pub title_on_hover: std::cell::Cell<bool>,
     /// Title (or tab strip) position in the title row (`titleAlign`).
-    pub title_align: std::cell::Cell<pecofence_core::TitleAlign>,
+    pub title_align: std::cell::Cell<coredesk_core::TitleAlign>,
     /// Tabs in the title row or in a column on the left (`tabBar`).
-    pub tab_bar: std::cell::Cell<pecofence_core::TabBar>,
+    pub tab_bar: std::cell::Cell<coredesk_core::TabBar>,
     /// Text in the backdrop's ink, one ink per fence or always white / black (`labelColor`).
-    pub label_color: std::cell::Cell<pecofence_core::LabelColor>,
+    pub label_color: std::cell::Cell<coredesk_core::LabelColor>,
     /// Scrollbar drawn only while hovered / shortly after scrolling.
     pub hide_inactive_scrollbar: std::cell::Cell<bool>,
     /// Resting the pointer on another tab switches to it (`rollUp.switchTabOnHover`).
@@ -199,7 +199,7 @@ impl Behavior {
 
     /// The pointer is over a fence that `hwnd` pushed out of its way: moving onto it must not
     /// close `hwnd`'s hover peek (the fence would slide away from under the pointer).
-    pub fn holds_open(&self, hwnd: HWND, pt: pecofence_platform::POINT) -> bool {
+    pub fn holds_open(&self, hwnd: HWND, pt: coredesk_platform::POINT) -> bool {
         self.pushed.borrow().iter().any(|p| {
             let r = window::window_rect(p.hwnd);
             p.by.contains(&hwnd)
@@ -303,7 +303,7 @@ pub struct SearchMarks {
 impl ItemView {
     /// Details "修改日期" text; namespace items (Recycle Bin, ...) have none.
     fn date_text(&self) -> String {
-        if pecofence_platform::shell::is_namespace_path(&self.path) {
+        if coredesk_platform::shell::is_namespace_path(&self.path) {
             String::new()
         } else {
             fileinfo::format_local_datetime(self.mtime)
@@ -317,7 +317,7 @@ impl ItemView {
 
     /// Details "大小" text; namespace items have none.
     fn size_text(&self) -> String {
-        if pecofence_platform::shell::is_namespace_path(&self.path) {
+        if coredesk_platform::shell::is_namespace_path(&self.path) {
             String::new()
         } else {
             fileinfo::format_size_kb(self.size, self.is_folder)
@@ -334,7 +334,7 @@ impl ItemView {
         mtime: i64,
         size: u64,
     ) -> Self {
-        let local_date = if pecofence_platform::shell::is_namespace_path(&path) {
+        let local_date = if coredesk_platform::shell::is_namespace_path(&path) {
             None
         } else {
             fileinfo::local_civil_date(mtime).map(|(y, m, d)| CivilDate::new(y, m, d))

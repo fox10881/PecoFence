@@ -2,7 +2,7 @@
 //
 // No build-time crate dependencies: a small `.rc` is written to `OUT_DIR`, compiled with the
 // Windows SDK's `rc.exe` and handed to the linker. If `rc.exe` cannot be found the build still
-// succeeds, without an icon (a `cargo:warning` says so). `PECOFENCE_RC` overrides the path.
+// succeeds, without an icon (a `cargo:warning` says so). `COREDESK_RC` overrides the path.
 //
 // `crates/watchdog/build.rs` includes this file so both executables carry the same icon.
 
@@ -18,13 +18,13 @@ fn main() {
         .join("..")
         .join("app")
         .join("assets")
-        .join("pecofence.ico");
+        .join("coredesk.ico");
     let ico = ico.canonicalize().unwrap_or(ico);
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=../app/build.rs");
     println!("cargo:rerun-if-changed={}", ico.display());
-    println!("cargo:rerun-if-env-changed=PECOFENCE_RC");
+    println!("cargo:rerun-if-env-changed=COREDESK_RC");
 
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows")
         || env::var("CARGO_CFG_TARGET_ENV").as_deref() != Ok("msvc")
@@ -37,9 +37,9 @@ fn main() {
         return;
     };
 
-    let rc_path = out_dir.join("pecofence.rc");
+    let rc_path = out_dir.join("coredesk.rc");
     std::fs::write(&rc_path, rc_source(&ico)).expect("write .rc");
-    let res_path = out_dir.join("pecofence.res");
+    let res_path = out_dir.join("coredesk.res");
     // /nologo, /fo output; no /i needed because the script includes no headers.
     let status = Command::new(&rc)
         .arg("/nologo")
@@ -69,8 +69,8 @@ fn main() {
 fn link_options(out_dir: &Path) {
     let package = env::var("CARGO_PKG_NAME").unwrap_or_default();
     let delayed: &[&str] = match package.as_str() {
-        "pecofence" => &["winhttp.dll"],
-        "pecofence-watchdog" => &["user32.dll", "shell32.dll"],
+        "coredesk" => &["winhttp.dll"],
+        "coredesk-watchdog" => &["user32.dll", "shell32.dll"],
         _ => &[],
     };
     for dll in delayed {
@@ -79,8 +79,8 @@ fn link_options(out_dir: &Path) {
     if !delayed.is_empty() {
         println!("cargo:rustc-link-arg-bins=delayimp.lib");
     }
-    if package == "pecofence" {
-        let manifest = out_dir.join("pecofence.manifest");
+    if package == "coredesk" {
+        let manifest = out_dir.join("coredesk.manifest");
         std::fs::write(&manifest, SEGMENT_HEAP_MANIFEST).expect("write manifest");
         println!("cargo:rustc-link-arg-bins=/MANIFEST:EMBED");
         println!(
@@ -92,7 +92,7 @@ fn link_options(out_dir: &Path) {
     }
 }
 
-/// `ExplorerBlurMica.dll` ships beside the exe (same as `pecofence_tap.dll` and
+/// `ExplorerBlurMica.dll` ships beside the exe (same as `coredesk_tap.dll` and
 /// the WebView2 loader); the FE styler deploys it from there into the
 /// residents dir and the tap resident `LoadLibraryW`s it into each
 /// cabinet-owning explorer when the user enables the effect.
@@ -116,7 +116,7 @@ fn copy_explorer_blur_mica(out_dir: &Path) {
     }
 }
 
-/// Running `pecofence.exe` straight from `target/<profile>` needs the WebView2 loader
+/// Running `coredesk.exe` straight from `target/<profile>` needs the WebView2 loader
 /// beside it, the same way `scripts/make-windows.ps1` copies it into `dist/`. OUT_DIR is
 /// `target/<profile>/build/<pkg>-<hash>/out`, so three levels up is the profile directory.
 fn copy_webview_loader(out_dir: &Path) {
@@ -183,7 +183,7 @@ BEGIN
       VALUE "InternalName", "{name}"
       VALUE "LegalCopyright", "Copyright (c) Dayuan Jiang. Licensed under the Apache License 2.0."
       VALUE "OriginalFilename", "{name}.exe"
-      VALUE "ProductName", "PecoFence"
+      VALUE "ProductName", "CoreDesk Engine"
       VALUE "ProductVersion", "{version}"
     END
   END
@@ -199,9 +199,9 @@ END
     )
 }
 
-/// `PECOFENCE_RC`, else the newest `rc.exe` under the Windows 10/11 SDK, else `rc.exe` on PATH.
+/// `COREDESK_RC`, else the newest `rc.exe` under the Windows 10/11 SDK, else `rc.exe` on PATH.
 fn find_rc() -> Option<PathBuf> {
-    if let Some(p) = env::var("PECOFENCE_RC").ok().filter(|p| !p.is_empty()) {
+    if let Some(p) = env::var("COREDESK_RC").ok().filter(|p| !p.is_empty()) {
         let p = PathBuf::from(p);
         return p.is_file().then_some(p);
     }

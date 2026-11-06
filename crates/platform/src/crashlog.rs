@@ -138,7 +138,7 @@ unsafe extern "system" fn filter(info: *const EXCEPTION_POINTERS) -> i32 {
     });
     let accessed = fault.map(|(_, accessed)| format!("{accessed:#x}"));
     let at_version = module_version(address);
-    // This function is part of pecofence.exe: the build the exe's frames in the stack are from.
+    // This function is part of coredesk.exe: the build the exe's frames in the stack are from.
     let exe_version = module_version(filter as *const () as usize as u64);
     tracing::error!(
         code = format_args!("{code:#010x}"),

@@ -137,7 +137,7 @@
 
         r.tray = menu(S, ['隐藏所有栅栏', '新建栅栏', { t: '在桌面显示文件夹', sub: 1 },
             { t: '速览所有栅栏', key: 'Ctrl+Alt+空格' }, '立即应用整理规则', '-', '恢复显示桌面图标',
-            '修复桌面图标（图标消失时使用）', '发送反馈…', '设置…', '-', '退出 PecoFence'], 236);
+            '修复桌面图标（图标消失时使用）', '发送反馈…', '设置…', '-', '退出 CoreDesk'], 236);
         r.tray.n.style.zIndex = 3;
         r.trayAt = { x: TRAY.x - 236, y: TRAY.y - 10 - r.tray.h };
         // the 右键 caption goes above the tray icon, just right of the menu (which grows for longer

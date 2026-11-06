@@ -11,7 +11,7 @@
 //! 2. **Client tweens** ([`Tween`]) for values that are rasterised *inside* a Direct2D
 //!    surface — a hover highlight's alpha, the scroll offset of a list. The app redraws the
 //!    surface each frame while a tween runs, ticked by the compositor clock
-//!    (`pecofence_platform::frameclock`). Easing math comes from the `bezier_easing` crate
+//!    (`coredesk_platform::frameclock`). Easing math comes from the `bezier_easing` crate
 //!    (a port of gre/bezier-easing, the CSS `cubic-bezier()` solver).
 //!
 //! Both honour the user's "animation effects" switch: with animations off, [`Motion`] sets the

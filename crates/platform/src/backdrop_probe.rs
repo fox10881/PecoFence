@@ -60,7 +60,9 @@ fn probe_under(exclude: HWND, rect: RECT) -> Option<(Vec<u8>, u32, u32, RECT)> {
                 // the wallpaper probe instead.
                 return None;
             }
-            if !class.starts_with("PecoFence.") && area(intersect(rect, window_rect(w))) >= need {
+            if !class.starts_with("CoreDeskEngine.")
+                && area(intersect(rect, window_rect(w))) >= need
+            {
                 let hit = still::capture(w, |p, ww, hh| (p.to_vec(), ww, hh));
                 if let Some((frame, (px, ww, hh))) = hit {
                     if px.iter().any(|&b| b != 0) {

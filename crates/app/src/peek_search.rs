@@ -9,14 +9,14 @@
 //! search glyph and the match count itself.
 
 use crate::commands::{Command, CommandQueue};
-use pecofence_platform::paint::{self, Align, Font};
-use pecofence_platform::window::{
+use coredesk_platform::paint::{self, Align, Font};
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, RECT, desktop, dwm, edit, fonts, monitors, msg};
+use coredesk_platform::{HWND, RECT, desktop, dwm, edit, fonts, monitors, msg};
 use std::cell::RefCell;
 
-pub const SEARCH_CLASS: &str = "PecoFence.PeekSearch";
+pub const SEARCH_CLASS: &str = "CoreDeskEngine.PeekSearch";
 const WA_INACTIVE: usize = 0;
 const VK_UP: u32 = 0x26;
 const VK_DOWN: u32 = 0x28;
@@ -125,7 +125,7 @@ pub fn open(text: &str, queue: CommandQueue, dark: bool) {
         let c = c.borrow();
         let class = c.as_ref()?;
         WindowBuilder::new(class)
-            .title("PecoFence search")
+            .title("CoreDesk Engine search")
             .style(style::POPUP | style::CLIPCHILDREN)
             .ex_style(style::EX_TOOLWINDOW | style::EX_TOPMOST)
             .bounds(x, y, w, h)

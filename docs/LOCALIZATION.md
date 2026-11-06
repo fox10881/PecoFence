@@ -29,7 +29,7 @@ display locales use the supported Brazilian Portuguese catalog.
 stable key. Simplified Chinese uses the source text directly. Keep keys intact;
 edit the value to improve a translation.
 
-Native code uses `pecofence_core::i18n::text` and `i18n::format`. The settings page
+Native code uses `coredesk_core::i18n::text` and `i18n::format`. The settings page
 uses the same catalog through `ui/i18n.js`. Catalogs and scripts are embedded into
 the executable, so installation does not require copying a locale directory.
 

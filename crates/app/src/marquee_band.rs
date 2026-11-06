@@ -1,19 +1,19 @@
 //! The rubber band of a marquee drawn on the bare desktop. Explorer draws none while its icons
-//! are hidden (PecoFence's usual state), so this one does, in the white of the other drag
+//! are hidden (CoreDesk Engine's usual state), so this one does, in the white of the other drag
 //! feedback (drop outline, guides): a light white wash inside a 1 DIP white border with a dark
 //! hairline outside it, readable on light and dark wallpapers. Five click-through layered
 //! windows: the wash, painted by its class brush at a constant alpha, and the four edges, small
 //! bitmaps redrawn as the band grows. They sit directly above the desktop icon host, below the
 //! fences, where Explorer's own band would be.
 
-use pecofence_platform::layered::LayeredImage;
-use pecofence_platform::window::{
+use coredesk_platform::layered::LayeredImage;
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, RECT, desktop, msg};
+use coredesk_platform::{HWND, RECT, desktop, msg};
 use windows_core::Result;
 
-pub const MARQUEE_BAND_CLASS: &str = "PecoFence.MarqueeBand";
+pub const MARQUEE_BAND_CLASS: &str = "CoreDeskEngine.MarqueeBand";
 
 /// Alpha of the wash (the drop outline's 14 % white).
 const FILL_ALPHA: u8 = 0x24;

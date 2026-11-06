@@ -1,5 +1,5 @@
 //! Win32 declarations used inside the injected DLL. Same `windows_core::link!`
-//! convention as `pecofence-platform`'s bindings; only what the TAP needs.
+//! convention as `coredesk-platform`'s bindings; only what the TAP needs.
 #![allow(
     non_snake_case,
     non_camel_case_types,

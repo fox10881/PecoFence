@@ -1,6 +1,6 @@
-//! Thin, safe-ish wrappers over the Win32 / DWM / OLE / shell APIs PecoFence needs.
+//! Thin, safe-ish wrappers over the Win32 / DWM / OLE / shell APIs CoreDesk Engine needs.
 //!
-//! All `unsafe` in the project lives in this crate and in `pecofence-render`. Every
+//! All `unsafe` in the project lives in this crate and in `coredesk-render`. Every
 //! unsafe block carries a `// SAFETY:` note. The generated `bindings` module is private;
 //! other crates use the wrappers exported here.
 

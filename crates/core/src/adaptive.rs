@@ -1,4 +1,4 @@
-//! Adaptive Theme Engine — the pure-math core of cross-monitor `.peco` themes.
+//! Adaptive Theme Engine — the pure-math core of cross-monitor `.cde` themes.
 //!
 //! A theme remembers the monitor it was saved on (`SourceCanvas`) and where the bundled
 //! background asset was drawn on it. Fences additionally carry *canvas coordinates*:
@@ -85,7 +85,7 @@ impl CanvasSpace {
     }
 }
 
-/// `theme.json` inside a `.peco` archive: everything the adaptive engine needs on top
+/// `theme.json` inside a `.cde` archive: everything the adaptive engine needs on top
 /// of `config.json`. Unknown to older readers — they extract it and move on.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -261,7 +261,7 @@ pub fn dpi_scaled(value: f32, target_dpi: u32, source_dpi: u32) -> f32 {
 }
 
 /// The `{Width}x{Height}_{Scale}%` suffix appended to a saved theme's name
-/// (`MySetup_3840x2160_300%.peco`) so the library card shows its capture context.
+/// (`MySetup_3840x2160_300%.cde`) so the library card shows its capture context.
 pub fn source_suffix(source: &SourceCanvas) -> String {
     format!(
         "{}x{}_{}%",

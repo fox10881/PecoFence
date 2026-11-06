@@ -1,7 +1,7 @@
 # Wallpaper Engine personal build
 
 This fork adds live Wallpaper Engine backgrounds to **Liquid Glass**. Version
-`0.1.5-we.11` is based on upstream PecoFence 0.1.5. The GPU optics now use
+`0.1.5-we.11` is based on upstream CoreDesk Engine 0.1.5. The GPU optics now use
 continuous superellipse corners, a flat face, curved edge displacement, subtle
 interior frost and narrow directional glints. The material and Windows compositor
 clip share the same silhouette. Whole-face magnification and the previous broad
@@ -41,7 +41,7 @@ maximized/full-screen applications, the glass keeps the current paused frame.
 ## Runtime behavior
 
 - Enabled automatically for Liquid Glass; no config migration is required.
-- Default capture target: 60 FPS. Set `PECOFENCE_WALLPAPER_FPS` before starting the
+- Default capture target: 60 FPS. Set `COREDESK_WALLPAPER_FPS` before starting the
   app to choose 1–60 FPS. The worker uses monotonic deadlines; long overruns are
   skipped. Actual delivery also depends on capture cost and WPE's playback rate.
 - Live updates share the compositor frame clock with fence animations. A 100 ms
@@ -58,9 +58,9 @@ maximized/full-screen applications, the glass keeps the current paused frame.
   strength with a slow critically damped transition. Incoming/outgoing response
   parameters are 1.8/1.6 seconds, with subtle tails settling at roughly 2.6/2.3
   seconds. A second focus change retargets current strength and velocity smoothly.
-  PecoFence popups and an explicitly requested Peek remain interactive; a full-screen
-  PecoFence window also suspends ordinary desktop rendering.
-- Set `PECOFENCE_LIVE_WALLPAPER=0` before starting to use the original static
+  CoreDesk Engine popups and an explicitly requested Peek remain interactive; a full-screen
+  CoreDesk Engine window also suspends ordinary desktop rendering.
+- Set `COREDESK_LIVE_WALLPAPER=0` before starting to use the original static
   pipeline. An explicit `--wallpaper` override also disables live capture.
 - Capture runs on a dedicated worker with a capacity-one mailbox. A blocked
   `PrintWindow` cannot block the UI. Shutdown allows up to 500 ms to drain GPU sessions
@@ -87,15 +87,15 @@ maximized/full-screen applications, the glass keeps the current paused frame.
 ## Verification
 
 ```powershell
-cargo build --locked --release -p pecofence -p pecofence-watchdog
-cargo build --locked --release -p pecofence-cli
+cargo build --locked --release -p coredesk -p coredesk-watchdog
+cargo build --locked --release -p coredesk-cli
 cargo fmt --all --check
-cargo clippy -p pecofence -p pecofence-platform --all-targets -- -D warnings
-cargo clippy -p pecofence-render --all-targets -- -D warnings
-cargo test -p pecofence-render --lib
-cargo test -p pecofence-core updates::tests
-cargo run -p pecofence-platform --example live_wallpaper_probe -- .cache/live-probe
-cargo run -p pecofence-platform --example live_wallpaper_probe -- .cache/gpu-probe --gpu
+cargo clippy -p coredesk -p coredesk-platform --all-targets -- -D warnings
+cargo clippy -p coredesk-render --all-targets -- -D warnings
+cargo test -p coredesk-render --lib
+cargo test -p coredesk-core updates::tests
+cargo run -p coredesk-platform --example live_wallpaper_probe -- .cache/live-probe
+cargo run -p coredesk-platform --example live_wallpaper_probe -- .cache/gpu-probe --gpu
 ```
 
 The diagnostic writes two real wallpaper frames, checks dimensions and opaque
@@ -152,14 +152,14 @@ short local observation, not a guarantee for other wallpapers or hardware.
 
 ## Install and revert
 
-Keep a copy of the original PecoFence program directory and
-`%APPDATA%\PecoFence` before replacing an existing install. Exit PecoFence, then
-replace `pecofence.exe`, `pecofence-watchdog.exe`, and `pecofence-cli.exe` together.
+Keep a copy of the original CoreDesk Engine program directory and
+`%APPDATA%\CoreDeskEngine` before replacing an existing install. Exit CoreDesk Engine, then
+replace `coredesk.exe`, `coredesk-watchdog.exe`, and `coredesk-cli.exe` together.
 The existing `WebView2Loader.dll` and configuration remain compatible.
 
-To revert, exit PecoFence and restore the three original binaries. Restore the
+To revert, exit CoreDesk Engine and restore the three original binaries. Restore the
 saved data directory only if you also want to discard later layout/settings
-changes. Restart PecoFence from its existing shortcut.
+changes. Restart CoreDesk Engine from its existing shortcut.
 
 For an independent portable installation, extract the **entire** portable ZIP and
-start `pecofence.exe --portable`. See [PORTABLE.md](PORTABLE.md) for data paths.
+start `coredesk.exe --portable`. See [PORTABLE.md](PORTABLE.md) for data paths.

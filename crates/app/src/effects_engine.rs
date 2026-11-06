@@ -7,16 +7,16 @@
 //! color is rewritten per particle plus gradient brushes pre-baked at 8
 //! opacity levels — created lazily on first use after a device rebuild.
 
-use pecofence_render::{
+use coredesk_render::{
     Bitmap, Brush, ColorF, DrawingSession, Ellipse, GradientStop, LinearGradient, Matrix3x2,
     RadialGradient, Rect, TextFormat, Vector2,
 };
 use windows_core::Result;
 
 /// Upper bound of live particles; `intensity` scales the active prefix.
-/// The bound itself is structural — it lives in `pecofence_core` so the
+/// The bound itself is structural — it lives in `coredesk_core` so the
 /// externalized `particle_count` parameter clamps against the same ceiling.
-pub const MAX_PARTICLES: usize = pecofence_core::EFFECT_MAX_PARTICLES as usize;
+pub const MAX_PARTICLES: usize = coredesk_core::EFFECT_MAX_PARTICLES as usize;
 
 /// Per-gradient alpha quantization (0.125 steps) — smooth enough for particles.
 const ALPHA_BUCKETS: usize = 8;
@@ -168,7 +168,7 @@ impl LiveParams {
     /// `EffectParams` (all-optional) → resolved runtime values. Sanitized
     /// again here: a hand-edited `Live_Effects_config.json` reaches this
     /// path via boot load, bypassing `Config::sanitize_external`.
-    pub fn from_params(p: &pecofence_core::EffectParams) -> Self {
+    pub fn from_params(p: &coredesk_core::EffectParams) -> Self {
         let mut p = p.clone();
         p.sanitize();
         Self {
@@ -523,7 +523,7 @@ impl Engine {
         } else {
             // Compiled baselines live in core (`EFFECT_BASE_PARTICLES`) so
             // the sidecar template renders exactly what the engine spawns.
-            pecofence_core::effect_base_particles(self.effect.id()) as usize
+            coredesk_core::effect_base_particles(self.effect.id()) as usize
         };
         ((base as f32 * self.intensity) as usize).min(MAX_PARTICLES)
     }
@@ -2123,7 +2123,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pecofence_core::EffectParams;
+    use coredesk_core::EffectParams;
 
     #[test]
     fn live_params_resolve_defaults() {
@@ -2187,7 +2187,7 @@ mod tests {
         assert_eq!(e2.ps.len(), MAX_PARTICLES); // pool never grew
     }
 
-    const EFFECT_MAX_PARTICLES_FOR_TEST: u32 = pecofence_core::EFFECT_MAX_PARTICLES;
+    const EFFECT_MAX_PARTICLES_FOR_TEST: u32 = coredesk_core::EFFECT_MAX_PARTICLES;
 
     #[test]
     fn zero_count_falls_back_to_base() {
@@ -2240,11 +2240,11 @@ mod tests {
         // The closed catalog is a contract across three tables: the engine
         // must parse+emit every id, and each must carry a display name and
         // a baseline count for the sidecar template.
-        for id in pecofence_core::EFFECT_IDS {
+        for id in coredesk_core::EFFECT_IDS {
             let e =
                 Effect::from_id(id).unwrap_or_else(|| panic!("{id} missing from Effect::from_id"));
             assert_eq!(e.id(), *id);
-            assert_ne!(pecofence_core::effect_display_name(id), "Live effect");
+            assert_ne!(coredesk_core::effect_display_name(id), "Live effect");
         }
     }
 

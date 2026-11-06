@@ -2,14 +2,14 @@
 //! click-through layered windows along the edges it lines up with and the screen centre lines
 //! it snapped to, placed directly above the moving fence.
 
-use pecofence_platform::layered::LayeredImage;
-use pecofence_platform::window::{
+use coredesk_platform::layered::LayeredImage;
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, desktop, msg};
+use coredesk_platform::{HWND, desktop, msg};
 use windows_core::Result;
 
-pub const DRAG_GUIDE_CLASS: &str = "PecoFence.DragGuide";
+pub const DRAG_GUIDE_CLASS: &str = "CoreDeskEngine.DragGuide";
 
 /// How far a guide runs past the edges it joins, fading out, in DIPs.
 const OVERHANG_DIP: f32 = 12.0;
@@ -176,7 +176,7 @@ impl DragGuides {
     }
 
     /// Window rects of the guides on screen, for test dumps.
-    pub fn shown(&self) -> Vec<pecofence_platform::RECT> {
+    pub fn shown(&self) -> Vec<coredesk_platform::RECT> {
         self.lines
             .iter()
             .filter(|w| w.shown)

@@ -5,7 +5,7 @@
 // by round-tripping a synthetic <Style><Setter/> through XamlReader::Load,
 // which returns (DependencyProperty, boxed value) pairs with the parser's own
 // type conversion. These are the XAML parser / style / visual-state /
-// resource-dictionary types the same port needs inside pecofence_tap.dll when
+// resource-dictionary types the same port needs inside coredesk_tap.dll when
 // hosted by StartMenuExperienceHost.exe. Kept separate from bindings.rs
 // (taskbar surface) and fx_bindings.rs (blur-brush plumbing).
 --filter

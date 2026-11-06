@@ -1,7 +1,7 @@
 """Verify packaged bytes and exercise the real installer under a unique test identity.
 
 Run after make-windows.ps1. Requires Python 3.11+ and Inno Setup 7. Never installs
-the production setup EXE or launches PecoFence. Reports/logs stay under .cache/.
+the production setup EXE or launches CoreDeskEngine. Reports/logs stay under .cache/.
 """
 import argparse
 import ctypes
@@ -24,8 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 UNINSTALL = r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
 RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
 PAYLOAD = {
-    "pecofence.exe", "pecofence-cli.exe", "pecofence-watchdog.exe",
-    "pecofence_tap.dll", "ExplorerBlurMica.dll",
+    "coredesk.exe", "coredesk-cli.exe", "coredesk-watchdog.exe",
+    "coredesk_tap.dll", "ExplorerBlurMica.dll",
     "WebView2Loader.dll", "LICENSE",
     "LICENSE-WebView2Loader.txt", "THIRD-PARTY-LICENSES.txt", "README.md",
     "GPL-ExplorerBlurMica.txt", "LICENSE-ExplorerBlurMica.txt",
@@ -40,7 +40,7 @@ WALLPAPERS = {
 ZIP_PAYLOAD = (PAYLOAD - {"assets"}) | WALLPAPERS
 # The installer skips the three design docs and the ExplorerBlurMica set —
 # the app embeds that DLL and self-deploys it to AppData at runtime, so the
-# installed dir only needs pecofence_tap.dll — but keeps the wallpaper pack.
+# installed dir only needs coredesk_tap.dll — but keeps the wallpaper pack.
 INSTALLED = (PAYLOAD - {"assets", "DESKTOP_CONTAINERS.md", "GLASS_RENDERING.md",
                         "WALLPAPER_ENGINE.md", "ExplorerBlurMica.dll",
                         "GPL-ExplorerBlurMica.txt", "LICENSE-ExplorerBlurMica.txt",
@@ -98,12 +98,12 @@ def find_iscc(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target-dir", type=Path, default=ROOT / "target/package")
-    parser.add_argument("--repository", default=os.getenv("GITHUB_REPOSITORY") or "DayuanJiang/PecoFence")
+    parser.add_argument("--repository", default=os.getenv("GITHUB_REPOSITORY") or "DayuanJiang/CoreDesk")
     parser.add_argument("--iscc", help="ISCC.exe; default: the ISCC variable, PATH, then common install folders")
     args = parser.parse_args()
     iscc = find_iscc(args.iscc)
     version = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))["workspace"]["package"]["version"]
-    base = f"pecofence-v{version}-x64"
+    base = f"coredesk-v{version}-x64"
     dist = ROOT / "dist"
     payload = dist / ".staging" / f"{base}-installed"
     passed = []
@@ -115,7 +115,7 @@ def main():
     assert set(p.name for p in payload.iterdir()) == PAYLOAD
     with zipfile.ZipFile(dist / f"{base}-portable.zip") as archive:
         assert set(archive.namelist()) == ZIP_PAYLOAD, "Unexpected files or directories in ZIP"
-        for name in ("pecofence.exe", "pecofence-cli.exe", "pecofence-watchdog.exe", "WebView2Loader.dll"):
+        for name in ("coredesk.exe", "coredesk-cli.exe", "coredesk-watchdog.exe", "WebView2Loader.dll"):
             portable_bytes = archive.read(name)
             assert portable_bytes == (payload / name).read_bytes(), f"Different binaries: {name}"
             source = (ROOT / "third_party/webview2/WebView2Loader.x64.dll" if name.endswith(".dll")
@@ -124,8 +124,8 @@ def main():
     passed.append("ZIP and setup payloads, identical build outputs and both checksums")
 
     identity = uuid.uuid4().hex[:12]
-    product_id = f"PecoFence.InstallerTest.{identity}"
-    product_name = f"PecoFence Installer Test {identity}"
+    product_id = f"CoreDeskEngine.InstallerTest.{identity}"
+    product_name = f"CoreDesk Installer Test {identity}"
     uninstall_key = UNINSTALL + "\\" + product_id + "_is1"
     run_names = (product_id, product_id + ".legacy")
     stage = ROOT / ".cache" / f"installer-{identity}"
@@ -134,7 +134,7 @@ def main():
     fixture = stage / "payload"
     shutil.copytree(payload, fixture)
     report = stage / "report.json"
-    actual_startup = {name: reg_value(RUN, name) for name in ("PecoFence", "openFence")}
+    actual_startup = {name: reg_value(RUN, name) for name in ("CoreDesk", "openFence")}
     assert reg_value(uninstall_key, "InstallLocation") is None
     assert all(reg_value(RUN, name) is None for name in run_names)
     desktop_link = shell_folder(0x10) / f"{product_name}.lnk"
@@ -156,7 +156,7 @@ def main():
             log = stage / (name + ".log")
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
-                if log.is_file() and "PecoFence uninstall cleanup completed" in log.read_text(encoding="utf-8-sig", errors="replace"):
+                if log.is_file() and "CoreDesk uninstall cleanup completed" in log.read_text(encoding="utf-8-sig", errors="replace"):
                     break
                 time.sleep(0.1)
             else:
@@ -171,7 +171,7 @@ def main():
             run([iscc, "--quiet", f"--define=PayloadDir={fixture}",
                  f"--define=AppVersion={test_version}", f"--define=Repository={args.repository}",
                  f"--define=TestIdentity={identity}", f"--output-dir={stage}",
-                 f"--output-filename=setup-{number}", ROOT / "packaging/inno/pecofence.iss"])
+                 f"--output-filename=setup-{number}", ROOT / "packaging/inno/coredesk.iss"])
             installers.append(stage / f"setup-{number}.exe")
         old, new = installers
 
@@ -192,7 +192,7 @@ def main():
         assert mutex
         try:
             setup(old, "reject-running", f"/DIR={installed}", success=False)
-            assert not (installed / "pecofence.exe").exists()
+            assert not (installed / "coredesk.exe").exists()
         finally:
             kernel.CloseHandle(mutex)
         passed.append("a running app blocks setup without forced termination")
@@ -208,7 +208,7 @@ def main():
         passed.append("per-user install, exact payload, shortcuts, fork links and no setup autostart")
 
         setup(new, "reject-relocation", f"/DIR={stage / 'other install'}", success=False)
-        assert not (stage / "other install/pecofence.exe").exists()
+        assert not (stage / "other install/coredesk.exe").exists()
         passed.append("upgrade refuses to move the installation directory")
 
         retained = {}
@@ -218,11 +218,11 @@ def main():
             path.write_text("user data retained", encoding="utf-8")
             retained[path] = path.read_bytes()
         # Prove installed program files really are replaced on upgrade.
-        (installed / "pecofence-cli.exe").write_bytes(b"stale binary fixture")
+        (installed / "coredesk-cli.exe").write_bytes(b"stale binary fixture")
         setup(new, "upgrade")
         assert Path(reg_value(uninstall_key, "InstallLocation")) == installed
         assert reg_value(uninstall_key, "DisplayVersion") == "0.0.2"
-        assert (installed / "pecofence-cli.exe").read_bytes() == (payload / "pecofence-cli.exe").read_bytes()
+        assert (installed / "coredesk-cli.exe").read_bytes() == (payload / "coredesk-cli.exe").read_bytes()
         assert all(p.read_bytes() == data for p, data in retained.items())
         assert len(list(installed.glob("unins*.exe"))) == 1
         passed.append("upgrade reuses directory/uninstaller, replaces binaries and preserves added data")
@@ -236,7 +236,7 @@ def main():
         def log_of(name):
             return (stage / f"{name}.log").read_text(encoding="utf-8-sig", errors="replace")
 
-        start_line = f"would start {installed / 'pecofence.exe'}"
+        start_line = f"would start {installed / 'coredesk.exe'}"
         assert "would start" not in log_of("upgrade"), "a plain silent upgrade started the app"
         exiting = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(3)"],
                                    startupinfo=HIDDEN)
@@ -250,9 +250,9 @@ def main():
         assert start_line in log_of("update-refused")
         passed.append("an update waits for the app, then restarts it once; a failed one restarts the old copy")
 
-        other_command = f'"{stage / "another copy/pecofence.exe"}"'
+        other_command = f'"{stage / "another copy/coredesk.exe"}"'
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN) as key:
-            winreg.SetValueEx(key, run_names[0], 0, winreg.REG_SZ, f'"{installed / "pecofence.exe"}"')
+            winreg.SetValueEx(key, run_names[0], 0, winreg.REG_SZ, f'"{installed / "coredesk.exe"}"')
             winreg.SetValueEx(key, run_names[1], 0, winreg.REG_SZ, other_command)
         uninstall("uninstall")
         assert not any((installed / name).exists() for name in PAYLOAD)
@@ -265,12 +265,12 @@ def main():
         # A folder an older ZIP was extracted into (the default directory, for some users).
         extracted = stage / "extracted zip"
         extracted.mkdir()
-        (extracted / "pecofence.exe").write_bytes(b"older ZIP build fixture")
+        (extracted / "coredesk.exe").write_bytes(b"older ZIP build fixture")
         (extracted / "config").mkdir()
         (extracted / "config/config.json").write_text("portable config", encoding="utf-8")
         setup(new, "adopt-zip-folder", f"/DIR={extracted}")
         assert Path(reg_value(uninstall_key, "InstallLocation")) == extracted
-        assert (extracted / "pecofence.exe").read_bytes() == (payload / "pecofence.exe").read_bytes()
+        assert (extracted / "coredesk.exe").read_bytes() == (payload / "coredesk.exe").read_bytes()
         assert (extracted / "config/config.json").read_text(encoding="utf-8") == "portable config"
         passed.append("a folder holding an extracted ZIP is upgraded in place and keeps its files")
 
@@ -280,7 +280,7 @@ def main():
         setup(new, "reinstall-after-deleted-folder", f"/DIR={relocated}")
         assert Path(reg_value(uninstall_key, "InstallLocation")) == relocated
         uninstall("uninstall-reinstalled")
-        assert not (relocated / "pecofence.exe").exists()
+        assert not (relocated / "coredesk.exe").exists()
         passed.append("a registration whose folder was deleted does not block a new location")
     finally:
         # The only persistent writes outside .cache belong to this generated test ID.

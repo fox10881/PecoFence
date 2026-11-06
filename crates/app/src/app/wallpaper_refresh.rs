@@ -197,7 +197,7 @@ impl BackdropCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pecofence_render::{Image, MonitorBackdrop};
+    use coredesk_render::{Image, MonitorBackdrop};
 
     #[test]
     fn notification_storm_does_not_postpone_first_check() {

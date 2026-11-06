@@ -2,7 +2,7 @@
 
 ملخص آخر طلبين: حذف إعدادَي «File Explorer Style» و«Color Tint» مع كل ما يتعلق بهما، وإضافة
 [ExplorerBlurMica](https://github.com/Maplespe/ExplorerBlurMica) كخيار جديد بإعدادات `config.ini`
-كاملة في واجهة PecoFence — ثم الترجمة لكل اللغات + تدقيق ثانٍ مقابل مصدر EBM + منتقي ألوان.
+كاملة في واجهة CoreDesk — ثم الترجمة لكل اللغات + تدقيق ثانٍ مقابل مصدر EBM + منتقي ألوان.
 
 الـ commits:
 
@@ -251,8 +251,8 @@ index b16d68c..166251d 100644
 -            let tint = saved_tint.clone();
 +        if !saved_style.is_empty() {
              std::thread::spawn(move || {
--                let _ = pecofence_platform::start_menu::apply_start_menu_theme(&saved_style, &tint);
-+                let _ = pecofence_platform::start_menu::apply_start_menu_theme(&saved_style);
+-                let _ = coredesk_platform::start_menu::apply_start_menu_theme(&saved_style, &tint);
++                let _ = coredesk_platform::start_menu::apply_start_menu_theme(&saved_style);
              });
          }
          // A saved Taskbar style rides the same resident — apply() injects
@@ -263,8 +263,8 @@ index b16d68c..166251d 100644
 -            let tint = saved_tint.clone();
 +        if !saved_tb_style.is_empty() {
              std::thread::spawn(move || {
--                let _ = pecofence_platform::taskbar_styler::apply(&saved_tb_style, &tint);
-+                let _ = pecofence_platform::taskbar_styler::apply(&saved_tb_style);
+-                let _ = coredesk_platform::taskbar_styler::apply(&saved_tb_style, &tint);
++                let _ = coredesk_platform::taskbar_styler::apply(&saved_tb_style);
              });
          }
          // A saved Notification Center style injects into the Shell hosts —
@@ -275,7 +275,7 @@ index b16d68c..166251d 100644
          let saved_nc_style = app.state.config.settings.notification_center_style.clone();
          if !saved_nc_style.is_empty() {
              std::thread::spawn(move || {
-                 let _ = pecofence_platform::notification_center::apply(&saved_nc_style);
+                 let _ = coredesk_platform::notification_center::apply(&saved_nc_style);
              });
          }
 -        // A saved File Explorer style rides the same explorer resident —
@@ -301,8 +301,8 @@ index b16d68c..166251d 100644
 +                fe.fe_show_line,
 +            );
              std::thread::spawn(move || {
--                let _ = pecofence_platform::file_explorer_styler::apply(&saved_fe_style, &tint);
-+                let cfg = pecofence_platform::file_explorer_styler::FeGlassConfig {
+-                let _ = coredesk_platform::file_explorer_styler::apply(&saved_fe_style, &tint);
++                let cfg = coredesk_platform::file_explorer_styler::FeGlassConfig {
 +                    effect: &effect,
 +                    clear_address: flags.0,
 +                    clear_bar_bg: flags.1,
@@ -311,7 +311,7 @@ index b16d68c..166251d 100644
 +                    light_rgba: &l,
 +                    dark_rgba: &d,
 +                };
-+                let _ = pecofence_platform::file_explorer_styler::apply_effect(&cfg);
++                let _ = coredesk_platform::file_explorer_styler::apply_effect(&cfg);
              });
          }
          for f in app.fences.values().chain(app.desktop_windows.values()) {
@@ -320,41 +320,41 @@ index be7e0a3..2f88ccc 100644
 --- a/crates/app/src/app/settings.rs
 +++ b/crates/app/src/app/settings.rs
 @@ -347,9 +347,6 @@ impl App {
-             "taskbarStyles": pecofence_core::taskbar_themes::style_options_json(),
+             "taskbarStyles": coredesk_core::taskbar_themes::style_options_json(),
              // Notification Center Style dropdown — same isolation again.
-             "notificationCenterStyles": pecofence_core::notification_center_themes::style_options_json(),
+             "notificationCenterStyles": coredesk_core::notification_center_themes::style_options_json(),
 -            // File Explorer Style dropdown — same isolation for the
 -            // WinUI3/mux catalog.
--            "fileExplorerStyles": pecofence_core::file_explorer_themes::style_options_json(),
+-            "fileExplorerStyles": coredesk_core::file_explorer_themes::style_options_json(),
          })
          .to_string()
      }
 @@ -896,7 +893,7 @@ impl App {
              // hand-edited patchSettings — same treatment as a failed write.
              let id = new.start_menu_style.as_str();
-             let applied = pecofence_core::start_menu_themes::is_style_id(id)
--                && pecofence_platform::start_menu::apply_start_menu_theme(id, &new.color_tint);
-+                && pecofence_platform::start_menu::apply_start_menu_theme(id);
+             let applied = coredesk_core::start_menu_themes::is_style_id(id)
+-                && coredesk_platform::start_menu::apply_start_menu_theme(id, &new.color_tint);
++                && coredesk_platform::start_menu::apply_start_menu_theme(id);
              if !applied {
                  new.start_menu_style.clone_from(&old.start_menu_style);
-                 self.settings_error(pecofence_core::i18n::text(
+                 self.settings_error(coredesk_core::i18n::text(
 @@ -907,7 +904,7 @@ impl App {
          if new.taskbar_style != old.taskbar_style {
              let id = new.taskbar_style.as_str();
-             let applied = pecofence_core::taskbar_themes::is_style_id(id)
--                && pecofence_platform::taskbar_styler::apply(id, &new.color_tint);
-+                && pecofence_platform::taskbar_styler::apply(id);
+             let applied = coredesk_core::taskbar_themes::is_style_id(id)
+-                && coredesk_platform::taskbar_styler::apply(id, &new.color_tint);
++                && coredesk_platform::taskbar_styler::apply(id);
              if !applied {
                  new.taskbar_style.clone_from(&old.taskbar_style);
-                 self.settings_error(pecofence_core::i18n::text(
+                 self.settings_error(coredesk_core::i18n::text(
 @@ -927,32 +924,32 @@ impl App {
                  ));
              }
          }
 -        if new.file_explorer_style != old.file_explorer_style {
 -            let id = new.file_explorer_style.as_str();
--            let applied = pecofence_core::file_explorer_themes::is_style_id(id)
--                && pecofence_platform::file_explorer_styler::apply(id, &new.color_tint);
+-            let applied = coredesk_core::file_explorer_themes::is_style_id(id)
+-                && coredesk_platform::file_explorer_styler::apply(id, &new.color_tint);
 +        let fe_changed = new.fe_effect != old.fe_effect
 +            || new.fe_clear_address != old.fe_clear_address
 +            || new.fe_clear_bar_bg != old.fe_clear_bar_bg
@@ -363,8 +363,8 @@ index be7e0a3..2f88ccc 100644
 +            || new.fe_light_rgba != old.fe_light_rgba
 +            || new.fe_dark_rgba != old.fe_dark_rgba;
 +        if fe_changed {
-+            let applied = pecofence_platform::file_explorer_styler::apply_effect(
-+                &pecofence_platform::file_explorer_styler::FeGlassConfig {
++            let applied = coredesk_platform::file_explorer_styler::apply_effect(
++                &coredesk_platform::file_explorer_styler::FeGlassConfig {
 +                    effect: new.fe_effect.as_str(),
 +                    clear_address: new.fe_clear_address,
 +                    clear_bar_bg: new.fe_clear_bar_bg,
@@ -377,7 +377,7 @@ index be7e0a3..2f88ccc 100644
              if !applied {
 -                new.file_explorer_style.clone_from(&old.file_explorer_style);
 +                new.fe_effect.clone_from(&old.fe_effect);
-                 self.settings_error(pecofence_core::i18n::text(
+                 self.settings_error(coredesk_core::i18n::text(
 -                    "资源管理器样式未能更改，请稍后重试。",
 +                    "资源管理器背景效果未能更改，请稍后重试。",
                  ));
@@ -389,13 +389,13 @@ index be7e0a3..2f88ccc 100644
 -            // surface's armed wire with the new overlay baked in; the
 -            // resident applies the wire atomically, so a quick swatch tap
 -            // can't stack stale visuals.
--            if pecofence_core::color_tint::argb(&new.color_tint).is_none() {
+-            if coredesk_core::color_tint::argb(&new.color_tint).is_none() {
 -                new.color_tint.clone_from(&old.color_tint);
 -            } else {
 -                let tint = new.color_tint.as_str();
--                pecofence_platform::start_menu::apply_start_menu_theme(&new.start_menu_style, tint);
--                pecofence_platform::taskbar_styler::apply(&new.taskbar_style, tint);
--                pecofence_platform::file_explorer_styler::apply(&new.file_explorer_style, tint);
+-                coredesk_platform::start_menu::apply_start_menu_theme(&new.start_menu_style, tint);
+-                coredesk_platform::taskbar_styler::apply(&new.taskbar_style, tint);
+-                coredesk_platform::file_explorer_styler::apply(&new.file_explorer_style, tint);
 -            }
 -        }
          let icons_toggled = new.hide_real_icons != old.hide_real_icons;
@@ -3646,7 +3646,7 @@ index 30f008e..0000000
 -
 -    #[test]
 -    fn tint_lines_append_after_the_theme_and_keep_the_end_marker() {
--        let mut wire = String::from("PECO-TBS1\nT Grid\nS Fill=Red\nE\n");
+-        let mut wire = String::from("CDES-TBS1\nT Grid\nS Fill=Red\nE\n");
 -        apply_to_wire(&mut wire, TASKBAR_TARGETS, "#107C10");
 -        assert!(wire.ends_with("E\n"));
 -        let fill = wire
@@ -3659,17 +3659,17 @@ index 30f008e..0000000
 -
 -    #[test]
 -    fn empty_tint_is_a_noop() {
--        let mut wire = String::from("PECO-SMS1\nT Grid\nE\n");
+-        let mut wire = String::from("CDES-SMS1\nT Grid\nE\n");
 -        let before = wire.clone();
 -        apply_to_wire(&mut wire, START_MENU_TARGETS, "");
 -        assert_eq!(wire, before);
--        assert!(tint_wire("PECO-FES1", FILE_EXPLORER_TARGETS, "").is_none());
+-        assert!(tint_wire("CDES-FES1", FILE_EXPLORER_TARGETS, "").is_none());
 -    }
 -
 -    #[test]
 -    fn tint_only_wire_is_wellformed() {
--        let wire = fe_tint_wire("PECO-FES1", "#0078D4").unwrap();
--        assert!(wire.starts_with("PECO-FES1\n"));
+-        let wire = fe_tint_wire("CDES-FES1", "#0078D4").unwrap();
+-        assert!(wire.starts_with("CDES-FES1\n"));
 -        assert!(wire.ends_with("E\n"));
 -        assert!(wire.contains("T FileExplorerExtensions.FileExplorerTabControl > Grid\n"));
 -        // #0078D4 darkened to 65% → #004E89 under the 0x48 veil alpha.
@@ -3918,11 +3918,11 @@ index 94fb26f..0000000
 -];
 -
 -/// Serializes the theme into the line wire-format the injected
--/// `pecofence_tap.dll` parses inside `explorer.exe`'s WinUI3 diagnostics
+-/// `coredesk_tap.dll` parses inside `explorer.exe`'s WinUI3 diagnostics
 -/// session (the host transports it with `WM_COPYDATA`):
 -///
 -/// ```text
--/// PECO-FES1
+-/// CDES-FES1
 -/// T <target>
 -/// S <style>
 -/// ...
@@ -3935,7 +3935,7 @@ index 94fb26f..0000000
 -pub fn theme_wire(id: &str) -> Option<String> {
 -    let theme = theme(id)?;
 -    let mut out = String::with_capacity(64 * 1024);
--    out.push_str("PECO-FES1\n");
+-    out.push_str("CDES-FES1\n");
 -
 -    // Constants: `name=value` pairs applied to every style/target string
 -    // with longest-name-first replacement order.
@@ -4079,7 +4079,7 @@ index 94fb26f..0000000
 -    #[test]
 -    fn theme_wire_serializes_rules_and_resources() {
 -        let wire = theme_wire("Translucent_Explorer11").expect("wire for known theme");
--        assert!(wire.starts_with("PECO-FES1\n"));
+-        assert!(wire.starts_with("CDES-FES1\n"));
 -        assert!(wire.ends_with("E\n"));
 -        assert!(wire.contains(
 -            "T FileExplorerExtensions.CommandBarControl_Wave1 > Grid, Grid#CommandBarControlRootGrid\n"
@@ -4221,7 +4221,7 @@ index 9a641dc..681c389 100644
 +//! `config.ini`:
  //!
 -//! Same delivery path as the taskbar styler (`tap::ensure_resident` +
--//! `WM_COPYDATA` with a `PECO-FES1` wire), but the resident routes it to
+-//! `WM_COPYDATA` with a `CDES-FES1` wire), but the resident routes it to
 -//! explorer.exe's **WinUI3** diagnostics session — the one
 -//! `Microsoft.Internal.FrameworkUdk.dll` hosts — which sees the
 -//! `CabinetWClass` XAML islands. The taskbar's WUX session is untouched.
@@ -4237,13 +4237,13 @@ index 9a641dc..681c389 100644
 -//! `DwmSetWindowAttribute` hook. We don't hook; explorer can re-assert its
 -//! own backdrop later, so `ensure` re-applies ours on each tick.
 +//! The effect rides two channels into the explorer-resident
-+//! `pecofence_tap.dll`:
++//! `coredesk_tap.dll`:
 +//! - `FEBD` COPYDATA — the DWM material: `[backdrop:i32, accent_state:u32,
 +//!   accent_flags:u32, gradient_abgr:u32, options:u32]` (little-endian,
 +//!   20 bytes). `fe_glass` applies it via `DwmExtendFrameIntoClientArea`,
 +//!   `DwmSetWindowAttribute`, `DwmEnableBlurBehindWindow` and
 +//!   `WCA_ACCENT_POLICY` — the exact pipeline EBM runs in-process.
-+//! - `FEST` COPYDATA — a `PECO-FES1` controlStyles wire carrying the
++//! - `FEST` COPYDATA — a `CDES-FES1` controlStyles wire carrying the
 +//!   `clearAddress`/`clearWinUIBg` island-transparency rules into the
 +//!   WinUI 3 diagnostics session. `clearBarBg`/`showLine` are Win32
 +//!   behaviors instead — they ride `options` bits in the FEBD.
@@ -4321,7 +4321,7 @@ index 9a641dc..681c389 100644
 -            (rgb >> 8 & 0xFF) * 65 / 100,
 -            (rgb & 0xFF) * 65 / 100,
 -        );
--        return (pecofence_core::color_tint::FE_TINT_ALPHA as u32) << 24 | b << 16 | g << 8 | r;
+-        return (coredesk_core::color_tint::FE_TINT_ALPHA as u32) << 24 | b << 16 | g << 8 | r;
 -    }
 -    0x50161210
 -}
@@ -4506,12 +4506,12 @@ index 9a641dc..681c389 100644
 +    }
 +}
 +
-+/// Builds the `PECO-FES1` wire from the `clearAddress`/`clearWinUIBg`
++/// Builds the `CDES-FES1` wire from the `clearAddress`/`clearWinUIBg`
 +/// flags — `Background=Transparent` on the matching island targets.
 +/// Always at least `magic\nE\n` so the resident arms + restores cleanly.
 +fn glass_wire(clear_address: bool, clear_winui_bg: bool) -> String {
 +    let mut wire = String::with_capacity(1024);
-+    wire.push_str("PECO-FES1\n");
++    wire.push_str("CDES-FES1\n");
 +    for target in CLEAR_ADDRESS_RULES
 +        .iter()
 +        .filter(|_| clear_address)
@@ -4874,7 +4874,7 @@ index 9a641dc..681c389 100644
 -    // The resident's fe_glass detours need our desired backdrop BEFORE the
 -    // theme wire arms them — send FEBD first so `set_armed`'s in-process
 -    // apply already pushes the right values.
--    let effect = pecofence_core::file_explorer_themes::backdrop(&fe.style).unwrap_or_default();
+-    let effect = coredesk_core::file_explorer_themes::backdrop(&fe.style).unwrap_or_default();
 -    let (bd, st, fl, gr) = desired_glass(effect, &fe.tint);
 -    let mut payload = [0u8; 16];
 -    payload[0..4].copy_from_slice(&bd.to_le_bytes());
@@ -4907,16 +4907,16 @@ index 9a641dc..681c389 100644
 -/// stale layer can stack. Returns `false` only for an unknown id so
 -/// settings reverts.
 -pub fn apply(id: &str, tint: &str) -> bool {
--    let effect = pecofence_core::file_explorer_themes::backdrop(id)
+-    let effect = coredesk_core::file_explorer_themes::backdrop(id)
 -        .unwrap_or_default()
 -        .to_string();
 -    let wire = if id.is_empty() {
 -        if tint.is_empty() {
 -            return reset();
 -        }
--        pecofence_core::color_tint::fe_clear_wire("PECO-FES1")
+-        coredesk_core::color_tint::fe_clear_wire("CDES-FES1")
 -    } else {
--        let Some(mut w) = pecofence_core::file_explorer_themes::theme_wire(id) else {
+-        let Some(mut w) = coredesk_core::file_explorer_themes::theme_wire(id) else {
 -            return false;
 -        };
 -        // Accent path (everything but mica): the tint lives in the DWM
@@ -4925,9 +4925,9 @@ index 9a641dc..681c389 100644
 -        // mica path has no accent material, so its top bar keeps the
 -        // smoked/darkened XAML veil.
 -        if effect == "mica" {
--            pecofence_core::color_tint::apply_fe_tint(&mut w, tint);
+-            coredesk_core::color_tint::apply_fe_tint(&mut w, tint);
 -        } else {
--            pecofence_core::color_tint::apply_fe_clear(&mut w);
+-            coredesk_core::color_tint::apply_fe_clear(&mut w);
 -        }
 -        w
 -    };
@@ -5013,7 +5013,7 @@ index 9a641dc..681c389 100644
 -    if fe.cmd_hwnd != hwnd.0 as usize {
 -        let _ = deliver(hwnd, fe);
 -    }
--    let effect = pecofence_core::file_explorer_themes::backdrop(&fe.style)
+-    let effect = coredesk_core::file_explorer_themes::backdrop(&fe.style)
 -        .unwrap_or_default()
 -        .to_string();
 -    drop(guard);
@@ -5027,13 +5027,13 @@ index 9a641dc..681c389 100644
 +    #[test]
 +    fn clear_wire_lists_targets() {
 +        let w = glass_wire(true, true);
-+        assert!(w.starts_with("PECO-FES1\n"));
++        assert!(w.starts_with("CDES-FES1\n"));
 +        assert!(w.ends_with("E\n"));
 +        assert!(w.contains("T Microsoft.UI.Xaml.Controls.Grid#NavigationBarControlGrid\n"));
 +        assert_eq!(w.matches("S Background=Transparent").count(), 16);
 +
 +        let none = glass_wire(false, false);
-+        assert_eq!(none, "PECO-FES1\nE\n");
++        assert_eq!(none, "CDES-FES1\nE\n");
 +    }
  }
 diff --git a/crates/platform/src/start_menu.rs b/crates/platform/src/start_menu.rs
@@ -5058,19 +5058,19 @@ index a5e02c8..07433e7 100644
 +pub fn apply_start_menu_theme(id: &str) -> bool {
      let wire = if id.is_empty() {
 -        // Tint-only overlay, or nothing at all (empty wire → CDS_RESET).
--        pecofence_core::color_tint::tint_wire(
--            "PECO-SMS1",
--            pecofence_core::color_tint::START_MENU_TARGETS,
+-        coredesk_core::color_tint::tint_wire(
+-            "CDES-SMS1",
+-            coredesk_core::color_tint::START_MENU_TARGETS,
 -            tint,
 -        )
 -        .unwrap_or_default()
 +        String::new() // empty wire → CDS_RESET
      } else {
-         match pecofence_core::start_menu_themes::theme_wire(id) {
+         match coredesk_core::start_menu_themes::theme_wire(id) {
 -            Some(mut w) => {
--                pecofence_core::color_tint::apply_to_wire(
+-                coredesk_core::color_tint::apply_to_wire(
 -                    &mut w,
--                    pecofence_core::color_tint::START_MENU_TARGETS,
+-                    coredesk_core::color_tint::START_MENU_TARGETS,
 -                    tint,
 -                );
 -                w
@@ -5133,24 +5133,24 @@ index ca0b1a2..1b0de70 100644
 +/// settings reverts.
 +pub fn apply(id: &str) -> bool {
      let use_variant =
-         pecofence_core::taskbar_themes::variant_feature(id).is_some_and(feature_enabled);
+         coredesk_core::taskbar_themes::variant_feature(id).is_some_and(feature_enabled);
      let wire = if id.is_empty() {
--        pecofence_core::color_tint::tint_wire(
--            "PECO-TBS1",
--            pecofence_core::color_tint::TASKBAR_TARGETS,
+-        coredesk_core::color_tint::tint_wire(
+-            "CDES-TBS1",
+-            coredesk_core::color_tint::TASKBAR_TARGETS,
 -            tint,
 -        )
 +        return reset();
      } else {
--        pecofence_core::taskbar_themes::theme_wire(id, use_variant).map(|mut w| {
--            pecofence_core::color_tint::apply_to_wire(
+-        coredesk_core::taskbar_themes::theme_wire(id, use_variant).map(|mut w| {
+-            coredesk_core::color_tint::apply_to_wire(
 -                &mut w,
--                pecofence_core::color_tint::TASKBAR_TARGETS,
+-                coredesk_core::color_tint::TASKBAR_TARGETS,
 -                tint,
 -            );
 -            w
 -        })
-+        pecofence_core::taskbar_themes::theme_wire(id, use_variant)
++        coredesk_core::taskbar_themes::theme_wire(id, use_variant)
      };
      let Some(wire) = wire else {
 -        if id.is_empty() {
@@ -5651,14 +5651,14 @@ index 8cc11d4..9c0f279 100644
 --- a/crates/platform/src/tap.rs
 +++ b/crates/platform/src/tap.rs
 @@ -376,6 +376,35 @@ fn resident_windows_for_pid(pid: u32) -> Vec<HWND> {
-     resident_windows_matching(pid, "PecoFenceTAP")
+     resident_windows_matching(pid, "CoreDeskTAP")
  }
  
-+/// Every `PecoFenceTAP`-family command window in ANY explorer process —
++/// Every `CoreDeskTAP`-family command window in ANY explorer process —
 +/// for the FESR broadcast on reset, which must reach cabinet-owning
 +/// explorers that aren't the shell host.
 +pub fn resident_windows_all() -> Vec<HWND> {
-+    let base = "PecoFenceTAP";
++    let base = "CoreDeskTAP";
 +    let prefixed = format!("{base}_");
 +    let mut out = Vec::new();
 +    let mut after = HWND(core::ptr::null_mut());
@@ -5694,7 +5694,7 @@ index 8cc11d4..9c0f279 100644
 +/// explorer (`Launch folder windows in a separate process`), so a
 +/// `CabinetWClass` may live where the shell-resident can't see it. Each
 +/// such pid gets its own resident slot; `anchor` is any window in the
-+/// target process (the resident stamps `PecoFence.TAP.CmdHwnd` on it).
++/// target process (the resident stamps `CoreDeskEngine.TAP.CmdHwnd` on it).
 +static EXTRA_TAPS: std::sync::LazyLock<Mutex<std::collections::HashMap<u32, Option<Tap>>>> =
 +    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 +

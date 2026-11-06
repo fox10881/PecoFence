@@ -79,13 +79,13 @@ pub fn variant_feature(id: &str) -> Option<u32> {
 }
 
 /// Serializes the theme into the line wire-format the injected
-/// `pecofence_tap.dll` parses inside `explorer.exe` (the host transports it
+/// `coredesk_tap.dll` parses inside `explorer.exe` (the host transports it
 /// with `WM_COPYDATA`). `use_variant` picks the `weatherVariant` payload when
 /// present (the host resolves `variant_feature` via
 /// `RtlQueryFeatureConfiguration`):
 ///
 /// ```text
-/// PECO-TBS1
+/// CDES-TBS1
 /// T <target>
 /// S <style>
 /// ...
@@ -103,7 +103,7 @@ pub fn theme_wire(id: &str, use_variant: bool) -> Option<String> {
         theme
     };
     let mut out = String::with_capacity(64 * 1024);
-    out.push_str("PECO-TBS1\n");
+    out.push_str("CDES-TBS1\n");
 
     // Constants: `name=value` pairs applied to every style/target string with
     // longest-name-first replacement order (LoadStyleConstants keeps them
@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn theme_wire_serializes_rules_and_resources() {
         let wire = theme_wire("TranslucentTaskbar", false).expect("wire for known theme");
-        assert!(wire.starts_with("PECO-TBS1\n"));
+        assert!(wire.starts_with("CDES-TBS1\n"));
         assert!(wire.ends_with("E\n"));
         // No layout override or classic variant on the taskbar wire.
         assert!(!wire.contains("\nL "));
@@ -259,7 +259,7 @@ mod tests {
         let base = theme_wire("Squircle", false).expect("base wire");
         let variant = theme_wire("Squircle", true).expect("variant wire");
         assert_ne!(base, variant);
-        assert!(variant.starts_with("PECO-TBS1\n"));
+        assert!(variant.starts_with("CDES-TBS1\n"));
         assert_eq!(variant_feature("TranslucentTaskbar"), None);
 
         // Windows Default and unknown ids produce no wire.

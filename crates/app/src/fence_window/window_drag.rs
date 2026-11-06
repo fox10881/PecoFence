@@ -168,7 +168,7 @@ pub(super) fn flush_window_drag(
             at: point,
         });
     }
-    tracing::trace!(target: "pecofence::drag_frame", requests, applied, finish = release.is_some(),
+    tracing::trace!(target: "coredesk::drag_frame", requests, applied, finish = release.is_some(),
         members = placed.len(),
         target_us = target_done.duration_since(began).as_micros(),
         snap_us = snap_done.duration_since(target_done).as_micros(),

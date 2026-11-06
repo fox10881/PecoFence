@@ -323,7 +323,7 @@ pub(super) fn on_lbuttonup(
     let fence_id = h.fence_id;
     let x = msg::lo_i16(lparam);
     let y = msg::hi_i16(lparam);
-    let release = window::client_to_screen(hwnd, pecofence_platform::POINT { x, y });
+    let release = window::client_to_screen(hwnd, coredesk_platform::POINT { x, y });
     flush_window_drag(view, hwnd, Instant::now(), Some((release.x, release.y)));
     let remote = view.borrow_mut().as_mut().and_then(|v| {
         v.detach_pending = false;
@@ -513,7 +513,7 @@ pub(super) fn on_lbuttonup(
             window::set_timer(
                 hwnd,
                 TIMER_RENAME,
-                pecofence_platform::rawinput::double_click_time_ms(),
+                coredesk_platform::rawinput::double_click_time_ms(),
             );
         }
     }
@@ -833,7 +833,7 @@ pub(super) fn on_mousewheel(
         // drag, marquee) and a tab title rename keep the tab where it is.
         let pt = window::screen_to_client(
             hwnd,
-            pecofence_platform::POINT {
+            coredesk_platform::POINT {
                 x: msg::lo_i16(lparam),
                 y: msg::hi_i16(lparam),
             },

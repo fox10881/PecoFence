@@ -7,7 +7,7 @@
 //! completion) bring the items in.
 
 use super::*;
-use pecofence_platform::com::OleGuard;
+use coredesk_platform::com::OleGuard;
 
 /// What to do on the UI thread once the operation has finished.
 pub(super) enum FileOpThen {
@@ -96,14 +96,14 @@ impl App {
         &mut self,
         owner: Option<HWND>,
         then: FileOpThen,
-        job: impl FnOnce(Option<HWND>) -> pecofence_platform::Result<bool> + Send + 'static,
+        job: impl FnOnce(Option<HWND>) -> coredesk_platform::Result<bool> + Send + 'static,
     ) {
         let owner = owner.map(|h| h.0 as isize);
         let results = self.fileops_done.clone();
         let control = self.control.hwnd().0 as isize;
         let serial = self.fileop_serial + 1;
         let spawned = std::thread::Builder::new()
-            .name("pecofence-fileop".into())
+            .name("coredesk-fileop".into())
             .spawn(move || {
                 // The shell's copy engine wants an STA; its progress / conflict dialogs run on
                 // this thread, parented to the fence window.
@@ -144,7 +144,7 @@ impl App {
 
     fn toast(&self, text: String) {
         if let Some(t) = &self.tray {
-            t.show_info("PecoFence", &text, true);
+            t.show_info("CoreDesk Engine", &text, true);
         }
     }
 
@@ -182,7 +182,7 @@ impl App {
                     Ok(false) => tracing::info!("move into folder cancelled by user"),
                     Err(e) => {
                         tracing::warn!(error = %e, "move into folder failed");
-                        self.toast(pecofence_core::i18n::format(
+                        self.toast(coredesk_core::i18n::format(
                             "移动到文件夹失败：{0}",
                             std::slice::from_ref(e),
                         ));
@@ -219,7 +219,7 @@ impl App {
                     Err(e) => {
                         tracing::warn!(error = %e, "move to desktop failed");
                         self.pending_routes.retain(|r| !routed.contains(&r.path));
-                        self.toast(pecofence_core::i18n::format(
+                        self.toast(coredesk_core::i18n::format(
                             "移动到桌面失败：{0}",
                             std::slice::from_ref(&e),
                         ));
@@ -232,7 +232,7 @@ impl App {
                     Ok(false) => tracing::info!("paste cancelled by user"),
                     Err(e) => {
                         tracing::warn!(error = %e, "paste failed");
-                        self.toast(pecofence_core::i18n::format(
+                        self.toast(coredesk_core::i18n::format(
                             "粘贴失败：{0}",
                             std::slice::from_ref(e),
                         ));
@@ -250,7 +250,7 @@ impl App {
                 Ok(false) => tracing::info!("rename cancelled by user"),
                 Err(e) => {
                     tracing::warn!(error = %e, "rename through the shell failed");
-                    self.toast(pecofence_core::i18n::format(
+                    self.toast(coredesk_core::i18n::format(
                         "重命名失败：{0}",
                         std::slice::from_ref(e),
                     ));

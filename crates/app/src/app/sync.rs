@@ -218,7 +218,7 @@ impl App {
             // by the shell) may have been extracted while it was still landing. Once per icon
             // key: a file being written reports several events, documents of one type share
             // a key, and each invalidation scans the whole icon and bitmap caches.
-            let mut invalidated: HashSet<pecofence_core::IconKey> = HashSet::new();
+            let mut invalidated: HashSet<coredesk_core::IconKey> = HashSet::new();
             for ev in &events {
                 if let FsEvent::Modified(p) | FsEvent::RenamedNew(p) | FsEvent::Added(p) = ev
                     && let Some(id) = self.state.item_by_path(p)
@@ -265,8 +265,8 @@ impl App {
                 tracing::warn!(reason, "desktop folder unavailable; keeping item records");
                 if let Some(t) = &self.tray {
                     t.show_info(
-                        "PecoFence",
-                        pecofence_core::i18n::text(
+                        "CoreDesk Engine",
+                        coredesk_core::i18n::text(
                             "桌面文件夹暂时无法访问（位于移动磁盘或网络位置），各项目所在的栅栏和位置都会保留。",
                         ),
                         true,
@@ -293,7 +293,7 @@ impl App {
         }
         let report = self.state.sync_desktop_partly_read(&entries, &unread);
         if let Some(at) = self.state.take_tmp_settle_at() {
-            let wait_s = (at - pecofence_core::now_unix()).max(0) as u32;
+            let wait_s = (at - coredesk_core::now_unix()).max(0) as u32;
             window::set_timer(self.control.hwnd(), TIMER_TMP_SETTLE, wait_s * 1000 + 500);
         }
         tracing::debug!(

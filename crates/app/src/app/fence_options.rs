@@ -25,7 +25,7 @@ const TINT_PALETTE: &[(&str, [u8; 3])] = &[
 pub(super) fn tint_palette_json() -> serde_json::Value {
     TINT_PALETTE
         .iter()
-        .map(|(name, rgb)| serde_json::json!({ "name": pecofence_core::i18n::text(name), "hex": hex(*rgb) }))
+        .map(|(name, rgb)| serde_json::json!({ "name": coredesk_core::i18n::text(name), "hex": hex(*rgb) }))
         .collect()
 }
 
@@ -186,8 +186,8 @@ pub(super) enum FenceProp {
 pub(super) fn parse_fence_prop(
     prop: &str,
     value: &serde_json::Value,
-) -> std::result::Result<FenceProp, pecofence_ipc::IpcError> {
-    use pecofence_ipc::IpcError;
+) -> std::result::Result<FenceProp, coredesk_ipc::IpcError> {
+    use coredesk_ipc::IpcError;
     let bad = |allowed: &[&str]| {
         IpcError::invalid_value(
             format!("{prop} cannot be {value}; allowed: {}", allowed.join(", ")),
@@ -635,7 +635,7 @@ impl App {
 
     /// The per-fence block of the state JSON. Window-level values come from the host so a
     /// tab shows (and edits) what its window actually uses.
-    pub(super) fn fence_options_json(&self, f: &pecofence_core::Fence) -> serde_json::Value {
+    pub(super) fn fence_options_json(&self, f: &coredesk_core::Fence) -> serde_json::Value {
         let host_id = self.state.host_of(f.id);
         let h = self.state.fence(host_id).unwrap_or(f);
         let (tint, _, _) = self.style_of(host_id);
@@ -802,7 +802,7 @@ impl App {
         }
         let sa = src.appearance.clone().unwrap_or_default();
         let ha = src_host_f.appearance.clone().unwrap_or_default();
-        let app = pecofence_core::AppearanceOverride {
+        let app = coredesk_core::AppearanceOverride {
             tint_rgb: ha.tint_rgb,
             opacity: ha.opacity,
             backdrop: ha.backdrop,
@@ -819,7 +819,7 @@ impl App {
             (f.view.sort, f.view.reverse, f.view.group_by_date) = keep;
             // Like `edit_appearance`: an all-default override leaves the file again.
             f.appearance =
-                (app != pecofence_core::AppearanceOverride::default()).then(|| app.clone());
+                (app != coredesk_core::AppearanceOverride::default()).then(|| app.clone());
             f.hide_title_icon = src.hide_title_icon;
         }
         if let Some(h) = self.state.fence_mut(dst_host) {
@@ -839,7 +839,7 @@ impl App {
                 app.title_hidden,
                 app.tint_title_only,
             );
-            h.appearance = (a != pecofence_core::AppearanceOverride::default()).then_some(a);
+            h.appearance = (a != coredesk_core::AppearanceOverride::default()).then_some(a);
             h.view.auto_height = src_host_f.view.auto_height;
         }
         self.state.mark_dirty();
@@ -853,7 +853,7 @@ impl App {
         self.apply_cell_snap(target);
         self.schedule_save();
         self.push_settings_state();
-        self.settings_toast(&pecofence_core::i18n::format(
+        self.settings_toast(&coredesk_core::i18n::format(
             "已复制“{0}”的设置",
             std::slice::from_ref(&src.title),
         ));

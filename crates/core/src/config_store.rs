@@ -1,6 +1,6 @@
 //! Config persistence: atomic writes, `.bak` rotation, load fallbacks (plan §7.5).
 //! Historical daily backups under `backups/` are read as a last-resort fallback but are no
-//! longer written — the .peco theme file is the single portable artifact.
+//! longer written — the .cde theme file is the single portable artifact.
 
 use crate::geometry::MAX_DIP;
 use crate::model::{Config, ItemSourceSpec, NormGeometry, SCHEMA_VERSION};
@@ -97,13 +97,23 @@ impl ConfigStore {
     /// Reuse an existing installation's data in place. No copying, rewriting or
     /// renaming of user files is needed just because the product name changed.
     pub fn with_legacy(preferred: impl Into<PathBuf>, legacy: impl Into<PathBuf>) -> Self {
+        Self::with_legacies(preferred, [legacy.into()])
+    }
+
+    /// Same as [`Self::with_legacy`] across every previous folder name: the
+    /// first entry with saved data wins, oldest-generation fallback last.
+    pub fn with_legacies(preferred: impl Into<PathBuf>, legacies: impl Into<Vec<PathBuf>>) -> Self {
         let preferred = Self::new(preferred);
-        let legacy = Self::new(legacy);
-        if !preferred.has_saved_data() && legacy.has_saved_data() {
-            legacy
-        } else {
-            preferred
+        if preferred.has_saved_data() {
+            return preferred;
         }
+        for dir in legacies.into() {
+            let legacy = Self::new(dir);
+            if legacy.has_saved_data() {
+                return legacy;
+            }
+        }
+        preferred
     }
 
     fn has_saved_data(&self) -> bool {
@@ -132,7 +142,7 @@ impl ConfigStore {
 
     /// Reads and validates any config file (import / backup restore), with the reason on error.
     /// Sidecar files ([`WIDGET_CONFIG_FILE`], [`LIVE_EFFECTS_CONFIG_FILE`]) sitting next to
-    /// it overlay their owned keys — covering both the live config directory and a `.peco`
+    /// it overlay their owned keys — covering both the live config directory and a `.cde`
     /// theme's extracted contents.
     pub fn parse_file(path: &Path) -> Result<Config, String> {
         let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
@@ -449,7 +459,7 @@ impl ConfigStore {
 }
 
 /// Modder-facing split files that live next to `config.json` (and inside
-/// `.peco` theme archives): the clock-widget surface and the live-effects
+/// `.cde` theme archives): the clock-widget surface and the live-effects
 /// tuning surface, in plain human-editable JSON.
 pub const WIDGET_CONFIG_FILE: &str = "Widget_config.json";
 pub const LIVE_EFFECTS_CONFIG_FILE: &str = "Live_Effects_config.json";
@@ -972,7 +982,7 @@ pub fn split_config_json(text: &str) -> SplitConfigJson {
 
 /// Merges each sidecar's dictionary into a parsed config document. Files
 /// are looked up *beside the config being read* — `%APPDATA%` on boot, an
-/// imported export's directory, or a `.peco`'s temp extraction. Entries are
+/// imported export's directory, or a `.cde`'s temp extraction. Entries are
 /// partitioned: legacy scalar keys (first-gen sidecar shape) go back to
 /// `settings`, everything else accumulates into the dictionary key —
 /// entries already in the doc are overridden by the sidecar. Malformed
@@ -1179,7 +1189,7 @@ pub fn lint(cfg: &Config) -> Vec<Lint> {
             LintLevel::Warning,
             "file",
             format!(
-                "\"$schema\" is {url:?}; PecoFence publishes {:?}",
+                "\"$schema\" is {url:?}; CoreDesk Engine publishes {:?}",
                 crate::model::CONFIG_SCHEMA_URL
             ),
         ),
@@ -1445,7 +1455,7 @@ mod tests {
     use crate::model::*;
 
     fn tmpdir(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("pecofence-test-{name}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("coredesk-test-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         d
     }
@@ -1791,7 +1801,7 @@ mod tests {
     #[test]
     fn retired_use24hour_drops_and_self_cleans() {
         // `use24Hour` moved to the global `clockUse24Hour` setting — a
-        // sidecar (or .peco theme) authored with the old per-design key
+        // sidecar (or .cde theme) authored with the old per-design key
         // must not reach memory or resurface in the next save.
         let store = ConfigStore::new(tmpdir("retired-use24"));
         fs::create_dir_all(store.dir()).unwrap();
@@ -2640,8 +2650,8 @@ mod tests {
     fn unicode_paths_round_trip_unchanged() {
         let store = ConfigStore::new(tmpdir("unicode"));
         let mut cfg = sample();
-        let arabic = r"C:\Users\يحيى\AppData\Roaming\PecoFence\themes\سماء زرقاء (2).peco";
-        let cjk = r"D:\壁紙\青い空.peco";
+        let arabic = r"C:\Users\يحيى\AppData\Roaming\CoreDeskEngine\themes\سماء زرقاء (2).cde";
+        let cjk = r"D:\壁紙\青い空.cde";
         cfg.settings.active_theme_path = Some(arabic.to_string());
         cfg.settings.video_wallpaper_path = Some(cjk.to_string());
         store.save(&cfg).unwrap();
@@ -2655,7 +2665,7 @@ mod tests {
             "Arabic path mangled in json: {text}"
         );
         assert!(
-            text.contains("壁紙\\\\青い空.peco"),
+            text.contains("壁紙\\\\青い空.cde"),
             "CJK path mangled in json: {text}"
         );
 

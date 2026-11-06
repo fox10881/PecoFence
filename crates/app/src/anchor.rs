@@ -1,19 +1,19 @@
 //! Desktop z-order anchoring and "Show desktop" survival (plan §5.1, §5.2).
 
 use crate::commands::WM_APP_SET_VISIBLE;
-use pecofence_platform::desktop::{self, Generation, IconHost};
-use pecofence_platform::window::{
+use coredesk_platform::desktop::{self, Generation, IconHost};
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::winevent::{self, WinEventHook};
-use pecofence_platform::{HWND, POINT, RECT, Result, msg, rawinput, shell_icons};
+use coredesk_platform::winevent::{self, WinEventHook};
+use coredesk_platform::{HWND, POINT, RECT, Result, msg, rawinput, shell_icons};
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
-pub const FENCE_CLASS: &str = "PecoFence.Fence";
-pub const SENTINEL_CLASS: &str = "PecoFence.Sentinel";
+pub const FENCE_CLASS: &str = "CoreDeskEngine.Fence";
+pub const SENTINEL_CLASS: &str = "CoreDeskEngine.Sentinel";
 
 const TIMER_ANCHOR_CHECK: usize = 10;
 const TIMER_RETRY: usize = 11;
@@ -158,18 +158,19 @@ impl DesktopIcons {
         let base = std::env::var_os("LOCALAPPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(std::env::temp_dir)
-            .join("PecoFence");
+            .join(coredesk_core::brand::ID);
         // A second (test) instance keeps its own marker so it never adopts the main one's.
-        let marker = match pecofence_core::brand::var("PECOFENCE_INSTANCE") {
+        let marker = match coredesk_core::brand::var("COREDESK_INSTANCE") {
             Ok(n) if !n.trim().is_empty() => format!("icons-hidden.{}.marker", n.trim()),
             _ => "icons-hidden.marker".to_string(),
         };
         let current = base.join(&marker);
-        let legacy = base
-            .with_file_name(pecofence_core::brand::LEGACY_DATA_DIR)
-            .join(&marker);
-        let marker = if !current.exists() && legacy.exists() {
-            legacy
+        let legacy = coredesk_core::brand::LEGACY_DATA_DIRS
+            .iter()
+            .map(|name| base.with_file_name(name).join(&marker))
+            .find(|p| p.exists());
+        let marker = if !current.exists() {
+            legacy.unwrap_or(current)
         } else {
             current
         };
@@ -293,7 +294,7 @@ impl DesktopAnchor {
             })
         };
         let sentinel = WindowBuilder::new(sentinel_class)
-            .title("PecoFence sentinel")
+            .title("CoreDesk Engine sentinel")
             .style(style::POPUP)
             .ex_style(style::EX_NOACTIVATE | style::EX_TOOLWINDOW)
             .bounds(0, 0, 0, 0)
@@ -543,7 +544,7 @@ impl DesktopAnchor {
     fn note_refusal(
         &mut self,
         host: HWND,
-        refused: Option<(HWND, pecofence_platform::Error)>,
+        refused: Option<(HWND, coredesk_platform::Error)>,
         failed: u32,
     ) {
         let Some((fence, e)) = refused else {
@@ -560,7 +561,7 @@ impl DesktopAnchor {
         self.anchor_refused = Some(cause);
         let class = desktop::class_name(above);
         let above_elevated = (!above.0.is_null())
-            .then(|| pecofence_platform::process::is_elevated(desktop::window_pid(above)))
+            .then(|| coredesk_platform::process::is_elevated(desktop::window_pid(above)))
             .flatten();
         tracing::warn!(
             error = %e,
@@ -690,7 +691,7 @@ impl DesktopAnchor {
             // own windows (fences, dimmer, rename popup, menus) do not.
             let ours = cls == FENCE_CLASS
                 || cls == SENTINEL_CLASS
-                || cls.starts_with("PecoFence.")
+                || cls.starts_with("CoreDeskEngine.")
                 || cls == "#32768";
             if !ours && !root.0.is_null() {
                 tracing::info!(class = %cls, "foreground changed during peek; ending it");
@@ -1059,7 +1060,7 @@ impl DesktopAnchor {
         if let Some(dir) = self.icons.marker.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        let _ = std::fs::write(&self.icons.marker, b"pecofence hid desktop icons\n");
+        let _ = std::fs::write(&self.icons.marker, b"coredesk hid desktop icons\n");
         match shell_icons::set_desktop_icons_hidden(true, h.def_view, h.host) {
             Some(true) => {
                 self.icons.we_hid_them = true;
@@ -1100,7 +1101,7 @@ impl DesktopAnchor {
         self.icons.pending_attempts = 0;
     }
 
-    /// Starts `pecofence-watchdog.exe` (next to our exe) so a crash still restores the icons.
+    /// Starts `coredesk-watchdog.exe` (next to our exe) so a crash still restores the icons.
     fn spawn_watchdog(&mut self) {
         // One per run: it checks the marker when we exit, whatever happened before.
         if !self.icons.watchdogs.is_empty() {
@@ -1110,14 +1111,14 @@ impl DesktopAnchor {
             return;
         };
         let Some(dir) = exe.parent() else { return };
-        let wd = dir.join("pecofence-watchdog.exe");
+        let wd = dir.join("coredesk-watchdog.exe");
         if !wd.exists() {
             tracing::warn!(path = %wd.display(), "watchdog executable missing; no crash protection");
             return;
         }
-        let pid = pecofence_platform::process::current_pid().to_string();
+        let pid = coredesk_platform::process::current_pid().to_string();
         let marker = self.icons.marker.to_string_lossy().to_string();
-        match pecofence_platform::process::spawn_detached(&wd.to_string_lossy(), &[&pid, &marker]) {
+        match coredesk_platform::process::spawn_detached(&wd.to_string_lossy(), &[&pid, &marker]) {
             Ok(wpid) => {
                 tracing::info!(watchdog_pid = wpid, "watchdog started");
                 self.icons.watchdogs.push(wpid);
@@ -1176,15 +1177,15 @@ impl DesktopAnchor {
             TIMER_ANCHOR_CHECK => {
                 self.ensure_anchored("periodic check");
                 // Re-injects the styler when StartMenuExperienceHost restarts.
-                pecofence_platform::start_menu::ensure();
+                coredesk_platform::start_menu::ensure();
                 // Re-delivers an armed taskbar theme after an explorer restart.
-                pecofence_platform::taskbar_styler::ensure();
+                coredesk_platform::taskbar_styler::ensure();
                 // Re-delivers an armed File Explorer theme + re-asserts the
                 // DWM backdrop on cabinet windows after a restart.
-                pecofence_platform::file_explorer_styler::ensure();
+                coredesk_platform::file_explorer_styler::ensure();
                 // Re-injects the Notification Center styler when a Shell
                 // host restarts or launches after the style was chosen.
-                pecofence_platform::notification_center::ensure();
+                coredesk_platform::notification_center::ensure();
             }
             TIMER_RETRY => {
                 self.sentinel.kill_timer(TIMER_RETRY);
@@ -1240,7 +1241,7 @@ impl DesktopAnchor {
         let below_host = |w: HWND| {
             host_at.is_some_and(|i| order.iter().position(|&x| x == w).is_some_and(|p| p > i))
         };
-        let screens: Vec<RECT> = pecofence_platform::monitors::enumerate()
+        let screens: Vec<RECT> = coredesk_platform::monitors::enumerate()
             .iter()
             .map(|m| m.bounds)
             .collect();

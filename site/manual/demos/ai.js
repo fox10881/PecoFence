@@ -1,4 +1,4 @@
-// 5.2 让 AI 帮你配置: the request is pasted into a coding agent, which reads pecofence-cli skill and
+// 5.2 让 AI 帮你配置: the request is pasted into a coding agent, which reads coredesk-cli skill and
 // describe, looks at the fences, backs up (config export + snapshot save, as in the site's sample),
 // then switches the theme and the fences' opacity; the running app changes as each command lands.
 // Commands follow docs/CLI.md; replies are the compact JSON the CLI prints to a pipe (keys sorted,
@@ -21,14 +21,14 @@
     ];
 
     // FEATURES.md, AI + CLI: the suggested request
-    const PROMPT = '先阅读 pecofence-cli skill 和 pecofence-cli describe，查看并备份我的配置，再切换为深色模式，把所有栅栏调得更透明。';
+    const PROMPT = '先阅读 coredesk-cli skill 和 coredesk-cli describe，查看并备份我的配置，再切换为深色模式，把所有栅栏调得更透明。';
     const CLICK_AT = .9, PASTE_AT = 1.25, SEND_AT = 1.95;
     // [start, args, reply, seconds until the reply]
     const CMDS = [
-        [2.45, 'skill', '# pecofence-cli …', .3],
+        [2.45, 'skill', '# coredesk-cli …', .3],
         [2.95, 'describe', '{"cli":…,"commands":[…],…}', .3],
         [3.5, 'fence list --fields title,opacity', '[{"opacity":"default","title":"程序"},{"opacity":"default","title":"文件与文档"},…]', .32],
-        [4.15, 'config export "C:\\Users\\me\\pecofence-before-ai.json"', '{"bytes":12873,"path":"C:\\\\Users\\\\me\\\\pecofence-before-ai.json"}', .32],
+        [4.15, 'config export "C:\\Users\\me\\coredesk-before-ai.json"', '{"bytes":12873,"path":"C:\\\\Users\\\\me\\\\coredesk-before-ai.json"}', .32],
         [4.8, 'snapshot save before-ai', '{"changed":true,"snapshot":{"fenceCount":3,…}}', .3],
         [5.7, 'settings set theme dark', '{"changed":true,"settings":{…}}', .32],
         [6.95, 'fence set --all opacity clear', '{"changed":true,"results":[{"changed":true,…},…]}', .5],
@@ -76,7 +76,7 @@
             const spin = el('div', 'xa-spin', ic);
             ic.insertAdjacentHTML('beforeend', CHECK);
             const line = el('div', 'xa-line', row);
-            el('span', 'xa-bin', line, 'pecofence-cli');
+            el('span', 'xa-bin', line, 'coredesk-cli');
             line.append(' ' + args);
             const res = el('div', 'xa-res', row, reply);
             return { row, spin, ok: ic.lastChild, res };

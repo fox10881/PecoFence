@@ -89,8 +89,8 @@ fn dropped_paths(data: &IDataObject, internal: bool) -> Vec<PathBuf> {
         return paths;
     }
     let desktops = [
-        pecofence_platform::shell::user_desktop(),
-        pecofence_platform::shell::public_desktop(),
+        coredesk_platform::shell::user_desktop(),
+        coredesk_platform::shell::public_desktop(),
     ];
     paths
         .into_iter()
@@ -155,7 +155,7 @@ pub(super) fn folder_effect(
     allowed: u32,
     same_volume: bool,
 ) -> DropEffect {
-    if folder.is_some_and(pecofence_platform::shell::is_recycle_bin_path) {
+    if folder.is_some_and(coredesk_platform::shell::is_recycle_bin_path) {
         dragdrop::resolve(DropEffect::Move, allowed)
     } else {
         effect_for(key_state, allowed, same_volume)
@@ -203,19 +203,19 @@ pub(super) fn right_drag_menu(
         match e {
             DropEffect::Move => menu.item(
                 CMD_RDRAG_MOVE,
-                pecofence_core::i18n::text("移动到当前位置(&M)"),
+                coredesk_core::i18n::text("移动到当前位置(&M)"),
                 false,
                 false,
             ),
             DropEffect::Copy => menu.item(
                 CMD_RDRAG_COPY,
-                pecofence_core::i18n::text("复制到当前位置(&C)"),
+                coredesk_core::i18n::text("复制到当前位置(&C)"),
                 false,
                 false,
             ),
             DropEffect::Link => menu.item(
                 CMD_RDRAG_LINK,
-                pecofence_core::i18n::text("在当前位置创建快捷方式(&S)"),
+                coredesk_core::i18n::text("在当前位置创建快捷方式(&S)"),
                 false,
                 false,
             ),
@@ -225,7 +225,7 @@ pub(super) fn right_drag_menu(
     menu.separator();
     menu.item(
         CMD_RDRAG_CANCEL,
-        pecofence_core::i18n::text("取消"),
+        coredesk_core::i18n::text("取消"),
         false,
         false,
     );
@@ -258,7 +258,7 @@ pub fn filter_folder_paths(paths: Vec<PathBuf>, folder: &Path) -> Vec<PathBuf> {
     };
     paths
         .into_iter()
-        .filter(|p| !pecofence_platform::shell::is_namespace_path(p))
+        .filter(|p| !coredesk_platform::shell::is_namespace_path(p))
         .filter(|p| {
             let key = ItemKey::from_path(&p.to_string_lossy());
             let Some(k) = key.as_path() else {
@@ -284,17 +284,17 @@ pub(super) fn drop_description(
     match effect {
         DropEffect::Move => (
             DropImage::Move,
-            pecofence_core::i18n::text("移动到 %1"),
+            coredesk_core::i18n::text("移动到 %1"),
             insert,
         ),
         DropEffect::Copy => (
             DropImage::Copy,
-            pecofence_core::i18n::text("复制到 %1"),
+            coredesk_core::i18n::text("复制到 %1"),
             insert,
         ),
         DropEffect::Link => (
             DropImage::Link,
-            pecofence_core::i18n::text("在 %1 中创建链接"),
+            coredesk_core::i18n::text("在 %1 中创建链接"),
             insert,
         ),
         DropEffect::None => (DropImage::Invalid, "", String::new()),
@@ -434,7 +434,7 @@ impl FenceDropHandler {
         let on_bin = spot
             .folder
             .and_then(|i| v.items.get(i))
-            .is_some_and(|it| pecofence_platform::shell::is_recycle_bin_path(&it.path));
+            .is_some_and(|it| coredesk_platform::shell::is_recycle_bin_path(&it.path));
         let effect = match self.kind {
             DropKind::None => DropEffect::None,
             // A link is written as a new file: into a folder item, but not into the bin.
@@ -542,9 +542,9 @@ impl DropHandler for FenceDropHandler {
                     .as_ref()
                     .and_then(|p| p.first())
                     .and_then(|p| dragdrop::volume_of(p)),
-                pecofence_platform::shell::user_desktop(),
+                coredesk_platform::shell::user_desktop(),
             ),
-            DropKind::Shell => (None, pecofence_platform::shell::user_desktop()),
+            DropKind::Shell => (None, coredesk_platform::shell::user_desktop()),
             DropKind::Url | DropKind::None => (None, None),
         };
         let fb = if self.kind == DropKind::None {
@@ -661,7 +661,7 @@ impl DropHandler for FenceDropHandler {
                     };
                     if folder
                         .as_deref()
-                        .is_some_and(pecofence_platform::shell::is_recycle_bin_path)
+                        .is_some_and(coredesk_platform::shell::is_recycle_bin_path)
                     {
                         break 'resolve DropEffect::None;
                     }
@@ -690,7 +690,7 @@ impl DropHandler for FenceDropHandler {
                         dest,
                         folder
                             .as_deref()
-                            .is_some_and(pecofence_platform::shell::is_recycle_bin_path),
+                            .is_some_and(coredesk_platform::shell::is_recycle_bin_path),
                     ) else {
                         break 'resolve DropEffect::None;
                     };
@@ -807,7 +807,7 @@ impl DropHandler for FenceDropHandler {
                         drop_image(effect);
                         let candidates: &[DropEffect] = if folder
                             .as_deref()
-                            .is_some_and(pecofence_platform::shell::is_recycle_bin_path)
+                            .is_some_and(coredesk_platform::shell::is_recycle_bin_path)
                         {
                             &[DropEffect::Move]
                         } else {
@@ -908,7 +908,7 @@ impl FenceViewState {
     ) -> Option<usize> {
         let i = self.hit_item(x_px, y_px)?;
         let it = self.items.get(i)?;
-        let target = it.is_folder || pecofence_platform::shell::is_recycle_bin_path(&it.path);
+        let target = it.is_folder || coredesk_platform::shell::is_recycle_bin_path(&it.path);
         (target && !exclude.contains(&it.id)).then_some(i)
     }
 

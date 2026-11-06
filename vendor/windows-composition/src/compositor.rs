@@ -21,7 +21,7 @@ impl Compositor {
 
     /// Surfaces the underlying compositor as an [`IInspectable`](windows_core::IInspectable).
     ///
-    /// PecoFence: lets callers reach `ICompositor` members this wrapper does not expose
+    /// CoreDesk: lets callers reach `ICompositor` members this wrapper does not expose
     /// (clips, Vector2 animations, expression animations, batch completion) through their
     /// own generated bindings.
     pub fn as_raw(&self) -> windows_core::IInspectable {

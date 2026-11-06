@@ -86,7 +86,7 @@ impl FenceViewState {
                 && tip_hover_moved(
                     self.tip_anchor,
                     (x, y),
-                    pecofence_platform::sysparams::mouse_hover_rect(),
+                    coredesk_platform::sysparams::mouse_hover_rect(),
                 )
             {
                 window::kill_timer(self.hwnd, TIMER_TIP);
@@ -116,7 +116,7 @@ impl FenceViewState {
     /// full caption, the portal up button "向上".
     pub(super) fn tip_text(&self) -> Option<String> {
         match self.tip_target? {
-            TipTarget::Up => Some(pecofence_core::i18n::text("向上").to_string()),
+            TipTarget::Up => Some(coredesk_core::i18n::text("向上").to_string()),
             TipTarget::Tab(i) => {
                 let t = self.tabs.get(i)?;
                 let fits = if self.tabs_on_rail() {
@@ -157,20 +157,20 @@ impl FenceViewState {
                 let it = self.items.get(i)?;
                 let mut s = it.name.clone();
                 if let Some(t) = fileinfo::type_name(&it.path, it.is_folder) {
-                    s.push_str(&pecofence_core::i18n::format(
+                    s.push_str(&coredesk_core::i18n::format(
                         "\n类型: {0}",
                         std::slice::from_ref(&t),
                     ));
                 }
                 // Namespace items (Recycle Bin, ...) have neither a size nor a date.
-                if !pecofence_platform::shell::is_namespace_path(&it.path) {
+                if !coredesk_platform::shell::is_namespace_path(&it.path) {
                     if !it.is_folder {
-                        s.push_str(&pecofence_core::i18n::format(
+                        s.push_str(&coredesk_core::i18n::format(
                             "\n大小: {0}",
                             &[fileinfo::format_size_kb(it.size, false).to_string()],
                         ));
                     }
-                    s.push_str(&pecofence_core::i18n::format(
+                    s.push_str(&coredesk_core::i18n::format(
                         "\n修改日期: {0}",
                         &[fileinfo::format_local_datetime(it.mtime).to_string()],
                     ));
@@ -185,7 +185,7 @@ impl FenceViewState {
             return;
         };
         if self.tip.is_none() {
-            let dark = matches!(self.theme.mode, pecofence_render::ThemeMode::Dark);
+            let dark = matches!(self.theme.mode, coredesk_render::ThemeMode::Dark);
             self.tip = Tooltip::create(self.hwnd, dark)
                 .map_err(|e| tracing::warn!(error = %e, "tooltip window failed"))
                 .ok();
@@ -203,7 +203,7 @@ impl FenceViewState {
             window::set_timer(
                 self.hwnd,
                 TIMER_TIP_HIDE,
-                pecofence_platform::sysparams::message_duration_secs() * 1000,
+                coredesk_platform::sysparams::message_duration_secs() * 1000,
             );
         }
     }

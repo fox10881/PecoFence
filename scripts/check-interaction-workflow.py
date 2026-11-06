@@ -1,9 +1,9 @@
 """Prepare and validate a portable native interaction audit.
 
 prepare <seed-config.json> <audit-dir>
-check <pecofence.INSTANCE.log>
+check <coredesk.INSTANCE.log>
 The seed supplies monitor identities/settings only; file operations target fixtures.
-Run the debug exe with PECOFENCE_UI_TEST_WINDOWS=1 --portable --no-hide-icons
+Run the debug exe with COREDESK_UI_TEST_WINDOWS=1 --portable --no-hide-icons
 --test-script <audit-dir>/workflow.txt. This script does not inject desktop input.
 """
 import ast

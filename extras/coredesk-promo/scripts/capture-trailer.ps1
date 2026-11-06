@@ -4,7 +4,7 @@ param([string[]]$Scenes = @("overview","dark","auto","tabs","ai"))
 # foreground window and cursor position are restored afterwards.
 $ErrorActionPreference = "Stop"
 $workspace = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
-$promo = Join-Path $workspace "extras\pecofence-promo"
+$promo = Join-Path $workspace "extras\coredesk-promo"
 $fixtureRoot = Join-Path $promo ".capture\reviewed\trailer-v3"
 $rawRoot = Join-Path $promo ".capture\trailer-v3-raw"
 $assetRoot = Join-Path $workspace ".cache\store-v2"
@@ -45,13 +45,13 @@ $plateW = 2560; $plateH = 1440
 if ($screen.Width -ne 3840 -or $screen.Height -ne 2160) { throw "Trailer capture expects a 3840x2160 display; found $screen" }
 $plateX = [int](($screen.Width-$plateW)/2); $plateY = [int](($screen.Height-$plateH)/2)
 $buildRoot = Join-Path $promo ".capture\reviewed-build\target-v4\debug"
-$binary = Join-Path $buildRoot "pecofence.exe"
-$cli = Join-Path $buildRoot "pecofence-cli.exe"
+$binary = Join-Path $buildRoot "coredesk.exe"
+$cli = Join-Path $buildRoot "coredesk-cli.exe"
 $hash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant()
 $previous = [TrailerCapture]::GetForegroundWindow()
 $cursor = New-Object TrailerCapture+Point
 [TrailerCapture]::GetCursorPos([ref]$cursor) | Out-Null
-$saved = @{instance=$env:PECOFENCE_INSTANCE; test=$env:PECOFENCE_UI_TEST_WINDOWS; fixture=$env:PECOFENCE_DEMO_DESKTOP; local=$env:LOCALAPPDATA}
+$saved = @{instance=$env:COREDESK_INSTANCE; test=$env:COREDESK_UI_TEST_WINDOWS; fixture=$env:COREDESK_DEMO_DESKTOP; local=$env:LOCALAPPDATA}
 $manifest = [Collections.Generic.List[object]]::new()
 
 function Start-Recorder([string]$Path) {
@@ -73,12 +73,12 @@ try {
     $fixture = Join-Path $caseDir "desktop-fixture"
     $configPath = Join-Path $appDir "config\config.json"
     Copy-Item -LiteralPath (Join-Path $caseDir "config.final.json") -Destination $configPath -Force
-    Copy-Item -LiteralPath $binary -Destination (Join-Path $appDir "pecofence.exe")
+    Copy-Item -LiteralPath $binary -Destination (Join-Path $appDir "coredesk.exe")
     Copy-Item -LiteralPath (Join-Path $workspace "target\release\WebView2Loader.dll") -Destination (Join-Path $appDir "WebView2Loader.dll")
     $wallpaper = Join-Path $assetRoot $(if($scene -eq "dark"){"paper-dark.png"}else{"paper-light.png"})
     $back = [Windows.Forms.Form]::new()
     $back.FormBorderStyle="None"; $back.StartPosition="Manual"; $back.ShowInTaskbar=$false
-    $back.Bounds=$screen; $back.Text="PecoFence trailer isolated backdrop"
+    $back.Bounds=$screen; $back.Text="CoreDesk trailer isolated backdrop"
     $back.BackgroundImage=[Drawing.Image]::FromFile($wallpaper); $back.BackgroundImageLayout="Stretch"
     $app=$null; $recorder=$null; $done=@{}; $shown=@{}
     $stepsPath = Join-Path $caseDir "cli-steps.json"
@@ -99,21 +99,21 @@ try {
         $clock.Start()
         $recorder = Start-Recorder (Join-Path $rawRoot "$scene.mkv")
         Start-Sleep -Milliseconds 700
-        $env:PECOFENCE_INSTANCE="trailer-$scene"
-        $env:PECOFENCE_UI_TEST_WINDOWS="1"
-        $env:PECOFENCE_DEMO_DESKTOP=$fixture
+        $env:COREDESK_INSTANCE="trailer-$scene"
+        $env:COREDESK_UI_TEST_WINDOWS="1"
+        $env:COREDESK_DEMO_DESKTOP=$fixture
         $env:LOCALAPPDATA=Join-Path $caseDir "appdata"
         New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
         $args=@("--portable","--no-hide-icons","--wallpaper",('"' + $wallpaper + '"'),"--test-script",('"' + (Join-Path $caseDir "commands.txt") + '"'),"--exit-after","26000")
         Mark "app-start"
-        $app=Start-Process -FilePath (Join-Path $appDir "pecofence.exe") -ArgumentList $args -WindowStyle Hidden -PassThru
+        $app=Start-Process -FilePath (Join-Path $appDir "coredesk.exe") -ArgumentList $args -WindowStyle Hidden -PassThru
         $timer=[Diagnostics.Stopwatch]::StartNew()
         while (-not $app.HasExited -and $timer.Elapsed.TotalSeconds -lt 24) {
             [Windows.Forms.Application]::DoEvents()
             foreach ($window in [TrailerCapture]::Windows([uint32]$app.Id)) {
                 $title=[TrailerCapture]::Title($window)
                 if ($title -eq "Capture inbox") { [TrailerCapture]::ShowWindow($window,0)|Out-Null;continue }
-                if ([TrailerCapture]::Class($window) -eq "PecoFence.Fence") {
+                if ([TrailerCapture]::Class($window) -eq "CoreDeskEngine.Fence") {
                     if (-not $shown[$window.ToInt64()] -and $timer.Elapsed.TotalSeconds -gt 1.8) {
                         [TrailerCapture]::ShowWindow($window,4)|Out-Null
                         $shown[$window.ToInt64()]=$true
@@ -163,8 +163,8 @@ try {
     }
  }
 } finally {
-    $env:PECOFENCE_INSTANCE=$saved.instance;$env:PECOFENCE_UI_TEST_WINDOWS=$saved.test
-    $env:PECOFENCE_DEMO_DESKTOP=$saved.fixture;$env:LOCALAPPDATA=$saved.local
+    $env:COREDESK_INSTANCE=$saved.instance;$env:COREDESK_UI_TEST_WINDOWS=$saved.test
+    $env:COREDESK_DEMO_DESKTOP=$saved.fixture;$env:LOCALAPPDATA=$saved.local
     [TrailerCapture]::SetCursorPos($cursor.X, $cursor.Y) | Out-Null
     [TrailerCapture]::SetForegroundWindow($previous)|Out-Null
     $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $rawRoot "capture-manifest.json") -Encoding utf8

@@ -19,10 +19,10 @@
 /docs/history/
 /third_party/webview2/*.nupkg
 /third_party/webview2/build/
-/extras/pecofence-promo/public/*
-!/extras/pecofence-promo/public/README.md
-/extras/pecofence-promo/out/
-/extras/pecofence-promo/review/
+/extras/coredesk-promo/public/*
+!/extras/coredesk-promo/public/README.md
+/extras/coredesk-promo/out/
+/extras/coredesk-promo/review/
 
 # Local editor and credential files
 .env

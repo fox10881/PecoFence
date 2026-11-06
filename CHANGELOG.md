@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+### Renamed — PecoFence is now CoreDesk Engine
+
+- New identity everywhere: binaries (`coredesk.exe`,
+  `coredesk-watchdog.exe`, `coredesk-cli.exe`, `coredesk_tap.dll`),
+  Cargo packages (`coredesk`, `coredesk-core`, `coredesk-platform`,
+  `coredesk-ipc`, `coredesk-render`, `coredesk-watchdog`, `coredesk-cli`,
+  `coredesk-tap`), IPC pipe (`\\.\pipe\CoreDeskEngine.<SID>`), single-instance
+  mutex, log file (`coredesk.log`), settings window title, installer,
+  MSIX package and every user-facing string in all 12 locales.
+  `%APPDATA%\CoreDeskEngine` is the canonical data dir; existing
+  `PecoFence`/`OpenFence` installs are adopted unchanged (config, theme
+  library, imported wallpapers, caches). Legacy autostart names, mutexes,
+  `PecoFenceTAP*` shell residents and `PECOFENCE_*`/`OPENFENCE_*`
+  environment overrides are still honoured so old and new builds never
+  fight over the desktop.
+- New fox-badge icon (`.ico`, system tray, settings header, installer,
+  MSIX Store/tile assets — all generated from
+  `packaging/assets/badge.png`); the Settings page was restyled to the
+  dark slate/cybernetic design with cyan accents.
+- Themes are `.cde` (CoreDesk Engine theme) now: export, gallery saves
+  and the file dialogs all produce it. `.peco` archives import
+  seamlessly — the open dialog, `theme import` and double-click accept
+  them, and the library migration renames existing `themes/*.peco`
+  entries to `.cde` on first run (identical container, same previews and
+  media; `active_theme_path` moves with the file). Importing a `.peco`
+  stores it in the library as `.cde`.
+- Double-click support: `.cde` is registered under
+  `HKCU\Software\Classes` by the Inno installer and via
+  `windows.fileTypeAssociation` in the MSIX manifest; `coredesk.exe
+  <file.cde>` imports at cold start or forwards to the running instance
+  over the new `theme.import` IPC method (`coredesk-cli theme import`
+  wraps it).
+
 ### Fixes
 
 - **Manual sidecar reverts are honored (ghost-state fix)**: editing

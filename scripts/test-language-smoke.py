@@ -15,7 +15,7 @@ LANGUAGES = ("en", "ja", "zh-TW", "ko", "de", "fr", "es", "pt-BR", "ru", "zh-CN"
 
 def autostart_value():
     values = {}
-    for name in ("PecoFence", "openFence"):
+    for name in ("CoreDesk", "openFence"):
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
                 values[name] = winreg.QueryValueEx(key, name)
@@ -26,28 +26,28 @@ def autostart_value():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", type=Path, default=ROOT / "target/package/release/pecofence.exe")
+    parser.add_argument("--binary", type=Path, default=ROOT / "target/package/release/coredesk.exe")
     parser.add_argument("--legacy-env", action="store_true", help="Exercise the previous instance-variable prefix")
     args = parser.parse_args()
     binary = args.binary.resolve()
     instance = "locale-smoke-" + uuid.uuid4().hex[:12]
     stage = ROOT / ".cache" / instance
     stage.mkdir(parents=True)
-    shutil.copy2(binary, stage / "pecofence.exe")
-    shutil.copy2(binary.parent / "pecofence-watchdog.exe", stage / "pecofence-watchdog.exe")
+    shutil.copy2(binary, stage / "coredesk.exe")
+    shutil.copy2(binary.parent / "coredesk-watchdog.exe", stage / "coredesk-watchdog.exe")
     shutil.copy2(ROOT / "third_party/webview2/WebView2Loader.x64.dll", stage / "WebView2Loader.dll")
     environment = dict(
-        os.environ, PECOFENCE_INSTANCE=instance, RUST_LOG="info",
+        os.environ, COREDESK_INSTANCE=instance, RUST_LOG="info",
         LOCALAPPDATA=str(stage / "local-appdata"), APPDATA=str(stage / "roaming-appdata"),
     )
     if args.legacy_env:
-        environment.pop("PECOFENCE_INSTANCE", None)
+        environment.pop("COREDESK_INSTANCE", None)
         environment["OPENFENCE_INSTANCE"] = instance
     before = autostart_value()
 
     def run(*extra):
         result = subprocess.run(
-            [str(stage / "pecofence.exe"), "--portable", "--no-hide-icons", *extra],
+            [str(stage / "coredesk.exe"), "--portable", "--no-hide-icons", *extra],
             cwd=stage, env=environment, timeout=35, creationflags=subprocess.CREATE_NO_WINDOW,
         )
         if result.returncode:
@@ -76,7 +76,7 @@ def main():
     script.write_text("\n".join(lines), encoding="utf-8")
     run("--open-settings", "--test-script", str(script), "--exit-after", "18000")
     saved = json.loads(config_path.read_text(encoding="utf-8"))
-    log_path = Path(environment["LOCALAPPDATA"]) / "PecoFence" / f"pecofence.{instance}.log"
+    log_path = Path(environment["LOCALAPPDATA"]) / "CoreDesk" / f"coredesk.{instance}.log"
     log = log_path.read_text(encoding="utf-8")
     assert "settings: page ready" in log, "Embedded Settings document did not initialize"
     for language in LANGUAGES:

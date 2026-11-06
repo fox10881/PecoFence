@@ -7,7 +7,7 @@
 use super::visuals::{MonitorRecipe, backdrop_signature, monitor_recipes, wallpaper_snapshot};
 use super::*;
 use crate::commands::WM_APP_LIVE_WALLPAPER;
-use pecofence_platform::live_wallpaper_still as live_wallpaper;
+use coredesk_platform::live_wallpaper_still as live_wallpaper;
 
 /// A visible fence's backdrop catches up with the live wallpaper this often.
 pub(super) const LIVE_REFRESH: Duration = Duration::from_secs(60);
@@ -121,7 +121,7 @@ fn capture_and_build(
                 let shot = match &own_video {
                     Some(frame)
                         if desktop::class_name(HWND(hwnd as *mut core::ffi::c_void))
-                            == pecofence_platform::wmf_wallpaper::VIDEO_WINDOW_CLASS =>
+                            == coredesk_platform::wmf_wallpaper::VIDEO_WINDOW_CLASS =>
                     {
                         own_video_shot(hwnd, frame)
                     }
@@ -243,7 +243,7 @@ impl App {
         }
         if self.live_capture.is_some()
             || !self.live.iter().any(due)
-            || pecofence_core::brand::var_os("PECOFENCE_SOLID").is_some()
+            || coredesk_core::brand::var_os("COREDESK_SOLID").is_some()
         {
             return;
         }
@@ -292,7 +292,7 @@ impl App {
         // per try — so the still comes from the player's decoded frame slot.
         let wants_own_video = targets.iter().any(|(_, hwnd)| {
             desktop::class_name(HWND(*hwnd as *mut core::ffi::c_void))
-                == pecofence_platform::wmf_wallpaper::VIDEO_WINDOW_CLASS
+                == coredesk_platform::wmf_wallpaper::VIDEO_WINDOW_CLASS
         });
         let own_video = wants_own_video
             .then(|| self.wmf_player.as_ref().and_then(|p| p.latest_frame()))
@@ -309,9 +309,9 @@ impl App {
             let result = result.clone();
             let control = self.control.hwnd().0 as isize;
             std::thread::Builder::new()
-                .name("pecofence-live-wallpaper".into())
+                .name("coredesk-live-wallpaper".into())
                 .spawn(move || {
-                    let built = pecofence_platform::com::MtaGuard::init()
+                    let built = coredesk_platform::com::MtaGuard::init()
                         .and_then(|_com| capture_and_build(work, own_video))
                         .map_err(|error| error.to_string());
                     if let Ok(mut slot) = result.lock() {

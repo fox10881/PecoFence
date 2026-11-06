@@ -6,8 +6,8 @@
 // dispatcher plumbing, wire-magic table, and shared-state accessors the
 // engine body consumes.
 
-/// Windows.UI.Xaml engine — taskbar (`PECO-TBS1`), Start Menu (`PECO-SMS1`)
-/// and Notification Center (`PECO-NCS1`) themes.
+/// Windows.UI.Xaml engine — taskbar (`CDES-TBS1`), Start Menu (`CDES-SMS1`)
+/// and Notification Center (`CDES-NCS1`) themes.
 pub mod wux {
     use crate::effects as fxe;
     use crate::styler_bindings as xb;
@@ -33,9 +33,9 @@ pub mod wux {
 
     fn wire_kind(magic: &str) -> Option<WireKind> {
         Some(match magic {
-            "PECO-SMS1" => WireKind::StartMenu,
-            "PECO-TBS1" => WireKind::Taskbar,
-            "PECO-NCS1" => WireKind::NotificationCenter,
+            "CDES-SMS1" => WireKind::StartMenu,
+            "CDES-TBS1" => WireKind::Taskbar,
+            "CDES-NCS1" => WireKind::NotificationCenter,
             _ => return None,
         })
     }
@@ -86,7 +86,7 @@ pub mod wux {
     include!("styler_engine.rs");
 }
 
-/// Microsoft.UI.Xaml engine — File Explorer (`PECO-FES1`) themes applied to
+/// Microsoft.UI.Xaml engine — File Explorer (`CDES-FES1`) themes applied to
 /// the WinUI3 islands inside `CabinetWClass`, driven by the second
 /// diagnostics session that `Microsoft.Internal.FrameworkUdk.dll` hosts.
 /// Same engine body; the bindings alias resolves Microsoft.UI.Xaml.* types.
@@ -116,7 +116,7 @@ pub mod mux {
 
     fn wire_kind(magic: &str) -> Option<WireKind> {
         Some(match magic {
-            "PECO-FES1" => WireKind::FileExplorer,
+            "CDES-FES1" => WireKind::FileExplorer,
             _ => return None,
         })
     }

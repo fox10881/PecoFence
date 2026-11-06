@@ -1,6 +1,6 @@
 //! Icon grid layout in DIPs: cell geometry, hit testing, scrolling extents.
 
-use pecofence_core::{DateBucket, ViewLayout};
+use coredesk_core::{DateBucket, ViewLayout};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GridMetrics {
@@ -61,8 +61,8 @@ impl GridMetrics {
     /// 「图标形状」 per-fence override: Poster makes the icon box 2:3 (H = W × 1.5) so the
     /// renderer centre-crops thumbnails into it; the cell keeps its width recipe and grows
     /// vertically by the extra half icon. Apply before `with_line_h` / `with_spacing`.
-    pub fn with_shape(mut self, shape: pecofence_core::IconShape) -> Self {
-        if shape == pecofence_core::IconShape::Poster {
+    pub fn with_shape(mut self, shape: coredesk_core::IconShape) -> Self {
+        if shape == coredesk_core::IconShape::Poster {
             self.icon_h = self.icon * 1.5;
             self.cell_h += self.icon * 0.5;
         }
@@ -81,9 +81,9 @@ impl GridMetrics {
 
     /// Fences "icon spacing": compact pulls cells in by 12/8 DIPs, loose pushes them out by
     /// 16/12 (4 px grid kept).
-    pub fn with_spacing(mut self, spacing: pecofence_core::Spacing) -> Self {
+    pub fn with_spacing(mut self, spacing: coredesk_core::Spacing) -> Self {
         match spacing {
-            pecofence_core::Spacing::Compact => {
+            coredesk_core::Spacing::Compact => {
                 self.cell_w -= 12.0;
                 // 4 + icon + 2 + label + 2 == cell_h: the label still ends inside the cell.
                 // With hidden labels only the top pad gives anything back.
@@ -91,8 +91,8 @@ impl GridMetrics {
                 self.icon_top = 4.0;
                 self.label_gap = if self.label_lines == 0 { 0.0 } else { 2.0 };
             }
-            pecofence_core::Spacing::Normal => {}
-            pecofence_core::Spacing::Loose => {
+            coredesk_core::Spacing::Normal => {}
+            coredesk_core::Spacing::Loose => {
                 self.cell_w += 16.0;
                 self.cell_h += 12.0;
             }
@@ -1036,7 +1036,7 @@ fn snapped_max_scroll(raw: f32, row_step: f32) -> f32 {
 /// count, so a size change never runs into a new neighbour while an overlap the user made
 /// stays as it is.
 pub mod clearance {
-    use pecofence_platform::RECT;
+    use coredesk_platform::RECT;
 
     fn spans_x(a: &RECT, b: &RECT) -> bool {
         a.left < b.right && a.right > b.left
@@ -1190,8 +1190,8 @@ pub mod clearance {
 mod tests {
     use super::*;
 
-    fn rc(left: i32, top: i32, right: i32, bottom: i32) -> pecofence_platform::RECT {
-        pecofence_platform::RECT {
+    fn rc(left: i32, top: i32, right: i32, bottom: i32) -> coredesk_platform::RECT {
+        coredesk_platform::RECT {
             left,
             top,
             right,
@@ -1327,7 +1327,7 @@ mod tests {
         assert_eq!(odd.line_h, 17.0);
         let compact = GridMetrics::for_icon_size(48, 2)
             .with_line_h(20.0)
-            .with_spacing(pecofence_core::Spacing::Compact);
+            .with_spacing(coredesk_core::Spacing::Compact);
         assert_eq!(compact.cell_h, big.cell_h - 8.0);
     }
 
@@ -1400,9 +1400,9 @@ mod tests {
         for icon in [32u32, 48, 64, 96] {
             for lines in [1u8, 2, 3] {
                 for spacing in [
-                    pecofence_core::Spacing::Compact,
-                    pecofence_core::Spacing::Normal,
-                    pecofence_core::Spacing::Loose,
+                    coredesk_core::Spacing::Compact,
+                    coredesk_core::Spacing::Normal,
+                    coredesk_core::Spacing::Loose,
                 ] {
                     let m = GridMetrics::for_icon_size(icon, lines).with_spacing(spacing);
                     layouts.push((
@@ -1504,9 +1504,9 @@ mod tests {
         for icon in [32u32, 48, 64, 96] {
             for lines in [1u8, 2] {
                 for spacing in [
-                    pecofence_core::Spacing::Compact,
-                    pecofence_core::Spacing::Normal,
-                    pecofence_core::Spacing::Loose,
+                    coredesk_core::Spacing::Compact,
+                    coredesk_core::Spacing::Normal,
+                    coredesk_core::Spacing::Loose,
                 ] {
                     let m = GridMetrics::for_icon_size(icon, lines).with_spacing(spacing);
                     // Every size stays on the 4 px grid the column snap relies on.
@@ -1540,14 +1540,14 @@ mod tests {
                 icon_f + 8.0 + 4.0,
                 "top pad + icon + bottom pad"
             );
-            let compact = normal.with_spacing(pecofence_core::Spacing::Compact);
+            let compact = normal.with_spacing(coredesk_core::Spacing::Compact);
             assert_eq!(
                 compact.cell_h,
                 icon_f + 4.0 + 4.0,
                 "compact only trims the top pad"
             );
             assert_eq!(compact.label_gap, 0.0);
-            let loose = normal.with_spacing(pecofence_core::Spacing::Loose);
+            let loose = normal.with_spacing(coredesk_core::Spacing::Loose);
             assert_eq!(loose.cell_h, icon_f + 8.0 + 4.0 + 12.0);
             for m in [normal, compact, loose] {
                 assert_eq!(m.cell_h % 4.0, 0.0, "icon {icon}: cell on the 4 px grid");

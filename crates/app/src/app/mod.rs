@@ -16,33 +16,33 @@ use crate::peek::PeekOverlay;
 use crate::settings_host::{SettingsHost, WebEnvironment};
 use crate::shadow::{ShadowStyle, ShadowWindow};
 use crate::state::AppState;
-use pecofence_core::geometry::WorkArea;
-use pecofence_core::hotkey::Hotkey;
-use pecofence_core::{
+use coredesk_core::geometry::WorkArea;
+use coredesk_core::hotkey::Hotkey;
+use coredesk_core::{
     FenceId, FenceKind, IconFrameStyle, IconShape, ItemId, ItemKey, LabelFontWeight,
     LabelVisibility, ShowDesktopSetting, SortMode, Spacing, Target, ThemeSetting, TitleSize,
     ViewLayout, ZOrderSetting,
 };
-use pecofence_platform::clipboard;
-use pecofence_platform::frameclock::FrameClock;
-use pecofence_platform::hotkey;
-use pecofence_platform::shell;
-use pecofence_platform::shell_menu::ShellContextMenu;
-use pecofence_platform::shell_notify::ShellChangeWatch;
-use pecofence_platform::sysparams;
-use pecofence_platform::tray::{self, PopupMenu, TrayIcon};
-use pecofence_platform::watcher::{DirWatcher, FsEvent};
-use pecofence_platform::window::{
+use coredesk_platform::clipboard;
+use coredesk_platform::frameclock::FrameClock;
+use coredesk_platform::hotkey;
+use coredesk_platform::shell;
+use coredesk_platform::shell_menu::ShellContextMenu;
+use coredesk_platform::shell_notify::ShellChangeWatch;
+use coredesk_platform::sysparams;
+use coredesk_platform::tray::{self, PopupMenu, TrayIcon};
+use coredesk_platform::watcher::{DirWatcher, FsEvent};
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{
+use coredesk_platform::{
     HWND, POINT, RECT, backdrop_probe, desktop, monitors, msg, process, theme as systheme,
     wallpaper,
 };
-use pecofence_render::fence_chrome::FenceChrome;
-use pecofence_render::fence_chrome::FenceStyle;
-use pecofence_render::motion::Motion;
-use pecofence_render::{
+use coredesk_render::fence_chrome::FenceChrome;
+use coredesk_render::fence_chrome::FenceStyle;
+use coredesk_render::motion::Motion;
+use coredesk_render::{
     BitmapCache, ColorF, Image, MonitorBackdrop, RenderStack, Theme, ThemeMode, WallpaperPosition,
 };
 use std::cell::{Cell, RefCell};
@@ -218,7 +218,10 @@ pub struct Args {
     pub portal: Option<String>,
     /// `--test-script <file>`: drive the app from a script (see `testscript.rs`).
     pub test_script: Option<String>,
-    /// `PECOFENCE_INSTANCE` (trimmed, non-empty) of this process; names the IPC pipe.
+    /// A `.cde`/`.peco` theme path handed on the command line (shell file association):
+    /// imported after startup.
+    pub theme_path: Option<String>,
+    /// `COREDESK_INSTANCE` (trimmed, non-empty) of this process; names the IPC pipe.
     pub instance: Option<String>,
 }
 
@@ -227,7 +230,7 @@ pub struct App {
     ctx: Rc<FenceContext>,
     fences: HashMap<FenceId, FenceWindow>,
     desktop_windows: HashMap<String, FenceWindow>,
-    desktop_descriptor: pecofence_core::Fence,
+    desktop_descriptor: coredesk_core::Fence,
     desktop_marquee_base: HashMap<FenceId, Vec<ItemId>>,
     /// Windows of deleted / merged fences, kept alive while they fade out; dropped (destroyed)
     /// on `Command::FadeOutDone`.
@@ -280,7 +283,7 @@ pub struct App {
     /// Open `events.subscribe` streams and the last tick's state they are diffed against.
     ipc_subscribers: Vec<ipc::IpcSubscriber>,
     ipc_event_state: Option<ipc::EventState>,
-    /// `PECOFENCE_INSTANCE` of this process (reported by `status.get`).
+    /// `COREDESK_INSTANCE` of this process (reported by `status.get`).
     instance: Option<String>,
     settings: Option<SettingsHost>,
     /// The dedicated ExplorerBlurMica customization window (singleton — the
@@ -362,7 +365,7 @@ pub struct App {
     /// The worker of a given-up capture that has not returned yet (one at most).
     live_abandoned: Option<std::thread::JoinHandle<()>>,
     /// Active Windows Media Foundation (WMF) desktop video wallpaper player (`WorkerW`).
-    wmf_player: Option<pecofence_platform::wmf_wallpaper::WmfWallpaperPlayer>,
+    wmf_player: Option<coredesk_platform::wmf_wallpaper::WmfWallpaperPlayer>,
     /// A video-wallpaper swap running on a worker (`stop` join + `start` first-frame
     /// wait are seconds-class — the UI thread installs the result once it lands).
     video_swap: Option<settings::VideoSwap>,
@@ -387,11 +390,11 @@ pub struct App {
     /// signals inside the rebuild window that only re-assert an already-
     /// existing file are the shell restoring the desktop, not a user change.
     shell_respawn_wall: Option<std::time::SystemTime>,
-    /// The `theme.json` canvas of the last applied `.peco` — kept so the contain/cover
+    /// The `theme.json` canvas of the last applied `.cde` — kept so the contain/cover
     /// toggle can re-place fences and re-composite the wallpaper without importing
     /// the theme again. `None` after plain config imports/backup restores and legacy
     /// themes without metadata.
-    last_theme_meta: Option<pecofence_core::adaptive::ThemeMeta>,
+    last_theme_meta: Option<coredesk_core::adaptive::ThemeMeta>,
     /// "Unsaved changes" relative to the active theme file: every mutation that schedules
     /// a config save arms it (Cell because `schedule_save` is `&self`); applying or
     /// overwriting a theme resets it to the new baseline.
@@ -507,7 +510,8 @@ impl App {
         let session_anchor: Rc<std::cell::OnceCell<AnchorCell>> = Rc::default();
 
         // Control window: timers, tray callbacks, command pump.
-        let control_class = WindowClass::register("PecoFence.Control", ClassOptions::default())?;
+        let control_class =
+            WindowClass::register("CoreDeskEngine.Control", ClassOptions::default())?;
         let control_handler: MessageHandler = {
             let cell = cell.clone();
             let taskbar_created = desktop::taskbar_created_message();
@@ -1113,7 +1117,7 @@ impl App {
             )
         };
         let control = WindowBuilder::new(&control_class)
-            .title("PecoFence")
+            .title("CoreDesk Engine")
             .style(style::POPUP)
             .ex_style(style::EX_TOOLWINDOW | style::EX_NOACTIVATE)
             .bounds(0, 0, 0, 0)
@@ -1240,7 +1244,15 @@ impl App {
             tray_px,
             &tray_icon_image(tray_px, theme.accent_rgb8(), theme_mode == ThemeMode::Dark),
         )
-        .map(|icon| TrayIcon::new(control.hwnd(), TRAY_ID, WM_APP_TRAY, icon, "PecoFence"))
+        .map(|icon| {
+            TrayIcon::new(
+                control.hwnd(),
+                TRAY_ID,
+                WM_APP_TRAY,
+                icon,
+                "CoreDesk Engine",
+            )
+        })
         .map_err(|e| tracing::warn!(error = %e, "tray icon image failed"))
         .ok();
         if let Some(t) = &tray
@@ -1268,22 +1280,22 @@ impl App {
 
         // CLI named pipe: requests land in `ipc_pending`, the control window is poked.
         let ipc_pending: PendingQueue = Arc::new(Mutex::new(VecDeque::new()));
-        let ipc = match pecofence_platform::pipe::ipc_pipe_name(args.instance.as_deref()) {
+        let ipc = match coredesk_platform::pipe::ipc_pipe_name(args.instance.as_deref()) {
             Ok(name) => IpcServer::start(&name, control.hwnd(), ipc_pending.clone()),
             Err(error) => {
-                tracing::warn!(target: "pecofence::ipc", %error, "user SID unavailable; CLI disabled");
+                tracing::warn!(target: "coredesk::ipc", %error, "user SID unavailable; CLI disabled");
                 None
             }
         };
         let rating = rating::RatingPrompt::load(
             state.config_path().parent().unwrap_or(Path::new(".")),
-            pecofence_platform::process::is_packaged(),
+            coredesk_platform::process::is_packaged(),
         );
 
-        let mut desktop_descriptor = pecofence_core::Fence::new(
+        let mut desktop_descriptor = coredesk_core::Fence::new(
             "桌面散放",
             FenceKind::Virtual,
-            pecofence_core::NormGeometry {
+            coredesk_core::NormGeometry {
                 monitor: String::new(),
                 x: 0.0,
                 y: 0.0,
@@ -1291,7 +1303,7 @@ impl App {
                 h: 1.0,
                 work_w: 1.0,
                 work_h: 1.0,
-                anchor: pecofence_core::Anchor::LeftTop,
+                anchor: coredesk_core::Anchor::LeftTop,
                 skew_left: None,
                 skew_right: None,
             },
@@ -1458,9 +1470,9 @@ impl App {
             && let Some(t) = &app.tray
         {
             t.show_info(
-                "PecoFence",
-                &pecofence_core::i18n::format(
-                    "无法读取配置文件（可能是较新版本的 PecoFence 写入的），原文件已改名为 {0}。",
+                "CoreDesk Engine",
+                &coredesk_core::i18n::format(
+                    "无法读取配置文件（可能是较新版本的 CoreDesk Engine 写入的），原文件已改名为 {0}。",
                     &[moved
                         .file_name()
                         .map(|n| n.to_string_lossy().into_owned())
@@ -1477,8 +1489,8 @@ impl App {
                 tracing::info!(count = n, to = %desk.display(), "desktop folder moved; records migrated");
                 if let Some(t) = &app.tray {
                     t.show_info(
-                        "PecoFence",
-                        &pecofence_core::i18n::format(
+                        "CoreDesk Engine",
+                        &coredesk_core::i18n::format(
                             "检测到桌面文件夹已移动，已迁移 {0} 个项目的记录。",
                             &[n.to_string()],
                         ),
@@ -1490,7 +1502,7 @@ impl App {
         // Installed before the first fence draws, and armed once: an idle startup with no
         // later draw must still release its scratch memory and hand its pages back.
         let control = app.control.hwnd();
-        pecofence_render::stack::set_draw_hook(move || {
+        coredesk_render::stack::set_draw_hook(move || {
             window::set_timer(control, TIMER_GPU_TRIM, GPU_TRIM_IDLE_MS);
             window::set_timer(control, TIMER_IDLE_TRIM, IDLE_TRIM_MS);
         });
@@ -1544,10 +1556,10 @@ impl App {
         // never reach here: the single-instance gate exits in main().
         let fe_armed = !app.state.config.settings.fe_effect.is_empty();
         let stale_resident =
-            args.instance.is_none() && !pecofence_platform::tap::resident_windows_all().is_empty();
+            args.instance.is_none() && !coredesk_platform::tap::resident_windows_all().is_empty();
         if fe_armed || stale_resident {
             tracing::info!(fe_armed, stale_resident, "cold boot: restarting Explorer");
-            std::thread::spawn(pecofence_platform::tap::restart_explorer);
+            std::thread::spawn(coredesk_platform::tap::restart_explorer);
         }
         // Saved surface styles — each apply() stores the selection either
         // way, and the periodic ensure() delivers it when the hosts
@@ -1555,7 +1567,7 @@ impl App {
         let saved_style = app.state.config.settings.start_menu_style.clone();
         if !saved_style.is_empty() {
             std::thread::spawn(move || {
-                let _ = pecofence_platform::start_menu::apply_start_menu_theme(&saved_style);
+                let _ = coredesk_platform::start_menu::apply_start_menu_theme(&saved_style);
             });
         }
         // A saved Taskbar style rides the same resident — apply() injects
@@ -1564,7 +1576,7 @@ impl App {
         let saved_tb_style = app.state.config.settings.taskbar_style.clone();
         if !saved_tb_style.is_empty() {
             std::thread::spawn(move || {
-                let _ = pecofence_platform::taskbar_styler::apply(&saved_tb_style);
+                let _ = coredesk_platform::taskbar_styler::apply(&saved_tb_style);
             });
         }
         // A saved Notification Center style injects into the Shell hosts —
@@ -1573,7 +1585,7 @@ impl App {
         let saved_nc_style = app.state.config.settings.notification_center_style.clone();
         if !saved_nc_style.is_empty() {
             std::thread::spawn(move || {
-                let _ = pecofence_platform::notification_center::apply(&saved_nc_style);
+                let _ = coredesk_platform::notification_center::apply(&saved_nc_style);
             });
         }
         // Heal a poisoned `Shell Icons\29` overlay override — a black-square
@@ -1583,8 +1595,8 @@ impl App {
         // `shortcut_arrows` setting on launch.
         let show_arrows = app.state.config.settings.icons.shortcut_arrows;
         std::thread::spawn(move || {
-            pecofence_platform::shell::heal_link_overlay_source();
-            pecofence_platform::shell::set_link_overlay_shown(show_arrows);
+            coredesk_platform::shell::heal_link_overlay_source();
+            coredesk_platform::shell::set_link_overlay_shown(show_arrows);
         });
         // The saved ExplorerBlurMica effect applies through the resident
         // relay; an empty effect still runs apply_effect → reset(), which
@@ -1603,7 +1615,7 @@ impl App {
                 fe.fe_show_line,
             );
             std::thread::spawn(move || {
-                let cfg = pecofence_platform::file_explorer_styler::FeGlassConfig {
+                let cfg = coredesk_platform::file_explorer_styler::FeGlassConfig {
                     effect: &effect,
                     clear_address: flags.0,
                     clear_bar_bg: flags.1,
@@ -1612,7 +1624,7 @@ impl App {
                     light_rgba: &l,
                     dark_rgba: &d,
                 };
-                let _ = pecofence_platform::file_explorer_styler::apply_effect(&cfg);
+                let _ = coredesk_platform::file_explorer_styler::apply_effect(&cfg);
             });
         }
         for f in app.fences.values().chain(app.desktop_windows.values()) {
@@ -1627,8 +1639,7 @@ impl App {
             );
             // Icons already showing: the last run restored them, but a sign-out ended it before
             // it removed the marker.
-            if a.stale_marker_present() && !pecofence_platform::shell_icons::desktop_icons_hidden()
-            {
+            if a.stale_marker_present() && !coredesk_platform::shell_icons::desktop_icons_hidden() {
                 a.forget_stale_marker();
             } else if a.stale_marker_present() {
                 tracing::warn!(
@@ -1636,9 +1647,9 @@ impl App {
                 );
                 if let Some(t) = &app.tray {
                     t.show_info(
-                        "PecoFence",
-                        pecofence_core::i18n::text(
-                            "上次 PecoFence 没有正常退出，桌面图标没能恢复显示。现在已重新接管。",
+                        "CoreDesk Engine",
+                        coredesk_core::i18n::text(
+                            "上次 CoreDesk Engine 没有正常退出，桌面图标没能恢复显示。现在已重新接管。",
                         ),
                         true,
                     );
@@ -1651,9 +1662,9 @@ impl App {
             }
         }
         // Portable/development runs do not change login startup. Normal releases
-        // adopt the renamed entry while keeping an existing working PecoFence copy.
+        // adopt the renamed entry while keeping an existing working CoreDesk Engine copy.
         if !args.portable {
-            if let Err(error) = pecofence_platform::autostart::reconcile_product(
+            if let Err(error) = coredesk_platform::autostart::reconcile_product(
                 app.state.config.settings.autostart,
                 cfg!(debug_assertions),
             ) {
@@ -1662,7 +1673,7 @@ impl App {
         } else if !cfg!(debug_assertions) {
             // A portable copy registers nothing by itself: 「随 Windows 启动」 shows whether the
             // startup entry starts this copy (a new portable configuration says on).
-            let on = pecofence_platform::autostart::adopt_portable_entry();
+            let on = coredesk_platform::autostart::adopt_portable_entry();
             if app.state.config.settings.autostart != on {
                 app.state.config.settings.autostart = on;
                 app.state.mark_dirty();
@@ -1700,6 +1711,7 @@ impl App {
         }
 
         app.remove_old_update_downloads();
+        app.migrate_theme_library();
         // Last of the startup balloons, so it is the one left showing.
         app.offer_crash_feedback();
         if app.state.first_run && args.exit_after_ms.is_none() && args.test_script.is_none() {
@@ -1711,12 +1723,12 @@ impl App {
         if let Some(path) = args.test_script.as_deref() {
             app.test = testscript::TestScript::load(path);
             if app.test.is_some() {
-                tracing::info!(target: "pecofence::test", path, "test script loaded");
+                tracing::info!(target: "coredesk::test", path, "test script loaded");
                 window::set_timer(app.control.hwnd(), TIMER_TEST, 50);
             }
         }
         if args.dump_stats {
-            match pecofence_platform::memstats::MemoryStats::current() {
+            match coredesk_platform::memstats::MemoryStats::current() {
                 Ok(m) => tracing::info!(memory = %m.summary(), "startup memory"),
                 Err(e) => tracing::warn!(error = %e, "memstats failed"),
             }
@@ -1745,8 +1757,8 @@ impl App {
         self.save_failure_shown = true;
         let path = self.state.config_path_on_disk();
         t.show_info(
-            "PecoFence",
-            &pecofence_core::i18n::format(
+            "CoreDesk Engine",
+            &coredesk_core::i18n::format(
                 "无法保存配置，退出后更改会丢失。请检查这个文件夹能否写入：{0}",
                 &[path.parent().unwrap_or(&path).display().to_string()],
             ),
@@ -1760,7 +1772,7 @@ impl App {
             self.state.save_if_dirty();
             self.notice_save_failure();
         }
-        // Once a day, the active theme's .peco is rewritten in place (never a new file).
+        // Once a day, the active theme's .cde is rewritten in place (never a new file).
         self.maybe_auto_update_theme();
         // Icons no window needs any more, if a change left some behind without a redraw; the
         // GPU trim then frees the released uploads.
@@ -1823,8 +1835,8 @@ impl App {
                 );
                 if let Some(t) = &self.tray {
                     t.show_info(
-                        "PecoFence",
-                        pecofence_core::i18n::text("无法隐藏桌面图标，请稍后再试。"),
+                        "CoreDesk Engine",
+                        coredesk_core::i18n::text("无法隐藏桌面图标，请稍后再试。"),
                         true,
                     );
                 }
@@ -1838,7 +1850,7 @@ impl App {
     /// whenever the total grew by `MEMORY_LOG_GROWTH` since the last line, so a log sent with
     /// a high Task Manager number shows when it grew and in which kind of memory.
     fn log_memory(&mut self) {
-        let Ok(m) = pecofence_platform::memstats::MemoryStats::current() else {
+        let Ok(m) = coredesk_platform::memstats::MemoryStats::current() else {
             return;
         };
         let gpu = self.ctx.stack.gpu_memory();
@@ -2205,8 +2217,8 @@ impl App {
                 self.schedule_save();
                 if let Some(t) = &self.tray {
                     t.show_info(
-                        "PecoFence",
-                        &pecofence_core::i18n::format(
+                        "CoreDesk Engine",
+                        &coredesk_core::i18n::format(
                             "已按规则整理 {0} 个项目。",
                             &[moved.to_string()],
                         ),
@@ -2251,7 +2263,7 @@ impl App {
                     // down too (reopening costs a cold ~200 ms environment start).
                     if self.web_env.is_some() {
                         self.web_env = None;
-                        pecofence_platform::memstats::trim_working_set();
+                        coredesk_platform::memstats::trim_working_set();
                     }
                 }
             }
@@ -2296,10 +2308,10 @@ impl App {
     /// block inside a still-starting shell; the periodic `ensure()` tick is
     /// the independent backstop either way.
     fn on_shell_recovery(&mut self) {
-        pecofence_platform::file_explorer_styler::ensure();
-        pecofence_platform::taskbar_styler::ensure();
-        pecofence_platform::start_menu::ensure();
-        pecofence_platform::notification_center::ensure();
+        coredesk_platform::file_explorer_styler::ensure();
+        coredesk_platform::taskbar_styler::ensure();
+        coredesk_platform::start_menu::ensure();
+        coredesk_platform::notification_center::ensure();
         self.ensure_video_wallpaper();
         // The WorkerW layer died with the old Explorer — the reparented
         // overlay child went with it; force a re-open on the fresh layer
@@ -2340,11 +2352,11 @@ impl App {
         // Restore the taskbar + Start Menu before the TAP's death-watch
         // would have to. The taskbar styler's reset must reach the resident
         // first — `tap::shutdown` unloads the channel it arrives on.
-        pecofence_platform::taskbar_styler::shutdown();
-        pecofence_platform::file_explorer_styler::shutdown();
-        pecofence_platform::tap::shutdown();
-        pecofence_platform::start_menu::shutdown();
-        pecofence_platform::notification_center::shutdown();
+        coredesk_platform::taskbar_styler::shutdown();
+        coredesk_platform::file_explorer_styler::shutdown();
+        coredesk_platform::tap::shutdown();
+        coredesk_platform::start_menu::shutdown();
+        coredesk_platform::notification_center::shutdown();
         self.state.save_if_dirty();
         self.fences.clear();
         self.desktop_windows.clear();
@@ -2360,7 +2372,7 @@ impl App {
         // of leaving a half-detached one running until sign-out.
         if self.restart_shell_on_exit {
             tracing::info!("tray exit: restarting Explorer for a vanilla shell");
-            pecofence_platform::tap::restart_explorer();
+            coredesk_platform::tap::restart_explorer();
         }
     }
 }

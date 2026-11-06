@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::layout::{CellRect, GridMetrics};
-use pecofence_core::DesktopPosition;
+use coredesk_core::DesktopPosition;
 
 impl App {
     pub(super) fn release_to_desktop(&mut self, items: &[ItemId], point: Option<(i32, i32)>) {

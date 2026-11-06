@@ -1,4 +1,4 @@
-# PecoFence — feature demonstration plan, v2
+# CoreDesk — feature demonstration plan, v2
 
 Status: implemented as the 75-second feature tour. The existing 30-second film
 remains the first version. The table below describes the final cut.
@@ -22,7 +22,7 @@ Final capture adjustments:
 
 ## What the viewer should understand
 
-PecoFence is a Windows desktop organizer that lets you:
+CoreDesk is a Windows desktop organizer that lets you:
 
 1. Create and arrange groups of desktop files.
 2. Automatically route new files with rules.
@@ -55,14 +55,14 @@ desktop arrangement should feel like one person's workflow.
 
 | Time | Feature and viewer benefit | Operation shown on screen | English copy | Required visible result |
 |---|---|---|---|---|
-| 00–04 | Product identification | Start on an actual organized desktop, with several useful groups visible. Establish the product immediately. | **PecoFence** / **A Windows desktop organizer** | Viewer can identify what the product does before the feature sequence starts. |
+| 00–04 | Product identification | Start on an actual organized desktop, with several useful groups visible. Establish the product immediately. | **CoreDesk** / **A Windows desktop organizer** | Viewer can identify what the product does before the feature sequence starts. |
 | 04–14 | Create and arrange groups | Complete the new-fence action; name the group `Work`; drag two sample desktop files into it; reposition and resize the group. | **Create your own groups** / `Create → Drop files → Arrange` | The same sample files are visibly grouped, and the group has a user-chosen position and size. |
 | 14–26 | Automatic sorting | Establish real configured rules for the demo PNG and TXT files. Introduce `homepage-demo.png` on the desktop and show it appear in `Images` without a manual drag. Repeat with `brief-demo.txt` and `Documents`. | **Sort new files automatically** / `PNG → Images` / `TXT → Documents` | Two different file types reach their intended virtual groups. The destination and filename remain visible long enough to recognize. |
 | 26–39 | Live folder portals | Identify `Project assets` as the connected real folder. Show its contents in a portal, enter `Brand`, return to the parent folder, then introduce a new sample file on disk and show the portal update. | **Put a live folder on your desktop** / `Browse subfolders` → `Updates with your folder` | The portal's contents change on navigation and reflect the newly added file. It is visibly more than a decorative group of shortcuts. |
 | 39–50 | Tabs reduce occupied space | Start with the combined `Work` and `Art` window. Click both tabs so their different contents are visible, then separate Art into an independent group. | **Combine groups into tabs** / `Two groups, one window → Switch → Separate` | Tabs select distinct contents, and a tab becomes a window again. |
 | 50–61 | Peek avoids uncovering the desktop | Place a staged project-brief window above the desktop. Display the default `Ctrl + Alt + Space` keys as the normal Peek handler raises groups. Annotate `Esc` as end-Peek restores the previous view. | **Reach your files from any app** / `Ctrl + Alt + Space` / `Esc to return` | The application remains present behind the raised groups; the desktop was not simply shown with Win+D. |
 | 61–71 | Hide and roll-up provide quick space | Show the normal hide/restore handlers, then roll up Work and actually hover to expand it. Annotate the equivalent double-click gestures. | **Hide clutter. Keep quick access.** / `Double-click the desktop` → `Double-click a title` → `Hover to expand` | Viewers can distinguish hiding all groups from collapsing one group, and can see how each is brought back. |
-| 71–75 | Brand and practical positioning | Return to the complete desktop. Add a restrained PecoFence end card. | **PecoFence** / **Open source · Lightweight · Windows 11** | The brand is associated with the functionality just demonstrated. |
+| 71–75 | Brand and practical positioning | Return to the complete desktop. Add a restrained CoreDesk end card. | **CoreDesk** / **Open source · Lightweight · Windows 11** | The brand is associated with the functionality just demonstrated. |
 
 Durations are editorial targets. Slow actions should be trimmed between steps
 rather than making the complete interaction unreadably fast.

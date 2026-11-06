@@ -1,26 +1,26 @@
-//! A notice in the corner above the taskbar, styled like a fence (`pecofence_render::notice`).
+//! A notice in the corner above the taskbar, styled like a fence (`coredesk_render::notice`).
 //! Windows decides how long a tray balloon stays (5 s by default) and keeps none in the
 //! notification centre, so the one-time rating offer (`app/rating.rs`) uses this instead: it
 //! stays for [`SHOW_FOR`], longer while the pointer rests on it. It appears without taking
-//! focus; a click on it is the user's input to PecoFence, so what the click opens (the Store's
+//! focus; a click on it is the user's input to CoreDesk Engine, so what the click opens (the Store's
 //! rating dialog) may come to the front.
 
 use crate::commands::{Command, CommandQueue};
 use crate::fence_window::FenceContext;
 use crate::shadow::ShadowWindow;
-use pecofence_platform::window::{
+use coredesk_platform::window::{
     self, ClassOptions, StandardCursor, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, RECT, desktop, dwm, monitors, msg};
-use pecofence_render::motion::{self, Curve, Motion, Tween};
-use pecofence_render::notice::{NoticeCard, NoticeHit, NoticeLayout, WIDTH};
-use pecofence_render::{ContainerVisual, DesktopWindowTarget, Panel, RenderStack, Theme};
+use coredesk_platform::{HWND, RECT, desktop, dwm, monitors, msg};
+use coredesk_render::motion::{self, Curve, Motion, Tween};
+use coredesk_render::notice::{NoticeCard, NoticeHit, NoticeLayout, WIDTH};
+use coredesk_render::{ContainerVisual, DesktopWindowTarget, Panel, RenderStack, Theme};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 use windows_core::Result;
 
-const CLASS: &str = "PecoFence.Notice";
+const CLASS: &str = "CoreDeskEngine.Notice";
 const TIMER_DISMISS: usize = 1;
 /// Steps the 167 ms fade in / out of the card together with its shadow (a layered window).
 const TIMER_FADE: usize = 2;
@@ -33,7 +33,7 @@ const MARGIN: f32 = 12.0;
 
 /// The `locale` for [`Notice::show`] in the UI language (fonts for Han, kana, Hangul).
 pub fn locale() -> &'static str {
-    match pecofence_core::i18n::language().tag() {
+    match coredesk_core::i18n::language().tag() {
         "zh-CN" => "zh-CN",
         "zh-TW" => "zh-TW",
         "ja" => "ja-JP",
@@ -159,7 +159,7 @@ impl Notice {
         let _ = dwm::set_corner_preference(hwnd, dwm::CornerPreference::Round);
         let _ = dwm::set_immersive_dark_mode(
             hwnd,
-            matches!(ctx.theme.borrow().mode, pecofence_render::ThemeMode::Dark),
+            matches!(ctx.theme.borrow().mode, coredesk_render::ThemeMode::Dark),
         );
 
         let target = ctx.stack.create_target(hwnd)?;

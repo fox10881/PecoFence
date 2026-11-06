@@ -33,7 +33,7 @@ impl GpuDevice {
             D3D_DRIVER_TYPE_HARDWARE
         };
 
-        // PecoFence patch: on hardware, ask the driver not to start its own worker threads
+        // CoreDesk patch: on hardware, ask the driver not to start its own worker threads
         // (D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS). The app draws little
         // and from one thread, and the NVIDIA driver otherwise keeps ~50 idle threads alive.
         // WARP keeps them: there they are its rasterizer threads.

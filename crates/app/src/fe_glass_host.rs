@@ -9,17 +9,17 @@
 use crate::commands::{Command, CommandQueue};
 use crate::settings_host::{WebEnvironment, glass_message};
 use crate::webview_comp::CompWebview;
-use pecofence_platform::window::{
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, RECT, dwm, frameless, monitors, msg};
-use pecofence_render::ThemeMode;
+use coredesk_platform::{HWND, RECT, dwm, frameless, monitors, msg};
+use coredesk_render::ThemeMode;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Instant;
 use windows_core::Result;
 
-pub const FE_GLASS_CLASS: &str = "PecoFence.FeGlass";
+pub const FE_GLASS_CLASS: &str = "CoreDeskEngine.FeGlass";
 const FE_GLASS_HTML: &str = include_str!("../../../ui/fe_glass.html");
 const I18N_JS: &str = include_str!("../../../ui/i18n.js");
 
@@ -39,7 +39,7 @@ pub struct FeGlassHost {
     window: Window,
     state: Rc<RefCell<HostState>>,
     /// Caption icons (small/big); destroyed with the host.
-    icons: Vec<pecofence_platform::tray::OwnedIcon>,
+    icons: Vec<coredesk_platform::tray::OwnedIcon>,
 }
 
 impl FeGlassHost {
@@ -194,7 +194,7 @@ impl FeGlassHost {
             bottom: (660.0 * scale) as i32 + 100,
         });
         let window = WindowBuilder::new(class)
-            .title(pecofence_core::i18n::text("资源管理器背景效果"))
+            .title(coredesk_core::i18n::text("资源管理器背景效果"))
             .style(style::OVERLAPPEDWINDOW | style::CLIPCHILDREN)
             .bounds(r.left, r.top, r.right - r.left, r.bottom - r.top)
             .create(handler)?;
@@ -205,13 +205,13 @@ impl FeGlassHost {
         let _ = dwm::set_immersive_dark_mode(hwnd, matches!(mode, ThemeMode::Dark));
         apply_caption(hwnd, mode, false);
 
-        let payload = pecofence_core::i18n::ui_payload()
+        let payload = coredesk_core::i18n::ui_payload()
             .to_string()
             .replace('<', "\\u003c");
         let document = FE_GLASS_HTML
             .replace(
-                "<!-- PECOFENCE_LOCALE -->",
-                &format!("<script>window.PECOFENCE_LOCALE={payload};</script>"),
+                "<!-- COREDESK_LOCALE -->",
+                &format!("<script>window.COREDESK_LOCALE={payload};</script>"),
             )
             .replace(
                 "<script src=\"i18n.js\"></script>",
@@ -247,7 +247,7 @@ impl FeGlassHost {
     pub fn update_language(&self) {
         window::set_title(
             self.window.hwnd(),
-            pecofence_core::i18n::text("资源管理器背景效果"),
+            coredesk_core::i18n::text("资源管理器背景效果"),
         );
     }
 
@@ -256,7 +256,7 @@ impl FeGlassHost {
         const WM_SETICON: u32 = 0x0080;
         let mut icons = Vec::new();
         for (which, (px, bgra)) in [(0usize, small), (1usize, big)] {
-            if let Ok(icon) = pecofence_platform::tray::OwnedIcon::from_bgra(px, &bgra) {
+            if let Ok(icon) = coredesk_platform::tray::OwnedIcon::from_bgra(px, &bgra) {
                 window::send_message(self.window.hwnd(), WM_SETICON, which, icon.raw());
                 icons.push(icon);
             }

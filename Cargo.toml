@@ -70,7 +70,7 @@ windows-canvas = { path = "vendor/windows-canvas" }
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-# Unwind — NOT abort: pecofence_tap.dll runs inside explorer.exe and the
+# Unwind — NOT abort: coredesk_tap.dll runs inside explorer.exe and the
 # shell hosts, so a resident panic must unwind into the FFI catch_unwind
 # guards instead of aborting the host process.
 panic = "unwind"

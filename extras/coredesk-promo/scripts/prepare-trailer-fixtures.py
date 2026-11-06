@@ -1,6 +1,6 @@
 """Prepare isolated native fixtures for the 2026-09 trailer (v3).
 
-uv run --with pillow --with numpy python extras/pecofence-promo/scripts/prepare-trailer-fixtures.py
+uv run --with pillow --with numpy python extras/coredesk-promo/scripts/prepare-trailer-fixtures.py
 
 Reuses the original graphic studies and paper wallpapers made by
 scripts/prepare-store-v2.py (.cache/store-v2). Geometry is in physical pixels of
@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts"))
 store = __import__("prepare-store-v2")  # fence(), font(), wallpaper(), studies()
 
-PROMO = ROOT / "extras/pecofence-promo"
+PROMO = ROOT / "extras/coredesk-promo"
 BASE = PROMO / ".capture/reviewed/trailer-v3"
 ASSETS = ROOT / ".cache/store-v2"
 STUDIES = ASSETS / "studies"

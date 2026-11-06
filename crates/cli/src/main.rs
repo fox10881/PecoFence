@@ -1,4 +1,4 @@
-//! `pecofence-cli`: drives a running PecoFence over its named pipe and prints JSON.
+//! `coredesk-cli`: drives a running CoreDesk Engine over its named pipe and prints JSON.
 //!
 //! Console subsystem on purpose (the GUI exe cannot reliably write to a terminal). Exit codes:
 //! 0 ok, 1 the app returned an error, 2 usage, 3 not running, 4 timeout.
@@ -13,7 +13,7 @@ mod run;
 use std::io::IsTerminal;
 
 use clap::Parser;
-use pecofence_core::brand;
+use coredesk_core::brand;
 
 fn main() {
     let cli = cli::Cli::parse();
@@ -26,7 +26,7 @@ fn main() {
     };
     let instance = cli
         .instance
-        .or_else(|| brand::var("PECOFENCE_INSTANCE").ok())
+        .or_else(|| brand::var("COREDESK_INSTANCE").ok())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
     let style = output::Style {

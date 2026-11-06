@@ -17,14 +17,14 @@
 
 <div align="center">
 
-# 💠 PecoFence — Ultimative Desktop-Anpassungs- und Organisations-Suite
+# 💠 CoreDesk Engine — Ultimative Desktop-Anpassungs- und Organisations-Suite
 
 **Verwandle Windows 11 in einen lebendigen, hochorganisierten Glas-Arbeitsbereich.**
 
-PecoFence ist eine enorm aufgewertete Desktop-Organisation und Windows-11-Shell-Anpassungssuite der nächsten Generation, in Rust geschrieben. Weit über simple Icon-Fences hinaus vereint PecoFence magnetische Desktop-Organisation, 3D-Perspektivregale, Live-H.264-Videohintergründe, adaptive Desktop-Uhr-Widgets, tiefe Windows-11-Shell-Anpassung (Taskleiste, Startmenü, Info-Center und Datei-Explorer mit Mica/Acrylic) sowie `.peco`-Komplett-Theme-Pakete per Klick.
+CoreDesk Engine ist eine enorm aufgewertete Desktop-Organisation und Windows-11-Shell-Anpassungssuite der nächsten Generation, in Rust geschrieben. Weit über simple Icon-Fences hinaus vereint CoreDesk Engine magnetische Desktop-Organisation, 3D-Perspektivregale, Live-H.264-Videohintergründe, adaptive Desktop-Uhr-Widgets, tiefe Windows-11-Shell-Anpassung (Taskleiste, Startmenü, Info-Center und Datei-Explorer mit Mica/Acrylic) sowie `.cde`-Komplett-Theme-Pakete per Klick.
 
 <!-- TODO: ADD IMAGE 1 (Hero Desktop Showcase) -->
-![PecoFence Hero Showcase](assets/hero-showcase.png)
+![CoreDesk Engine Hero Showcase](assets/hero-showcase.png)
 *> **[IMAGE PLACEHOLDER 1]:** Füge einen vollständigen Desktop-Screenshot mit den Invisible/Bookshelf-Fences, dem Desktop-Uhr-Widget und der durchsichtigen Taskleiste hinzu.*
 
 </div>
@@ -33,7 +33,7 @@ PecoFence ist eine enorm aufgewertete Desktop-Organisation und Windows-11-Shell-
 
 ## ✨ Was macht diese Edition so außergewöhnlich?
 
-Jede Ebene von PecoFence wurde neu entwickelt, um dir volle kreative Kontrolle über deine Desktop-Icons und die Windows-11-Shell selbst zu geben – bei nahezu null CPU- und GPU-Last.
+Jede Ebene von CoreDesk Engine wurde neu entwickelt, um dir volle kreative Kontrolle über deine Desktop-Icons und die Windows-11-Shell selbst zu geben – bei nahezu null CPU- und GPU-Last.
 
 ---
 
@@ -59,13 +59,13 @@ Gehe mit vier visuellen Paradigmen über Standard-Container hinaus:
 ## 🎬 2. Native H.264-Videohintergründe & adaptive Uhr-Widgets
 
 ### 🎞️ Hardware-beschleunigte Videohintergrund-Engine [NEU]
-- Setze jedes **MP4-Video (H.264)** als butterweichen Live-Hintergrund direkt aus PecoFence.
+- Setze jedes **MP4-Video (H.264)** als butterweichen Live-Hintergrund direkt aus CoreDeskEngine.
 - Eingebaute Quicklinks zu *CloudConvert* und *FreeConvert* machen die Konvertierung in einen ultraleichten, GPU-freundlichen Hintergrund mühelos.
 
 ### 🕰️ Rahmenloses Desktop-Uhr-Widget (`ويدجت الساعة المكتبية`) [NEU]
 - Wähle aus **20 handgefertigten, responsiven Uhr-/Datums-/Tages-Designs** (10 Gemini-Signaturen + 10 Devin-Signaturen) oder schalte es mit (`بدون`) komplett ab.
 - **Wirklich rahmenlos:** Kein Titelbalken, keine Umstände. Klicke und ziehe **an beliebiger Stelle im Widget** zum Verschieben oder greife **eine beliebige Kante/Ecke** zum geschmeidigen Skalieren mit automatischer Schriftanpassung.
-- **Adaptiver Hintergrund-Kontrast (`تنسيق ألوان الويدجت تلقائياً لتناسب الخلفية`) [NEU]:** PecoFence tastet kontinuierlich die exakten Hintergrundpixel hinter dem Widget ab. Ob gleißend weiß oder pechschwarz – das Widget dreht automatisch Text-, Glas- und Akzentkontrast um, damit Zeit und Datum immer zu 100 % scharf lesbar bleiben.
+- **Adaptiver Hintergrund-Kontrast (`تنسيق ألوان الويدجت تلقائياً لتناسب الخلفية`) [NEU]:** CoreDesk Engine tastet kontinuierlich die exakten Hintergrundpixel hinter dem Widget ab. Ob gleißend weiß oder pechschwarz – das Widget dreht automatisch Text-, Glas- und Akzentkontrast um, damit Zeit und Datum immer zu 100 % scharf lesbar bleiben.
 
 <!-- TODO: ADD IMAGE 3 (Desktop Clock Widget & Video Wallpaper) -->
 ![Desktop Clock Widget Showcase](assets/clock-widgets.png)
@@ -75,7 +75,7 @@ Gehe mit vier visuellen Paradigmen über Standard-Container hinaus:
 
 ## 🪟 3. Tiefe Windows-11-Shell- & Explorer-Glas-Anpassung
 
-Warum fünf separate Tweaker installieren, wenn PecoFence die gesamte Windows-11-Ästhetik an einem Ort vereint?
+Warum fünf separate Tweaker installieren, wenn CoreDesk Engine die gesamte Windows-11-Ästhetik an einem Ort vereint?
 
 ### 🛠️ Sofortige Live-Shell-Stile (Windhawk-Presets) [NEU]
 Wechsle Themes im laufenden Betrieb – sofort bei Auswahl, ohne Neustart:
@@ -90,7 +90,7 @@ Wechsle Themes im laufenden Betrieb – sofort bei Auswahl, ohne Neustart:
 ### 🔍 Explorer-Glas-Studio & einheitliche App-Transparenz [NEU]
 - **Dedizierter Explorer-Glas-Editor (`تأثير خلفية مستكشف الملفات`):** Öffne das Studio **Erweiterte Einstellungen (`الإعدادات المتقدمة`)** mit interaktiver **Live-Explorer-Vorschau (`معاينة مباشرة`)** und wählbaren Vorschau-Hintergründen!
 - Passe **Blur, Acrylic, Mica, Mica Alt und Clear Blur** an, schalte Transparenz für Adressleiste/Scrollbar/WinUI-Toolbar und justiere eigene `#AARRGGBB`-Blend-Töne und Deckkraft für Hell & Dunkel.
-- **Echte DComp-Spiegelung:** PecoFences eigene Fenster (inklusive rahmenlosem Titelbalken und Client-Bereich) spiegeln dein Explorer-Glasmaterial in Echtzeit mit einem smarten `-70`-Opazitäts-Offset – echtes Hardware-Glas ohne opake Tönung.
+- **Echte DComp-Spiegelung:** CoreDesks eigene Fenster (inklusive rahmenlosem Titelbalken und Client-Bereich) spiegeln dein Explorer-Glasmaterial in Echtzeit mit einem smarten `-70`-Opazitäts-Offset – echtes Hardware-Glas ohne opake Tönung.
 - **Ein-Klick-Erscheinungsbild-Refresh (`تحديث المظهر`) [NEU]:** Startet `explorer.exe` sofort neu und verbindet alle Desktop-Fences sowie dein aktives Videohintergrund sauber wieder.
 
 <!-- TODO: ADD IMAGE 5 (File Explorer Glass Studio & Live Preview) -->
@@ -134,15 +134,15 @@ Die **Sortierregeln-Engine (`قواعد الفرز`)** wurde für Zuverlässigke
 
 ---
 
-## 📦 6. `.peco`-Komplett-Theme-Pakete & smarte Hintergrundanpassung
+## 📦 6. `.cde`-Komplett-Theme-Pakete & smarte Hintergrundanpassung
 
 Vergiss einfache `.json`-Backups – der Tab **Layout & Backups (`التخطيط والنسخ الاحتياطية`)** ist jetzt eine volle **visuelle Theme-Galerie (`معرض الثيمات`)**:
-- **`.peco`-All-in-One-Theme-Archive [NEU]:** Ein gespeichertes Theme packt **alles** in ein portables `.peco`-Bündel – exakte Fence-Koordinaten, Pro-Fence-Stile, eigene Icon-Größen, Sortierregeln, Glaseinstellungen UND dein statisches oder Live-Video-Hintergrund – inklusive automatischem Desktop-Vorschau-Thumbnail!
-- **Anwenden, Exportieren & Importieren per Klick:** Wechsle komplette Desktop-Setups in Sekunden oder teile `.peco`-Themes mit anderen.
+- **`.cde`-All-in-One-Theme-Archive [NEU]:** Ein gespeichertes Theme packt **alles** in ein portables `.cde`-Bündel – exakte Fence-Koordinaten, Pro-Fence-Stile, eigene Icon-Größen, Sortierregeln, Glaseinstellungen UND dein statisches oder Live-Video-Hintergrund – inklusive automatischem Desktop-Vorschau-Thumbnail!
+- **Anwenden, Exportieren & Importieren per Klick:** Wechsle komplette Desktop-Setups in Sekunden oder teile `.cde`-Themes mit anderen.
 - **Smarte Seitenverhältnis-Anpassung (`ضبط الصورة لتظهر بالكامل مهما كانت أبعاد الشاشة`) [NEU]:** Hintergrund ohne passendes Seitenverhältnis? Aktivieren, um das volle unbeschnittene Bild zentriert mit atmosphärisch verwischten Rändern zu zeigen – oder deaktivieren für klassisches Crop-Fill.
-- **Tägliches Auto-Speichern (`حفظ تحديث الثيم تلقائياً كل يوم`) [NEU]:** Aktualisiert dein aktives `.peco`-Theme einmal täglich an Ort und Stelle – deine neuesten Änderungen bleiben erhalten, ohne Duplikat-Chaos.
+- **Tägliches Auto-Speichern (`حفظ تحديث الثيم تلقائياً كل يوم`) [NEU]:** Aktualisiert dein aktives `.cde`-Theme einmal täglich an Ort und Stelle – deine neuesten Änderungen bleiben erhalten, ohne Duplikat-Chaos.
 
-<!-- TODO: ADD IMAGE 8 (Theme Gallery & .peco Packages) -->
+<!-- TODO: ADD IMAGE 8 (Theme Gallery & .cde Packages) -->
 ![Theme Gallery Showcase](assets/themes-gallery.png)
 *> **[IMAGE PLACEHOLDER 8]:** Füge einen Screenshot der Theme-Galerie mit visuellen Theme-Karten, Anwenden/Exportieren/Löschen-Buttons und dem Smart-Fit-Schalter hinzu.*
 
@@ -151,5 +151,5 @@ Vergiss einfache `.json`-Backups – der Tab **Layout & Backups (`التخطيط
 ## 🚀 Erste Schritte
 
 1. Lade das neueste `setup.exe` oder `portable.zip` von der **Releases**-Seite herunter.
-2. Starte **PecoFence** aus dem Systemtray und öffne die **Einstellungen (`إعدادات PecoFence`)**.
-3. Wähle einen **Theme-Stil** (*Fluent, Liquid Glass, Bookshelf oder Invisible Canvas*), aktiviere ein **Desktop-Uhr-Widget** oder importiere ein `.peco`-Theme aus der **Theme-Galerie** – und sieh zu, wie sich dein Desktop sofort verwandelt!
+2. Starte **CoreDesk Engine** aus dem Systemtray und öffne die **Einstellungen (`إعدادات CoreDesk Engine`)**.
+3. Wähle einen **Theme-Stil** (*Fluent, Liquid Glass, Bookshelf oder Invisible Canvas*), aktiviere ein **Desktop-Uhr-Widget** oder importiere ein `.cde`-Theme aus der **Theme-Galerie** – und sieh zu, wie sich dein Desktop sofort verwandelt!

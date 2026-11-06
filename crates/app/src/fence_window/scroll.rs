@@ -86,7 +86,7 @@ pub(super) struct ScrollbarGeom {
 /// Thumb travel inside a scrollable band `view_h` tall below `fixed_top`: the arrow buttons
 /// (12 DIP each, always in layout so the thumb never jumps when the bar expands) are excluded.
 pub(super) fn scrollbar_track(fixed_top: f32, view_h: f32) -> (f32, f32) {
-    let button = pecofence_render::fence_chrome::ScrollbarDraw::BUTTON_H;
+    let button = coredesk_render::fence_chrome::ScrollbarDraw::BUTTON_H;
     (fixed_top + button, (view_h - 2.0 * button).max(1.0))
 }
 

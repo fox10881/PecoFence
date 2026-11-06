@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Convert the Windhawk `windows-11-notification-center-styler` theme structs
-into the PecoFence backend catalog
+into the CoreDesk backend catalog
 (crates/core/data/notification_center_themes.json).
 
 The source is the mod's published C++ source: `const Theme g_theme<Name> = {{...},

@@ -1,9 +1,9 @@
 > 自用版 we.12 的桌面归属与迁移见 [DESKTOP_CONTAINERS.md](DESKTOP_CONTAINERS.md)。`desktop` 表示散放图标；规则目标 `inbox` 是旧配置兼容别名，同样表示散放。
 
-# pecofence-cli
+# coredesk-cli
 
-`pecofence-cli.exe` is a small console program shipped next to `pecofence.exe`. It drives the
-PecoFence instance that is already running on your desktop and prints JSON, so it works equally
+`coredesk-cli.exe` is a small console program shipped next to `coredesk.exe`. It drives the
+CoreDesk Engine instance that is already running on your desktop and prints JSON, so it works equally
 well for people in a terminal and for coding agents (Claude Code, Codex, ...). It never edits
 `config.json` itself; if the app is not running it says so and exits with code 3.
 
@@ -13,13 +13,13 @@ Describe the result you want in Claude Code, Codex, Cursor or another coding age
 local commands. The CLI lets the agent inspect your desktop and apply settings, arrange fences,
 organize icons and create sorting rules in the running app.
 
-1. Install and open PecoFence. The CLI is included in both the Microsoft Store edition and the
+1. Install and open CoreDeskEngine. The CLI is included in both the Microsoft Store edition and the
    portable ZIP; see [Install and PATH](#install-and-path) below.
 2. Open your AI coding agent. For the portable edition, include the full path to
-   `pecofence-cli.exe` in your request.
+   `coredesk-cli.exe` in your request.
 3. Paste this request:
 
-> Use pecofence-cli to configure my desktop. First read pecofence-cli skill and pecofence-cli
+> Use coredesk-cli to configure my desktop. First read coredesk-cli skill and coredesk-cli
 > describe, then inspect my current settings and fences. Back up my configuration before changes.
 > Switch to dark mode and make all fences more transparent.
 
@@ -31,22 +31,22 @@ You can also ask it to:
 - **Reuse your setup:** export the configuration, save a layout snapshot, or restore a previous
   configuration.
 
-`pecofence-cli skill` supplies the usage guide and `pecofence-cli describe` supplies the command
+`coredesk-cli skill` supplies the usage guide and `coredesk-cli describe` supplies the command
 catalog and JSON Schemas. The agent can read both directly; to make the guide available in future
 sessions, save it as a skill using the [coding-agent instructions](#for-coding-agents).
 
 ### Example: change appearance from PowerShell
 
-With PecoFence running and the CLI on PATH:
+With CoreDesk Engine running and the CLI on PATH:
 
 ```powershell
-pecofence-cli settings get
-pecofence-cli fence list
-pecofence-cli config export "$env:USERPROFILE\pecofence-before-ai.json"
-pecofence-cli settings set theme dark
-pecofence-cli fence set --all opacity clear
-pecofence-cli settings get theme
-pecofence-cli fence list
+coredesk-cli settings get
+coredesk-cli fence list
+coredesk-cli config export "$env:USERPROFILE\coredesk-before-ai.json"
+coredesk-cli settings set theme dark
+coredesk-cli fence set --all opacity clear
+coredesk-cli settings get theme
+coredesk-cli fence list
 ```
 
 The export includes settings, rules and layouts. Choose a fresh export filename if you want to
@@ -56,26 +56,26 @@ contents or undoes real file moves through folder portals.
 
 ## Install and PATH
 
-- **Microsoft Store build**: `pecofence-cli` is on `PATH` through an App Execution Alias, so any
+- **Microsoft Store build**: `coredesk-cli` is on `PATH` through an App Execution Alias, so any
   terminal can run it right after installation. The alias can be turned off in
   *Settings › Apps › Advanced app settings › App execution aliases*.
-- **Portable ZIP**: run it from the extracted folder (`.\pecofence-cli.exe ...`) or add that folder
+- **Portable ZIP**: run it from the extracted folder (`.\coredesk-cli.exe ...`) or add that folder
   to your user `PATH`; in PowerShell, from inside the folder:
   `[Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + $PWD, 'User')`.
-  New terminals then find `pecofence-cli` by name. `SKILL.md` at the root of the ZIP is the same
-  text `pecofence-cli skill` prints.
+  New terminals then find `coredesk-cli` by name. `SKILL.md` at the root of the ZIP is the same
+  text `coredesk-cli skill` prints.
 
 ## How it talks to the app
 
-The app listens on the named pipe `\\.\pipe\PecoFence.<SID>` (or `\\.\pipe\PecoFence.<SID>.<instance>`
+The app listens on the named pipe `\\.\pipe\CoreDeskEngine.<SID>` (or `\\.\pipe\CoreDeskEngine.<SID>.<instance>`
 for a named test instance), where `<SID>` is the security identifier of the Windows account it runs
 as (`S-1-5-21-...`, shown by `whoami /user`). Pipe names are shared by the whole computer; the SID
-keeps the PecoFence of two accounts signed in at the same time apart, and the CLI reaches the
+keeps the CoreDesk Engine of two accounts signed in at the same time apart, and the CLI reaches the
 instance of the account it runs as from any session, an ssh login included. Only that account,
 SYSTEM and elevated administrators can open the pipe.
 
 Every CLI call opens one connection, sends one JSON request line, reads one JSON response line and
-exits; there is no daemon and nothing stays resident. Requests are executed on the app's UI thread, so while a PecoFence context menu or dialog is open the reply waits; after
+exits; there is no daemon and nothing stays resident. Requests are executed on the app's UI thread, so while a CoreDesk Engine context menu or dialog is open the reply waits; after
 `--timeout` (default 15 s) the CLI gives up with exit code 4 and the app discards the request instead
 of running it late. A request the app picked up right before that deadline may still have run, so
 after an exit 4 read the state back (`fence list`) before retrying a mutation.
@@ -84,7 +84,7 @@ after an exit 4 read the state back (`fence list`) before retrying a mutation.
 
 | Flag | Meaning |
 |---|---|
-| `--instance <NAME>` | Talk to a named test instance. Defaults to the `PECOFENCE_INSTANCE` environment variable (the same variable the app reads at start-up). Normal installs never need it. |
+| `--instance <NAME>` | Talk to a named test instance. Defaults to the `COREDESK_INSTANCE` environment variable (the same variable the app reads at start-up). Normal installs never need it. |
 | `--timeout <MS>` | How long to wait for the reply (default 15000, minimum 100; smaller values are clamped by both the CLI and the app). |
 | `--pretty` / `--compact` | Indented or single-line JSON. Default: pretty when stdout is a terminal, compact otherwise. |
 | `--fields <PATH,...>` | Keep only these keys of the result: `fence list --fields id,title,rect`, `rule list --fields list.name,list.targetTitle`. Dotted paths reach into objects, lists are projected element by element, a missing key comes out as `null`, the server's `warning` is always kept. Errors are never projected. |
@@ -100,52 +100,52 @@ unique id prefix, or a name (only while that name is unique).
 
 | Command | Example |
 |---|---|
-| `status` | `pecofence-cli status` |
-| `monitor list` | `pecofence-cli monitor list` |
-| `describe [--schema <NAME>]` | `pecofence-cli describe --schema Settings` |
-| `skill` | `pecofence-cli skill > SKILL.md` |
-| `fence list` | `pecofence-cli fence list` |
-| `fence get <FENCE>` | `pecofence-cli fence get Work` |
-| `fence create (--title <T> \| --portal <DIR>) [--rect x,y,w,h \| --monitor <ID> \| --below/--above/--right-of/--left-of <FENCE> [--size w,h]]` | `pecofence-cli fence create --title Work --rect 100,100,600,400` |
-| `fence delete <FENCE>` | `pecofence-cli fence delete Temp` |
-| `fence rename <FENCE> <TITLE>` | `pecofence-cli fence rename Work Projects` |
-| `fence move <FENCE> (--rect x,y,w,h \| --x <N> --y <N> \| --monitor <ID>)` | `pecofence-cli fence move Work --x 1200 --y 80` |
-| `fence resize <FENCE> [--w <N>] [--h <N>]` | `pecofence-cli fence resize Work --w 800` |
-| `fence fit <FENCE>` | `pecofence-cli fence fit Tools` (height that shows every item) |
-| `fence set (<FENCE> \| --all) <PROP> <VALUE> [--string]` | `pecofence-cli fence set Work layout list` |
-| `fence roll (<FENCE> \| --all)` | `pecofence-cli fence roll Work` |
-| `fence unroll (<FENCE> \| --all)` | `pecofence-cli fence unroll --all` |
-| `fence dock-top <FENCE>` | `pecofence-cli fence dock-top Work` |
-| `fence merge <FENCE> --into <FENCE>` | `pecofence-cli fence merge Games --into Work` |
-| `fence detach <FENCE>` | `pecofence-cli fence detach Games` |
-| `fence hide-all` / `fence show-all` | `pecofence-cli fence hide-all` |
-| `fence open-options <FENCE>` | `pecofence-cli fence open-options Work` |
-| `item list [--fence <FENCE>] [--kind <KIND>] [--ext <EXT>]` | `pecofence-cli item list --fence desktop --kind documents` |
-| `item move (<ITEM>... \| --glob <PATTERN> [--from <FENCE>]) --to <FENCE> [--dry-run]` | `pecofence-cli item move --glob "*.pdf" --from desktop --to Docs` |
-| `item rename <ITEM> <NAME> [--keep-ext false]` | `pecofence-cli item rename "C:\Users\me\Desktop\IMG_2031.pdf" "2026-09 electricity bill"` |
-| `settings get [PATH]` | `pecofence-cli settings get peek.enabled` |
-| `settings set <PATH> <VALUE> [--string]` | `pecofence-cli settings set peek.enabled false` |
-| `settings open-ui` | `pecofence-cli settings open-ui` |
-| `rule list` | `pecofence-cli rule list` |
-| `rule add --name <N> --to <FENCE\|desktop> <conditions...> [--index <N>]` | `pecofence-cli rule add --name PDFs --ext pdf --to Docs` |
-| `rule remove <RULE>` | `pecofence-cli rule remove PDFs` |
-| `rule enable <RULE>` / `rule disable <RULE>` | `pecofence-cli rule disable 0` |
-| `rule move <RULE> --to <INDEX>` | `pecofence-cli rule move PDFs --to 0` |
-| `rule import <FILE\|->` | `pecofence-cli rule import rules.json` |
-| `rule apply [--dry-run]` | `pecofence-cli rule apply --dry-run` |
-| `snapshot list` | `pecofence-cli snapshot list` |
-| `snapshot save <NAME>` | `pecofence-cli snapshot save before-cleanup` |
-| `snapshot restore <ID>` | `pecofence-cli snapshot restore 3f9c2a1e` |
-| `snapshot delete <ID>` | `pecofence-cli snapshot delete 3f9c2a1e` |
-| `config export <FILE>` | `pecofence-cli config export C:\Users\me\Desktop\pecofence.json` (absolute path, overwrites) |
-| `config import <FILE>` | `pecofence-cli config import C:\Users\me\Desktop\pecofence.json` (replaces everything; layout snapshotted first) |
-| `config check [FILE]` | `pecofence-cli config check C:\Users\me\Desktop\pecofence.json` (offline; defaults to the config in use) |
-| `backup list` | `pecofence-cli backup list` (legacy daily backups beside config.json, newest first; no longer written) |
-| `backup restore <FILE>` | `pecofence-cli backup restore "C:\Users\me\AppData\Roaming\PecoFence\backups\2026-09-23.json"` (a path from `backup list`) |
-| `peek start` / `peek end` | `pecofence-cli peek start` |
-| `watch [--fence <FENCE>] [--events <E,...>] [--once] [--heartbeat]` | `pecofence-cli watch --fence desktop --once` |
-| `log [-f] [-n <N>]` | `pecofence-cli log -n 100` (text, not JSON) |
-| `paths` | `pecofence-cli paths` (config, backups, log, crash dumps; offline) |
+| `status` | `coredesk-cli status` |
+| `monitor list` | `coredesk-cli monitor list` |
+| `describe [--schema <NAME>]` | `coredesk-cli describe --schema Settings` |
+| `skill` | `coredesk-cli skill > SKILL.md` |
+| `fence list` | `coredesk-cli fence list` |
+| `fence get <FENCE>` | `coredesk-cli fence get Work` |
+| `fence create (--title <T> \| --portal <DIR>) [--rect x,y,w,h \| --monitor <ID> \| --below/--above/--right-of/--left-of <FENCE> [--size w,h]]` | `coredesk-cli fence create --title Work --rect 100,100,600,400` |
+| `fence delete <FENCE>` | `coredesk-cli fence delete Temp` |
+| `fence rename <FENCE> <TITLE>` | `coredesk-cli fence rename Work Projects` |
+| `fence move <FENCE> (--rect x,y,w,h \| --x <N> --y <N> \| --monitor <ID>)` | `coredesk-cli fence move Work --x 1200 --y 80` |
+| `fence resize <FENCE> [--w <N>] [--h <N>]` | `coredesk-cli fence resize Work --w 800` |
+| `fence fit <FENCE>` | `coredesk-cli fence fit Tools` (height that shows every item) |
+| `fence set (<FENCE> \| --all) <PROP> <VALUE> [--string]` | `coredesk-cli fence set Work layout list` |
+| `fence roll (<FENCE> \| --all)` | `coredesk-cli fence roll Work` |
+| `fence unroll (<FENCE> \| --all)` | `coredesk-cli fence unroll --all` |
+| `fence dock-top <FENCE>` | `coredesk-cli fence dock-top Work` |
+| `fence merge <FENCE> --into <FENCE>` | `coredesk-cli fence merge Games --into Work` |
+| `fence detach <FENCE>` | `coredesk-cli fence detach Games` |
+| `fence hide-all` / `fence show-all` | `coredesk-cli fence hide-all` |
+| `fence open-options <FENCE>` | `coredesk-cli fence open-options Work` |
+| `item list [--fence <FENCE>] [--kind <KIND>] [--ext <EXT>]` | `coredesk-cli item list --fence desktop --kind documents` |
+| `item move (<ITEM>... \| --glob <PATTERN> [--from <FENCE>]) --to <FENCE> [--dry-run]` | `coredesk-cli item move --glob "*.pdf" --from desktop --to Docs` |
+| `item rename <ITEM> <NAME> [--keep-ext false]` | `coredesk-cli item rename "C:\Users\me\Desktop\IMG_2031.pdf" "2026-09 electricity bill"` |
+| `settings get [PATH]` | `coredesk-cli settings get peek.enabled` |
+| `settings set <PATH> <VALUE> [--string]` | `coredesk-cli settings set peek.enabled false` |
+| `settings open-ui` | `coredesk-cli settings open-ui` |
+| `rule list` | `coredesk-cli rule list` |
+| `rule add --name <N> --to <FENCE\|desktop> <conditions...> [--index <N>]` | `coredesk-cli rule add --name PDFs --ext pdf --to Docs` |
+| `rule remove <RULE>` | `coredesk-cli rule remove PDFs` |
+| `rule enable <RULE>` / `rule disable <RULE>` | `coredesk-cli rule disable 0` |
+| `rule move <RULE> --to <INDEX>` | `coredesk-cli rule move PDFs --to 0` |
+| `rule import <FILE\|->` | `coredesk-cli rule import rules.json` |
+| `rule apply [--dry-run]` | `coredesk-cli rule apply --dry-run` |
+| `snapshot list` | `coredesk-cli snapshot list` |
+| `snapshot save <NAME>` | `coredesk-cli snapshot save before-cleanup` |
+| `snapshot restore <ID>` | `coredesk-cli snapshot restore 3f9c2a1e` |
+| `snapshot delete <ID>` | `coredesk-cli snapshot delete 3f9c2a1e` |
+| `config export <FILE>` | `coredesk-cli config export C:\Users\me\Desktop\coredesk.json` (absolute path, overwrites) |
+| `config import <FILE>` | `coredesk-cli config import C:\Users\me\Desktop\coredesk.json` (replaces everything; layout snapshotted first) |
+| `config check [FILE]` | `coredesk-cli config check C:\Users\me\Desktop\coredesk.json` (offline; defaults to the config in use) |
+| `backup list` | `coredesk-cli backup list` (legacy daily backups beside config.json, newest first; no longer written) |
+| `backup restore <FILE>` | `coredesk-cli backup restore "C:\Users\me\AppData\Roaming\CoreDeskEngine\backups\2026-09-23.json"` (a path from `backup list`) |
+| `peek start` / `peek end` | `coredesk-cli peek start` |
+| `watch [--fence <FENCE>] [--events <E,...>] [--once] [--heartbeat]` | `coredesk-cli watch --fence desktop --once` |
+| `log [-f] [-n <N>]` | `coredesk-cli log -n 100` (text, not JSON) |
+| `paths` | `coredesk-cli paths` (config, backups, log, crash dumps; offline) |
 
 `fence create --portal <DIR>` shows a folder as a fence; `--title` is optional there and defaults to
 the folder name. `--below`, `--above`, `--right-of` and `--left-of <FENCE>` place the new fence next
@@ -290,7 +290,7 @@ the subfolder's contents and `item move --to <portal>` puts files there. `--dry-
 
 ## Watching for changes
 
-`pecofence-cli watch` turns the connection into an event stream and prints one JSON document per
+`coredesk-cli watch` turns the connection into an event stream and prints one JSON document per
 event until you stop it (Ctrl+C) or the app exits (then it fails with exit 1 so a script loop can
 restart it). Events: `item.added`, `item.removed`, `item.moved` (with `from`/`fromTitle`),
 `fence.created`, `fence.deleted`, `fence.changed` (with `changed`: the `FenceDto` fields that
@@ -311,10 +311,10 @@ mutation), so an item that is renamed on disk shows up as `item.removed` + `item
 Everything talks to the running app except `describe`, `skill`, `paths`, `log` and `config check`:
 
 - `paths` prints where the files are: `config` (from the running instance when one answers,
-  `"source": "status"`; else the default `%APPDATA%\PecoFence\config.json`, `"source": "default"`),
-  `configDir`, `backupsDir`, `log` (`%LOCALAPPDATA%\PecoFence\pecofence[.<instance>].log`),
+  `"source": "status"`; else the default `%APPDATA%\CoreDeskEngine\config.json`, `"source": "default"`),
+  `configDir`, `backupsDir`, `log` (`%LOCALAPPDATA%\CoreDeskEngine\coredesk[.<instance>].log`),
   `previousLog` (the rotated-out part: the last run's, or the previous 1 MiB when a run
-  outgrows the file, `pecofence[.<instance>].prev.log`), `logDir`, and the `crashDumps`
+  outgrows the file, `coredesk[.<instance>].prev.log`), `logDir`, and the `crashDumps`
   (`crash-*.dmp`) found there.
 - `log [-n N] [-f]` prints the last `N` lines of that log as plain text (the one command whose
   stdout is not JSON) and, with `-f`, follows it like `tail -f` until Ctrl+C. A restarted app
@@ -330,7 +330,7 @@ Everything talks to the running app except `describe`, `skill`, `paths`, `log` a
   "error"|"warning", "subject", "message"}]}`; exit 1 when any problem is an error. Run it before
   `config import`.
 
-`config.json` (and every export) starts with `"$schema": "https://pecofence.jiang.jp/schema/config.json"`,
+`config.json` (and every export) starts with `"$schema": "https://coredesk.jiang.jp/schema/config.json"`,
 the JSON Schema that `describe --schema Config` prints, so editors validate and complete the file.
 The app ignores the field's value.
 
@@ -360,7 +360,7 @@ The app ignores the field's value.
   snaps the window to whole icon columns and rows (`"cellSnap"`; `requested` is the rect before the
   change). Use `applied` for further placement.
 - Failure: stderr gets `{"error": {"code", "message", "hint"?, "details"?}}`. Nothing else is ever
-  printed to stdout, so `pecofence-cli ... | jq` is always safe.
+  printed to stdout, so `coredesk-cli ... | jq` is always safe.
 - Usage errors detected by the argument parser keep clap's human-readable message and exit code 2.
 
 ## Exit codes
@@ -370,14 +370,14 @@ The app ignores the field's value.
 | 0 | Success |
 | 1 | The app returned an error (any error code not listed below), or part of a batch failed |
 | 2 | Usage error (bad flags, `usage` from the app) |
-| 3 | PecoFence is not running (`not_running`) |
+| 3 | CoreDesk Engine is not running (`not_running`) |
 | 4 | No reply within `--timeout` (`timeout`); run `fence list` before retrying, the command may have run |
 
 ## Error codes
 
 | `code` | Meaning |
 |---|---|
-| `not_running` | No PecoFence instance of this Windows account is listening on the pipe (checked by the CLI). |
+| `not_running` | No CoreDesk Engine instance of this Windows account is listening on the pipe (checked by the CLI). |
 | `timeout` | No reply within `--timeout`; the app is probably inside a menu or dialog. |
 | `busy` | Too many concurrent CLI connections; retry shortly. |
 | `usage` | Malformed request, unknown method, missing or mistyped parameter. |
@@ -419,7 +419,7 @@ applies `fittingHeight`; `fence set <FENCE> autoHeight true` keeps it applied as
 ## Snapshots
 
 `snapshot save <NAME>` stores the current fence layout and returns `{"changed": true, "snapshot":
-{"id", "name", "ts", "fenceCount"}}`. PecoFence keeps one layout per monitor combination it has seen
+{"id", "name", "ts", "fenceCount"}}`. CoreDesk Engine keeps one layout per monitor combination it has seen
 (a laptop docked and undocked has two), and a snapshot holds all of them; `fenceCount` counts the
 fences of the layout for the monitors connected now (what `fence list` shows after a restore). Keep
 `snapshot.id`: `snapshot restore <ID>` (full id or a unique prefix) is unambiguous, whereas a name
@@ -429,8 +429,8 @@ be undone. Snapshots do not include settings, rules, or files moved through port
 
 ## Test instances
 
-`PECOFENCE_INSTANCE=<name> pecofence.exe ...` starts an independent instance with its own pipe
-`\\.\pipe\PecoFence.<SID>.<name>`. `pecofence-cli --instance <name>` (or the same environment variable)
+`COREDESK_INSTANCE=<name> coredesk.exe ...` starts an independent instance with its own pipe
+`\\.\pipe\CoreDeskEngine.<SID>.<name>`. `coredesk-cli --instance <name>` (or the same environment variable)
 addresses it. This exists for development and automated tests; a normal installation has exactly one
 instance and needs neither.
 
@@ -451,17 +451,17 @@ instance and needs neither.
 
 ## For coding agents
 
-`pecofence-cli skill` prints a SKILL.md written for coding agents (when to use the tool, output
+`coredesk-cli skill` prints a SKILL.md written for coding agents (when to use the tool, output
 contract, safety rules, recipes). Save it in your agent's skills folder. For example, from a
 project in PowerShell:
 
 ```powershell
-New-Item -ItemType Directory -Force .claude/skills/pecofence-cli
-pecofence-cli skill | Set-Content -Encoding utf8 .claude/skills/pecofence-cli/SKILL.md
+New-Item -ItemType Directory -Force .claude/skills/coredesk-cli
+coredesk-cli skill | Set-Content -Encoding utf8 .claude/skills/coredesk-cli/SKILL.md
 ```
 
 Use the skills location your agent supports; `.claude/skills/` is the Claude Code example. With the
-ZIP build, put its folder on `PATH` (see *Install and PATH*) so the agent can call `pecofence-cli`
-by name (and a permission rule such as Claude Code's `Bash(pecofence-cli:*)` matches it). You can
+ZIP build, put its folder on `PATH` (see *Install and PATH*) so the agent can call `coredesk-cli`
+by name (and a permission rule such as Claude Code's `Bash(coredesk-cli:*)` matches it). You can
 also copy the short AGENTS.md snippet at the end of the guide into your project's `AGENTS.md`.
-`pecofence-cli describe` prints the machine-readable catalog the guide refers to.
+`coredesk-cli describe` prints the machine-readable catalog the guide refers to.

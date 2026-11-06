@@ -1,15 +1,15 @@
 //! Host-side controller for the Notification Center styler — the native
 //! replacement for the Windhawk `windows-11-notification-center-styler` mod.
 //!
-//! `pecofence_tap.dll` is injected into `ShellExperienceHost.exe` and
+//! `coredesk_tap.dll` is injected into `ShellExperienceHost.exe` and
 //! `ShellHost.exe` — primarily via thread-scoped `WH_GETMESSAGE` hooks
 //! (Windows itself maps the DLL on message retrieval; the only vector
 //! that reaches AppContainer hosts like SEH, whose loader stalls
 //! foreign-thread `LoadLibrary` calls), with `CreateRemoteThread` as the
 //! fallback. Once resident, the DLL runs the styling engine
 //! itself: `WM_COPYDATA` delivers the serialized theme
-//! (`pecofence_core::notification_center_themes::theme_wire`) to the
-//! injected command window (`PecoFenceTAPNC` class family), which styles
+//! (`coredesk_core::notification_center_themes::theme_wire`) to the
+//! injected command window (`CoreDeskTAPNC` class family), which styles
 //! the Action/Notification Center's `Windows.UI.Xaml` tree in place.
 //!
 //! Both hosts are spawned lazily by the shell and can idle-exit any time,
@@ -61,13 +61,13 @@ const WM_COPYDATA: u32 = 0x004A;
 /// `COPYDATASTRUCT.dwData` values the injected DLL understands.
 const CDS_THEME: usize = u32::from_be_bytes(*b"NCST") as usize;
 const CDS_RESET: usize = u32::from_be_bytes(*b"NCSR") as usize;
-/// Announces the host pid so the DLL can restore styles if pecofence dies.
+/// Announces the host pid so the DLL can restore styles if coredesk dies.
 const CDS_HELLO: usize = u32::from_be_bytes(*b"NCHI") as usize;
 
 /// Resident class family inside the Notification Center hosts — distinct
-/// from explorer's `PecoFenceTAP` and SMEH's `PecoFenceTAPSM` so discovery
+/// from explorer's `CoreDeskTAP` and SMEH's `CoreDeskTAPSM` so discovery
 /// never confuses residents across process types.
-const NC_CLASS_BASE: &str = "PecoFenceTAPNC";
+const NC_CLASS_BASE: &str = "CoreDeskTAPNC";
 /// Process image names the Notification Center surfaces live in.
 const NC_HOSTS: [&str; 2] = ["shellexperiencehost.exe", "shellhost.exe"];
 
@@ -128,7 +128,7 @@ struct CopyDataStruct {
 
 /// One injected Notification Center host process.
 struct NcHost {
-    /// The in-host command window (`PecoFenceTAPNC` class, owned by `pid`).
+    /// The in-host command window (`CoreDeskTAPNC` class, owned by `pid`).
     cmd_hwnd: HWND,
     /// Whether `CDS_HELLO` was delivered for this pid (arms the DLL's host
     /// death-watch once per host lifetime).
@@ -220,7 +220,7 @@ fn find_nc_pids() -> Vec<u32> {
     found
 }
 
-/// A host's `PecoFenceTAPNC` command window (message-only — `EnumWindows`
+/// A host's `CoreDeskTAPNC` command window (message-only — `EnumWindows`
 /// can't enumerate these; the versioned-class enumeration in `tap`
 /// resolves them). Only THIS build's resident counts: a same-protocol
 /// older-hash window is a stale engine that would silently drop wires it
@@ -263,7 +263,7 @@ enum HookResult {
     TimedOut,
 }
 
-/// Maps `pecofence_tap.dll` into a Notification Center host, then waits
+/// Maps `coredesk_tap.dll` into a Notification Center host, then waits
 /// for its command window. Thread-scoped `WH_GETMESSAGE` hooks are tried
 /// first — Windows maps the DLL itself on message retrieval, which is
 /// the only vector that reaches AppContainer hosts (`ShellExperienceHost`
@@ -494,7 +494,7 @@ fn thread_ids(pid: u32) -> Vec<u32> {
     out
 }
 
-/// Sends `PecoFence.TAP.Unload` + a reset to one host's resident, best
+/// Sends `CoreDeskEngine.TAP.Unload` + a reset to one host's resident, best
 /// effort — the host may already be dead, in which case both sends fail
 /// silently and the slot is dropped anyway.
 fn unload_host(hwnd: HWND) {
@@ -502,7 +502,7 @@ fn unload_host(hwnd: HWND) {
         return;
     }
     let _ = send_copydata(hwnd, CDS_RESET, &[]);
-    let msg = unsafe { RegisterWindowMessageW(PCWSTR(wide("PecoFence.TAP.Unload").as_ptr())) };
+    let msg = unsafe { RegisterWindowMessageW(PCWSTR(wide("CoreDeskEngine.TAP.Unload").as_ptr())) };
     if msg == 0 {
         return;
     }
@@ -596,7 +596,7 @@ fn deliver_host(pid: u32) -> bool {
         send_copydata(hwnd, CDS_RESET, &[])
     } else {
         // Arm the DLL's host death-watch once per host lifetime — styles
-        // revert to stock if pecofence dies.
+        // revert to stock if coredesk dies.
         if !hello_done {
             let own = std::process::id();
             if send_copydata(hwnd, CDS_HELLO, &own.to_ne_bytes()) {
@@ -684,7 +684,7 @@ pub fn apply(id: &str) -> bool {
     let wire = if id.is_empty() {
         String::new()
     } else {
-        match pecofence_core::notification_center_themes::theme_wire(id) {
+        match coredesk_core::notification_center_themes::theme_wire(id) {
             Some(w) => w,
             None => return false,
         }

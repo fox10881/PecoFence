@@ -140,7 +140,7 @@ impl App {
         self.prune_icons();
         self.ctx.bitmaps.borrow_mut().prune_wallpapers();
         // Diagnostic: keep every GPU cache (compare glitches with and without the trim).
-        if pecofence_core::brand::var_os("PECOFENCE_NO_GPU_TRIM").is_none() {
+        if coredesk_core::brand::var_os("COREDESK_NO_GPU_TRIM").is_none() {
             self.ctx.stack.trim();
         }
     }
@@ -214,9 +214,9 @@ impl App {
             return;
         }
         self.hand_back_gpu_memory();
-        let before = pecofence_platform::memstats::MemoryStats::current().ok();
+        let before = coredesk_platform::memstats::MemoryStats::current().ok();
         let started = Instant::now();
-        pecofence_platform::memstats::trim_working_set();
+        coredesk_platform::memstats::trim_working_set();
         if let Some(m) = before {
             tracing::debug!(
                 private_ws_mb = m.private_working_set / (1 << 20),

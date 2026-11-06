@@ -563,20 +563,20 @@ pub(super) fn on_size(h: &HandlerCtx, hwnd: HWND, _wparam: usize, _lparam: isize
         }
         let draw_done = Instant::now();
         v.update_shadow();
-        if tracing::enabled!(target: "pecofence::frame_shape", tracing::Level::TRACE)
+        if tracing::enabled!(target: "coredesk::frame_shape", tracing::Level::TRACE)
             && v.theme.liquid_glass
         {
             let r = window::window_rect(hwnd);
             let origin = window::screen_to_client(
                 hwnd,
-                pecofence_platform::POINT {
+                coredesk_platform::POINT {
                     x: r.left,
                     y: r.top,
                 },
             );
             if let Ok((clip, radius)) = v.motion.rounded_clip_bounds(&v.root) {
                 tracing::trace!(
-                    target: "pecofence::frame_shape",
+                    target: "coredesk::frame_shape",
                     title = %v.title,
                     window_w = r.right - r.left, window_h = r.bottom - r.top,
                     client_w = w, client_h = h,
@@ -591,7 +591,7 @@ pub(super) fn on_size(h: &HandlerCtx, hwnd: HWND, _wparam: usize, _lparam: isize
             }
         }
         tracing::trace!(
-            target: "pecofence::render_timing",
+            target: "coredesk::render_timing",
             w, h,
             crop_us = crop_done.duration_since(started).as_micros(),
             draw_us = draw_done.duration_since(crop_done).as_micros(),

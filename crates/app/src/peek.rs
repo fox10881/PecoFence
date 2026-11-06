@@ -10,11 +10,11 @@
 
 use crate::anchor;
 use crate::commands::{Command, CommandQueue, WM_APP_PEEK_FOCUSED};
-use pecofence_platform::window::{
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, desktop, monitors, msg};
-use pecofence_render::motion::{self, Curve, Motion, Tween};
+use coredesk_platform::{HWND, desktop, monitors, msg};
+use coredesk_render::motion::{self, Curve, Motion, Tween};
 use std::time::{Duration, Instant};
 use windows_core::Result;
 
@@ -37,11 +37,11 @@ pub fn keeps_peek(other: HWND) -> bool {
     let cls = desktop::class_name(desktop::root_ancestor(other));
     cls == anchor::FENCE_CLASS
         || cls == PEEK_CLASS
-        || cls == "PecoFence.Rename"
+        || cls == "CoreDeskEngine.Rename"
         || cls == crate::peek_search::SEARCH_CLASS
 }
 
-pub const PEEK_CLASS: &str = "PecoFence.PeekDimmer";
+pub const PEEK_CLASS: &str = "CoreDeskEngine.PeekDimmer";
 const WA_INACTIVE: usize = 0;
 /// 30 % black (WinUI `SmokeFillColorDefault` #4D000000), the resting alpha of the dimmer.
 const DIM_ALPHA: u8 = 0x4D;
@@ -159,7 +159,7 @@ impl PeekOverlay {
             // Work area, not bounds: the taskbar must stay visible and reachable.
             let b = m.work_area;
             let w = WindowBuilder::new(class)
-                .title("PecoFence peek")
+                .title("CoreDesk Engine peek")
                 .style(style::POPUP)
                 .ex_style(style::EX_TOOLWINDOW | style::EX_LAYERED | style::EX_TOPMOST)
                 .bounds(b.left, b.top, b.right - b.left, b.bottom - b.top)
@@ -177,7 +177,7 @@ impl PeekOverlay {
             let dimmer = first.hwnd().0 as usize;
             let control = control.0 as usize;
             let spawned = std::thread::Builder::new()
-                .name("pecofence-peek-focus".into())
+                .name("coredesk-peek-focus".into())
                 .spawn(move || {
                     window::bring_to_front(HWND(dimmer as *mut core::ffi::c_void));
                     window::post_message(

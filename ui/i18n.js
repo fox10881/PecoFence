@@ -41,7 +41,7 @@
     }
     return () => bindings.forEach(apply => apply());
   };
-  window.PecoFenceI18n = { text, format, set, capture };
-  const initial = window.PECOFENCE_LOCALE;
+  window.CoreDeskI18n = { text, format, set, capture };
+  const initial = window.COREDESK_LOCALE;
   if (initial) set(initial.locale, initial.translations);
 })();

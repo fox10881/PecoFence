@@ -1,4 +1,4 @@
-# PecoFence Agent Rules
+# CoreDesk Engine Agent Rules
 
 ## External consultation — DISABLED
 

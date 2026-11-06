@@ -5,9 +5,9 @@
 //! is the only bit-exact engine; this module loads THE DLL ITSELF rather
 //! than re-implementing its pipeline.
 //!
-//! Delivery — `EBML`/`EBMU` COPYDATA through the `pecofence_tap`
+//! Delivery — `EBML`/`EBMU` COPYDATA through the `coredesk_tap`
 //! resident already injected in each explorer process (the retired
-//! `PECO-FES1` layout/XAML wire is gone; `FELR` remains as a
+//! `CDES-FES1` layout/XAML wire is gone; `FELR` remains as a
 //! reset-only broadcast for residents still carrying it):
 //!
 //! ```text
@@ -50,7 +50,7 @@ const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
 /// `EBMU` = unload it. `FESR` = the legacy `fe_glass` reset, kept so a
 /// still-armed resident from an older build disarms its detours before
 /// EBM takes over (one broadcast per apply — not periodic).
-/// `FELR` = reset the retired `PECO-FES1` mux wire — broadcast-only, so a
+/// `FELR` = reset the retired `CDES-FES1` mux wire — broadcast-only, so a
 /// resident carrying a layout/clear from an older build restores stock
 /// chrome. The wire itself (`FELT`) is gone: layout presets were removed.
 const CDS_EBM_LOAD: usize = u32::from_be_bytes(*b"EBML") as usize;
@@ -142,11 +142,11 @@ fn effect_id(effect: &str) -> Option<u32> {
     }
 }
 
-/// `%LOCALAPPDATA%\PecoFence\residents` — same home the tap resident
+/// `%LOCALAPPDATA%\CoreDesk Engine\residents` — same home the tap resident
 /// uses; stable for the resident-side `LoadLibraryW` to read.
 fn residents_dir() -> Option<PathBuf> {
     let dir = PathBuf::from(std::env::var_os("LOCALAPPDATA")?)
-        .join("PecoFence")
+        .join("CoreDeskEngine")
         .join("residents");
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir)
@@ -162,17 +162,17 @@ static EBM_DLL: &[u8] = include_bytes!(concat!(
     "/../../third_party/ebm/ExplorerBlurMica.dll"
 ));
 
-/// Source bytes to deploy. `PECOFENCE_EBM_DLL=<path>` overrides for engine
+/// Source bytes to deploy. `COREDESK_EBM_DLL=<path>` overrides for engine
 /// development only — anything loaded into explorer.exe must come from an
 /// explicit opt-in or the bytes this build was tested with.
 fn ebm_source_bytes() -> Option<Vec<u8>> {
-    match std::env::var("PECOFENCE_EBM_DLL") {
+    match std::env::var("COREDESK_EBM_DLL") {
         Ok(p) => match std::fs::read(&p) {
             Ok(b) => Some(b),
             Err(e) => {
                 // A set-but-unreadable override must not silently fall back —
                 // the developer asked for specific bytes.
-                tracing::warn!(path = %p, error = %e, "PECOFENCE_EBM_DLL unreadable; using vendored engine");
+                tracing::warn!(path = %p, error = %e, "COREDESK_EBM_DLL unreadable; using vendored engine");
                 Some(EBM_DLL.to_vec())
             }
         },
@@ -564,7 +564,7 @@ fn disarm_legacy() {
     }
 }
 
-/// One-shot reset for the retired `PECO-FES1` mux wire. Older builds (and
+/// One-shot reset for the retired `CDES-FES1` mux wire. Older builds (and
 /// an already-injected resident carrying a layout/clear wire) keep their
 /// mux styling until told otherwise — `FELR` restores stock chrome. Sent
 /// unconditionally on every apply: a pid that never got the wire ignores it.
@@ -773,7 +773,7 @@ mod tests {
 
     #[test]
     fn config_ini_matches_upstream_layout() {
-        let dir = std::env::temp_dir().join("pecofence_ebm_cfg_test");
+        let dir = std::env::temp_dir().join("coredesk_ebm_cfg_test");
         std::fs::create_dir_all(&dir).unwrap();
         let cfg = FeGlassConfig {
             effect: "acrylic",

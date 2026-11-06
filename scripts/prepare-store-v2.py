@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
-PROMO = ROOT / "extras/pecofence-promo"
+PROMO = ROOT / "extras/coredesk-promo"
 BASE = PROMO / ".capture/reviewed/store-v2"
 ASSETS = ROOT / ".cache/store-v2"
 FONTS = Path("C:/Windows/Fonts")

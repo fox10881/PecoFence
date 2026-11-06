@@ -1,14 +1,14 @@
-# PecoFence feedback service: `npx wrangler deploy` from this folder. The token is a secret:
+# CoreDesk feedback service: `npx wrangler deploy` from this folder. The token is a secret:
 # `npx wrangler secret put GITHUB_TOKEN`. No observability / logpush: request metadata (IP)
 # must not be kept.
-name = "pecofence-feedback"
+name = "coredesk-feedback"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
 workers_dev = false
-routes = [{ pattern = "api.pecofence.jiang.jp", custom_domain = true }]
+routes = [{ pattern = "api.coredesk.jiang.jp", custom_domain = true }]
 
 [vars]
-GITHUB_REPO = "DayuanJiang/PecoFence-feedback"
+GITHUB_REPO = "DayuanJiang/CoreDesk-feedback"
 
 # Three reports per minute per client IP (per Cloudflare location).
 [[ratelimits]]

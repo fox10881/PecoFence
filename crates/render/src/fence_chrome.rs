@@ -7,7 +7,7 @@ use crate::bitmaps::BitmapCache;
 use crate::gpu_bindings as b;
 use crate::panel::Clip;
 use crate::theme::{Theme, ThemeMode, font_small, font_text, lerp, with_alpha};
-use pecofence_core::IconFrameStyle;
+use coredesk_core::IconFrameStyle;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem::ManuallyDrop;
@@ -336,7 +336,7 @@ pub struct FenceStyle {
     /// 0 = small (12), 1 = normal (14), 2 = large (16), 3 = extra large (18).
     pub title_size: u8,
     /// Title position in the row (the global 标题对齐 setting).
-    pub title_align: pecofence_core::TitleAlign,
+    pub title_align: coredesk_core::TitleAlign,
     /// Width in DIPs of the left tab column (标签栏位置 → 左侧, two or more tabs). The column
     /// is the fence's title bar, so there is no title row; 0 = the tabs, if any, run along the
     /// title row.
@@ -537,7 +537,7 @@ pub const TITLE_RIGHT_RESERVE: f32 = 40.0;
 /// whole tab strip) that may occupy `start..end` of a row `width` DIPs wide. Centred means
 /// centred on the whole fence, pushed aside only when it would reach into `start` / `end`.
 pub fn aligned_x(
-    align: pecofence_core::TitleAlign,
+    align: coredesk_core::TitleAlign,
     width: f32,
     start: f32,
     end: f32,
@@ -545,9 +545,9 @@ pub fn aligned_x(
 ) -> f32 {
     let last = (end - unit_w.max(0.0)).max(start);
     match align {
-        pecofence_core::TitleAlign::Left => start,
-        pecofence_core::TitleAlign::Center => ((width - unit_w) * 0.5).clamp(start, last),
-        pecofence_core::TitleAlign::Right => last,
+        coredesk_core::TitleAlign::Left => start,
+        coredesk_core::TitleAlign::Center => ((width - unit_w) * 0.5).clamp(start, last),
+        coredesk_core::TitleAlign::Right => last,
     }
 }
 
@@ -697,7 +697,7 @@ fn header_foreground(
     tint: Option<ColorF>,
 ) -> Theme {
     // Only the default 文字颜色 picks ink per piece of text; the others already chose it.
-    if theme.label_color != pecofence_core::LabelColor::Auto {
+    if theme.label_color != coredesk_core::LabelColor::Auto {
         return *theme;
     }
     if let Backdrop::GpuGlass {
@@ -1138,7 +1138,7 @@ struct TextShadow {
 }
 
 fn text_shadow(theme: &Theme, ink: ColorF) -> Option<TextShadow> {
-    if theme.label_color == pecofence_core::LabelColor::Auto {
+    if theme.label_color == coredesk_core::LabelColor::Auto {
         return None;
     }
     Some(if ink.r > 0.5 {
@@ -1747,12 +1747,12 @@ fn draw_scrollbar(
 }
 
 /// Locale for all fence text. DirectWrite fills Han, kana and Hangul from the font of this
-/// locale; like Explorer, it follows the Windows display language, not PecoFence's, because
+/// locale; like Explorer, it follows the Windows display language, not CoreDesk Engine's, because
 /// fences show file names. Traditional Chinese, Japanese and Korean get their own UI font;
 /// everything else gets Microsoft YaHei UI (upstream's `en-us` would pick Yu Gothic UI and draw
 /// Chinese names with Japanese glyph forms).
 fn text_locale() -> &'static str {
-    match pecofence_platform::locale::ui_language() {
+    match coredesk_platform::locale::ui_language() {
         "zh-TW" => "zh-TW",
         "ja" => "ja-JP",
         "ko" => "ko-KR",
@@ -1880,7 +1880,7 @@ impl FenceChrome {
         };
         // Labels follow the desktop's icon-title font from the start (12 px / 16 stays the
         // fallback when the system call fails).
-        if let Some(f) = pecofence_platform::sysparams::icon_title_font() {
+        if let Some(f) = coredesk_platform::sysparams::icon_title_font() {
             let _ = chrome.set_icon_title_font(&f.family, f.size_dip, FontWeight(f.weight));
         }
         Ok(chrome)
@@ -2188,7 +2188,7 @@ impl FenceChrome {
         // A test-only marker lets a lossless screen recording locate the actually
         // presented window independently of GetWindowRect and render submission times.
         #[cfg(debug_assertions)]
-        if title == "运动探针" && pecofence_core::brand::var_os("PECOFENCE_PRESENT_PROBE").is_some()
+        if title == "运动探针" && coredesk_core::brand::var_os("COREDESK_PRESENT_PROBE").is_some()
         {
             let marker = session.create_solid_brush(ColorF::new(1.0, 0.0, 1.0, 1.0))?;
             session.fill_rect(
@@ -3182,7 +3182,7 @@ impl FenceChrome {
             captions.push((
                 cols.name_x + 4.0,
                 cols.name_w - 4.0,
-                pecofence_core::i18n::text("名称"),
+                coredesk_core::i18n::text("名称"),
                 HeaderColumn::Name,
                 false,
             ));
@@ -3190,7 +3190,7 @@ impl FenceChrome {
                 captions.push((
                     x,
                     w,
-                    pecofence_core::i18n::text("修改日期"),
+                    coredesk_core::i18n::text("修改日期"),
                     HeaderColumn::Date,
                     false,
                 ));
@@ -3199,7 +3199,7 @@ impl FenceChrome {
                 captions.push((
                     x,
                     w,
-                    pecofence_core::i18n::text("类型"),
+                    coredesk_core::i18n::text("类型"),
                     HeaderColumn::Type,
                     false,
                 ));
@@ -3208,7 +3208,7 @@ impl FenceChrome {
                 captions.push((
                     x,
                     w,
-                    pecofence_core::i18n::text("大小"),
+                    coredesk_core::i18n::text("大小"),
                     HeaderColumn::Size,
                     true,
                 ));
@@ -3745,7 +3745,7 @@ mod tests {
 
     #[test]
     fn title_alignment_centres_on_the_fence_and_keeps_clear_of_the_chevron() {
-        use pecofence_core::TitleAlign::{Center, Left, Right};
+        use coredesk_core::TitleAlign::{Center, Left, Right};
         // A 300 DIP row whose title may use 16..260 (the chevron zone follows).
         assert_eq!(aligned_x(Left, 300.0, 16.0, 260.0, 80.0), 16.0);
         assert_eq!(aligned_x(Center, 300.0, 16.0, 260.0, 80.0), 110.0);

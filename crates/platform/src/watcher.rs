@@ -65,7 +65,7 @@ impl DirWatcher {
             let handle = handle.clone();
             let stop = stop.clone();
             std::thread::Builder::new()
-                .name(format!("pecofence-watch-{}", dir.display()))
+                .name(format!("coredesk-watch-{}", dir.display()))
                 .stack_size(256 * 1024)
                 .spawn(move || watch_loop(handle, dir, stop, on_events))
         };

@@ -1,4 +1,4 @@
-# Builds the product site and uploads it to the Cloudflare Pages project "pecofence"
+# Builds the product site and uploads it to the Cloudflare Pages project "coredesk"
 # (direct upload, no Git integration). Requires two repository secrets:
 #   CLOUDFLARE_API_TOKEN   token with "Cloudflare Pages: Edit" on the account
 #   CLOUDFLARE_ACCOUNT_ID  the account id shown by `wrangler whoami`
@@ -37,4 +37,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist/site --project-name pecofence --branch main
+          command: pages deploy dist/site --project-name coredesk --branch main

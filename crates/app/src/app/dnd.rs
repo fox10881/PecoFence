@@ -38,7 +38,7 @@ pub fn url_shortcut_base_name(name: Option<&str>, url: &str) -> String {
         _ => String::new(),
     };
     if n.is_empty() {
-        pecofence_core::i18n::text("新建 Internet 快捷方式").to_string()
+        coredesk_core::i18n::text("新建 Internet 快捷方式").to_string()
     } else {
         n
     }
@@ -83,14 +83,14 @@ impl App {
         }
         if let (Some(t), Some(e)) = (&self.tray, first_error) {
             let text = if failed == 1 {
-                pecofence_core::i18n::format("无法创建快捷方式：{0}", &[e.to_string()])
+                coredesk_core::i18n::format("无法创建快捷方式：{0}", &[e.to_string()])
             } else {
-                pecofence_core::i18n::format(
+                coredesk_core::i18n::format(
                     "无法创建 {0} 个快捷方式：{1}",
                     &[failed.to_string(), e.to_string()],
                 )
             };
-            t.show_info("PecoFence", &text, true);
+            t.show_info("CoreDesk Engine", &text, true);
         }
         made
     }
@@ -237,8 +237,8 @@ impl App {
                 tracing::warn!(error = %e, "creating internet shortcut failed");
                 if let Some(t) = &self.tray {
                     t.show_info(
-                        "PecoFence",
-                        &pecofence_core::i18n::format(
+                        "CoreDesk Engine",
+                        &coredesk_core::i18n::format(
                             "无法创建 Internet 快捷方式：{0}",
                             &[e.to_string()],
                         ),

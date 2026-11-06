@@ -1,8 +1,8 @@
-# PecoFence — Invisible Canvas "top shelf" layout
+# CoreDesk — Invisible Canvas "top shelf" layout
 # 1) Applies assets\themes\Top Shelf Desktop Wallpaper Full HD 4k To Use.jpg as wallpaper
-# 2) Stops PecoFence so it cannot overwrite config.json on exit
+# 2) Stops CoreDesk so it cannot overwrite config.json on exit
 # 3) Writes config.json: themeStyle=invisibleCanvas, three shelf fences, all icons → Left Shelves
-# 4) Launches target\debug\pecofence.exe
+# 4) Launches target\debug\coredesk.exe
 [CmdletBinding()]
 param([switch]$NoLaunch)
 
@@ -24,12 +24,12 @@ if (-not (Test-Path $wall)) { throw "Wallpaper not found: $wall" }
 Write-Host "Wallpaper applied: $wall"
 
 # --- 2. Stop the running app -------------------------------------------------
-Get-Process pecofence -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process coredesk -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Milliseconds 400
 
 # --- 3. Rewrite config.json --------------------------------------------------
-$cfgPath = Join-Path $env:APPDATA 'PecoFence\config.json'
-if (-not (Test-Path $cfgPath)) { throw "Config not found: $cfgPath (run PecoFence once first)" }
+$cfgPath = Join-Path $env:APPDATA 'CoreDesk\config.json'
+if (-not (Test-Path $cfgPath)) { throw "Config not found: $cfgPath (run CoreDesk once first)" }
 Copy-Item $cfgPath "$cfgPath.bak-invisible" -Force
 
 $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json
@@ -134,8 +134,8 @@ $json = $cfg | ConvertTo-Json -Depth 30
 Write-Host "config.json updated (backup: $cfgPath.bak-invisible)"
 
 # --- 5. Launch ---------------------------------------------------------------
-$exe = Join-Path $root 'target\debug\pecofence.exe'
+$exe = Join-Path $root 'target\debug\coredesk.exe'
 if ($NoLaunch) { Write-Host "Done (-NoLaunch)."; return }
-if (-not (Test-Path $exe)) { throw "Debug build not found: $exe (run: cargo build -p pecofence)" }
+if (-not (Test-Path $exe)) { throw "Debug build not found: $exe (run: cargo build -p coredesk)" }
 Start-Process $exe
 Write-Host "Launched $exe"

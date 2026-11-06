@@ -1,13 +1,13 @@
 //! Settings → 关于 → 「检查更新」 for the installer and ZIP editions; the Store updates the app
 //! itself. Checking and downloading run on a worker thread. An installed copy then starts the
-//! new setup and exits; setup waits for it, installs and starts PecoFence again.
+//! new setup and exits; setup waits for it, installs and starts CoreDesk Engine again.
 
 use super::*;
-use pecofence_core::updates::{self, Release};
+use coredesk_core::updates::{self, Release};
 
 /// A named test instance's release API (`http://127.0.0.1:` only, and only with
-/// `PECOFENCE_INSTANCE`): the updater's end-to-end test serves a release from a local server.
-const URL_VAR: &str = "PECOFENCE_UPDATE_URL";
+/// `COREDESK_INSTANCE`): the updater's end-to-end test serves a release from a local server.
+const URL_VAR: &str = "COREDESK_UPDATE_URL";
 const MAX_RELEASE_JSON: usize = 1024 * 1024;
 const MAX_SETUP_BYTES: usize = 64 * 1024 * 1024;
 /// `<hash>  <name>\n` — a few hundred bytes at most.
@@ -46,12 +46,12 @@ fn download_dir() -> PathBuf {
 }
 
 fn user_agent() -> String {
-    format!("PecoFence/{}", env!("CARGO_PKG_VERSION"))
+    format!("CoreDeskEngine/{}", env!("CARGO_PKG_VERSION"))
 }
 
 /// The release API and the prefix its files must be downloaded from.
 fn source(test_instance: bool) -> (String, String) {
-    match pecofence_core::brand::var(URL_VAR) {
+    match coredesk_core::brand::var(URL_VAR) {
         Ok(url) if test_instance && url.starts_with("http://127.0.0.1:") => {
             let origin = url.split('/').take(3).collect::<Vec<_>>().join("/") + "/";
             (url, origin)
@@ -62,7 +62,7 @@ fn source(test_instance: bool) -> (String, String) {
 
 fn check(test_instance: bool) -> std::result::Result<Done, String> {
     let (url, base) = source(test_instance);
-    let body = pecofence_platform::http::get(
+    let body = coredesk_platform::http::get(
         &url,
         &user_agent(),
         "Accept: application/vnd.github+json",
@@ -95,10 +95,10 @@ fn parse_sha256_sidecar(sidecar: &[u8]) -> std::result::Result<String, String> {
 fn download(release: &Release) -> std::result::Result<Done, String> {
     let setup = release.setup.as_ref().ok_or("the release has no setup")?;
     let sidecar =
-        pecofence_platform::http::get(&setup.sha256_url, &user_agent(), "", MAX_SHA256_BYTES)?;
+        coredesk_platform::http::get(&setup.sha256_url, &user_agent(), "", MAX_SHA256_BYTES)?;
     let expected = parse_sha256_sidecar(&sidecar)?;
-    let bytes = pecofence_platform::http::get(&setup.url, &user_agent(), "", MAX_SETUP_BYTES)?;
-    let actual = pecofence_platform::hash::sha256_hex(&bytes)?;
+    let bytes = coredesk_platform::http::get(&setup.url, &user_agent(), "", MAX_SETUP_BYTES)?;
+    let actual = coredesk_platform::hash::sha256_hex(&bytes)?;
     if actual != expected {
         return Err(format!(
             "update checksum mismatch (expected {expected}, got {actual}); not installing"
@@ -115,7 +115,7 @@ fn download(release: &Release) -> std::result::Result<Done, String> {
 impl App {
     /// `None` for the Store edition, which shows no update controls.
     fn update_edition(&self) -> Option<&'static str> {
-        if pecofence_platform::process::is_packaged() {
+        if coredesk_platform::process::is_packaged() {
             return None;
         }
         let installed = std::env::current_exe()
@@ -176,7 +176,7 @@ impl App {
         let done = self.updates.done.clone();
         let control = self.control.hwnd().0 as isize;
         let spawned = std::thread::Builder::new()
-            .name("pecofence-update".into())
+            .name("coredesk-update".into())
             .spawn(move || {
                 let result = job();
                 if let Ok(mut d) = done.lock() {
@@ -244,7 +244,7 @@ impl App {
                 Err(e) => Err(e),
             };
             self.updates.status = match outcome {
-                // Setup is running and PecoFence is quitting.
+                // Setup is running and CoreDesk Engine is quitting.
                 Ok(None) => return,
                 Ok(Some(None)) => Status::UpToDate,
                 Ok(Some(Some(release))) => {
@@ -265,9 +265,9 @@ impl App {
     }
 
     /// Hands over to setup and exits. `/UPDATE=` lists this process and its watchdogs: setup
-    /// waits for them before its running-app check and starts PecoFence again when done.
+    /// waits for them before its running-app check and starts CoreDesk Engine again when done.
     fn start_setup(&mut self, setup: &Path) -> std::result::Result<(), String> {
-        let mut wait = vec![pecofence_platform::process::current_pid()];
+        let mut wait = vec![coredesk_platform::process::current_pid()];
         if let Some(a) = self.anchor.borrow().as_ref() {
             wait.extend_from_slice(a.watchdog_pids());
         }

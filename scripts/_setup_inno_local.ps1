@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $lock = Get-Content -LiteralPath "$PSScriptRoot/../packaging/inno/toolchain.json" -Raw | ConvertFrom-Json
 $temp = [IO.Path]::GetTempPath()
 $download = Join-Path $temp "innosetup-$($lock.version).exe"
-$destination = Join-Path $temp "pecofence-inno-$($lock.version)"
+$destination = Join-Path $temp "coredesk-inno-$($lock.version)"
 $compiler = Join-Path $destination "ISCC.exe"
 if (Test-Path -LiteralPath $compiler -PathType Leaf) {
   $v = & $compiler --version

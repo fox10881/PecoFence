@@ -1,7 +1,7 @@
 //! Explicit integration probe: switches the given installed wallpapers, restores the
 //! original, and verifies one persistent worker survives web/video/scene transitions.
 //! Args: WPE-exe original-project web-project video-project output-directory
-use pecofence_platform::live_wallpaper::{CapturedWallpaper, LiveWallpaper};
+use coredesk_platform::live_wallpaper::{CapturedWallpaper, LiveWallpaper};
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
@@ -45,7 +45,7 @@ impl Drop for Restore<'_> {
 }
 
 fn main() {
-    pecofence_platform::window::set_process_dpi_awareness_v2();
+    coredesk_platform::window::set_process_dpi_awareness_v2();
     let args: Vec<_> = std::env::args().collect();
     assert_eq!(args.len(), 6);
     let output = Path::new(&args[5]);

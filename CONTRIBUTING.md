@@ -22,5 +22,5 @@ for catalog keys, placeholders and adding languages. Preserve user-provided text
 and do not introduce network requests for translation.
 
 Please keep build outputs, local configuration, crash dumps, recordings and
-credentials out of commits. The optional `extras/pecofence-promo` project has its
+credentials out of commits. The optional `extras/coredesk-promo` project has its
 own Node dependencies; the desktop application does not need Node to build.

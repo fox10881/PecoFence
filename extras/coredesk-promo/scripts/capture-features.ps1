@@ -48,7 +48,7 @@ $workArea = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $plateW = 2560; $plateH = 1440
 $plateX = [int](($screen.Width-$plateW)/2); $plateY = [int](($screen.Height-$plateH)/2)
 if ($screen.Width -lt $plateW -or $screen.Height -lt $plateH) {throw "Display is too small for this capture."}
-$reference = Get-Content -LiteralPath (Join-Path $env:APPDATA "PecoFence\config.json") -Raw | ConvertFrom-Json -AsHashtable
+$reference = Get-Content -LiteralPath (Join-Path $env:APPDATA "CoreDesk\config.json") -Raw | ConvertFrom-Json -AsHashtable
 $fingerprint = $reference.layouts[0].fingerprint
 $scale = $fingerprint[0].dpi/96.0
 $desktopDir = [Environment]::GetFolderPath("DesktopDirectory")
@@ -73,7 +73,7 @@ function Make-Sample([string]$File,[string]$Kind="text") {
         } finally {$g.Dispose();$bmp.Dispose()}
     } else {
         $stream=[System.IO.File]::Open($File,[System.IO.FileMode]::CreateNew)
-        try {$bytes=[Text.Encoding]::UTF8.GetBytes("Website launch demo`r`nA sample file prepared for the PecoFence feature video.");$stream.Write($bytes,0,$bytes.Length)}
+        try {$bytes=[Text.Encoding]::UTF8.GetBytes("Website launch demo`r`nA sample file prepared for the CoreDesk feature video.");$stream.Write($bytes,0,$bytes.Length)}
         finally {$stream.Dispose()}
     }
 }
@@ -183,7 +183,7 @@ try {
     $caseDir=Join-Path $stageDir $scene
     $demoDir=Join-Path $caseDir "app"
     New-Item -ItemType Directory -Force -Path $caseDir,$demoDir,(Join-Path $demoDir "config")|Out-Null
-    Copy-Item -LiteralPath (Join-Path $workspaceDir "target\debug\pecofence.exe") -Destination (Join-Path $demoDir "pecofence.exe")
+    Copy-Item -LiteralPath (Join-Path $workspaceDir "target\debug\coredesk.exe") -Destination (Join-Path $demoDir "coredesk.exe")
     Copy-Item -LiteralPath (Join-Path $workspaceDir "target\release\WebView2Loader.dll") -Destination (Join-Path $demoDir "WebView2Loader.dll")
     $config=$reference | ConvertTo-Json -Depth 30 | ConvertFrom-Json -AsHashtable
     $config.items=@{};$config.snapshots=@();$config.undoLog=@()
@@ -192,7 +192,7 @@ try {
     $config.settings.peek.enabled=$false;$config.settings.peek.dim=$true
     $config.settings.rollUp.hoverPeek=$true;$config.settings.rollUp.clickToExpand=$false
     $config.settings.snapping.sizeToCells=$false
-    $reg=Get-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name PecoFence -ErrorAction SilentlyContinue
+    $reg=Get-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name CoreDesk -ErrorAction SilentlyContinue
     $config.settings.autostart=($null -ne $reg)
     $fences=@();$rules=@()
     $folders=@{}
@@ -298,28 +298,28 @@ try {
     $background.Bounds=[System.Drawing.Rectangle]::new($plateX,$plateY,$plateW,$plateH)
     if($Launch){$background.Bounds=$screen}
     $background.BackgroundImage=[System.Drawing.Image]::FromFile((Join-Path $projectDir "public\wallpaper.png"))
-    $background.BackgroundImageLayout="Stretch";$background.Text="PecoFence feature capture"
+    $background.BackgroundImageLayout="Stretch";$background.Text="CoreDesk feature capture"
     $document=$null;$recorder=$null;$appProcess=$null
-    $savedInstance=$env:PECOFENCE_INSTANCE;$savedLocal=$env:LOCALAPPDATA;$savedTest=$env:PECOFENCE_UI_TEST_WINDOWS
+    $savedInstance=$env:COREDESK_INSTANCE;$savedLocal=$env:LOCALAPPDATA;$savedTest=$env:COREDESK_UI_TEST_WINDOWS
     $events=[System.Collections.Generic.List[object]]::new()
     $done=@{};$shown=@{};$recordStartedAt=0.0
     try {
       $background.Show()
       [FeatureNative]::SetWindowPos($background.Handle,[IntPtr](-1),0,0,0,0,0x13)|Out-Null
       [System.Windows.Forms.Application]::DoEvents()
-      $env:PECOFENCE_INSTANCE=$(if($Launch){"launch-$scene"}else{"feature-$scene"})
-      $env:PECOFENCE_UI_TEST_WINDOWS="1"
+      $env:COREDESK_INSTANCE=$(if($Launch){"launch-$scene"}else{"feature-$scene"})
+      $env:COREDESK_UI_TEST_WINDOWS="1"
       $env:LOCALAPPDATA=Join-Path $caseDir "appdata"
       New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA|Out-Null
       $args=@("--portable","--no-hide-icons","--dark","--wallpaper",('"' +(Join-Path $projectDir "public\wallpaper.png")+'"'),"--test-script",('"'+$testPath+'"'),"--exit-after","35000")
-      $appProcess=Start-Process -FilePath (Join-Path $demoDir "pecofence.exe") -ArgumentList $args -WindowStyle Hidden -PassThru
+      $appProcess=Start-Process -FilePath (Join-Path $demoDir "coredesk.exe") -ArgumentList $args -WindowStyle Hidden -PassThru
       $timer=[Diagnostics.Stopwatch]::StartNew()
       while($timer.Elapsed.TotalSeconds -lt $caseLength -and -not $appProcess.HasExited){
         [System.Windows.Forms.Application]::DoEvents()
         foreach($window in [FeatureNative]::Windows([uint32]$appProcess.Id)){
             $title=[FeatureNative]::Title($window)
             if($title -eq "Private inbox excluded from film"){[FeatureNative]::ShowWindow($window,0)|Out-Null;continue}
-            if([FeatureNative]::Class($window) -eq "PecoFence.Fence"){
+            if([FeatureNative]::Class($window) -eq "CoreDeskEngine.Fence"){
                 if(-not $shown[$window.ToInt64()] -and $timer.Elapsed.TotalSeconds -gt 1.7){
                     [FeatureNative]::ShowWindow($window,4)|Out-Null;$shown[$window.ToInt64()]=$true
                 }
@@ -445,7 +445,7 @@ try {
       if($appProcess -and -not $appProcess.HasExited){$appProcess.WaitForExit(18000)|Out-Null}
       if($document){$document.Close();if($document.BackgroundImage){$document.BackgroundImage.Dispose()};$document.Dispose()}
       $background.Close();$background.BackgroundImage.Dispose();$background.Dispose()
-      $env:PECOFENCE_INSTANCE=$savedInstance;$env:LOCALAPPDATA=$savedLocal;$env:PECOFENCE_UI_TEST_WINDOWS=$savedTest
+      $env:COREDESK_INSTANCE=$savedInstance;$env:LOCALAPPDATA=$savedLocal;$env:COREDESK_UI_TEST_WINDOWS=$savedTest
       foreach($file in @($createdDesktopFiles)){
           $absolute=[IO.Path]::GetFullPath($file)
           if([IO.Path]::GetDirectoryName($absolute) -ne [IO.Path]::GetFullPath($desktopDir)){throw "Unexpected sample cleanup path"}

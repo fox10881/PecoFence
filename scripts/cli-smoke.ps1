@@ -1,11 +1,11 @@
-# End-to-end smoke test for pecofence-cli against an isolated PecoFence instance.
+# End-to-end smoke test for coredesk-cli against an isolated CoreDesk instance.
 #
 #   powershell -File scripts/cli-smoke.ps1                 # uses target/debug binaries
 #   powershell -File scripts/cli-smoke.ps1 -Profile release
 #
-# Copies pecofence.exe, pecofence-watchdog.exe, pecofence-cli.exe and WebView2Loader.dll into a
+# Copies coredesk.exe, coredesk-watchdog.exe, coredesk-cli.exe and WebView2Loader.dll into a
 # scratch folder under .cache/, points LOCALAPPDATA/APPDATA there, and starts the app as
-# `PECOFENCE_INSTANCE=clitest --portable --no-hide-icons`, so the user's configuration and
+# `COREDESK_INSTANCE=clitest --portable --no-hide-icons`, so the user's configuration and
 # desktop icons are never touched. Then it drives the instance with the CLI and asserts the JSON
 # replies and exit codes. Exit code 0 = all checks passed.
 param(
@@ -17,27 +17,27 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 $bin = Join-Path $root "target/$Profile"
-foreach ($f in "pecofence.exe", "pecofence-watchdog.exe", "pecofence-cli.exe") {
+foreach ($f in "coredesk.exe", "coredesk-watchdog.exe", "coredesk-cli.exe") {
     if (-not (Test-Path (Join-Path $bin $f))) {
-        throw "missing $bin/$f - build first: cargo build -p pecofence -p pecofence-watchdog -p pecofence-cli" + $(if ($Profile -eq "release") { " --release" } else { "" })
+        throw "missing $bin/$f - build first: cargo build -p coredesk -p coredesk-watchdog -p coredesk-cli" + $(if ($Profile -eq "release") { " --release" } else { "" })
     }
 }
 
 $instance = "clitest-" + [guid]::NewGuid().ToString("N").Substring(0, 8)
 $stage = Join-Path $root ".cache/$instance"
 New-Item -ItemType Directory -Path $stage | Out-Null
-foreach ($f in "pecofence.exe", "pecofence-watchdog.exe", "pecofence-cli.exe") {
+foreach ($f in "coredesk.exe", "coredesk-watchdog.exe", "coredesk-cli.exe") {
     Copy-Item (Join-Path $bin $f) $stage
 }
 Copy-Item (Join-Path $root "third_party/webview2/WebView2Loader.x64.dll") (Join-Path $stage "WebView2Loader.dll")
 # Redirect the app's data folders for this process only; restored in the finally block so a
 # dot-sourced or `&`-invoked run does not leave the caller's session pointing at a scratch dir.
-$savedEnv = @{ PECOFENCE_INSTANCE = $env:PECOFENCE_INSTANCE; LOCALAPPDATA = $env:LOCALAPPDATA; APPDATA = $env:APPDATA; RUST_LOG = $env:RUST_LOG }
-$env:PECOFENCE_INSTANCE = $instance
+$savedEnv = @{ COREDESK_INSTANCE = $env:COREDESK_INSTANCE; LOCALAPPDATA = $env:LOCALAPPDATA; APPDATA = $env:APPDATA; RUST_LOG = $env:RUST_LOG }
+$env:COREDESK_INSTANCE = $instance
 $env:LOCALAPPDATA = Join-Path $stage "local-appdata"
 $env:APPDATA = Join-Path $stage "roaming-appdata"
 $env:RUST_LOG = "info"
-$cli = Join-Path $stage "pecofence-cli.exe"
+$cli = Join-Path $stage "coredesk-cli.exe"
 
 $script:failures = 0
 $script:checks = 0
@@ -82,7 +82,7 @@ Check "not running -> exit 3" ($r.Code -eq 3) "code=$($r.Code) err=$($r.Err)"
 Check "not running -> error.code not_running" ($e.error.code -eq "not_running") $r.Err
 
 # 1. Start the isolated instance.
-$app = Start-Process -FilePath (Join-Path $stage "pecofence.exe") -WorkingDirectory $stage `
+$app = Start-Process -FilePath (Join-Path $stage "coredesk.exe") -WorkingDirectory $stage `
     -ArgumentList @("--portable", "--no-hide-icons", "--exit-after", "$LifetimeMs") -PassThru
 try {
     $deadline = (Get-Date).AddSeconds(30)
@@ -99,7 +99,7 @@ try {
     $jobs = 1..4 | ForEach-Object {
         Start-Job -ScriptBlock {
             param($cli, $inst, $la, $ra)
-            $env:PECOFENCE_INSTANCE = $inst; $env:LOCALAPPDATA = $la; $env:APPDATA = $ra
+            $env:COREDESK_INSTANCE = $inst; $env:LOCALAPPDATA = $la; $env:APPDATA = $ra
             & $cli --compact status | Out-Null
             $LASTEXITCODE
         } -ArgumentList $cli, $instance, $env:LOCALAPPDATA, $env:APPDATA
@@ -406,7 +406,7 @@ try {
     Check "log prints text" ($r.Code -eq 0 -and $r.Out.Length -gt 0 -and -not $r.Out.StartsWith("{")) "code=$($r.Code) $($r.Err)"
     $r = Invoke-Cli @("config", "check")
     $ck = Json $r.Out
-    Check "config check of the live config passes" ($r.Code -eq 0 -and $ck.ok -eq $true -and $ck.schema -eq "https://pecofence.jiang.jp/schema/config.json") "$($r.Out) $($r.Err)"
+    Check "config check of the live config passes" ($r.Code -eq 0 -and $ck.ok -eq $true -and $ck.schema -eq "https://coredesk.jiang.jp/schema/config.json") "$($r.Out) $($r.Err)"
 
     # 7b. Config export / import round trip and backups.
     $exportPath = Join-Path $stage "export.json"
@@ -454,9 +454,9 @@ try {
 finally {
     if ($app -and -not $app.HasExited) { Stop-Process -Id $app.Id -Force }
     Start-Sleep -Milliseconds 300
-    Get-Process pecofence-watchdog -ErrorAction SilentlyContinue |
+    Get-Process coredesk-watchdog -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -like "$stage*" } | Stop-Process -Force -ErrorAction SilentlyContinue
-    $logPath = Join-Path $env:LOCALAPPDATA "PecoFence\pecofence.$instance.log"
+    $logPath = Join-Path $env:LOCALAPPDATA "CoreDesk\coredesk.$instance.log"
     foreach ($k in $savedEnv.Keys) {
         if ($null -eq $savedEnv[$k]) { Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue }
         else { Set-Item -Path "Env:$k" -Value $savedEnv[$k] }

@@ -28,7 +28,7 @@ pub fn save_json(
 ) -> Result<Option<PathBuf>> {
     let title_w = to_wide(title);
     let name_w = to_wide(suggested_name);
-    let filter_name = to_wide(pecofence_core::i18n::text("JSON 文件 (*.json)"));
+    let filter_name = to_wide(coredesk_core::i18n::text("JSON 文件 (*.json)"));
     let filter_spec = to_wide("*.json");
     let ext = to_wide("json");
     // SAFETY: COM object created here; all strings outlive the calls.
@@ -57,7 +57,7 @@ pub fn save_json(
 /// "Open" for a JSON file. `None` when the user cancelled.
 pub fn open_json(owner: Option<HWND>, title: &str) -> Result<Option<PathBuf>> {
     let title_w = to_wide(title);
-    let filter_name = to_wide(pecofence_core::i18n::text("JSON 文件 (*.json)"));
+    let filter_name = to_wide(coredesk_core::i18n::text("JSON 文件 (*.json)"));
     let filter_spec = to_wide("*.json");
     // SAFETY: COM object created here; all strings outlive the calls.
     unsafe {
@@ -100,7 +100,7 @@ pub fn pick_folder(owner: Option<HWND>, title: &str) -> Result<Option<PathBuf>> 
 /// "Open" for an MP4 video file (`*.mp4` only). `None` when the user cancelled.
 pub fn open_mp4(owner: Option<HWND>, title: &str) -> Result<Option<PathBuf>> {
     let title_w = to_wide(title);
-    let filter_name = to_wide(pecofence_core::i18n::text("MP4 视频 (*.mp4)"));
+    let filter_name = to_wide(coredesk_core::i18n::text("MP4 视频 (*.mp4)"));
     let filter_spec = to_wide("*.mp4");
     // SAFETY: COM object created here; all strings outlive the calls.
     unsafe {
@@ -122,17 +122,13 @@ pub fn open_mp4(owner: Option<HWND>, title: &str) -> Result<Option<PathBuf>> {
     }
 }
 
-/// "Save as" for a `.peco` theme archive. `None` when the user cancelled.
-pub fn save_peco(
-    owner: Option<HWND>,
-    title: &str,
-    suggested_name: &str,
-) -> Result<Option<PathBuf>> {
+/// "Save as" for a `.cde` theme archive. `None` when the user cancelled.
+pub fn save_cde(owner: Option<HWND>, title: &str, suggested_name: &str) -> Result<Option<PathBuf>> {
     let title_w = to_wide(title);
     let name_w = to_wide(suggested_name);
-    let filter_name = to_wide(pecofence_core::i18n::text("PecoFence 主题 (*.peco)"));
-    let filter_spec = to_wide("*.peco");
-    let ext = to_wide("peco");
+    let filter_name = to_wide(coredesk_core::i18n::text("CoreDesk Engine 主题 (*.cde)"));
+    let filter_spec = to_wide("*.cde");
+    let ext = to_wide("cde");
     // SAFETY: COM object created here; all strings outlive the calls.
     unsafe {
         let dialog: IFileSaveDialog = CoCreateInstance(&FileSaveDialog, None, CLSCTX_ALL as u32)?;
@@ -155,22 +151,33 @@ pub fn save_peco(
     }
 }
 
-/// "Open" for a `.peco` theme archive. `None` when the user cancelled.
-pub fn open_peco(owner: Option<HWND>, title: &str) -> Result<Option<PathBuf>> {
+/// "Open" for a theme archive. `.cde` is the native format; legacy PecoFence `.peco`
+/// archives are the same container and import seamlessly. `None` when the user cancelled.
+pub fn open_cde(owner: Option<HWND>, title: &str) -> Result<Option<PathBuf>> {
     let title_w = to_wide(title);
-    let filter_name = to_wide(pecofence_core::i18n::text("PecoFence 主题 (*.peco)"));
-    let filter_spec = to_wide("*.peco");
+    let filter_name = to_wide(coredesk_core::i18n::text(
+        "CoreDesk Engine 主题 (*.cde;*.peco)",
+    ));
+    let filter_spec = to_wide("*.cde;*.peco");
+    let legacy_name = to_wide(coredesk_core::i18n::text("PecoFence 主题 (*.peco)"));
+    let legacy_spec = to_wide("*.peco");
     // SAFETY: COM object created here; all strings outlive the calls.
     unsafe {
         let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_ALL as u32)?;
         let base: IFileDialog = dialog.cast()?;
         base.SetOptions(FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST)
             .ok()?;
-        let spec = COMDLG_FILTERSPEC {
-            pszName: PCWSTR(filter_name.as_ptr()),
-            pszSpec: PCWSTR(filter_spec.as_ptr()),
-        };
-        base.SetFileTypes(1, &spec).ok()?;
+        let specs = [
+            COMDLG_FILTERSPEC {
+                pszName: PCWSTR(filter_name.as_ptr()),
+                pszSpec: PCWSTR(filter_spec.as_ptr()),
+            },
+            COMDLG_FILTERSPEC {
+                pszName: PCWSTR(legacy_name.as_ptr()),
+                pszSpec: PCWSTR(legacy_spec.as_ptr()),
+            },
+        ];
+        base.SetFileTypes(2, specs.as_ptr()).ok()?;
         base.SetTitle(PCWSTR(title_w.as_ptr())).ok()?;
         let hr = base.Show(owner);
         if hr.is_err() {

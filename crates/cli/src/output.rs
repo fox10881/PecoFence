@@ -2,7 +2,7 @@
 
 use std::io::Write;
 
-use pecofence_ipc::IpcError;
+use coredesk_ipc::IpcError;
 use serde_json::{Map, Value};
 
 /// A command's outcome: the JSON to print plus a secondary warning from the server and whether
@@ -185,7 +185,7 @@ pub fn print_error(error: &IpcError, style: &Style) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pecofence_ipc::ErrorCode;
+    use coredesk_ipc::ErrorCode;
     use serde_json::json;
 
     #[test]

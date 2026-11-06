@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title data-i18n="资源管理器背景效果">资源管理器背景效果</title>
-<!-- PECOFENCE_LOCALE -->
+<!-- COREDESK_LOCALE -->
 <script src="i18n.js"></script>
 <style>
   :root {
@@ -392,11 +392,11 @@
 <script>
 (() => {
   'use strict';
-  const t = (s) => (window.PecoFenceI18n ? PecoFenceI18n.text(s) : s);
+  const t = (s) => (window.CoreDeskI18n ? CoreDeskI18n.text(s) : s);
   // capture() snapshots the DOM — rebuilt (and re-applied) after every
   // dynamic append so later-injected Chinese text still localizes.
   let applyCapture = () => {};
-  const i18nSet = (loc, tr) => { if (window.PecoFenceI18n) { PecoFenceI18n.set(loc, tr); applyCapture(); } };
+  const i18nSet = (loc, tr) => { if (window.CoreDeskI18n) { CoreDeskI18n.set(loc, tr); applyCapture(); } };
 
   const wv = window.chrome && window.chrome.webview;
   const send = (m) => wv && wv.postMessage(m);
@@ -608,7 +608,7 @@
   $('darkDot').onclick = () => rpOpen($('darkDot'));
 
   // All static + dynamic text is in the DOM now — snapshot it for localization.
-  applyCapture = window.PecoFenceI18n ? PecoFenceI18n.capture(document.body) : () => {};
+  applyCapture = window.CoreDeskI18n ? CoreDeskI18n.capture(document.body) : () => {};
   applyCapture();
 
   // ------------------------------------------------------------- actions

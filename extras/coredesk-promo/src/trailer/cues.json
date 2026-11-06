@@ -105,7 +105,7 @@
    "start": 4,
    "end": 8,
    "energy": 0.7,
-   "notes": "HIT at 4.0: icons fly into fences. Drums + bass enter. Light sweep dark->light at 5.0. Title 'PecoFence / Make room for what matters.'"
+   "notes": "HIT at 4.0: icons fly into fences. Drums + bass enter. Light sweep dark->light at 5.0. Title 'CoreDesk / Make room for what matters.'"
   },
   {
    "name": "autosort",
@@ -629,33 +629,33 @@
  "commands": [
   {
    "t": 18.0,
-   "cmd": "pecofence-cli fence create --title Docs",
+   "cmd": "coredesk-cli fence create --title Docs",
    "native": 4.783
   },
   {
    "t": 18.5,
-   "cmd": "pecofence-cli fence set Docs autoHeight true",
+   "cmd": "coredesk-cli fence set Docs autoHeight true",
    "native": 5.917
   },
   {
    "t": 19.0,
-   "cmd": "pecofence-cli rule add --name PDFs --ext pdf --to Docs",
+   "cmd": "coredesk-cli rule add --name PDFs --ext pdf --to Docs",
    "native": 7.3
   },
   {
    "t": 19.4,
-   "cmd": "pecofence-cli rule apply",
+   "cmd": "coredesk-cli rule apply",
    "native": 8.183,
    "result": "moved 4 files to Docs"
   },
   {
    "t": 19.95,
-   "cmd": "pecofence-cli fence set --all iconSize 96",
+   "cmd": "coredesk-cli fence set --all iconSize 96",
    "native": 10.733
   },
   {
    "t": 21.95,
-   "cmd": "pecofence-cli fence set --all tint \"#E86A5C\"",
+   "cmd": "coredesk-cli fence set --all tint \"#E86A5C\"",
    "native": 13.2
   }
  ]

@@ -173,7 +173,7 @@ def main():
         structured_data = json.dumps({
             "@context": "https://schema.org",
             "@type": "SoftwareApplication",
-            "name": "PecoFence",
+            "name": "CoreDesk",
             "description": strings["meta.description"],
             "url": canonical,
             "image": hero_image,

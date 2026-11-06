@@ -17,14 +17,14 @@
 
 <div align="center">
 
-# 💠 PecoFence — La suite definitiva de personalización y organización del escritorio
+# 💠 CoreDesk Engine — La suite definitiva de personalización y organización del escritorio
 
 **Convierte Windows 11 en un espacio de trabajo de vidrio vivo y ultraorganizado.**
 
-PecoFence es una suite de organización de escritorio y personalización del shell de Windows 11 de nueva generación, escrita en Rust. Mucho más allá de simples cercas de iconos, combina organización magnética, estantes con perspectiva 3D, fondos de video H.264 en vivo, widgets de reloj adaptativos, personalización profunda del shell (barra de tareas, menú Inicio, centro de notificaciones y el Explorador con Mica/Acrylic) y paquetes completos de temas `.peco` con un clic.
+CoreDesk Engine es una suite de organización de escritorio y personalización del shell de Windows 11 de nueva generación, escrita en Rust. Mucho más allá de simples cercas de iconos, combina organización magnética, estantes con perspectiva 3D, fondos de video H.264 en vivo, widgets de reloj adaptativos, personalización profunda del shell (barra de tareas, menú Inicio, centro de notificaciones y el Explorador con Mica/Acrylic) y paquetes completos de temas `.cde` con un clic.
 
 <!-- TODO: ADD IMAGE 1 (Hero Desktop Showcase) -->
-![PecoFence Hero Showcase](assets/hero-showcase.png)
+![CoreDesk Engine Hero Showcase](assets/hero-showcase.png)
 *> **[IMAGE PLACEHOLDER 1]:** Agrega una captura completa del escritorio con las cercas Invisible/Bookshelf, el widget de reloj y la barra de tareas translúcida.*
 
 </div>
@@ -33,7 +33,7 @@ PecoFence es una suite de organización de escritorio y personalización del she
 
 ## ✨ ¿Qué hace extraordinaria a esta edición?
 
-Cada capa de PecoFence se reingenierizó para darte control creativo total sobre tus iconos y el propio shell de Windows 11, con consumo de CPU y GPU casi nulo.
+Cada capa de CoreDesk Engine se reingenierizó para darte control creativo total sobre tus iconos y el propio shell de Windows 11, con consumo de CPU y GPU casi nulo.
 
 ---
 
@@ -59,13 +59,13 @@ Supera los contenedores estándar con cuatro paradigmas visuales:
 ## 🎬 2. Fondos de video H.264 nativos y widgets de reloj adaptativos
 
 ### 🎞️ Motor de fondo de video acelerado por hardware [NUEVO]
-- Usa cualquier video **MP4 (H.264)** como fondo en vivo ultrafluido directamente desde PecoFence.
+- Usa cualquier video **MP4 (H.264)** como fondo en vivo ultrafluido directamente desde CoreDeskEngine.
 - Enlaces rápidos integrados a *CloudConvert* y *FreeConvert* para convertir cualquier video en un fondo liviano y amigable con la GPU.
 
 ### 🕰️ Widget de reloj de escritorio sin marco (`ويدجت الساعة المكتبية`) [NUEVO]
 - Elige entre **20 diseños artesanales y responsivos de reloj/fecha/día** (10 firmas Gemini + 10 firmas Devin), o apágalo con (`بدون`).
 - **Interacción real sin marco:** Sin barra de título. Arrastra desde **cualquier punto interior** para moverlo o toma **cualquier borde/esquina** para redimensionarlo suavemente con escala tipográfica automática.
-- **Contraste adaptativo de fondo (`تنسيق ألوان الويدجت تلقائياً لتناسب الخلفية`) [NUEVO]:** PecoFence muestrea continuamente los píxeles exactos del fondo tras el widget. Sea blanco brillante o negro absoluto, el widget invierte automáticamente el contraste de texto, vidrio y acento para que la hora y la fecha sigan 100% legibles.
+- **Contraste adaptativo de fondo (`تنسيق ألوان الويدجت تلقائياً لتناسب الخلفية`) [NUEVO]:** CoreDesk Engine muestrea continuamente los píxeles exactos del fondo tras el widget. Sea blanco brillante o negro absoluto, el widget invierte automáticamente el contraste de texto, vidrio y acento para que la hora y la fecha sigan 100% legibles.
 
 <!-- TODO: ADD IMAGE 3 (Desktop Clock Widget & Video Wallpaper) -->
 ![Desktop Clock Widget Showcase](assets/clock-widgets.png)
@@ -75,7 +75,7 @@ Supera los contenedores estándar con cuatro paradigmas visuales:
 
 ## 🪟 3. Personalización profunda del shell de Windows 11 y vidrio del Explorador
 
-¿Para qué instalar cinco herramientas si PecoFence unifica toda la estética de Windows 11?
+¿Para qué instalar cinco herramientas si CoreDesk Engine unifica toda la estética de Windows 11?
 
 ### 🛠️ Estilos de shell en vivo instantáneos (presets Windhawk) [NUEVO]
 Cambia temas al instante — se aplican al seleccionarlos, sin reinicios:
@@ -90,7 +90,7 @@ Cambia temas al instante — se aplican al seleccionarlos, sin reinicios:
 ### 🔍 Estudio de vidrio del Explorador y transparencia unificada de la app [NUEVO]
 - **Editor dedicado de vidrio del Explorador (`تأثير خلفية مستكشف الملفات`):** Abre el estudio de **Configuración avanzada (`الإعدادات المتقدمة`)** con **vista previa interactiva del Explorador (`معاينة مباشرة`)** y fondos seleccionables.
 - Personaliza **Blur, Acrylic, Mica, Mica Alt y Clear Blur**, alterna la transparencia de barra de direcciones/scrollbar/barra WinUI y afina tintes `#AARRGGBB` propios en claro y oscuro.
-- **Reflejo DComp real:** Las propias ventanas de PecoFence (incluida la barra de título sin marco y el área cliente) reflejan el material de vidrio del Explorador en tiempo real con un desplazamiento inteligente de opacidad `-70` — vidrio de hardware genuino sin inundación de tinte opaco.
+- **Reflejo DComp real:** Las propias ventanas de CoreDesk Engine (incluida la barra de título sin marco y el área cliente) reflejan el material de vidrio del Explorador en tiempo real con un desplazamiento inteligente de opacidad `-70` — vidrio de hardware genuino sin inundación de tinte opaco.
 - **Actualizar apariencia con un clic (`تحديث المظهر`) [NUEVO]:** Reinicia `explorer.exe` al instante y reconecta limpiamente todas las cercas y tu fondo de video activo.
 
 <!-- TODO: ADD IMAGE 5 (File Explorer Glass Studio & Live Preview) -->
@@ -134,22 +134,22 @@ El motor de **reglas de ordenación (`قواعد الفرز`)** fue reconstruido
 
 ---
 
-## 📦 6. Paquetes de tema `.peco` completos y ajuste inteligente de fondo
+## 📦 6. Paquetes de tema `.cde` completos y ajuste inteligente de fondo
 
 Olvida los respaldos `.json` — la pestaña **Diseño y respaldos (`التخطيط والنسخ الاحتياطية`)** ahora es una **galería visual de temas (`معرض الثيمات`)**:
-- **Archivos `.peco` todo en uno [NUEVO]:** Guardar un tema captura **todo** en un paquete `.peco` portable — coordenadas exactas, estilos por cerca, tamaños de icono, reglas, ajustes de vidrio Y tu fondo estático o de video, ¡con miniatura de vista previa automática!
-- **Aplicar, exportar e importar con un clic:** Cambia entre escritorios completos en segundos o exporta `.peco` para compartirlos.
+- **Archivos `.cde` todo en uno [NUEVO]:** Guardar un tema captura **todo** en un paquete `.cde` portable — coordenadas exactas, estilos por cerca, tamaños de icono, reglas, ajustes de vidrio Y tu fondo estático o de video, ¡con miniatura de vista previa automática!
+- **Aplicar, exportar e importar con un clic:** Cambia entre escritorios completos en segundos o exporta `.cde` para compartirlos.
 - **Ajuste inteligente de proporción (`ضبط الصورة لتظهر بالكامل مهما كانت أبعاد الشاشة`) [NUEVO]:** ¿El fondo no coincide con tu monitor? Actívalo para mostrar la imagen completa centrada con un fondo difuminado en los bordes — o desactívalo para el relleno recortado habitual.
-- **Autoguardado diario (`حفظ تحديث الثيم تلقائياً كل يوم`) [NUEVO]:** Actualiza tu `.peco` activo una vez al día en el mismo archivo, sin crear duplicados.
+- **Autoguardado diario (`حفظ تحديث الثيم تلقائياً كل يوم`) [NUEVO]:** Actualiza tu `.cde` activo una vez al día en el mismo archivo, sin crear duplicados.
 
-<!-- TODO: ADD IMAGE 8 (Theme Gallery & .peco Packages) -->
+<!-- TODO: ADD IMAGE 8 (Theme Gallery & .cde Packages) -->
 ![Theme Gallery Showcase](assets/themes-gallery.png)
-*> **[IMAGE PLACEHOLDER 8]:** Agrega una captura de la galería de temas con tarjetas visuales, botones Aplicar/Exportar .peco/Eliminar y el interruptor de ajuste inteligente.*
+*> **[IMAGE PLACEHOLDER 8]:** Agrega una captura de la galería de temas con tarjetas visuales, botones Aplicar/Exportar .cde/Eliminar y el interruptor de ajuste inteligente.*
 
 ---
 
 ## 🚀 Primeros pasos
 
 1. Descarga el `setup.exe` o `portable.zip` más reciente desde la página **Releases**.
-2. Abre **PecoFence** desde la bandeja del sistema y entra a **Configuración (`إعدادات PecoFence`)**.
-3. Elige un **estilo de tema** (*Fluent, Liquid Glass, Bookshelf o Invisible Canvas*), activa un **widget de reloj** o importa un tema `.peco` desde la **galería de temas** — ¡y mira cómo tu escritorio se transforma al instante!
+2. Abre **CoreDesk Engine** desde la bandeja del sistema y entra a **Configuración (`إعدادات CoreDesk Engine`)**.
+3. Elige un **estilo de tema** (*Fluent, Liquid Glass, Bookshelf o Invisible Canvas*), activa un **widget de reloj** o importa un tema `.cde` desde la **galería de temas** — ¡y mira cómo tu escritorio se transforma al instante!

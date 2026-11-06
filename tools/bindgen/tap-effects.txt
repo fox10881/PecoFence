@@ -2,7 +2,7 @@
 --flat --dead-code
 
 // Extra interfaces needed to rebuild TranslucentTB's XamlBlurBrush inside
-// pecofence_tap.dll: the D2D-backed effect descriptions (GaussianBlur +
+// coredesk_tap.dll: the D2D-backed effect descriptions (GaussianBlur +
 // Flood + Composite), the composition-brush plumbing, and the property
 // bag factory. Kept separate from bindings.rs, which predates this list.
 --filter

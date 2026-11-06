@@ -164,9 +164,8 @@ impl App {
                     // Release builds never synthesize input; the message follows the same
                     // Escape/right-button handler as a user's cancellation.
                     #[cfg(debug_assertions)]
-                    if pecofence_core::brand::var_os("PECOFENCE_UI_TEST_WINDOWS").is_some()
-                        && let Ok(cancel) =
-                            pecofence_core::brand::var("PECOFENCE_TEST_CANCEL_DETACH")
+                    if coredesk_core::brand::var_os("COREDESK_UI_TEST_WINDOWS").is_some()
+                        && let Ok(cancel) = coredesk_core::brand::var("COREDESK_TEST_CANCEL_DETACH")
                         && matches!(cancel.as_str(), "escape" | "right")
                     {
                         match cancel.as_str() {
@@ -189,7 +188,7 @@ impl App {
         self.schedule_save();
     }
 
-    pub(super) fn cancel_tab_detach(&mut self, change: pecofence_core::TabDetach) {
+    pub(super) fn cancel_tab_detach(&mut self, change: coredesk_core::TabDetach) {
         for window in self.fences.values() {
             window.set_merge_hint(false, (0, 0));
         }

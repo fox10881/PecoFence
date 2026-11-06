@@ -270,9 +270,9 @@ pub fn resolve_icon_host(generation: Generation) -> Option<IconHost> {
 const WM_SPAWN_WORKER: u32 = 0x052C;
 const SMTO_NORMAL: u32 = 0x0000;
 
-/// The `PecoFence.DesktopEffects` overlay's window class — kept here so the
+/// The `CoreDeskEngine.DesktopEffects` overlay's window class — kept here so the
 /// layer plumbing can find it as a sibling without importing the app crate.
-pub const EFFECTS_OVERLAY_CLASS: &str = "PecoFence.DesktopEffects";
+pub const EFFECTS_OVERLAY_CLASS: &str = "CoreDeskEngine.DesktopEffects";
 
 /// The window hosting the desktop background layer, physically below
 /// `SHELLDLL_DefView`: children `SetParent`-ed into it render behind the
@@ -727,7 +727,8 @@ mod anchor_tests {
 
     #[test]
     fn desktop_placement_skips_hidden_popups() -> Result<()> {
-        let class = WindowClass::register("PecoFence.Test.VisibleAnchor", ClassOptions::default())?;
+        let class =
+            WindowClass::register("CoreDeskEngine.Test.VisibleAnchor", ClassOptions::default())?;
         let make = || {
             WindowBuilder::new(&class)
                 .style(style::POPUP)
@@ -769,8 +770,10 @@ mod anchor_tests {
 
     #[test]
     fn desktop_placement_skips_empty_minimized_and_cloaked_windows() -> Result<()> {
-        let class =
-            WindowClass::register("PecoFence.Test.NonvisualAnchor", ClassOptions::default())?;
+        let class = WindowClass::register(
+            "CoreDeskEngine.Test.NonvisualAnchor",
+            ClassOptions::default(),
+        )?;
         let make = || {
             WindowBuilder::new(&class)
                 .style(style::POPUP)

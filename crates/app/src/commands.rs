@@ -1,9 +1,9 @@
 //! UI-thread command queue: window handlers push commands and poke the control window; the
 //! `App` drains them outside any handler, so no `RefCell` is ever borrowed re-entrantly.
 
-use pecofence_core::{FenceId, ItemId};
-use pecofence_platform::window::Window;
-use pecofence_platform::{HWND, RECT, msg};
+use coredesk_core::{FenceId, ItemId};
+use coredesk_platform::window::Window;
+use coredesk_platform::{HWND, RECT, msg};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -142,7 +142,7 @@ pub enum Command {
     },
     /// Esc / right button: restore the group's original ownership, order and geometry.
     CancelDetach {
-        change: Box<pecofence_core::TabDetach>,
+        change: Box<coredesk_core::TabDetach>,
     },
     /// Tab header dragged along the strip (or menu 左移 / 右移): place it at index `to`.
     ReorderTab {
@@ -315,7 +315,7 @@ pub enum Command {
     /// Details-view header click: sort by that column (again = reverse).
     SortColumn {
         fence: FenceId,
-        sort: pecofence_core::SortMode,
+        sort: coredesk_core::SortMode,
     },
     /// JSON message from the settings page.
     SettingsMessage(String),
@@ -345,7 +345,7 @@ impl CommandQueue {
         self.queue.borrow_mut().push_back(cmd);
         if let Some(h) = *self.control.borrow() {
             // SAFETY-free: PostMessage through the platform wrapper.
-            pecofence_platform::window::post_message(h, WM_APP_COMMAND, 0, 0);
+            coredesk_platform::window::post_message(h, WM_APP_COMMAND, 0, 0);
         }
     }
 

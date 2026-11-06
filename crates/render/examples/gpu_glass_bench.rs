@@ -1,5 +1,5 @@
 //! Exercises the real D2D effect graph, cache invalidation and completed-frame timings.
-use pecofence_render::{
+use coredesk_render::{
     Image, MonitorBackdrop,
     gpu_glass::{GpuGlass, WallpaperCache},
 };
@@ -19,7 +19,7 @@ fn source(image: Image) -> Rc<Vec<MonitorBackdrop>> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ole = pecofence_platform::com::OleGuard::init()?;
+    let _ole = coredesk_platform::com::OleGuard::init()?;
     let gpu = GpuDevice::new_or_warp()?;
     let mut cache = WallpaperCache::default();
     let mut glass = GpuGlass::default();

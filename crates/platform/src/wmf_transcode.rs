@@ -8,7 +8,7 @@
 //! reuse key, so re-picking the same file or re-applying an exported theme's
 //! already-optimized `background.mp4` never pays a second encode.
 //!
-//! `.peco` bundles ship the optimized file: a 250 MB 4K loop arrives as a
+//! `.cde` bundles ship the optimized file: a 250 MB 4K loop arrives as a
 //! ~10 MB device-matched MP4 the player also fits in the RAM byte-stream cache.
 
 use crate::wide::to_wide;
@@ -209,7 +209,7 @@ pub fn transcode_for_display(
         .unwrap_or(u64::MAX);
     // Fully compliant already: fits the display, is H.264, and is within 1.5x
     // of the bitrate a transcode would produce — re-encoding only burns a
-    // generation of quality (this is also what makes bundled .peco videos
+    // generation of quality (this is also what makes bundled .cde videos
     // apply instantly on a same-resolution machine).
     if out.0 == probe.width
         && out.1 == probe.height
@@ -469,7 +469,7 @@ mod tests {
         assert!(src.is_file());
         let dir = std::env::var("TEST_OUT")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| std::env::temp_dir().join("pecofence-transcode-test"));
+            .unwrap_or_else(|_| std::env::temp_dir().join("coredesk-transcode-test"));
         let out = transcode_for_display(src, &dir, 1920, 1080)
             .unwrap()
             .expect("expected a transcode, got compliance skip");
@@ -494,7 +494,7 @@ mod tests {
     #[ignore]
     fn skips_compliant_source() {
         let src = std::env::var("TEST_VIDEO").expect("TEST_VIDEO not set");
-        let dir = std::env::temp_dir().join("pecofence-transcode-test2");
+        let dir = std::env::temp_dir().join("coredesk-transcode-test2");
         let out = transcode_for_display(Path::new(&src), &dir, 1920, 1080).unwrap();
         assert!(out.is_none(), "expected compliance skip, got {out:?}");
     }

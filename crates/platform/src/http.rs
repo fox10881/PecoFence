@@ -209,16 +209,16 @@ mod tests {
         ]);
         let url = format!("http://127.0.0.1:{port}/latest");
         assert_eq!(
-            get(&url, "PecoFence-test", "Accept: text/plain", 100).unwrap(),
+            get(&url, "CoreDesk Engine-test", "Accept: text/plain", 100).unwrap(),
             b"hello"
         );
         assert!(
-            get(&url, "PecoFence-test", "", 100)
+            get(&url, "CoreDesk Engine-test", "", 100)
                 .unwrap_err()
                 .contains("HTTP 404")
         );
         assert!(
-            get(&url, "PecoFence-test", "", 4)
+            get(&url, "CoreDesk Engine-test", "", 4)
                 .unwrap_err()
                 .contains("larger")
         );

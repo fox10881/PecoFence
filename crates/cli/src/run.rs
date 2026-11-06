@@ -3,20 +3,20 @@
 
 use std::io::Read;
 
-use pecofence_core::rules::{Cond, RuleSet, StrOp, TypeCategory, glob_match};
-use pecofence_ipc::{ErrorCode, IpcError, Method, Rect, Response};
+use coredesk_core::rules::{Cond, RuleSet, StrOp, TypeCategory, glob_match};
+use coredesk_ipc::{ErrorCode, IpcError, Method, Rect, Response};
 use serde_json::{Value, json};
 
 use crate::cli::split_set_args;
 use crate::cli::{
     BackupCmd, Command, ConfigCmd, FenceCmd, ItemCmd, MonitorCmd, PeekCmd, RuleAddArgs, RuleCmd,
-    SettingsCmd, SnapshotCmd,
+    SettingsCmd, SnapshotCmd, ThemeCmd,
 };
 use crate::output::{Reply, Style};
 use crate::{client, describe, local, output};
 
 const SET_USAGE: &str =
-    "Usage: pecofence-cli fence set <FENCE> <PROP> <VALUE>  |  fence set --all <PROP> <VALUE>";
+    "Usage: coredesk-cli fence set <FENCE> <PROP> <VALUE>  |  fence set --all <PROP> <VALUE>";
 
 /// The transport used by batches: one method in, one server envelope (or a transport error)
 /// out. A closure so tests can drive `for_each_fence` without a pipe.
@@ -41,16 +41,16 @@ impl Ctx {
 
 fn reply_from(response: Response) -> Result<Reply, IpcError> {
     if !response.ok {
-        let mut error = response
-            .error
-            .unwrap_or_else(|| IpcError::internal("PecoFence reported a failure without details"));
+        let mut error = response.error.unwrap_or_else(|| {
+            IpcError::internal("CoreDesk Engine reported a failure without details")
+        });
         // A method this CLI knows but the app does not: same protocol version, older app.
         if error.code == ErrorCode::Usage
             && error.message.contains("unknown variant")
             && error.hint.as_deref().is_none_or(|h| !h.contains("older"))
         {
             error = error.hint(
-                "The running PecoFence is older than this CLI and lacks this command; update the app",
+                "The running CoreDesk Engine is older than this CLI and lacks this command; update the app",
             );
         }
         return Err(error);
@@ -80,10 +80,7 @@ pub fn run(ctx: &Ctx, command: Command) -> Result<Reply, IpcError> {
         Command::Describe { schema } => describe::run(schema.as_deref()).map(Reply::new),
         Command::Skill => {
             // Verbatim text, not JSON: the file is meant to be redirected into a skills folder.
-            crate::output::print_text(
-                include_str!("../../../skills/pecofence-cli/SKILL.md"),
-                false,
-            );
+            crate::output::print_text(include_str!("../../../skills/coredesk-cli/SKILL.md"), false);
             std::process::exit(0);
         }
         Command::Fence { cmd } => run_fence(ctx, cmd),
@@ -128,6 +125,9 @@ pub fn run(ctx: &Ctx, command: Command) -> Result<Reply, IpcError> {
         Command::Backup {
             cmd: BackupCmd::Restore { file },
         } => ctx.call(Method::BackupsRestore { path: file }),
+        Command::Theme {
+            cmd: ThemeCmd::Import { file },
+        } => ctx.call(Method::ThemeImport { path: file }),
         Command::Peek {
             cmd: PeekCmd::Start,
         } => ctx.call(Method::PeekStart),
@@ -184,8 +184,10 @@ fn watch(
     match (finished, first) {
         (true, Some(event)) => Ok(event),
         (true, None) => Ok(Reply::new(Value::Null)),
-        (false, _) => Err(IpcError::internal("PecoFence closed the event stream")
-            .hint("The app exited or was restarted; run `pecofence-cli watch` again")),
+        (false, _) => Err(
+            IpcError::internal("CoreDesk Engine closed the event stream")
+                .hint("The app exited or was restarted; run `coredesk-cli watch` again"),
+        ),
     }
 }
 
@@ -556,7 +558,7 @@ fn run_item(ctx: &Ctx, cmd: ItemCmd) -> Result<Reply, IpcError> {
                             format!("no item matches {pattern:?}"),
                         )
                         .hint(
-                            "Run `pecofence-cli item list` to see names and paths; items inside a folder portal are only matched with --from <that portal>",
+                            "Run `coredesk-cli item list` to see names and paths; items inside a folder portal are only matched with --from <that portal>",
                         ));
                     }
                     ids
@@ -688,7 +690,7 @@ fn run_rule(ctx: &Ctx, cmd: RuleCmd) -> Result<Reply, IpcError> {
                     format!("{file} is not a RuleSet: {e}"),
                 )
                 .hint(
-                    "Expected the shape of `pecofence-cli rule list` / `describe --schema RuleSet`",
+                    "Expected the shape of `coredesk-cli rule list` / `describe --schema RuleSet`",
                 )
             })?;
             ctx.call(Method::RulesSet { rules })
@@ -821,7 +823,7 @@ pub fn build_conds(args: &RuleAddArgs) -> Result<Vec<Cond>, IpcError> {
                 ErrorCode::InvalidValue,
                 format!("--json is not an array of Cond objects: {e}"),
             )
-            .hint("See `pecofence-cli describe --schema Cond`")
+            .hint("See `coredesk-cli describe --schema Cond`")
         })?;
         conds.extend(extra);
     }

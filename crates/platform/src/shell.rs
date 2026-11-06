@@ -1815,8 +1815,8 @@ pub fn create_shortcut(target: &Path, dir: &Path) -> Result<PathBuf> {
             .unwrap_or(name)
     };
     // Named in the Windows display language, as Explorer names the shortcuts it makes: the
-    // file stays on disk for every other program, whatever language PecoFence shows.
-    use pecofence_core::i18n;
+    // file stays on disk for every other program, whatever language CoreDesk Engine shows.
+    use coredesk_core::i18n;
     let windows_language = i18n::Language::from_locale(crate::locale::ui_language());
     let path = unique_path(
         dir,
@@ -1931,7 +1931,7 @@ mod url_tests {
     /// PowerShell 5.1 writes UTF-16 with a BOM; an ANSI file may hold bytes that are not UTF-8.
     #[test]
     fn url_target_reads_utf16_and_ansi_files() {
-        let dir = std::env::temp_dir().join(format!("pecofence-url-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coredesk-url-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let utf16 = dir.join("utf16.url");
         let mut bytes = vec![0xFF, 0xFE];
@@ -1959,7 +1959,7 @@ mod url_tests {
 
     #[test]
     fn url_location_reads_file_urls_and_working_directory() {
-        let dir = std::env::temp_dir().join(format!("pecofence-url-dir-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coredesk-url-dir-{}", std::process::id()));
         let game_dir = dir.join("Game Dir");
         std::fs::create_dir_all(&game_dir).unwrap();
         let target = game_dir.join("Game.exe");
@@ -2000,7 +2000,7 @@ mod shortcut_tests {
     #[test]
     fn resolved_shortcut_target_reads_the_real_link_target() {
         let _com = OleGuard::init().unwrap();
-        let dir = std::env::temp_dir().join(format!("pecofence-lnk-target-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coredesk-lnk-target-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let target = dir.join("Game.exe");
         std::fs::write(&target, "x").unwrap();
@@ -2133,7 +2133,7 @@ mod move_tests {
     #[test]
     fn move_to_folder_moves_a_file() {
         let _com = crate::com::OleGuard::init().expect("COM");
-        let base = std::env::temp_dir().join(format!("pecofence-move-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("coredesk-move-{}", std::process::id()));
         let src_dir = base.join("src");
         let dst_dir = base.join("dst");
         std::fs::create_dir_all(&src_dir).unwrap();
@@ -2151,7 +2151,7 @@ mod move_tests {
     /// name), in the Windows display language, and never overwrites an existing shortcut.
     #[test]
     fn create_shortcut_writes_explorer_named_lnk() {
-        use pecofence_core::i18n;
+        use coredesk_core::i18n;
         let _com = crate::com::OleGuard::init().expect("COM");
         let language = i18n::Language::from_locale(crate::locale::ui_language());
         let named = |stem: &str| {
@@ -2160,7 +2160,7 @@ mod move_tests {
                 &[stem.to_string()],
             )
         };
-        let base = std::env::temp_dir().join(format!("pecofence-lnk-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("coredesk-lnk-{}", std::process::id()));
         std::fs::create_dir_all(&base).unwrap();
         let file = base.join("probe.txt");
         std::fs::write(&file, b"x").unwrap();
@@ -2192,7 +2192,7 @@ mod move_tests {
     #[test]
     fn rename_with_prompt_takes_the_full_file_name() {
         let _com = crate::com::OleGuard::init().expect("COM");
-        let base = std::env::temp_dir().join(format!("pecofence-ren-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("coredesk-ren-{}", std::process::id()));
         std::fs::create_dir_all(&base).unwrap();
         let file = base.join("probe.txt");
         std::fs::write(&file, b"x").unwrap();
@@ -2210,7 +2210,7 @@ mod move_tests {
 
     #[test]
     fn rename_no_replace_keeps_an_existing_target() {
-        let base = std::env::temp_dir().join(format!("pecofence-mv-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("coredesk-mv-{}", std::process::id()));
         std::fs::create_dir_all(&base).unwrap();
         let (a, b) = (base.join("a.txt"), base.join("b.txt"));
         std::fs::write(&a, b"a").unwrap();
@@ -2309,7 +2309,7 @@ mod lnk_probe {
     use super::*;
     use std::path::Path;
 
-    /// `cargo test -p pecofence-platform lnk_probe -- --ignored --nocapture` —
+    /// `cargo test -p coredesk-platform lnk_probe -- --ignored --nocapture` —
     /// launches the two reported .lnk files and prints the ShellExecuteEx
     /// result (`hInstApp` <= 32 = SE_ERR_* on failure).
     #[test]
@@ -2326,7 +2326,7 @@ mod lnk_probe {
         }
     }
 
-    /// `cargo test -p pecofence-platform lnk_pidl_probe -- --ignored --nocapture` —
+    /// `cargo test -p coredesk-platform lnk_pidl_probe -- --ignored --nocapture` —
     /// runs the PIDL route on each link, prints the handle ShellExecuteEx hands back
     /// (NULL for fully-async activations like WSA), then waits on it and prints the
     /// child's exit status — a spawned-then-forwarded Electron shows exit 0 fast.
@@ -2372,7 +2372,7 @@ mod lnk_probe {
         }
     }
 
-    /// `cargo test -p pecofence-platform lnk_info_probe -- --ignored --nocapture` —
+    /// `cargo test -p coredesk-platform lnk_info_probe -- --ignored --nocapture` —
     /// dumps what each reported .lnk resolves to (target/args/working dir).
     #[test]
     #[ignore = "reads real links on the local desktop"]
@@ -2521,7 +2521,7 @@ mod lnk_flags {
         }
     }
 
-    /// `cargo test -p pecofence-platform hprocess_probe -- --ignored --nocapture` —
+    /// `cargo test -p coredesk-platform hprocess_probe -- --ignored --nocapture` —
     /// whether SEE_MASK_NOCLOSEPROCESS hands back a watchable handle for each link,
     /// and whether an explicit lpDirectory changes the child's lifetime.
     #[test]

@@ -993,7 +993,8 @@ mod frame_tests {
 
     #[test]
     fn custom_frame_has_no_native_inset_before_its_first_paint() -> Result<()> {
-        let class = WindowClass::register("PecoFence.Test.CustomFrame", ClassOptions::default())?;
+        let class =
+            WindowClass::register("CoreDeskEngine.Test.CustomFrame", ClassOptions::default())?;
         let window = WindowBuilder::new(&class)
             .style(style::POPUP | style::THICKFRAME)
             .ex_style(style::EX_NOREDIRECTIONBITMAP | style::EX_TOOLWINDOW)

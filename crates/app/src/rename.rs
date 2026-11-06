@@ -4,15 +4,15 @@
 //! Enter commits, Esc cancels, losing focus commits.
 
 use crate::commands::{Command, CommandQueue};
-use pecofence_core::{FenceId, ItemId};
-use pecofence_platform::window::{
+use coredesk_core::{FenceId, ItemId};
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, RECT, edit, monitors, msg};
-use pecofence_render::ThemeMode;
+use coredesk_platform::{HWND, RECT, edit, monitors, msg};
+use coredesk_render::ThemeMode;
 use std::cell::RefCell;
 
-const RENAME_CLASS: &str = "PecoFence.Rename";
+const RENAME_CLASS: &str = "CoreDeskEngine.Rename";
 
 thread_local! {
     static ACTIVE: RefCell<Option<RenameSession>> = const { RefCell::new(None) };

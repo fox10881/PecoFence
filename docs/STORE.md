@@ -14,10 +14,10 @@ package after certification, so no code-signing certificate is needed.
 - `scripts/make-msix-assets.py`: renders every Store/tile PNG from `site/assets/mark.svg` in
   the app-icon style (white mark on the indigo `#4768DE` rounded plate, the manifest
   `BackgroundColor`); `--preview .cache/icon-sheet.png` writes a contact sheet.
-  `scripts/make-app-icon.py` renders the same icon into `crates/app/assets/pecofence.ico`,
+  `scripts/make-app-icon.py` renders the same icon into `crates/app/assets/coredesk.ico`,
   which `crates/app/build.rs` embeds into both executables.
 - `scripts/make-msix.ps1`: builds, stages, indexes resources (MakePri) and packs
-  (MakeAppx) into `dist/pecofence-<version>-x64.msix`.
+  (MakeAppx) into `dist/coredesk-<version>-x64.msix`.
 
 ## Build
 
@@ -31,10 +31,10 @@ Requires the Windows SDK (`winget install Microsoft.WindowsSDK.10.0.26100`) and 
 with Pillow. The package version is `<Cargo.toml version>.0`; the Store requires the
 fourth part to be 0.
 
-Local install test: import `dist/pecofence-test-signing.cer` into
+Local install test: import `dist/coredesk-test-signing.cer` into
 `Cert:\LocalMachine\TrustedPeople` (administrator), then
-`Add-AppxPackage dist/pecofence-<version>-x64-testsigned.msix`. Exit the running
-PecoFence first; both builds share the single-instance mutex.
+`Add-AppxPackage dist/coredesk-<version>-x64-testsigned.msix`. Exit the running
+CoreDesk Engine first; both builds share the single-instance mutex.
 
 ## Certification notes
 
@@ -51,9 +51,9 @@ PecoFence first; both builds share the single-instance mutex.
   users manage it under Settings > Apps > Startup; the in-app toggle opens that page and
   shows the state Windows keeps for the task (read again when the settings window is
   activated).
-- Configuration: when `%APPDATA%\PecoFence` does not exist yet, the Store edition writes
+- Configuration: when `%APPDATA%\CoreDeskEngine` does not exist yet, the Store edition writes
   `config.json` into the package's virtualized AppData
-  (`%LOCALAPPDATA%\Packages\DayuanJiang.PecoFence_0bme5nfnaj27p\LocalCache\Roaming\PecoFence\`),
+  (`%LOCALAPPDATA%\Packages\DayuanJiang.CoreDesk_0bme5nfnaj27p\LocalCache\Roaming\CoreDeskEngine\`),
   and uninstalling the package removes it. When the folder already exists (the setup or the
   ZIP edition ran before), the Store edition reads and writes that real folder, as the other
   editions do, and the configuration stays after the package is uninstalled (checked
@@ -65,12 +65,12 @@ PecoFence first; both builds share the single-instance mutex.
 2. Properties: category Productivity, no personal data collected (no privacy policy
    URL), display mode PC, support URL and website.
 3. Age ratings: IARC questionnaire, utility with no user-generated or online content.
-4. Packages: upload `dist/pecofence-<version>-x64.msix`.
+4. Packages: upload `dist/coredesk-<version>-x64.msix`.
 5. Store listings: all ten app languages (en-US, zh-CN, zh-TW, ja, ko, de, fr, es,
    pt-BR, ru). Review the second revision at
    `dist/store-listing-v2/index.html`. Rebuild from its local native captures with
    `uv run --with pillow python scripts/make-store-v2.py`.
-   Its `PecoFence-store-v2.zip` contains five native screenshots, matching localized
+   Its `CoreDesk Engine-store-v2.zip` contains five native screenshots, matching localized
    captions and copy, 1920×1080 Super hero art, and a 300×300 app icon.
    The separate campaign images contain added headlines and are for design review
    or promotion, not the Store screenshot fields. The ZIP's `trailer/` folder holds the

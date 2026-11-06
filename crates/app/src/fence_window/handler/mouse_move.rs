@@ -226,7 +226,7 @@ pub(super) fn on_mousemove(
         drag_selection(&mut v.selected, item);
         let ids = v.selected_ids();
         // A Recycle Bin dragged together with files would empty the CF_HDROP for every target.
-        let paths = pecofence_platform::shell::paths_for_shell(v.selected_paths());
+        let paths = coredesk_platform::shell::paths_for_shell(v.selected_paths());
         let from = v.active;
         let from_portal = v.is_portal;
         v.ole_drag = true;
@@ -248,7 +248,7 @@ pub(super) fn on_mousemove(
                 let (hit, _, on_desktop) = window_under_cursor();
                 on_desktop
                     && dragdrop::modifier_effect(keys, true) == DropEffect::Move
-                    && !pecofence_platform::shell_icons::desktop_icon_drop_target(hit)
+                    && !coredesk_platform::shell_icons::desktop_icon_drop_target(hit)
             })
         });
         let mut drag_returned: Option<Instant> = None;

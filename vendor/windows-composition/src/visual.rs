@@ -73,7 +73,7 @@ impl Visual {
 
     /// Surfaces the underlying visual as an [`IInspectable`](windows_core::IInspectable).
     ///
-    /// PecoFence: available on both stacks so callers can `cast()` to their own generated
+    /// CoreDesk: available on both stacks so callers can `cast()` to their own generated
     /// `Windows.UI.Composition` bindings (clips, batches, expression animations…).
     pub fn as_raw(&self) -> windows_core::IInspectable {
         self.0.clone().into()

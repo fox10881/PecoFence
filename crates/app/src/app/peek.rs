@@ -2,7 +2,7 @@
 //! end, and the search across all fences (`peek_search.rs` is its box).
 
 use super::*;
-use pecofence_core::hotkey::{FALLBACKS, PRESETS, Problem};
+use coredesk_core::hotkey::{FALLBACKS, PRESETS, Problem};
 
 /// A shortcut as the tray menu and messages show it: `Ctrl+Alt+空格`.
 pub(super) fn peek_hotkey_label(h: Hotkey) -> String {
@@ -15,18 +15,18 @@ fn hotkey_keys(h: Hotkey) -> Vec<String> {
         .into_iter()
         .map(|part| {
             match part.as_str() {
-                "Ctrl" => pecofence_core::i18n::text("键名\x04Ctrl"),
-                "Shift" => pecofence_core::i18n::text("键名\x04Shift"),
-                "Space" => pecofence_core::i18n::text("空格"),
-                "Enter" => pecofence_core::i18n::text("键名\x04Enter"),
-                "Esc" => pecofence_core::i18n::text("键名\x04Esc"),
-                "Backspace" => pecofence_core::i18n::text("键名\x04Backspace"),
-                "Insert" => pecofence_core::i18n::text("键名\x04Insert"),
-                "Delete" => pecofence_core::i18n::text("键名\x04Delete"),
-                "Home" => pecofence_core::i18n::text("键名\x04Home"),
-                "End" => pecofence_core::i18n::text("键名\x04End"),
-                "PageUp" => pecofence_core::i18n::text("键名\x04PageUp"),
-                "PageDown" => pecofence_core::i18n::text("键名\x04PageDown"),
+                "Ctrl" => coredesk_core::i18n::text("键名\x04Ctrl"),
+                "Shift" => coredesk_core::i18n::text("键名\x04Shift"),
+                "Space" => coredesk_core::i18n::text("空格"),
+                "Enter" => coredesk_core::i18n::text("键名\x04Enter"),
+                "Esc" => coredesk_core::i18n::text("键名\x04Esc"),
+                "Backspace" => coredesk_core::i18n::text("键名\x04Backspace"),
+                "Insert" => coredesk_core::i18n::text("键名\x04Insert"),
+                "Delete" => coredesk_core::i18n::text("键名\x04Delete"),
+                "Home" => coredesk_core::i18n::text("键名\x04Home"),
+                "End" => coredesk_core::i18n::text("键名\x04End"),
+                "PageUp" => coredesk_core::i18n::text("键名\x04PageUp"),
+                "PageDown" => coredesk_core::i18n::text("键名\x04PageDown"),
                 "Left" => "←",
                 "Up" => "↑",
                 "Right" => "→",
@@ -43,16 +43,16 @@ fn hotkey_keys(h: Hotkey) -> Vec<String> {
 fn hotkey_problem_text(problem: Problem, h: Hotkey) -> String {
     match problem {
         Problem::Malformed | Problem::UnsupportedKey => {
-            pecofence_core::i18n::text("这个键不能用在快捷键里，请换一个").to_string()
+            coredesk_core::i18n::text("这个键不能用在快捷键里，请换一个").to_string()
         }
         Problem::NoModifier => {
-            pecofence_core::i18n::text("快捷键需要包含 Ctrl、Alt 或 Win").to_string()
+            coredesk_core::i18n::text("快捷键需要包含 Ctrl、Alt 或 Win").to_string()
         }
-        Problem::WinAlone => pecofence_core::i18n::text(
+        Problem::WinAlone => coredesk_core::i18n::text(
             "Windows 保留了 Win 加单个键的组合，请再加上 Ctrl、Alt 或 Shift",
         )
         .to_string(),
-        Problem::Reserved => pecofence_core::i18n::format(
+        Problem::Reserved => coredesk_core::i18n::format(
             "{0} 是 Windows 常用的快捷键，请换一个",
             &[peek_hotkey_label(h)],
         ),
@@ -110,8 +110,8 @@ impl App {
                             && let Some(t) = &self.tray
                         {
                             t.show_info(
-                                "PecoFence",
-                                &pecofence_core::i18n::format(
+                                "CoreDesk Engine",
+                                &coredesk_core::i18n::format(
                                     "快捷键 {0} 已被系统或其他程序占用，“速览栅栏”改用 {1}。",
                                     &[peek_hotkey_label(h), peek_hotkey_label(c)],
                                 ),
@@ -126,8 +126,8 @@ impl App {
                         && let Some(t) = &self.tray
                     {
                         t.show_info(
-                            "PecoFence",
-                            pecofence_core::i18n::text(
+                            "CoreDesk Engine",
+                            coredesk_core::i18n::text(
                                 "“速览栅栏”的快捷键都被占用了，请从托盘菜单使用。",
                             ),
                             true,
@@ -178,7 +178,7 @@ impl App {
             // Another program took it meanwhile: the sync goes through the fallbacks again.
             self.peek_hotkey = None;
         }
-        // Settings applied during the recording (pecofence-cli, say) take effect now.
+        // Settings applied during the recording (coredesk-cli, say) take effect now.
         self.sync_peek_hotkey();
         if self.peek_hotkey != before {
             self.push_settings_state();
@@ -195,7 +195,7 @@ impl App {
             Err(problem) => Some(hotkey_problem_text(problem, h)),
             Ok(_) if !self.peek_hotkey_free(h) => {
                 tracing::info!(hotkey = %h, "peek hotkey refused: taken");
-                Some(pecofence_core::i18n::format(
+                Some(coredesk_core::i18n::format(
                     "{0} 已被 Windows 或其他程序占用，请换一个",
                     &[peek_hotkey_label(h)],
                 ))
@@ -420,7 +420,7 @@ impl App {
         let status = if !searching {
             String::new()
         } else if self.peek_hits.is_empty() {
-            pecofence_core::i18n::text("没有匹配的文件").to_string()
+            coredesk_core::i18n::text("没有匹配的文件").to_string()
         } else {
             format!("{} / {}", self.peek_hit + 1, self.peek_hits.len())
         };

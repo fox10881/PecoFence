@@ -1,6 +1,6 @@
 //! Capture actual WPE frames without touching the desktop or application configuration.
-//! cargo run -p pecofence-platform --example live_wallpaper_probe -- <output-directory>
-use pecofence_platform::live_wallpaper::{
+//! cargo run -p coredesk-platform --example live_wallpaper_probe -- <output-directory>
+use coredesk_platform::live_wallpaper::{
     CapturedWallpaper, LiveWallpaper, capture_gpu_once, capture_once,
 };
 use std::{
@@ -33,8 +33,8 @@ fn save_bmp(path: &Path, frame: &CapturedWallpaper) -> std::io::Result<()> {
 }
 
 fn main() {
-    pecofence_platform::window::set_process_dpi_awareness_v2();
-    let _com = pecofence_platform::com::MtaGuard::init().unwrap();
+    coredesk_platform::window::set_process_dpi_awareness_v2();
+    let _com = coredesk_platform::com::MtaGuard::init().unwrap();
     let gpu = std::env::args().any(|s| s == "--gpu");
     let capture = || {
         if gpu {

@@ -1,12 +1,12 @@
 //! Icon/thumbnail cache. Extraction runs on MTA worker threads; the UI thread gets a
 //! `WM_APP_ICON_READY` poke and drains finished results.
 
-use pecofence_core::IconKey;
-use pecofence_platform::HWND;
-use pecofence_platform::com::OleGuard;
-use pecofence_platform::shell;
-use pecofence_platform::window;
-use pecofence_render::Image;
+use coredesk_core::IconKey;
+use coredesk_platform::HWND;
+use coredesk_platform::com::OleGuard;
+use coredesk_platform::shell;
+use coredesk_platform::window;
+use coredesk_render::Image;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -14,7 +14,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub const WM_APP_ICON_READY: u32 = pecofence_platform::msg::WM_APP + 4;
+pub const WM_APP_ICON_READY: u32 = coredesk_platform::msg::WM_APP + 4;
 const WORKERS: usize = 2;
 
 /// Global icon post-processing (Fences Icon Tint / Chameleon, Windows' shortcut arrows); part
@@ -199,7 +199,7 @@ impl IconCache {
             // Default stack: the shell's and third-party icon and thumbnail handlers run on
             // this thread. (Only touched pages are committed.)
             let _ = std::thread::Builder::new()
-                .name(format!("pecofence-icons-{i}"))
+                .name(format!("coredesk-icons-{i}"))
                 .spawn(move || {
                     // Single-threaded apartment on purpose: the shell's icon handlers for
                     // Internet shortcuts (.url → IconFile) hand back the generic document icon
@@ -622,7 +622,7 @@ pub fn arrow_px(size_px: u32, dpi: u32) -> u32 {
 pub fn icon_key_for(path: &Path, is_folder: bool, mtime: i64) -> (IconKey, bool) {
     // Namespace items have no extension; each one has its own icon, and the Recycle Bin's
     // changes with its contents (encoded in `mtime`).
-    if pecofence_platform::shell::is_namespace_path(path) {
+    if coredesk_platform::shell::is_namespace_path(path) {
         return (
             IconKey::ByContent {
                 path: path.to_string_lossy().to_lowercase(),

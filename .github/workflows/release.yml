@@ -55,10 +55,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          $base = "dist/pecofence-$env:GITHUB_REF_NAME-x64"
+          $base = "dist/coredesk-$env:GITHUB_REF_NAME-x64"
           $assets = @("$base-portable.zip", "$base-portable.zip.sha256", "$base-setup.exe", "$base-setup.exe.sha256")
           foreach ($asset in $assets) {
             if (-not (Test-Path -LiteralPath $asset -PathType Leaf)) { throw "Missing release asset: $asset" }
           }
-          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --generate-notes --title "PecoFence $env:GITHUB_REF_NAME"
+          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --generate-notes --title "CoreDesk $env:GITHUB_REF_NAME"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -1,4 +1,4 @@
-// PecoFence manual: a miniature of the settings window (ui/settings.html, light theme) shared
+// CoreDesk manual: a miniature of the settings window (ui/settings.html, light theme) shared
 // by the settings lessons (rules, look, backup). Labels are the page's zh-CN source strings.
 // Layout is explicit (fixed heights, absolute positions) so a demo's render(t) stays a pure
 // function of t and pointer targets can be computed up front. Exported as window.SM.
@@ -72,7 +72,7 @@
         const mark = el('img', null, cap);
         mark.src = 'assets/mark.svg';
         mark.alt = '';
-        el('span', 'set-cap-t', cap, T('PecoFence 设置'));
+        el('span', 'set-cap-t', cap, T('CoreDesk 设置'));
         ['min', 'max', 'close'].forEach((k, i) => {
             const b = el('div', 'set-capb', cap);
             b.style.left = (w.w - 38 * (3 - i)) + 'px';
@@ -83,7 +83,7 @@
         const bm = el('img', 'set-brand-m', nav);
         bm.src = 'assets/mark.svg';
         bm.alt = '';
-        el('span', 'set-brand-t', nav, 'PecoFence');
+        el('span', 'set-brand-t', nav, 'CoreDesk');
         w.nav = {};
         const labels = NAV.map(([key, label, glyph], i) => {
             const it = el('div', 'set-nav-i', nav);

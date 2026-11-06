@@ -1,12 +1,12 @@
-# PecoFence 功能总表
+# CoreDesk Engine 功能总表
 
 以当前源代码为准。「怎么用」一列写的是默认操作方式；凡带「设置」的在托盘菜单 → 设置… 里，凡带「栅栏菜单」的是在栅栏标题栏或空白处右键，「栅栏选项」是栅栏菜单 → 栅栏选项…（即 设置 → 栅栏 页，逐个栅栏调整外观 / 布局 / 行为；正在调整的栅栏在桌面上带白色选中描边，离开这一页或关闭设置即消失），「项目菜单」是在图标上右键。
 
 ## AI + CLI：把桌面配置交给助手
 
-PecoFence 内置 `pecofence-cli`，Claude Code、Codex、Cursor 等能运行本地命令的 AI 助手可以读取现有设置，直接配置正在运行的 PecoFence。你可以让助手切换主题、批量调整透明度和图标大小、创建栅栏与标签页、整理图标、编写自动规则，以及导入导出配置。
+CoreDesk Engine 内置 `coredesk-cli`，Claude Code、Codex、Cursor 等能运行本地命令的 AI 助手可以读取现有设置，直接配置正在运行的 CoreDesk Engine。你可以让助手切换主题、批量调整透明度和图标大小、创建栅栏与标签页、整理图标、编写自动规则，以及导入导出配置。
 
-启动 PecoFence 后，把需求交给助手，例如：“先阅读 `pecofence-cli skill` 和 `pecofence-cli describe`，查看并备份我的配置，再切换为深色模式，把所有栅栏调得更透明。”Microsoft Store 版通过 PATH 调用；便携版需告诉助手 `pecofence-cli.exe` 的完整路径。
+启动 CoreDesk Engine 后，把需求交给助手，例如：“先阅读 `coredesk-cli skill` 和 `coredesk-cli describe`，查看并备份我的配置，再切换为深色模式，把所有栅栏调得更透明。”Microsoft Store 版通过 PATH 调用；便携版需告诉助手 `coredesk-cli.exe` 的完整路径。
 
 JSON 输出报告实际改动，命令目录与 JSON Schema 帮助助手发现可用操作和参数。布局快照保存栅栏布局；全局设置和规则通过配置导入导出备份与恢复。详见 [CLI 上手指南与完整参考](CLI.md#start-with-your-ai-agent)。
 
@@ -67,7 +67,7 @@ JSON 输出报告实际改动，命令目录与 JSON Schema 帮助助手发现�
 | 图标着色 | 设置 → 图标着色（颜色 + 强度） | 所有图标染色 |
 | Chameleon | 设置 → 图标融入背景 | 图标降饱和、降不透明度 |
 | 快捷方式箭头 | 设置 → 常规 →「显示快捷方式箭头」（默认开；CLI `icons.shortcutArrows`） | 和资源管理器一样在快捷方式（.lnk、.url 等资源管理器标箭头的项目）图标左下角画 Windows 的箭头，图标 / 列表 / 详细信息视图、各种图标大小和缩放比例都有；用 Windows 自己的箭头图标，换过或去掉箭头（注册表 Shell Icons 的 29）的系统在栅栏里也一样 |
-| 玻璃调参 | 环境变量 `PECOFENCE_ACRYLIC="不透明度,亮度锁定,模糊半径[,饱和度]"` | 仅影响 Fluent；Liquid Glass 原生材质验证可运行 `cargo run -p pecofence-render --example liquid_glass_preview -- .cache/glass.bmp`，或用 `liquid_glass_wallpaper … gpu --background 图片` 在指定图片上渲染 |
+| 玻璃调参 | 环境变量 `COREDESK_ACRYLIC="不透明度,亮度锁定,模糊半径[,饱和度]"` | 仅影响 Fluent；Liquid Glass 原生材质验证可运行 `cargo run -p coredesk-render --example liquid_glass_preview -- .cache/glass.bmp`，或用 `liquid_glass_wallpaper … gpu --background 图片` 在指定图片上渲染 |
 
 ## 3. 标签页栅栏
 
@@ -87,7 +87,7 @@ JSON 输出报告实际改动，命令目录与 JSON Schema 帮助助手发现�
 
 | 功能 | 怎么用 | 备注 |
 |---|---|---|
-| 把文件夹变成栅栏 | 文件夹图标右键 → 在桌面显示此文件夹；托盘菜单 / 栅栏菜单 → 在桌面显示文件夹 → 文档 / 下载 / 图片 / 选择其他文件夹…；`pecofence --portal <文件夹>` | 实时跟随文件夹内容（含网络 / 云盘目录） |
+| 把文件夹变成栅栏 | 文件夹图标右键 → 在桌面显示此文件夹；托盘菜单 / 栅栏菜单 → 在桌面显示文件夹 → 文档 / 下载 / 图片 / 选择其他文件夹…；`coredesk --portal <文件夹>` | 实时跟随文件夹内容（含网络 / 云盘目录） |
 | 往门户里拖 | 从桌面栏或资源管理器拖入 | 真实移动到该文件夹（跨盘时与资源管理器一样默认复制，Shift 强制移动）；Ctrl 复制、Shift 移动、Alt 或 Ctrl+Shift 创建快捷方式（与来源允许的效果取交集，仅允许复制的来源如压缩文件夹显示复制光标并复制）；右键拖入弹出 移动 / 复制 / 创建快捷方式 / 取消 菜单（默认项加粗，Esc 取消）；有进度 / 冲突对话框和撤销 |
 | 从门户拖出 | 拖到虚拟栅栏或桌面 | 真实移到桌面并进入目标栏 |
 | 门户内导航 | 双击子文件夹进入；标题栏向上按钮 / Backspace / Alt+Up 返回；栅栏菜单 → 返回上一级 / 返回最初的文件夹 | 标题显示当前文件夹名；子文件夹被删自动回根；向上按钮松开时触发，有悬停 / 按下底色；空文件夹显示「此文件夹为空。」；新文件夹从顶部开始显示，内容像切换标签一样交叉淡入淡出，进入时从右侧、返回时从左侧滑入；返回上一级后选中并滚动到刚离开的文件夹（同资源管理器），用键盘返回时显示焦点环 |
@@ -133,28 +133,28 @@ JSON 输出报告实际改动，命令目录与 JSON Schema 帮助助手发现�
 
 | 功能 | 怎么用 | 备注 |
 |---|---|---|
-| .peco 主题 | 设置 → 布局与备份 → 保存当前配置 / 导入 .peco 主题 / 画廊卡片应用 | 一个主题一个文件；含壁纸与预览 |
+| .cde 主题 | 设置 → 布局与备份 → 保存当前配置 / 导入 .cde 主题 / 画廊卡片应用 | 一个主题一个文件；含壁纸与预览 |
 | 布局快照 | 设置 → 布局与备份 → 画廊卡片恢复 / 删除 | 最多 20 个，满了要先删除才能再存；恢复前自动存一份（固定一条，不在画廊显示），不删自己保存的 |
-| 每天自动更新当前主题 | 设置 → 布局与备份 → 开关 | 每日把当前布局写回正在使用的 .peco 本身，只覆盖原文件，不建版本或副本；未开此开关时切主题会提示先保存 |
+| 每天自动更新当前主题 | 设置 → 布局与备份 → 开关 | 每日把当前布局写回正在使用的 .cde 本身，只覆盖原文件，不建版本或副本；未开此开关时切主题会提示先保存 |
 | 交换显示器内容 | 设置 → 布局与备份 → 交换 | 两个显示器上的栅栏互换 |
-| 导出 / 导入配置 | `pecofence-cli config export` / `config import` | JSON；导入前自动存快照 |
-| 配置回退 | 自动 | 保存时轮换 config.bak；旧版本留下的每日 JSON 备份可用 `pecofence-cli backup list` / `backup restore` 恢复 |
+| 导出 / 导入配置 | `coredesk-cli config export` / `config import` | JSON；导入前自动存快照 |
+| 配置回退 | 自动 | 保存时轮换 config.bak；旧版本留下的每日 JSON 备份可用 `coredesk-cli backup list` / `backup restore` 恢复 |
 | 桌面文件夹迁移 | 自动 | 桌面搬到 OneDrive / 其他盘后记录自动跟随；桌面盘不可用时不丢记录 |
 | 随 Windows 启动 | 设置 → 随 Windows 启动 | 只登记正式版路径 |
 | 恢复显示桌面图标 | 设置 → 关于 → 恢复显示桌面图标；托盘菜单 → 修复桌面图标 | 应急 |
-| 检查更新 | 设置 → 关于 → 检查更新 | 只在点按钮时访问 GitHub；安装版下载新安装包后运行，PecoFence 先退出、装完自动重开；ZIP 版（以及 release 没有安装包时）打开下载页；Store 版不显示（由 Store 更新）；正式版不会收到测试版（如 `v0.2.0-beta.1`）。设置了 `PECOFENCE_INSTANCE` 的测试实例可用 `PECOFENCE_UPDATE_URL=http://127.0.0.1:<端口>/…` 指向本地假 release |
-| 配置位置 | `%APPDATA%\PecoFence\config.json`；`--portable` 时放 exe 旁 | 设置 → 关于可直接打开；文件首行 `$schema` 指向 https://pecofence.jiang.jp/schema/config.json（`pecofence-cli describe --schema Config` 同一份），编辑器可据此补全校验 |
-| 反馈 | 设置 → 反馈；托盘 → 发送反馈…；上次崩溃后启动会弹通知，点击直接打开反馈页 | 发到 `api.pecofence.jiang.jp`（Cloudflare Worker，源码 `services/feedback`），在私有仓库 DayuanJiang/PecoFence-feedback 建 issue，开发者收到 GitHub 通知；默认附带内存中收集的可分享日志摘录：按设计只含代码里写好的固定文字、数字和错误码（`share_log.rs`，源码扫描测试保证），发送前可查看；IP 只用于限流（每分钟 3 条），不保存 |
-| 日志 | `%LOCALAPPDATA%\PecoFence\pecofence.log`（上一次运行的以及超过 1 MB 时滚动出的部分保留为 `pecofence.prev.log`） | `RUST_LOG` 控制级别（默认 info，文件资源管理器样式与设置为 debug）；panic 与未处理异常（异常码、`module+rva` 调用栈）也写在这里，崩溃同时留下 `crash-<实例>-<ticks>.dmp` |
-| 命令行 | `--portable` `--no-hide-icons` `--light` `--dark` `--open-settings` `--portal <文件夹>` `--wallpaper <图片>` `--exit-after <ms>` `--dump-stats` `--test-script <文件>` | `PECOFENCE_INSTANCE=<名字>` 可再开一个独立实例；`--test-script` 用脚本驱动测试实例（sleep / dump / quick-hide / quick-show / peek / roll / unroll / detach / merge / delete / new-fence / drop-desktop / move / transfer / create-file / delete-file / crash / exit），`dump` 把每个栅栏窗口的不透明度、淡入淡出阶段、阴影 alpha、可见性写入日志 |
-| 命令行工具（pecofence-cli） | 同包附带 `pecofence-cli.exe`；在终端执行 `pecofence-cli fence list` / `fence create --title 工作 --rect 100,100,600,400` / `fence set <栅栏> layout list` / `item move --glob "*.pdf" --from inbox --to 文档` / `settings set theme dark` / `rule add --name PDF --ext pdf --to 文档` / `snapshot save 备份` / `config export C:\x.json` 等；`item list` 带 kind / ext / size / modified / created / openCount / lastOpened / shortcutTarget 元数据（`--kind` `--ext` 过滤），`item rename` 重命名图标背后的文件（默认保留扩展名），`rule apply --dry-run` 只列出将要移动的项目，`watch --fence inbox --once` 阻塞到下一个桌面事件（item.added / removed / moved、fence.created / deleted / changed，每 30 s 心跳）后退出供脚本触发批处理，`config check` 离线校验配置文件（规则目标、门户路径、标签宿主、`$schema`），`log -f` 跟随日志，`paths` 列出配置 / 备份 / 日志 / 崩溃 dump 位置；`item move --dry-run` 逐项预览（仅换栅栏 / 真实文件移动及目标路径 / 跳过原因），重名文件在真实移动时也跳过而不弹资源管理器的替换对话框；`fence get` 的 `fit` 报告列数、行数、放下全部图标所需高度与是否溢出，`fence fit` 一键调到该高度；`item list` 带 `shortcutArguments`（快捷方式的命令行参数，同一程序带不同参数不算重复）；`fence create --below/--above/--right-of/--left-of <栅栏>` 贴着已有栅栏放置（边缘对齐、吸附间距、越出工作区报错、重叠给警告）；程序自行调整尺寸时（自动高度、按整列整行吸附）回复带 `adjusted`；全局 `--fields` 只保留指定字段（无需 jq），`--ascii` 以 `\uXXXX` 输出非 ASCII 字符，供按系统代码页解码的读取方；`describe` 输出机器可读的命令目录与 JSON Schema，`skill` 输出给 AI 助手用的 SKILL.md | 通过命名管道 `\\.\pipe\PecoFence.<账户 SID>[.<实例>]` 驱动当前 Windows 账户**正在运行**的实例（同时登录的其他账户各用各的管道，同一账户从 ssh 等其他会话也能连上）；结果为 JSON，修改应用状态的操作返回 `changed`，已符合目标状态时为 `false`；退出码 0 成功 / 1 应用报错 / 2 用法错误 / 3 未运行 / 4 超时；超时后先读取状态再决定是否重试；栅栏可用 id、≥6 位 id 前缀或标题指定；删栏（含项目）、应用规则（有项目变动）、一次搬移 ≥ 20 个桌面项目、恢复快照前会自动保存布局快照，达到 20 个快照上限时返回警告，不挤占用户快照；快照不覆盖全局设置、规则或真实文件移动；配置导入导出与每日备份另行保存设置、规则和布局；Store 版通过应用执行别名进入 PATH；详见 [CLI.md](CLI.md) |
+| 检查更新 | 设置 → 关于 → 检查更新 | 只在点按钮时访问 GitHub；安装版下载新安装包后运行，CoreDesk Engine 先退出、装完自动重开；ZIP 版（以及 release 没有安装包时）打开下载页；Store 版不显示（由 Store 更新）；正式版不会收到测试版（如 `v0.2.0-beta.1`）。设置了 `COREDESK_INSTANCE` 的测试实例可用 `COREDESK_UPDATE_URL=http://127.0.0.1:<端口>/…` 指向本地假 release |
+| 配置位置 | `%APPDATA%\CoreDeskEngine\config.json`；`--portable` 时放 exe 旁 | 设置 → 关于可直接打开；文件首行 `$schema` 指向 https://coredesk.jiang.jp/schema/config.json（`coredesk-cli describe --schema Config` 同一份），编辑器可据此补全校验 |
+| 反馈 | 设置 → 反馈；托盘 → 发送反馈…；上次崩溃后启动会弹通知，点击直接打开反馈页 | 发到 `api.coredesk.jiang.jp`（Cloudflare Worker，源码 `services/feedback`），在私有仓库 DayuanJiang/CoreDesk Engine-feedback 建 issue，开发者收到 GitHub 通知；默认附带内存中收集的可分享日志摘录：按设计只含代码里写好的固定文字、数字和错误码（`share_log.rs`，源码扫描测试保证），发送前可查看；IP 只用于限流（每分钟 3 条），不保存 |
+| 日志 | `%LOCALAPPDATA%\CoreDeskEngine\coredesk.log`（上一次运行的以及超过 1 MB 时滚动出的部分保留为 `coredesk.prev.log`） | `RUST_LOG` 控制级别（默认 info，文件资源管理器样式与设置为 debug）；panic 与未处理异常（异常码、`module+rva` 调用栈）也写在这里，崩溃同时留下 `crash-<实例>-<ticks>.dmp` |
+| 命令行 | `--portable` `--no-hide-icons` `--light` `--dark` `--open-settings` `--portal <文件夹>` `--wallpaper <图片>` `--exit-after <ms>` `--dump-stats` `--test-script <文件>` | `COREDESK_INSTANCE=<名字>` 可再开一个独立实例；`--test-script` 用脚本驱动测试实例（sleep / dump / quick-hide / quick-show / peek / roll / unroll / detach / merge / delete / new-fence / drop-desktop / move / transfer / create-file / delete-file / crash / exit），`dump` 把每个栅栏窗口的不透明度、淡入淡出阶段、阴影 alpha、可见性写入日志 |
+| 命令行工具（coredesk-cli） | 同包附带 `coredesk-cli.exe`；在终端执行 `coredesk-cli fence list` / `fence create --title 工作 --rect 100,100,600,400` / `fence set <栅栏> layout list` / `item move --glob "*.pdf" --from inbox --to 文档` / `settings set theme dark` / `rule add --name PDF --ext pdf --to 文档` / `snapshot save 备份` / `config export C:\x.json` 等；`item list` 带 kind / ext / size / modified / created / openCount / lastOpened / shortcutTarget 元数据（`--kind` `--ext` 过滤），`item rename` 重命名图标背后的文件（默认保留扩展名），`rule apply --dry-run` 只列出将要移动的项目，`watch --fence inbox --once` 阻塞到下一个桌面事件（item.added / removed / moved、fence.created / deleted / changed，每 30 s 心跳）后退出供脚本触发批处理，`config check` 离线校验配置文件（规则目标、门户路径、标签宿主、`$schema`），`log -f` 跟随日志，`paths` 列出配置 / 备份 / 日志 / 崩溃 dump 位置；`item move --dry-run` 逐项预览（仅换栅栏 / 真实文件移动及目标路径 / 跳过原因），重名文件在真实移动时也跳过而不弹资源管理器的替换对话框；`fence get` 的 `fit` 报告列数、行数、放下全部图标所需高度与是否溢出，`fence fit` 一键调到该高度；`item list` 带 `shortcutArguments`（快捷方式的命令行参数，同一程序带不同参数不算重复）；`fence create --below/--above/--right-of/--left-of <栅栏>` 贴着已有栅栏放置（边缘对齐、吸附间距、越出工作区报错、重叠给警告）；程序自行调整尺寸时（自动高度、按整列整行吸附）回复带 `adjusted`；全局 `--fields` 只保留指定字段（无需 jq），`--ascii` 以 `\uXXXX` 输出非 ASCII 字符，供按系统代码页解码的读取方；`describe` 输出机器可读的命令目录与 JSON Schema，`skill` 输出给 AI 助手用的 SKILL.md | 通过命名管道 `\\.\pipe\CoreDeskEngine.<账户 SID>[.<实例>]` 驱动当前 Windows 账户**正在运行**的实例（同时登录的其他账户各用各的管道，同一账户从 ssh 等其他会话也能连上）；结果为 JSON，修改应用状态的操作返回 `changed`，已符合目标状态时为 `false`；退出码 0 成功 / 1 应用报错 / 2 用法错误 / 3 未运行 / 4 超时；超时后先读取状态再决定是否重试；栅栏可用 id、≥6 位 id 前缀或标题指定；删栏（含项目）、应用规则（有项目变动）、一次搬移 ≥ 20 个桌面项目、恢复快照前会自动保存布局快照，达到 20 个快照上限时返回警告，不挤占用户快照；快照不覆盖全局设置、规则或真实文件移动；配置导入导出与每日备份另行保存设置、规则和布局；Store 版通过应用执行别名进入 PATH；详见 [CLI.md](CLI.md) |
 
 ## 8. 明确不做
 
 | 功能 | 原因 |
 |---|---|
 | 桌面页面（屏幕边缘滑动切换多页桌面） | 用户决定不做 |
-| 桌面右键菜单里的「配置 PecoFence」 | 需要 shell 扩展；用托盘和桌面框选替代 |
+| 桌面右键菜单里的「配置 CoreDesk Engine」 | 需要 shell 扩展；用托盘和桌面框选替代 |
 
 ## 9. 多语言
 

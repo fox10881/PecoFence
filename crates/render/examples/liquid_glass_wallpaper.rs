@@ -3,8 +3,8 @@
 //! `--background image` renders over that image instead, as one monitor at its own size
 //! placed at the desktop origin (for comparisons over detailed backgrounds).
 //! `title-hover` is a single-title header with its fold control hovered.
-use pecofence_platform::{com::OleGuard, wallpaper, window};
-use pecofence_render::{
+use coredesk_platform::{com::OleGuard, wallpaper, window};
+use coredesk_render::{
     BitmapCache, Image, Matrix3x2, MonitorBackdrop, Theme, WallpaperPosition,
     fence_chrome::{
         Backdrop, BackdropCrop, FenceChrome, FenceStyle, TabDraw, TitleDeco, TitleState,
@@ -133,7 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let w = if tab_mode == "narrow" {
                     37.0
                 } else {
-                    pecofence_render::text::measure_width(title, chrome.tab_format(title_size))
+                    coredesk_render::text::measure_width(title, chrome.tab_format(title_size))
                         + 24.0
                 };
                 let tab = TabDraw {

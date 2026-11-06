@@ -1,8 +1,8 @@
-# Samples PecoFence's resource usage (plan §10.3 task 25 / §8 budgets).
+# Samples CoreDesk's resource usage (plan §10.3 task 25 / §8 budgets).
 #
-#   scripts/measure.ps1                 # sample the running pecofence.exe for 30 s
+#   scripts/measure.ps1                 # sample the running coredesk.exe for 30 s
 #   scripts/measure.ps1 -Seconds 120 -Interval 2 -Csv target/measure.csv
-#   scripts/measure.ps1 -Launch         # start target/release/pecofence.exe first, then sample
+#   scripts/measure.ps1 -Launch         # start target/release/coredesk.exe first, then sample
 #
 # Reports Private WS / Working Set / Commit (Private Bytes), CPU % (process, all cores), GDI and
 # USER handle counts, thread count, plus the watchdog's footprint. Budgets from the plan:
@@ -21,7 +21,7 @@ Add-Type -Namespace OF -Name Native -MemberDefinition @'
 '@
 
 if ($Launch) {
-    $exe = Join-Path $root "target/release/pecofence.exe"
+    $exe = Join-Path $root "target/release/coredesk.exe"
     if (-not (Test-Path $exe)) { throw "build first: cargo build --release" }
     Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
     Start-Sleep -Seconds 3
@@ -48,9 +48,9 @@ function Sample($proc) {
     }
 }
 
-$main = Get-Process -Name pecofence -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $main) { throw "pecofence.exe is not running (use -Launch)" }
-$dog = Get-Process -Name pecofence-watchdog -ErrorAction SilentlyContinue | Select-Object -First 1
+$main = Get-Process -Name coredesk -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $main) { throw "coredesk.exe is not running (use -Launch)" }
+$dog = Get-Process -Name coredesk-watchdog -ErrorAction SilentlyContinue | Select-Object -First 1
 $cores = [Environment]::ProcessorCount
 
 $rows = @()

@@ -55,7 +55,7 @@ def hero(language):
     source = ROOT / ".cache/store-v2/native/overview.png"
     image = Image.open(source).convert("RGB").resize((1600, 900), Image.Resampling.LANCZOS)
     draw = ImageDraw.Draw(image)
-    draw.text((64, 26), "PecoFence", font=font(18, bold=True), fill="#233048", anchor="lt")
+    draw.text((64, 26), "CoreDesk", font=font(18, bold=True), fill="#233048", anchor="lt")
     draw.text((185, 29), category, font=font(13, script=script), fill="#596277", anchor="lt")
     face = fit(draw, headline, 57, 1475, bold=True, script=script)
     draw.text((60, 78), headline, font=face, fill="#233048", anchor="lt")

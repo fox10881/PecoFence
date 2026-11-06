@@ -13,15 +13,15 @@
 use crate::commands::{Command, CommandQueue};
 use crate::settings_host::WebEnvironment;
 use crate::webview_comp::CompWebview;
-use pecofence_platform::window::{
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, RECT, frameless, monitors, msg, tray};
+use coredesk_platform::{HWND, RECT, frameless, monitors, msg, tray};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use windows_core::Result;
 
-pub const CLOCK_CLASS: &str = "PecoFence.Clock";
+pub const CLOCK_CLASS: &str = "CoreDeskEngine.Clock";
 const CLOCK_HTML: &str = include_str!("../../../ui/clock.html");
 const I18N_JS: &str = include_str!("../../../ui/i18n.js");
 /// The widget's only context-menu entry (「تحديث」 = soft restart).
@@ -205,13 +205,13 @@ impl ClockHost {
         let hwnd = window.hwnd();
         tracing::debug!(?hwnd, x, y, w, h, "clock widget host created");
 
-        let payload = pecofence_core::i18n::ui_payload()
+        let payload = coredesk_core::i18n::ui_payload()
             .to_string()
             .replace('<', "\\u003c");
         let document = CLOCK_HTML
             .replace(
-                "<!-- PECOFENCE_LOCALE -->",
-                &format!("<script>window.PECOFENCE_LOCALE={payload};</script>"),
+                "<!-- COREDESK_LOCALE -->",
+                &format!("<script>window.COREDESK_LOCALE={payload};</script>"),
             )
             .replace(
                 "<script src=\"i18n.js\"></script>",
@@ -260,7 +260,7 @@ impl ClockHost {
     /// `{t:"clockLocale", locale, translations}` so the page rebuilds its
     /// Intl formatters without recreating the window.
     pub fn update_language(&self) {
-        let mut p = pecofence_core::i18n::ui_payload();
+        let mut p = coredesk_core::i18n::ui_payload();
         if let Some(o) = p.as_object_mut() {
             o.insert("t".to_string(), "clockLocale".into());
         }
@@ -279,7 +279,7 @@ impl ClockHost {
     }
 }
 
-const RECT_FALLBACK: pecofence_platform::RECT = pecofence_platform::RECT {
+const RECT_FALLBACK: coredesk_platform::RECT = coredesk_platform::RECT {
     left: 0,
     top: 0,
     right: 1920,

@@ -1,4 +1,4 @@
-# PecoFence — 28-second launch film
+# CoreDesk — 28-second launch film
 
 The September 11 product refresh replaces the 75-second walkthrough as the primary
 promo. English copy throughout. Native recordings must come from the current build.
@@ -9,7 +9,7 @@ promo. English copy throughout. Native recordings must come from the current bui
 | 3–8 s | Beautiful groups bring order | Pull back to a complete, staged Liquid Glass desktop | Beautifully organized. |
 | 8–15 s | Several projects fit in one place | Native Work / Art tab switch and separation | Work. Play. Switch. |
 | 15–23 s | Files stay within reach during work | Current groups rise above a staged project window with Peek | One shortcut away. |
-| 23–28 s | A clear product and an invitation | Clean brand finish, with the real product in view | PecoFence / Make room for focus. |
+| 23–28 s | A clear product and an invitation | Clean brand finish, with the real product in view | CoreDesk / Make room for focus. |
 
 Creative rules:
 

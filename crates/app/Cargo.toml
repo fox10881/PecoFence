@@ -1,13 +1,13 @@
 [package]
-name = "pecofence"
+name = "coredesk"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "PecoFence: group your desktop icons into glass fences on Windows 11."
+description = "CoreDesk: group your desktop icons into glass fences on Windows 11."
 build = "build.rs"
 
 [[bin]]
-name = "pecofence"
+name = "coredesk"
 path = "src/main.rs"
 
 [dependencies]
@@ -16,10 +16,10 @@ windows = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-pecofence-core = { path = "../core" }
-pecofence-ipc = { path = "../ipc" }
-pecofence-platform = { path = "../platform" }
-pecofence-render = { path = "../render" }
+coredesk-core = { path = "../core" }
+coredesk-ipc = { path = "../ipc" }
+coredesk-platform = { path = "../platform" }
+coredesk-render = { path = "../render" }
 windows-composition = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

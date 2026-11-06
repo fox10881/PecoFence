@@ -437,7 +437,7 @@ impl Default for LiveWallpaper {
 
 impl LiveWallpaper {
     pub fn new() -> Self {
-        let fps = std::env::var("PECOFENCE_WALLPAPER_FPS")
+        let fps = std::env::var("COREDESK_WALLPAPER_FPS")
             .ok()
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(60)

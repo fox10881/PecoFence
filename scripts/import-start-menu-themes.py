@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Convert the Windhawk `windows-11-start-menu-styler` theme structs into the
-PecoFence backend catalog (crates/core/data/start_menu_themes.json).
+CoreDesk backend catalog (crates/core/data/start_menu_themes.json).
 
 The source is the mod's published C++ source: `const Theme g_theme<Name> = {{...},
 {...}, {...}, {...}, DisableNewStartMenuLayout::X};` aggregates. The selectable

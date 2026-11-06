@@ -1,18 +1,18 @@
 [package]
-name = "pecofence-watchdog"
+name = "coredesk-watchdog"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "PecoFence watchdog: restores the Windows desktop icons if PecoFence exits abnormally."
+description = "CoreDesk watchdog: restores the Windows desktop icons if CoreDesk exits abnormally."
 build = "build.rs"
 
 [[bin]]
-name = "pecofence-watchdog"
+name = "coredesk-watchdog"
 path = "src/main.rs"
 
 [dependencies]
-pecofence-core = { path = "../core" }
-pecofence-platform = { path = "../platform" }
+coredesk-core = { path = "../core" }
+coredesk-platform = { path = "../platform" }
 
 [lints]
 workspace = true

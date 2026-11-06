@@ -1,6 +1,6 @@
 """Write public/trailer-v3/assets-manifest.json for the trailer (v3) visual assets.
 
-uv run --with pillow python extras/pecofence-promo/scripts/write-trailer-assets-manifest.py
+uv run --with pillow python extras/coredesk-promo/scripts/write-trailer-assets-manifest.py
 
 Run after extract-trailer-icons.ps1, make-trailer-clutter.py and measure-trailer-targets.py.
 Lists every produced file with byte size, pixel size, how it was made and notes (brand flags for
@@ -14,10 +14,10 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[3]
-PROMO = ROOT / "extras/pecofence-promo"
+PROMO = ROOT / "extras/coredesk-promo"
 PUB = PROMO / "public/trailer-v3"
 CACHE = ROOT / ".cache/promo2"
-SCRIPTS = "extras/pecofence-promo/scripts"
+SCRIPTS = "extras/coredesk-promo/scripts"
 
 ICON_METHOD = (f"{SCRIPTS}/extract-trailer-icons.ps1: IShellItemImageFactory::GetImage(256x256, SIIGBF_ICONONLY) on an empty "
                "dummy file in .cache/promo2/iconsrc; GetDIBits top-down 32 bpp; the shell bitmap is straight alpha here "
@@ -100,13 +100,13 @@ def main():
                            "Full-resolution frame (first frame with pts >= t); identical to the frame the targets were measured on.",
                            video=f"trailer-v3/{video}", t=t))
     out = {"generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-           "root": "extras/pecofence-promo/public/trailer-v3",
+           "root": "extras/coredesk-promo/public/trailer-v3",
            "scripts": [f"{SCRIPTS}/extract-trailer-icons.ps1", f"{SCRIPTS}/make-trailer-clutter.py",
                        f"{SCRIPTS}/measure-trailer-targets.py", f"{SCRIPTS}/write-trailer-assets-manifest.py"],
-           "rebuild": ["powershell.exe -NoProfile -ExecutionPolicy Bypass -File extras\\pecofence-promo\\scripts\\extract-trailer-icons.ps1",
-                       "uv run --with pillow --with numpy python extras/pecofence-promo/scripts/make-trailer-clutter.py",
-                       "uv run --with numpy --with pillow --with opencv-python-headless python extras/pecofence-promo/scripts/measure-trailer-targets.py",
-                       "uv run --with pillow python extras/pecofence-promo/scripts/write-trailer-assets-manifest.py"],
+           "rebuild": ["powershell.exe -NoProfile -ExecutionPolicy Bypass -File extras\\coredesk-promo\\scripts\\extract-trailer-icons.ps1",
+                       "uv run --with pillow --with numpy python extras/coredesk-promo/scripts/make-trailer-clutter.py",
+                       "uv run --with numpy --with pillow --with opencv-python-headless python extras/coredesk-promo/scripts/measure-trailer-targets.py",
+                       "uv run --with pillow python extras/coredesk-promo/scripts/write-trailer-assets-manifest.py"],
            "brandIcons": [f["file"] for f in files if f.get("brand")],
            "files": files,
            "validation": sorted(str(p.relative_to(ROOT)).replace("\\", "/") for p in CACHE.glob("targets-check-*.png"))}

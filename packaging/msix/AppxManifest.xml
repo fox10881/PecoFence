@@ -20,7 +20,7 @@
     ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>PecoFence</DisplayName>
+    <DisplayName>CoreDesk Engine</DisplayName>
     <PublisherDisplayName>__PUBLISHER_DISPLAY_NAME__</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
     <Description>Group your desktop icons into glass fences on Windows 11.</Description>
@@ -50,9 +50,9 @@
   </Capabilities>
 
   <Applications>
-    <Application Id="PecoFence" Executable="pecofence.exe" uap10:RuntimeBehavior="packagedClassicApp" uap10:TrustLevel="mediumIL">
+    <Application Id="CoreDesk" Executable="coredesk.exe" uap10:RuntimeBehavior="packagedClassicApp" uap10:TrustLevel="mediumIL">
       <uap:VisualElements
-        DisplayName="PecoFence"
+        DisplayName="CoreDesk Engine"
         Description="Group your desktop icons into glass fences on Windows 11."
         BackgroundColor="#4768DE"
         Square150x150Logo="Assets\Square150x150Logo.png"
@@ -61,19 +61,28 @@
           Wide310x150Logo="Assets\Wide310x150Logo.png"
           Square71x71Logo="Assets\SmallTile.png"
           Square310x310Logo="Assets\LargeTile.png"
-          ShortName="PecoFence" />
+          ShortName="CoreDesk Engine" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
       <Extensions>
         <!-- Run at logon. Users control this in Settings > Apps > Startup or Task Manager. -->
-        <desktop:Extension Category="windows.startupTask" Executable="pecofence.exe" EntryPoint="Windows.FullTrustApplication">
-          <desktop:StartupTask TaskId="PecoFenceStartup" Enabled="true" DisplayName="PecoFence" />
+        <desktop:Extension Category="windows.startupTask" Executable="coredesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="CoreDeskStartup" Enabled="true" DisplayName="CoreDesk Engine" />
         </desktop:Extension>
-        <!-- `pecofence-cli` on PATH for terminals and coding agents; users can turn the alias
+        <!-- `coredesk-cli` on PATH for terminals and coding agents; users can turn the alias
              off under Settings > Apps > Advanced app settings > App execution aliases. -->
-        <uap5:Extension Category="windows.appExecutionAlias" Executable="pecofence-cli.exe" EntryPoint="Windows.FullTrustApplication">
+        <uap:Extension Category="windows.fileTypeAssociation" EntryPoint="Windows.FullTrustApplication">
+          <uap:FileTypeAssociation Name="cde">
+            <uap:DisplayName>CoreDesk Engine Theme</uap:DisplayName>
+            <uap:Logo>Assets\StoreLogo.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.cde</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap:FileTypeAssociation>
+        </uap:Extension>
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="coredesk-cli.exe" EntryPoint="Windows.FullTrustApplication">
           <uap5:AppExecutionAlias>
-            <uap5:ExecutionAlias Alias="pecofence-cli.exe" />
+            <uap5:ExecutionAlias Alias="coredesk-cli.exe" />
           </uap5:AppExecutionAlias>
         </uap5:Extension>
       </Extensions>

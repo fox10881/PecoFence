@@ -94,7 +94,7 @@ impl App {
     pub(super) fn other_fence_rects(&self, id: FenceId) -> Vec<RECT> {
         self.fences
             .iter()
-            .filter(|(fid, w)| **fid != id && pecofence_platform::desktop::is_visible(w.hwnd()))
+            .filter(|(fid, w)| **fid != id && coredesk_platform::desktop::is_visible(w.hwnd()))
             .map(|(_, w)| w.rect())
             .collect()
     }
@@ -167,7 +167,7 @@ impl App {
             .iter()
             .map(|(id, w)| {
                 let rect = w.rect();
-                let connected = |f: &pecofence_core::Fence| {
+                let connected = |f: &coredesk_core::Fence| {
                     let on = |a: &WorkArea| a.device_path == f.geometry.monitor;
                     self.state.work_areas.iter().any(on)
                 };

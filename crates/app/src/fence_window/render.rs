@@ -124,7 +124,7 @@ impl FenceViewState {
                 foreground
             }
             None if self.is_clear() => {
-                theme.over_clear_plate(&pecofence_render::Image::default(), self.style.tint, None)
+                theme.over_clear_plate(&coredesk_render::Image::default(), self.style.tint, None)
             }
             Some(image) if self.theme.liquid_glass => {
                 // The GPU renders a complete wallpaper-backed material, so floating
@@ -271,15 +271,15 @@ impl FenceViewState {
     /// Empty-state caption for the fence being shown.
     pub(super) fn empty_text(&self) -> &'static str {
         if self.is_inbox {
-            pecofence_core::i18n::text("没有未归类的项目")
+            coredesk_core::i18n::text("没有未归类的项目")
         } else if self.drop_hover {
-            pecofence_core::i18n::text("松开即可放入")
+            coredesk_core::i18n::text("松开即可放入")
         } else if self.is_portal && self.portal_missing {
-            pecofence_core::i18n::text("找不到此文件夹。")
+            coredesk_core::i18n::text("找不到此文件夹。")
         } else if self.is_portal {
-            pecofence_core::i18n::text("此文件夹为空。")
+            coredesk_core::i18n::text("此文件夹为空。")
         } else {
-            pecofence_core::i18n::text("将项目拖到此处")
+            coredesk_core::i18n::text("将项目拖到此处")
         }
     }
 
@@ -420,7 +420,7 @@ impl FenceViewState {
         let roll_t = self.roll_t.value_at(now);
         // The count is drawn while it fades out after expanding, not only while rolled.
         let count = (rolled || state.count > 0.0)
-            .then(|| pecofence_core::i18n::format("{0} 项", &[format!("{}", self.items.len())]));
+            .then(|| coredesk_core::i18n::format("{0} 项", &[format!("{}", self.items.len())]));
         let opacity = self.material_opacity();
         let theme = self.material_foreground();
         let scale = self.scale();
@@ -628,7 +628,7 @@ impl FenceViewState {
         }
         self.backdrop_origin = origin;
         self.backdrop_crop = if self.theme.liquid_glass && !set.is_empty() {
-            Some(pecofence_render::liquid_glass::foreground_sample(
+            Some(coredesk_render::liquid_glass::foreground_sample(
                 set,
                 [r.left, r.top, w, h],
             ))
@@ -800,14 +800,14 @@ impl FenceViewState {
             }
             if item.label.is_none() && (rows || fit_labels) {
                 item.label = Some(match self.layout {
-                    ViewLayout::Icons => pecofence_render::text::fit_lines(
+                    ViewLayout::Icons => coredesk_render::text::fit_lines(
                         &item.name,
                         &label_format,
-                        (label_w - pecofence_render::fence_chrome::ICON_LABEL_SIDE_INSET * 2.0)
+                        (label_w - coredesk_render::fence_chrome::ICON_LABEL_SIDE_INSET * 2.0)
                             .max(1.0),
                         self.label_lines as u32,
                     ),
-                    _ => pecofence_render::text::fit_width(
+                    _ => coredesk_render::text::fit_width(
                         &item.name,
                         self.chrome.row_format(),
                         label_w,
@@ -890,10 +890,10 @@ impl FenceViewState {
         if fresh {
             return;
         }
-        let (text, lines) = pecofence_render::text::fit_lines_counted(
+        let (text, lines) = coredesk_render::text::fit_lines_counted(
             &it.name,
             &self.label_format(),
-            (cell_w - pecofence_render::fence_chrome::ICON_LABEL_SIDE_INSET * 2.0).max(1.0),
+            (cell_w - coredesk_render::fence_chrome::ICON_LABEL_SIDE_INSET * 2.0).max(1.0),
             MAX_UNFOLD_LINES,
         );
         self.unfold_cache = Some(UnfoldCache {
@@ -1355,7 +1355,7 @@ impl FenceViewState {
         // The glass is sampled under each text only to pick its ink: a fixed name colour skips it.
         let backdrop = if self.theme.liquid_glass
             && !wallpaper.is_empty()
-            && label_color == pecofence_core::LabelColor::Auto
+            && label_color == coredesk_core::LabelColor::Auto
         {
             let r = self.backdrop_rect.unwrap_or_else(|| {
                 let r = window::window_rect(self.hwnd);
@@ -1422,11 +1422,11 @@ impl FenceViewState {
 /// Localised caption of a "按时间分组" section (literal keys keep `check-locales.py` honest).
 pub(super) fn bucket_caption(bucket: DateBucket) -> &'static str {
     match bucket {
-        DateBucket::Today => pecofence_core::i18n::text("今天"),
-        DateBucket::Yesterday => pecofence_core::i18n::text("昨天"),
-        DateBucket::ThisWeek => pecofence_core::i18n::text("本周"),
-        DateBucket::ThisMonth => pecofence_core::i18n::text("本月"),
-        DateBucket::Earlier => pecofence_core::i18n::text("更早"),
+        DateBucket::Today => coredesk_core::i18n::text("今天"),
+        DateBucket::Yesterday => coredesk_core::i18n::text("昨天"),
+        DateBucket::ThisWeek => coredesk_core::i18n::text("本周"),
+        DateBucket::ThisMonth => coredesk_core::i18n::text("本月"),
+        DateBucket::Earlier => coredesk_core::i18n::text("更早"),
     }
 }
 

@@ -1,6 +1,6 @@
 //! The shareable log: a second `tracing` layer beside the file log that keeps only what may
 //! leave the machine with feedback (「附带诊断日志（不含个人信息）」 on the settings page).
-//! It collects in memory ([`SHARED`]) — the only log file on disk is `pecofence.log`.
+//! It collects in memory ([`SHARED`]) — the only log file on disk is `coredesk.log`.
 //!
 //! Nothing user-provided reaches it, by construction rather than by scrubbing afterwards:
 //! - messages are the literals written in the code (`tests::callsites_are_shareable` rejects
@@ -232,8 +232,8 @@ fn is_uuid_at(bytes: &[u8], i: usize) -> bool {
 /// Whether an event goes to the shareable log at all.
 fn shared(meta: &Metadata<'_>) -> bool {
     *meta.level() <= Level::INFO
-        && meta.target().starts_with("pecofence")
-        && meta.target() != "pecofence::test"
+        && meta.target().starts_with("coredesk")
+        && meta.target() != "coredesk::test"
         && !meta
             .module_path()
             .is_some_and(|m| m.ends_with("::testscript"))
@@ -481,7 +481,7 @@ mod tests {
         let title = "Jane's taxes 2026";
         let lines = capture(|| {
             tracing::info!(path = %path.display(), folder = ?path, %title, count = 12, "portal refreshed");
-            tracing::warn!(error = "拒绝访问。 (0x80070005)", hwnd = ?pecofence_platform::HWND(0x105bc as _), "anchor SetWindowPos failed");
+            tracing::warn!(error = "拒绝访问。 (0x80070005)", hwnd = ?coredesk_platform::HWND(0x105bc as _), "anchor SetWindowPos failed");
             tracing::warn!(
                 error = "The system cannot find the file C:\\Users\\jane.doe\\a.txt. (os error 2)",
                 "rename failed"
@@ -503,7 +503,7 @@ mod tests {
                 "mixed"
             );
             tracing::error!(
-                location = r"C:\Users\builder\src\pecofence\crates\app\src\main.rs:12:5",
+                location = r"C:\Users\builder\src\coredesk\crates\app\src\main.rs:12:5",
                 "PANIC"
             );
             tracing::debug!(path = "debug events are left out", "debug");
@@ -511,13 +511,13 @@ mod tests {
         assert_eq!(
             lines,
             [
-                "INFO pecofence::share_log::tests: portal refreshed path=<omitted> folder=<omitted> title=<omitted> count=12",
-                "WARN pecofence::share_log::tests: anchor SetWindowPos failed error=0x80070005 hwnd=HWND(0x105bc)",
-                "WARN pecofence::share_log::tests: rename failed error=os error 2",
-                "INFO pecofence::share_log::tests: icon host changed reason=startup new=Some(IconHost { host: HWND(0x1014e), kind: Progman })",
-                "INFO pecofence::share_log::tests: reasons are code text only reason=<omitted> what=<omitted>",
-                "INFO pecofence::share_log::tests: mixed name=<omitted> id=1024b90d-d073-490c-9380-8143c3d89172 rect=(0, 0, 3840, 2064)",
-                "ERROR pecofence::share_log::tests: PANIC location=crates/app/src/main.rs:12:5",
+                "INFO coredesk::share_log::tests: portal refreshed path=<omitted> folder=<omitted> title=<omitted> count=12",
+                "WARN coredesk::share_log::tests: anchor SetWindowPos failed error=0x80070005 hwnd=HWND(0x105bc)",
+                "WARN coredesk::share_log::tests: rename failed error=os error 2",
+                "INFO coredesk::share_log::tests: icon host changed reason=startup new=Some(IconHost { host: HWND(0x1014e), kind: Progman })",
+                "INFO coredesk::share_log::tests: reasons are code text only reason=<omitted> what=<omitted>",
+                "INFO coredesk::share_log::tests: mixed name=<omitted> id=1024b90d-d073-490c-9380-8143c3d89172 rect=(0, 0, 3840, 2064)",
+                "ERROR coredesk::share_log::tests: PANIC location=crates/app/src/main.rs:12:5",
             ]
         );
     }
@@ -597,11 +597,11 @@ mod tests {
         assert_eq!(
             lines,
             [
-                "WARN pecofence::share_log::tests: anchor SetWindowPos failed hwnd=0",
-                "WARN pecofence::share_log::tests: anchor SetWindowPos failed hwnd=1",
-                "WARN pecofence::share_log::tests: anchor SetWindowPos failed hwnd=2",
-                "WARN pecofence::share_log::tests: (the previous message repeated 7 more times)",
-                "INFO pecofence::share_log::tests: desktop icons already hidden by user/other tool; leaving as is",
+                "WARN coredesk::share_log::tests: anchor SetWindowPos failed hwnd=0",
+                "WARN coredesk::share_log::tests: anchor SetWindowPos failed hwnd=1",
+                "WARN coredesk::share_log::tests: anchor SetWindowPos failed hwnd=2",
+                "WARN coredesk::share_log::tests: (the previous message repeated 7 more times)",
+                "INFO coredesk::share_log::tests: desktop icons already hidden by user/other tool; leaving as is",
             ]
         );
     }
@@ -614,14 +614,14 @@ mod tests {
             written: 0,
             run: None,
         };
-        let filler = format!("t  INFO pecofence: {}\n", "x".repeat(1000));
+        let filler = format!("t  INFO coredesk: {}\n", "x".repeat(1000));
         while sink.written < MAX_BYTES {
             sink.write(Level::INFO, &filler);
         }
-        sink.write(Level::INFO, "t  INFO pecofence: dropped\n");
+        sink.write(Level::INFO, "t  INFO coredesk: dropped\n");
         sink.write(
             Level::ERROR,
-            "t ERROR pecofence: PANIC location=crates/app/src/x.rs:1:2\n",
+            "t ERROR coredesk: PANIC location=crates/app/src/x.rs:1:2\n",
         );
         let text = String::from_utf8(out.0.lock().unwrap().clone()).unwrap();
         assert!(text.contains("size limit reached"));
@@ -637,13 +637,13 @@ mod tests {
             written: 0,
             run: None,
         };
-        let filler = format!("t  INFO pecofence: {}\n", "x".repeat(1000));
+        let filler = format!("t  INFO coredesk: {}\n", "x".repeat(1000));
         while sink.written + (filler.len() as u64) < MAX_BYTES {
             sink.write(Level::INFO, &filler);
         }
-        let error = format!("t ERROR pecofence: {}\n", "e".repeat(2000));
+        let error = format!("t ERROR coredesk: {}\n", "e".repeat(2000));
         sink.write(Level::ERROR, &error);
-        sink.write(Level::INFO, "t  INFO pecofence: dropped\n");
+        sink.write(Level::INFO, "t  INFO coredesk: dropped\n");
         let text = String::from_utf8(out.0.lock().unwrap().clone()).unwrap();
         assert!(!text.contains("dropped"));
         assert!(text.ends_with(&format!(
@@ -862,7 +862,7 @@ mod tests {
             let src = std::fs::read_to_string(&file).unwrap();
             for site in callsites(&file, &src) {
                 seen += 1;
-                if site.target.as_deref() == Some("pecofence::test") {
+                if site.target.as_deref() == Some("coredesk::test") {
                     continue;
                 }
                 let message = site.message.as_deref().unwrap_or("");

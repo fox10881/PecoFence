@@ -72,7 +72,7 @@ pub fn user_notification_state() -> Option<i32> {
 }
 
 /// Whether Windows' startup switch for the package (Settings > Apps > Startup, the manifest's
-/// `PecoFenceStartup` task) is on. Waits for WinRT, so call it on a worker.
+/// `CoreDeskStartup` task) is on. Waits for WinRT, so call it on a worker.
 pub fn startup_task_enabled() -> Result<bool> {
     // The activation factory is cached for the process. Keep the MTA it lives in alive, or the
     // worker leaving it tears it down and the next call crashes in combase.
@@ -83,7 +83,7 @@ pub fn startup_task_enabled() -> Result<bool> {
         // SAFETY: out-pointer to a local; the usage is never released.
         let _ = unsafe { CoIncrementMTAUsage(&mut cookie) };
     });
-    let task = StartupTask::GetAsync(&windows_core::HSTRING::from("PecoFenceStartup"))?.join()?;
+    let task = StartupTask::GetAsync(&windows_core::HSTRING::from("CoreDeskStartup"))?.join()?;
     Ok(matches!(
         task.State()?,
         StartupTaskState::Enabled | StartupTaskState::EnabledByPolicy

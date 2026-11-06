@@ -18,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-PUBLIC = ROOT / "extras/pecofence-promo/public"
+PUBLIC = ROOT / "extras/coredesk-promo/public"
 OUTPUT = ROOT / "dist/store-listing"
 SOURCE = ROOT / "docs/store"
 SHOTS = [
@@ -93,7 +93,7 @@ def artwork():
 def trailer(encode):
     output = OUTPUT / "trailer"
     output.mkdir(exist_ok=True)
-    source = PUBLIC.parent / "out/PecoFence-autosort-en-1080p.mp4"
+    source = PUBLIC.parent / "out/CoreDesk-autosort-en-1080p.mp4"
     # An actual frame of the same trailer, with its existing on-screen title.
     ffmpeg("-ss", 3.5, "-i", source, "-frames:v", 1, "-update", 1, output / "thumbnail-1920x1080.png")
     if encode:
@@ -103,7 +103,7 @@ def trailer(encode):
                "-g", 15, "-keyint_min", 15, "-sc_threshold", 0, "-bf", 2,
                "-x264-params", "open-gop=0:b-adapt=0:nal-hrd=cbr",
                "-c:a", "aac", "-b:a", "384k", "-ar", 48000, "-ac", 2,
-               "-use_editlist", 0, "-movflags", "+faststart", output / "PecoFence-30s-en.mp4")
+               "-use_editlist", 0, "-movflags", "+faststart", output / "CoreDesk-30s-en.mp4")
 
 
 def copy_and_preview():
@@ -132,9 +132,9 @@ def copy_and_preview():
         for index, ((name, *_), caption) in enumerate(zip(SHOTS, listing["captions"]), 1)
     )
     copy_links = "".join(f'<a href="listings/{lang}/description.txt">{lang} 文案 ↗</a>' for lang in listings)
-    video = '<video controls preload="none" poster="trailer/thumbnail-1920x1080.png" src="trailer/PecoFence-30s-en.mp4"></video>' if (OUTPUT / "trailer/PecoFence-30s-en.mp4").exists() else '<img src="trailer/thumbnail-1920x1080.png" alt="宣传片封面">'
+    video = '<video controls preload="none" poster="trailer/thumbnail-1920x1080.png" src="trailer/CoreDesk-30s-en.mp4"></video>' if (OUTPUT / "trailer/CoreDesk-30s-en.mp4").exists() else '<img src="trailer/thumbnail-1920x1080.png" alt="宣传片封面">'
     page = f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PecoFence · Microsoft Store 素材预览</title><style>
+<title>CoreDesk · Microsoft Store 素材预览</title><style>
 *{{box-sizing:border-box}}body{{margin:0;background:#f6f7fb;color:#19243a;font:16px/1.8 "Segoe UI","Microsoft YaHei",sans-serif}}
 main{{max-width:1120px;margin:auto;padding:48px 24px}}h1{{font-size:38px;letter-spacing:-.04em;margin:12px 0}}
 h2{{font-size:27px;margin:54px 0 20px}}p{{max-width:760px;color:#566177}}a{{color:#3452bf;text-underline-offset:4px}}
@@ -142,9 +142,9 @@ nav{{display:flex;flex-wrap:wrap;gap:25px}}img,video{{width:100%;height:auto;dis
 figure{{margin:0}}figcaption{{padding:14px 0 24px;color:#566177;font-size:13px}}b{{color:#3452bf;margin-right:8px}}
 .grid{{display:grid;grid-template-columns:1fr 1fr;gap:24px}}.note{{font-size:13px}}.copy{{white-space:pre-wrap;background:white;padding:28px;border:1px solid #dfe4ed;border-radius:12px}}
 @media(max-width:680px){{.grid{{grid-template-columns:1fr}}h1{{font-size:30px}}}}
-</style><main><span>PecoFence / Microsoft Store</span><h1>桌面清爽。灵感自在。</h1>
+</style><main><span>CoreDesk / Microsoft Store</span><h1>桌面清爽。灵感自在。</h1>
 <p>上架素材预览。截图使用真实演示画面，宣传文字放在商店标题和说明字段中。</p><nav>{copy_links}<a href="listings/listings.json">全部字段 JSON ↗</a></nav>
-<h2>独立主视觉</h2><img src="art/super-hero-1920x1080.png" alt="以 PecoFence 四角与四方块标志延展的玻璃主题主视觉">
+<h2>独立主视觉</h2><img src="art/super-hero-1920x1080.png" alt="以 CoreDesk 四角与四方块标志延展的玻璃主题主视觉">
 <p class="note">1920 × 1080 PNG · 无文字 · 用于 Super hero art 字段，商店实际显示位置由微软决定。</p>
 <h2>30 秒宣传片</h2>{video}<p class="note">原有宣传片的商店编码版本，画面文字为英文。不要用官网的 720p 文件上传。</p>
 <h2>截图顺序与说明</h2><div class="grid">{cards}</div>

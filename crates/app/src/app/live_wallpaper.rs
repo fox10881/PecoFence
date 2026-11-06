@@ -1,6 +1,6 @@
 //! Runtime live-wallpaper overlay, separate from the static virtual-desktop cache.
 use super::*;
-use pecofence_platform::live_wallpaper::{CONTRAST_SAMPLE_FACTOR, LiveWallpaper};
+use coredesk_platform::live_wallpaper::{CONTRAST_SAMPLE_FACTOR, LiveWallpaper};
 
 const FILL_DURATION: Duration = Duration::from_millis(1800);
 const DRAIN_DURATION: Duration = Duration::from_millis(1600);
@@ -93,7 +93,7 @@ fn desktop_has_focus() -> bool {
     let pid = desktop::window_pid(root);
     let class = desktop::class_name(root);
     let shell_pid = desktop::window_pid(desktop::shell_window());
-    let our_pid = pecofence_platform::process::current_pid();
+    let our_pid = coredesk_platform::process::current_pid();
     if pid != our_pid {
         return foreground_allows_glass(&class, pid, shell_pid, our_pid, false);
     }
@@ -141,8 +141,7 @@ impl Default for LiveBackdrop {
             last_frame: None,
             applied: None,
             waiting: false,
-            disabled: pecofence_core::brand::var("PECOFENCE_LIVE_WALLPAPER")
-                .is_ok_and(|s| s == "0"),
+            disabled: coredesk_core::brand::var("COREDESK_LIVE_WALLPAPER").is_ok_and(|s| s == "0"),
             activity: GlassActivity::default(),
             bootstrap_until: Instant::now() + Duration::from_secs(2),
             strength: 1.0,
@@ -248,9 +247,7 @@ impl App {
                         height: sample.height,
                         bgra: sample.bgra,
                     };
-                    source.gpu = Some(pecofence_render::backdrop::GpuPixels::new(1, image, || {
-                        None
-                    }));
+                    source.gpu = Some(coredesk_render::backdrop::GpuPixels::new(1, image, || None));
                     source.downscale = CONTRAST_SAMPLE_FACTOR;
                     replaced += 1;
                     continue;
@@ -301,7 +298,7 @@ impl App {
                 self.live_wallpaper.applied = Some((fingerprint, set.clone()));
                 let prepared = Instant::now();
                 self.apply_live_backdrops(set);
-                tracing::trace!(target: "pecofence::live_timing", prep_us = prepared.duration_since(started).as_micros(), draw_us = prepared.elapsed().as_micros(), "live wallpaper apply");
+                tracing::trace!(target: "coredesk::live_timing", prep_us = prepared.duration_since(started).as_micros(), draw_us = prepared.elapsed().as_micros(), "live wallpaper apply");
                 return material_work;
             }
         }
@@ -359,7 +356,7 @@ impl App {
 
     #[cfg(debug_assertions)]
     pub(super) fn test_live_activity(&mut self, active: Option<bool>) {
-        if pecofence_core::brand::var_os("PECOFENCE_UI_TEST_WINDOWS").is_some() {
+        if coredesk_core::brand::var_os("COREDESK_UI_TEST_WINDOWS").is_some() {
             self.live_wallpaper.activity_override = active;
             self.tick_live_wallpaper();
         }
@@ -403,14 +400,14 @@ mod tests {
         ));
         assert!(!foreground_allows_glass("GameWindow", 3, 1, 2, true));
         assert!(foreground_allows_glass(
-            "PecoFence.Settings",
+            "CoreDeskEngine.Settings",
             2,
             1,
             2,
             false
         ));
         assert!(!foreground_allows_glass(
-            "PecoFence.Settings",
+            "CoreDeskEngine.Settings",
             2,
             1,
             2,

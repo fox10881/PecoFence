@@ -1,19 +1,19 @@
-//! `pecofence_tap.dll` — the resident XAML-styling engine injected into
+//! `coredesk_tap.dll` — the resident XAML-styling engine injected into
 //! `explorer.exe` (taskbar themes), `StartMenuExperienceHost.exe` (Start
 //! Menu themes) and `ShellExperienceHost.exe`/`ShellHost.exe` (Notification
 //! Center themes), modelled on TranslucentTB's `ExplorerTAP` + Windhawk's
 //! `visualtreewatcher`.
 //!
-//! Injected by `pecofence.exe` through a `WH_CALLWNDPROC` hook (the
+//! Injected by `coredesk.exe` through a `WH_CALLWNDPROC` hook (the
 //! `CallWndProc` export is the injection vector). On attach it:
-//!  1. opens a message-only command window (`PecoFenceTAP` /
-//!     `PecoFenceTAPSM`) the host delivers `PECO-TBS1`/`PECO-SMS1` theme
+//!  1. opens a message-only command window (`CoreDeskTAP` /
+//!     `CoreDeskTAPSM`) the host delivers `CDES-TBS1`/`CDES-SMS1` theme
 //!     wires to over `WM_COPYDATA`;
 //!  2. initializes XAML Diagnostics (`InitializeXamlDiagnosticsEx`) so a
 //!     `TAPSite` COM object hands us the visual-tree service that feeds
 //!     `styler`;
 //!  3. restores every original property value when the host exits, resets,
-//!     or sends `PecoFence.TAP.Unload`.
+//!     or sends `CoreDeskEngine.TAP.Unload`.
 
 #[allow(
     dead_code,
@@ -71,7 +71,7 @@ mod win32;
 
 /// Debug-build-only tracing: the DLL swallows COM errors by design (Explorer
 /// must never crash for cosmetics), so diagnosis needs a side channel. Each
-/// line appends to `%TEMP%\pecofence_tap.log`; release builds compile it out.
+/// line appends to `%TEMP%\coredesk_tap.log`; release builds compile it out.
 /// One shared `File` under a mutex — per-line `open()` raced concurrent
 /// writers and could silently drop lines.
 #[cfg(debug_assertions)]
@@ -83,7 +83,7 @@ pub(crate) fn log(msg: &str) {
         *guard = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(std::env::temp_dir().join("pecofence_tap.log"))
+            .open(std::env::temp_dir().join("coredesk_tap.log"))
             .ok();
     }
     if let Some(f) = guard.as_mut() {
@@ -145,7 +145,7 @@ pub unsafe extern "system" fn DllMain(
         }
     } else if reason == 0 && (is_explorer_process() || is_smeh_process() || is_nch_process()) {
         // DLL_PROCESS_DETACH — only meaningful inside a host; the host-side
-        // `FreeLibrary(tap.lib)` in pecofence.exe would otherwise log the
+        // `FreeLibrary(tap.lib)` in coredesk.exe would otherwise log the
         // same line and look like a resident unload.
         tap_log!("DllMain DETACH smeh={} nch={}", is_smeh(), is_nch_process());
     }

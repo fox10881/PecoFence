@@ -20,8 +20,8 @@ uv run --with pillow --with playwright python scripts/make-store-media.py
 ```
 
 Requires FFmpeg, Edge or Chrome, and the original local captures under
-`extras/pecofence-promo/public/` plus
-`extras/pecofence-promo/out/PecoFence-autosort-en-1080p.mp4`.
+`extras/coredesk-promo/public/` plus
+`extras/coredesk-promo/out/CoreDesk Engine-autosort-en-1080p.mp4`.
 The site itself builds without these capture files.
 
 Open `dist/store-listing/index.html` to review. Use `--skip-trailer` when iterating on
@@ -41,7 +41,7 @@ No MSIX rebuild is required for these listing-only changes.
 | Short description, description, features, keywords | Matching text files under `listings/<locale>/` |
 | 16:9 Super hero art | `art/super-hero-1920x1080.png` |
 | 1:1 app tile icon | `art/app-icon-300x300.png`, rendered with the existing package icon renderer |
-| Trailer | `trailer/PecoFence-30s-en.mp4` |
+| Trailer | `trailer/CoreDesk Engine-30s-en.mp4` |
 | Trailer thumbnail | `trailer/thumbnail-1920x1080.png` |
 | Trailer title | `listings/<locale>/trailerTitle.txt` |
 

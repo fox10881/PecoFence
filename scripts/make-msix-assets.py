@@ -1,12 +1,9 @@
-"""Render the Store/tile PNGs for the MSIX package from site/assets/mark.svg.
+"""Render the Store/tile PNGs for the MSIX package from packaging/assets/badge.png.
 
-The mark is four rounded corner brackets plus a 2x2 grid of rounded squares; it is
-redrawn here with Pillow (no SVG renderer needed) at every scale the Store expects.
-
-Icon style ("variant E"): white mark on an indigo rounded-square plate. The plate's
-corner radius is 22% of the side and the mark is scaled to 64% of the side (18% margin).
-Wide tiles and the splash screen are the white mark alone on a transparent background;
-the manifest BackgroundColor (the same indigo) shows behind them.
+The CoreDesk Engine badge is the circular fox emblem; every asset is that artwork
+composited (Lanczos) onto a transparent canvas at the size the Store expects. Wide
+tiles and the splash screen keep the transparent ring so the manifest BackgroundColor
+(the plate indigo) shows behind the badge.
 
     python scripts/make-msix-assets.py <output directory> [--preview <png>]
     python scripts/make-msix-assets.py --preview .cache/icon-sheet.png
@@ -20,11 +17,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 PLATE = (0x47, 0x68, 0xDE)
-WHITE = (0xFF, 0xFF, 0xFF)
-SUPERSAMPLE = 8
-PLATE_RADIUS = 0.22  # of the plate side
-TILE_MARGIN = 0.18  # mark inset on tiles: mark = 64% of the side
-ICON_MARGIN = 0.12  # taskbar / Explorer icons: the plate is the icon, fill it a bit more
+TILE_MARGIN = 0.18  # badge inset on tiles: badge = 64% of the side
+ICON_MARGIN = 0.12  # taskbar / Explorer icons: the badge fills a bit more
 
 # Logical name -> (base width, base height) at 100% scale.
 TILES = {
@@ -43,76 +37,26 @@ SCALES = (100, 125, 150, 200, 400)
 TARGET_SIZES = (16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256)
 
 
-def draw_mark(d: ImageDraw.ImageDraw, cx: float, cy: float, size: float, color=WHITE) -> None:
-    """Draw the 64-unit mark centred at (cx, cy) with `size` pixels per 64 units.
+BADGE_SRC = Path(__file__).resolve().parent.parent / "packaging" / "assets" / "badge.png"
 
-    Coordinates are in the target image of `d` (call with a supersampled image and scaled
-    coordinates for anti-aliasing).
-    """
-    unit = size / 64.0
-    ox = cx - 32 * unit
-    oy = cy - 32 * unit
 
-    def pt(x, y):
-        return (ox + x * unit, oy + y * unit)
-
-    def box(x0, y0, x1, y1):
-        return [pt(x0, y0), pt(x1, y1)]
-
-    stroke = max(1, int(round(6 * unit)))
-
-    # Corner brackets: arcs of radius 6 (centre offset 6 from the corners) plus straight legs.
-    # Path: M27 8 H14 a6 6 0 0 0 -6 6 V27, etc. Drawn as thick lines with round caps.
-    def leg(a, b):
-        d.line([pt(*a), pt(*b)], fill=color, width=stroke)
-        r = stroke / 2
-        for x, y in (pt(*a), pt(*b)):
-            d.ellipse([x - r, y - r, x + r, y + r], fill=color)
-
-    def arc(cx_, cy_, start, end):
-        # Stroke centre line radius 6; Pillow strokes inward from the box, so use the
-        # outer radius 9 and a 6-unit band to cover radii 3..9.
-        d.arc(box(cx_ - 9, cy_ - 9, cx_ + 9, cy_ + 9), start, end, fill=color, width=stroke)
-
-    # Top-left
-    leg((27, 8), (14, 8)); arc(14, 14, 180, 270); leg((8, 14), (8, 27))
-    # Top-right
-    leg((37, 8), (50, 8)); arc(50, 14, 270, 360); leg((56, 14), (56, 27))
-    # Bottom-left
-    leg((8, 37), (8, 50)); arc(14, 50, 90, 180); leg((14, 56), (27, 56))
-    # Bottom-right
-    leg((56, 37), (56, 50)); arc(50, 50, 0, 90); leg((50, 56), (37, 56))
-
-    def square(x, y, alpha):
-        d.rounded_rectangle(box(x, y, x + 8, y + 8), radius=2 * unit, fill=color + (int(255 * alpha),))
-
-    square(22, 22, 1.0)
-    square(35, 22, 0.65)
-    square(22, 35, 0.65)
-    square(35, 35, 1.0)
+def badge() -> Image.Image:
+    # The CoreDesk Engine fox badge (circular, transparent margin) is the whole icon now.
+    return Image.open(BADGE_SRC).convert("RGBA")
 
 
 def render_icon(width: int, height: int, *, plate: bool = True, margin: float = TILE_MARGIN) -> Image.Image:
-    """Variant E at the given size: indigo rounded plate (square, centred) with the white mark.
+    """The fox badge centred on a transparent canvas at the given size.
 
-    With plate=False only the mark is drawn, on a transparent background.
+    `plate`/`margin` are kept for the tile call sites; a badge tile is the badge at the
+    fill the Store expects (the manifest BackgroundColor shows through the transparent ring).
     """
-    s = SUPERSAMPLE
-    # Transparent pixels carry the colour of the outermost element so any resampling
-    # halo at the edges stays in that colour.
-    big = Image.new("RGBA", (width * s, height * s), (PLATE if plate else WHITE) + (0,))
-    d = ImageDraw.Draw(big)
+    b = badge()
     side = min(width, height)
-    cx, cy = width * s / 2, height * s / 2
-    if plate:
-        half = side * s / 2
-        d.rounded_rectangle(
-            [cx - half, cy - half, cx + half - 1, cy + half - 1],
-            radius=PLATE_RADIUS * side * s,
-            fill=PLATE + (255,),
-        )
-    draw_mark(d, cx, cy, side * s * (1 - 2 * margin))
-    return big.resize((width, height), Image.LANCZOS)
+    fill = side if plate else round(side * (1 - 2 * margin))
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    img.paste(b.resize((fill, fill), Image.LANCZOS), ((width - fill) // 2, (height - fill) // 2), b.resize((fill, fill), Image.LANCZOS))
+    return img
 
 
 def render_tile(name: str, width: int, height: int) -> Image.Image:
@@ -120,7 +64,7 @@ def render_tile(name: str, width: int, height: int) -> Image.Image:
 
 
 def render_target(size: int) -> Image.Image:
-    # Plated and unplated forms are identical: our plate is the icon.
+    # The badge carries its own circular plate — plated and unplated forms are identical.
     return render_icon(size, size, margin=ICON_MARGIN)
 
 

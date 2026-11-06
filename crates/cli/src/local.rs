@@ -1,15 +1,15 @@
 //! Commands that work without the app (or mostly so): `paths`, `log`, `config check`. They
-//! know where PecoFence keeps its files the same way the app does (`%LOCALAPPDATA%\PecoFence`
-//! for the log and crash dumps, `%APPDATA%\PecoFence` for `config.json` unless a running
+//! know where CoreDesk Engine keeps its files the same way the app does (`%LOCALAPPDATA%\CoreDeskEngine`
+//! for the log and crash dumps, `%APPDATA%\CoreDeskEngine` for `config.json` unless a running
 //! instance says otherwise, e.g. `--portable`).
 
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use pecofence_core::brand;
-use pecofence_core::config_store::{self, LintLevel};
-use pecofence_ipc::{ErrorCode, IpcError};
+use coredesk_core::brand;
+use coredesk_core::config_store::{self, LintLevel};
+use coredesk_ipc::{ErrorCode, IpcError};
 use serde_json::{Value, json};
 
 /// Where the files are (or would be). `config` comes from a running instance when one answers
@@ -91,14 +91,17 @@ pub fn default_paths(
     let roaming = appdata
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
-    let log_dir = local.join(brand::NAME);
+    let log_dir = local.join(brand::ID);
     let log_name = brand::log_file_name(instance, brand::LOG);
-    let preferred = roaming.join(brand::NAME);
-    let legacy = roaming.join(brand::LEGACY_DATA_DIR);
-    let config_dir = if !legacy_config_exists(&preferred) && legacy_config_exists(&legacy) {
-        legacy
-    } else {
+    let preferred = roaming.join(brand::ID);
+    let config_dir = if legacy_config_exists(&preferred) {
         preferred
+    } else {
+        brand::LEGACY_DATA_DIRS
+            .iter()
+            .map(|name| roaming.join(name))
+            .find(|dir| legacy_config_exists(dir))
+            .unwrap_or(preferred)
     };
     (
         config_dir.join("config.json"),
@@ -148,14 +151,14 @@ pub fn check_config(path: &Path) -> Result<(Value, bool), IpcError> {
             ErrorCode::InvalidValue,
             format!("{} is not a file", path.display()),
         )
-        .hint("Pass a config.json or a `config export` file; `pecofence-cli paths` shows where the app keeps its own"));
+        .hint("Pass a config.json or a `config export` file; `coredesk-cli paths` shows where the app keeps its own"));
     }
     let cfg = config_store::ConfigStore::parse_file(path).map_err(|e| {
         IpcError::new(
             ErrorCode::ValidationFailed,
-            format!("{} would be rejected by PecoFence: {e}", path.display()),
+            format!("{} would be rejected by CoreDesk Engine: {e}", path.display()),
         )
-        .details(json!({ "expected": "a config.json as written by PecoFence (describe --schema Config)" }))
+        .details(json!({ "expected": "a config.json as written by CoreDesk Engine (describe --schema Config)" }))
     })?;
     let problems = config_store::lint(&cfg);
     let errors = problems
@@ -165,7 +168,7 @@ pub fn check_config(path: &Path) -> Result<(Value, bool), IpcError> {
     let warnings = problems.len() - errors;
     // Every monitor set shows the fences of the layout shown last; files from 0.1.3 and
     // earlier kept separate fences per set.
-    let shown: Vec<&pecofence_core::Layout> = match pecofence_core::last_shown(&cfg.layouts) {
+    let shown: Vec<&coredesk_core::Layout> = match coredesk_core::last_shown(&cfg.layouts) {
         Some(i) => vec![&cfg.layouts[i]],
         None => cfg.layouts.iter().collect(),
     };
@@ -173,7 +176,7 @@ pub fn check_config(path: &Path) -> Result<(Value, bool), IpcError> {
     let portals: usize = shown
         .iter()
         .flat_map(|l| l.fences.iter())
-        .filter(|f| f.kind == pecofence_core::FenceKind::FolderPortal)
+        .filter(|f| f.kind == coredesk_core::FenceKind::FolderPortal)
         .count();
     let report = json!({
         "ok": errors == 0,
@@ -222,7 +225,7 @@ pub fn print_log(path: &Path, lines: usize, follow: bool) -> Result<(), IpcError
             ErrorCode::InvalidValue,
             format!("cannot open {}: {e}", path.display()),
         )
-        .hint("PecoFence writes the log on start; `pecofence-cli paths` shows where it is expected")
+        .hint("CoreDesk Engine writes the log on start; `coredesk-cli paths` shows where it is expected")
     })?;
     let mut text = String::new();
     file.read_to_string(&mut text)
@@ -277,20 +280,20 @@ mod tests {
         let (config, log, log_dir) = default_paths(Some(local), Some(roaming), None, |_| false);
         assert_eq!(
             config,
-            PathBuf::from("C:\\Users\\me\\AppData\\Roaming\\PecoFence\\config.json")
+            PathBuf::from("C:\\Users\\me\\AppData\\Roaming\\CoreDeskEngine\\config.json")
         );
         assert_eq!(
             log,
-            PathBuf::from("C:\\Users\\me\\AppData\\Local\\PecoFence\\pecofence.log")
+            PathBuf::from("C:\\Users\\me\\AppData\\Local\\CoreDeskEngine\\coredesk.log")
         );
         assert_eq!(
             log_dir,
-            PathBuf::from("C:\\Users\\me\\AppData\\Local\\PecoFence")
+            PathBuf::from("C:\\Users\\me\\AppData\\Local\\CoreDeskEngine")
         );
 
         // A named instance logs to its own file; the config folder is shared.
         let (_, log, _) = default_paths(Some(local), Some(roaming), Some(" test "), |_| false);
-        assert!(log.ends_with("pecofence.test.log"), "{log:?}");
+        assert!(log.ends_with("coredesk.test.log"), "{log:?}");
 
         // Legacy data folder is used only when the new one has nothing.
         let (config, _, _) = default_paths(Some(local), Some(roaming), None, |dir| {
@@ -298,7 +301,10 @@ mod tests {
         });
         assert!(config.ends_with("OpenFence\\config.json"), "{config:?}");
         let (config, _, _) = default_paths(Some(local), Some(roaming), None, |_| true);
-        assert!(config.ends_with("PecoFence\\config.json"), "{config:?}");
+        assert!(
+            config.ends_with("CoreDeskEngine\\config.json"),
+            "{config:?}"
+        );
     }
 
     #[test]
@@ -314,17 +320,17 @@ mod tests {
 
     #[test]
     fn check_reports_lints_and_rejects_garbage() {
-        let dir = std::env::temp_dir().join(format!("pecofence-cli-check-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coredesk-cli-check-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let good = dir.join("good.json");
-        let cfg = pecofence_core::Config::default();
-        pecofence_core::ConfigStore::export_to(&cfg, &good).unwrap();
+        let cfg = coredesk_core::Config::default();
+        coredesk_core::ConfigStore::export_to(&cfg, &good).unwrap();
         let (report, failed) = check_config(&good).unwrap();
         assert!(!failed, "{report}");
         assert_eq!(report["ok"], json!(true));
         assert_eq!(
             report["schema"],
-            json!(pecofence_core::CONFIG_SCHEMA_URL),
+            json!(coredesk_core::CONFIG_SCHEMA_URL),
             "export writes $schema"
         );
         // No layouts yet: a warning, not an error.

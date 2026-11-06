@@ -1,7 +1,7 @@
 """Export the product site's media from the local promo captures.
 
 Requires Pillow and FFmpeg. Reads the ignored recordings under
-extras/pecofence-promo/public and writes small web assets into site/assets,
+extras/coredesk-promo/public and writes small web assets into site/assets,
 which are checked in so the site builds without the promo project.
 """
 import argparse
@@ -11,7 +11,7 @@ import subprocess
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-PUBLIC = ROOT / "extras/pecofence-promo/public"
+PUBLIC = ROOT / "extras/coredesk-promo/public"
 OUT = ROOT / "site/assets"
 CLIPS = ["groups", "portal", "tabs", "peek", "hide", "rules"]
 POSTER_SECONDS = {"groups": 6, "portal": 9, "tabs": 5, "peek": 6.8, "hide": 7, "rules": 10}
@@ -41,7 +41,7 @@ def presentation_stills():
 
 def promo():
     """The 30-second trailer (v3) with its soundtrack; plays only on request."""
-    master = PUBLIC.parent / "out/PecoFence-trailer-v3-1080p60.mp4"
+    master = PUBLIC.parent / "out/CoreDesk-trailer-v3-1080p60.mp4"
     subprocess.run([
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(master),
         "-vf", "fps=30,scale=1280:720:flags=lanczos", "-c:v", "libx264", "-preset", "slow", "-crf", "23",
@@ -49,7 +49,7 @@ def promo():
         str(OUT / "promo.mp4"),
     ], check=True)
     # Poster: the "Your desktop. Configured by your AI." frame, also the Store thumbnail.
-    poster = Image.open(PUBLIC.parent / "out/PecoFence-trailer-v3-thumbnail.png").convert("RGB")
+    poster = Image.open(PUBLIC.parent / "out/CoreDesk-trailer-v3-thumbnail.png").convert("RGB")
     poster.resize((1280, 720), Image.Resampling.LANCZOS).save(
         OUT / "promo.jpg", quality=84, optimize=True, progressive=True)
 

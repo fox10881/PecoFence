@@ -1,4 +1,4 @@
-//! JSON Schema export for `pecofence-cli describe --schema <Name>` (feature `describe`).
+//! JSON Schema export for `coredesk-cli describe --schema <Name>` (feature `describe`).
 
 use schemars::{JsonSchema, schema_for};
 use serde_json::Value;
@@ -35,23 +35,23 @@ pub fn schema(name: &str) -> Option<Value> {
     Some(match name {
         "Request" => to_value::<crate::Request>(),
         "Response" => to_value::<crate::Response>(),
-        "Settings" => to_value::<pecofence_core::Settings>(),
-        "Fence" => to_value::<pecofence_core::Fence>(),
+        "Settings" => to_value::<coredesk_core::Settings>(),
+        "Fence" => to_value::<coredesk_core::Fence>(),
         "FenceDto" => to_value::<crate::FenceDto>(),
         "ItemDto" => to_value::<crate::ItemDto>(),
         "MonitorDto" => to_value::<crate::MonitorDto>(),
         "StatusDto" => to_value::<crate::StatusDto>(),
         "SnapshotDto" => to_value::<crate::SnapshotDto>(),
-        "RuleSet" => to_value::<pecofence_core::rules::RuleSet>(),
-        "Rule" => to_value::<pecofence_core::rules::Rule>(),
-        "Cond" => to_value::<pecofence_core::rules::Cond>(),
+        "RuleSet" => to_value::<coredesk_core::rules::RuleSet>(),
+        "Rule" => to_value::<coredesk_core::rules::Rule>(),
+        "Cond" => to_value::<coredesk_core::rules::Cond>(),
         "RuleListDto" => to_value::<crate::RuleListDto>(),
         "BackupDto" => to_value::<crate::BackupDto>(),
         "PlannedMoveDto" => to_value::<crate::PlannedMoveDto>(),
         "ItemMovePlanDto" => to_value::<crate::ItemMovePlanDto>(),
         "AdjustedDto" => to_value::<crate::AdjustedDto>(),
         "EventDto" => to_value::<crate::EventDto>(),
-        "Config" => to_value::<pecofence_core::Config>(),
+        "Config" => to_value::<coredesk_core::Config>(),
         _ => return None,
     })
 }

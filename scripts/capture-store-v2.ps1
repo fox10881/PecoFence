@@ -1,7 +1,7 @@
 param([string[]]$Scenes = @("overview","dark","tabs","peek","auto","portal"))
 $ErrorActionPreference = "Stop"
 $workspace = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$fixtureRoot = Join-Path $workspace "extras\pecofence-promo\.capture\reviewed\store-v2"
+$fixtureRoot = Join-Path $workspace "extras\coredesk-promo\.capture\reviewed\store-v2"
 $assetRoot = Join-Path $workspace ".cache\store-v2"
 $outputRoot = Join-Path $assetRoot "native"
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
@@ -39,11 +39,11 @@ $scale = [StoreCapture]::GetDpiForSystem() / 96.0
 $plateW = 2560; $plateH = 1440
 if ($screen.Width -lt $plateW -or $screen.Height -lt $plateH) { throw "Native capture requires a 2560x1440 display; found $screen" }
 $plateX = [int](($screen.Width-$plateW)/2); $plateY = [int](($screen.Height-$plateH)/2)
-$binary = Join-Path $workspace "extras\pecofence-promo\.capture\reviewed-build\target-auto\debug\pecofence.exe"
+$binary = Join-Path $workspace "extras\coredesk-promo\.capture\reviewed-build\target-auto\debug\coredesk.exe"
 $hash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($hash -ne "5db5d8aba634a52736dff716f1be86bd3522120dabe42e16468ef5588c0850af") { throw "Review the fixture build before capturing an unknown executable." }
 $previous = [StoreCapture]::GetForegroundWindow()
-$saved = @{instance=$env:PECOFENCE_INSTANCE; test=$env:PECOFENCE_UI_TEST_WINDOWS; fixture=$env:PECOFENCE_DEMO_DESKTOP; local=$env:LOCALAPPDATA}
+$saved = @{instance=$env:COREDESK_INSTANCE; test=$env:COREDESK_UI_TEST_WINDOWS; fixture=$env:COREDESK_DEMO_DESKTOP; local=$env:LOCALAPPDATA}
 $manifest = [Collections.Generic.List[object]]::new()
 
 function Save-Frame([string]$Name) {
@@ -73,32 +73,32 @@ try {
     }
     $configPath = Join-Path $appDir "config\config.json"
     $config | ConvertTo-Json -Depth 35 | Set-Content -LiteralPath $configPath -Encoding utf8
-    Copy-Item -LiteralPath $binary -Destination (Join-Path $appDir "pecofence.exe")
+    Copy-Item -LiteralPath $binary -Destination (Join-Path $appDir "coredesk.exe")
     Copy-Item -LiteralPath (Join-Path $workspace "target\release\WebView2Loader.dll") -Destination (Join-Path $appDir "WebView2Loader.dll")
     $wallpaper = Join-Path $assetRoot $(if($scene -in @("dark","peek")){"paper-dark.png"}else{"paper-light.png"})
     $back = [Windows.Forms.Form]::new()
     $back.FormBorderStyle="None"; $back.StartPosition="Manual"; $back.ShowInTaskbar=$false
-    $back.Bounds=$screen; $back.Text="PecoFence Store v2 isolated backdrop"
+    $back.Bounds=$screen; $back.Text="CoreDesk Store v2 isolated backdrop"
     $back.BackgroundImage=[Drawing.Image]::FromFile($wallpaper); $back.BackgroundImageLayout="Stretch"
     $app=$null; $board=$null; $done=@{}; $shown=@{}
     try {
         $back.Show()
         [StoreCapture]::SetWindowPos($back.Handle,[IntPtr](-1),0,0,0,0,0x13) | Out-Null
         [Windows.Forms.Application]::DoEvents()
-        $env:PECOFENCE_INSTANCE="store-v2-$scene"
-        $env:PECOFENCE_UI_TEST_WINDOWS="1"
-        $env:PECOFENCE_DEMO_DESKTOP=Join-Path $caseDir "desktop-fixture"
+        $env:COREDESK_INSTANCE="store-v2-$scene"
+        $env:COREDESK_UI_TEST_WINDOWS="1"
+        $env:COREDESK_DEMO_DESKTOP=Join-Path $caseDir "desktop-fixture"
         $env:LOCALAPPDATA=Join-Path $caseDir "appdata"
         New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
         $args=@("--portable","--no-hide-icons","--wallpaper",('"' + $wallpaper + '"'),"--test-script",('"' + (Join-Path $caseDir "commands.txt") + '"'),"--exit-after","20000")
-        $app=Start-Process -FilePath (Join-Path $appDir "pecofence.exe") -ArgumentList $args -WindowStyle Hidden -PassThru
+        $app=Start-Process -FilePath (Join-Path $appDir "coredesk.exe") -ArgumentList $args -WindowStyle Hidden -PassThru
         $timer=[Diagnostics.Stopwatch]::StartNew()
         while (-not $app.HasExited -and $timer.Elapsed.TotalSeconds -lt 18) {
             [Windows.Forms.Application]::DoEvents()
             foreach ($window in [StoreCapture]::Windows([uint32]$app.Id)) {
                 $title=[StoreCapture]::Title($window)
                 if ($title -eq "Capture inbox") { [StoreCapture]::ShowWindow($window,0)|Out-Null;continue }
-                if ([StoreCapture]::Class($window) -eq "PecoFence.Fence") {
+                if ([StoreCapture]::Class($window) -eq "CoreDeskEngine.Fence") {
                     if (-not $shown[$window.ToInt64()] -and $timer.Elapsed.TotalSeconds -gt 1.8) {
                         [StoreCapture]::ShowWindow($window,4)|Out-Null
                         $shown[$window.ToInt64()]=$true
@@ -124,7 +124,7 @@ try {
                 Save-Frame "auto-before"
                 $done.newFiles=$true
                 foreach ($name in @("Form study.png","Launch checklist.md")) {
-                    Copy-Item -LiteralPath (Join-Path $assetRoot "studies\$name") -Destination (Join-Path $env:PECOFENCE_DEMO_DESKTOP $name)
+                    Copy-Item -LiteralPath (Join-Path $assetRoot "studies\$name") -Destination (Join-Path $env:COREDESK_DEMO_DESKTOP $name)
                 }
             }
             if ($scene -eq "tabs" -and $t -gt 7 -and -not $done.work) { Save-Frame "tabs-projects";$done.work=$true }
@@ -147,8 +147,8 @@ try {
     }
  }
 } finally {
-    $env:PECOFENCE_INSTANCE=$saved.instance;$env:PECOFENCE_UI_TEST_WINDOWS=$saved.test
-    $env:PECOFENCE_DEMO_DESKTOP=$saved.fixture;$env:LOCALAPPDATA=$saved.local
+    $env:COREDESK_INSTANCE=$saved.instance;$env:COREDESK_UI_TEST_WINDOWS=$saved.test
+    $env:COREDESK_DEMO_DESKTOP=$saved.fixture;$env:LOCALAPPDATA=$saved.local
     [StoreCapture]::SetForegroundWindow($previous)|Out-Null
     $manifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $outputRoot "capture-manifest.json") -Encoding utf8
 }

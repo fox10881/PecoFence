@@ -40,15 +40,15 @@ impl FenceViewState {
             return;
         }
         let caption = match col {
-            DetailColumn::Date => pecofence_core::i18n::text("修改日期"),
-            DetailColumn::Type => pecofence_core::i18n::text("类型"),
-            DetailColumn::Size => pecofence_core::i18n::text("大小"),
+            DetailColumn::Date => coredesk_core::i18n::text("修改日期"),
+            DetailColumn::Type => coredesk_core::i18n::text("类型"),
+            DetailColumn::Size => coredesk_core::i18n::text("大小"),
             DetailColumn::Name => return,
         };
         let chrome = self.chrome.clone();
         let fmt = chrome.row_format();
         // 12 DIPs of caption breathing room (the sort chevron sits above the caption).
-        let mut w = pecofence_render::text::measure_width(caption, fmt) + 12.0;
+        let mut w = coredesk_render::text::measure_width(caption, fmt) + 12.0;
         for item in &mut self.items {
             let label = match col {
                 DetailColumn::Date => {
@@ -66,7 +66,7 @@ impl FenceViewState {
                     item.size_label.get_or_insert(text).clone()
                 }
             };
-            w = w.max(pecofence_render::text::measure_width(&label, fmt));
+            w = w.max(coredesk_render::text::measure_width(&label, fmt));
         }
         // 8 DIPs of cell padding; MIN/MAX clamping happens in set_column_width.
         self.set_column_width(col, w + 8.0);

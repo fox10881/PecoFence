@@ -1,13 +1,13 @@
 //! Application state: config + layout selection + desktop item catalog + rule routing.
 
-use pecofence_core::geometry::{self, PxRect, WorkArea};
-use pecofence_core::rules::{Cond, Decision, RuleSet, Target, Template, Unmatched};
-use pecofence_core::{
+use coredesk_core::geometry::{self, PxRect, WorkArea};
+use coredesk_core::rules::{Cond, Decision, RuleSet, Target, Template, Unmatched};
+use coredesk_core::{
     AssignedBy, Config, ConfigStore, Fence, FenceId, FenceKind, IconKey, Item, ItemId, ItemKey,
     ItemRef, ItemSourceSpec, Layout, LoadOutcome, MonitorIdentity, Origin, SortMode,
 };
-use pecofence_platform::RECT;
-use pecofence_platform::shell::{self, DesktopEntry, EntryOrigin};
+use coredesk_platform::RECT;
+use coredesk_platform::shell::{self, DesktopEntry, EntryOrigin};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -78,7 +78,7 @@ fn config_dir(portable: bool) -> PathBuf {
     std::env::var_os("APPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
-        .join("PecoFence")
+        .join(coredesk_core::brand::ID)
 }
 
 /// `path` as the file system spells it (real casing, symlinks and junctions resolved), without
@@ -110,9 +110,12 @@ impl AppState {
         let store = if portable {
             ConfigStore::new(&directory)
         } else {
-            ConfigStore::with_legacy(
+            ConfigStore::with_legacies(
                 &directory,
-                directory.with_file_name(pecofence_core::brand::LEGACY_DATA_DIR),
+                coredesk_core::brand::LEGACY_DATA_DIRS
+                    .iter()
+                    .map(|name| directory.with_file_name(name))
+                    .collect::<Vec<_>>(),
             )
         };
         if store.dir() != directory {
@@ -129,11 +132,11 @@ impl AppState {
         // including a revert-to-baseline — is distinguishable from state
         // the app itself holds.
         store.note_sidecars_seen();
-        pecofence_core::i18n::set_language(
+        coredesk_core::i18n::set_language(
             config
                 .settings
                 .language
-                .resolve(pecofence_platform::locale::ui_language()),
+                .resolve(coredesk_platform::locale::ui_language()),
         );
         let mut state = Self {
             config,
@@ -157,11 +160,11 @@ impl AppState {
             tracing::warn!("duplicate fences or memberships in the configuration dropped");
             state.dirty = true;
         }
-        if pecofence_core::config_store::clamp_sizes(&mut state.config) {
+        if coredesk_core::config_store::clamp_sizes(&mut state.config) {
             tracing::warn!("fence sizes out of range in the configuration clamped");
             state.dirty = true;
         }
-        if pecofence_core::config_store::repair_unc_portals(&mut state.config) {
+        if coredesk_core::config_store::repair_unc_portals(&mut state.config) {
             tracing::info!("network portal paths saved by 0.2.1 repaired");
             state.dirty = true;
         }
@@ -196,9 +199,11 @@ impl AppState {
             return "portable";
         }
         let in_package = in_package_folder(&self.store.primary_path()) || in_package_folder(dir);
-        let old_name = dir
-            .file_name()
-            .is_some_and(|n| n == std::ffi::OsStr::new(pecofence_core::brand::LEGACY_DATA_DIR));
+        let old_name = dir.file_name().is_some_and(|n| {
+            coredesk_core::brand::LEGACY_DATA_DIRS
+                .iter()
+                .any(|name| n == std::ffi::OsStr::new(name))
+        });
         match (in_package, old_name) {
             (false, false) => "appdata",
             (false, true) => "appdata, old folder name",
@@ -232,16 +237,16 @@ impl AppState {
             .filter(|s| !snaps.iter().any(|x| x.id == s.id))
             .collect();
         incoming.sort_by_key(|s| std::cmp::Reverse(s.ts));
-        incoming.truncate(pecofence_core::MAX_SNAPSHOTS.saturating_sub(snaps.len()));
+        incoming.truncate(coredesk_core::MAX_SNAPSHOTS.saturating_sub(snaps.len()));
         snaps.extend(incoming);
         snaps.sort_by_key(|s| s.ts);
-        while snaps.len() > pecofence_core::MAX_SNAPSHOTS {
+        while snaps.len() > coredesk_core::MAX_SNAPSHOTS {
             snaps.remove(0);
         }
         config.snapshots = snaps;
         config.drop_duplicates();
-        pecofence_core::config_store::clamp_sizes(&mut config);
-        pecofence_core::config_store::repair_unc_portals(&mut config);
+        coredesk_core::config_store::clamp_sizes(&mut config);
+        coredesk_core::config_store::repair_unc_portals(&mut config);
         self.config = config;
         self.rebuild_catalog();
         self.layout = 0;
@@ -258,24 +263,24 @@ impl AppState {
     pub fn save_snapshot(&mut self, name: &str, wallpaper_path: Option<String>) -> uuid::Uuid {
         let name = name.trim();
         let name = if name.is_empty() {
-            pecofence_core::i18n::format(
+            coredesk_core::i18n::format(
                 "快照 {0}",
                 &[format!("{}", self.config.snapshots.len() + 1)],
             )
         } else {
             name.to_string()
         };
-        let snap = pecofence_core::Snapshot {
+        let snap = coredesk_core::Snapshot {
             id: uuid::Uuid::new_v4(),
             name,
-            ts: pecofence_core::now_unix(),
+            ts: coredesk_core::now_unix(),
             layouts: self.config.layouts.clone(),
             wallpaper_path,
             is_auto_backup: None,
         };
         let id = snap.id;
         self.config.snapshots.push(snap);
-        while self.config.snapshots.len() > pecofence_core::MAX_SNAPSHOTS {
+        while self.config.snapshots.len() > coredesk_core::MAX_SNAPSHOTS {
             self.config.snapshots.remove(0);
         }
         self.dirty = true;
@@ -304,11 +309,11 @@ impl AppState {
         // Older files appended one entry per apply under whatever localized name the UI had:
         // fold them into the fixed slot first so a same-second legacy name cannot win the
         // dedupe's newest-wins pick over the backup being written now.
-        pecofence_core::config_store::dedupe_restore_backups(&mut self.config);
-        let snap = pecofence_core::Snapshot {
-            id: pecofence_core::AUTO_BACKUP_SNAPSHOT_ID,
+        coredesk_core::config_store::dedupe_restore_backups(&mut self.config);
+        let snap = coredesk_core::Snapshot {
+            id: coredesk_core::AUTO_BACKUP_SNAPSHOT_ID,
             name: name.trim().to_string(),
-            ts: pecofence_core::now_unix(),
+            ts: coredesk_core::now_unix(),
             layouts: self.config.layouts.clone(),
             wallpaper_path: None,
             is_auto_backup: Some(true),
@@ -317,13 +322,13 @@ impl AppState {
             .config
             .snapshots
             .iter_mut()
-            .find(|s| s.id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID)
+            .find(|s| s.id == coredesk_core::AUTO_BACKUP_SNAPSHOT_ID)
         {
             Some(slot) => *slot = snap,
             None => self.config.snapshots.push(snap),
         }
         self.dirty = true;
-        pecofence_core::AUTO_BACKUP_SNAPSHOT_ID
+        coredesk_core::AUTO_BACKUP_SNAPSHOT_ID
     }
 
     /// Restores a snapshot's layouts without taking a backup first. False when `id` is unknown.
@@ -335,7 +340,7 @@ impl AppState {
         true
     }
 
-    fn apply_snapshot_layouts(&mut self, layouts: Vec<pecofence_core::Layout>) {
+    fn apply_snapshot_layouts(&mut self, layouts: Vec<coredesk_core::Layout>) {
         self.config.layouts = layouts;
         self.layout = 0;
         self.ensure_layout();
@@ -348,7 +353,7 @@ impl AppState {
     /// trimmed name is empty or unchanged. The automatic restore backup's name is a
     /// locale-resolved label, never user text, so it refuses a rename.
     pub fn rename_snapshot(&mut self, id: uuid::Uuid, name: &str) -> bool {
-        if id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID {
+        if id == coredesk_core::AUTO_BACKUP_SNAPSHOT_ID {
             return false;
         }
         let name = name.trim();
@@ -561,7 +566,7 @@ impl AppState {
     pub fn release_items(
         &mut self,
         ids: &[ItemId],
-        position: Option<pecofence_core::DesktopPosition>,
+        position: Option<coredesk_core::DesktopPosition>,
     ) -> usize {
         let (step_x, step_y) = position
             .as_ref()
@@ -628,7 +633,7 @@ impl AppState {
     /// The matched layout takes the connected monitors as they are: one found under another id
     /// (another port, or a file that saved GDI names) takes the new id there and in its fences'
     /// geometry, and a layout saved without resolutions takes the current ones.
-    fn update_monitors(&mut self, found: &pecofence_core::LayoutMatch) {
+    fn update_monitors(&mut self, found: &coredesk_core::LayoutMatch) {
         let layout = &mut self.config.layouts[found.index];
         for (saved, &j) in layout.fingerprint.iter_mut().zip(&found.pairs) {
             let now = MonitorIdentity::of(&self.work_areas[j]);
@@ -675,16 +680,16 @@ impl AppState {
         let icon = self.config.settings.icon_size;
         let col_w = crate::layout::GridMetrics::for_icon_size(
             icon,
-            pecofence_core::FenceView::default().label_lines,
+            coredesk_core::FenceView::default().label_lines,
         )
         .width_for_columns(3);
         let gap = 16.0f32;
         let x = ww - gap - col_w;
         let heights = [240.0f32, 200.0, 240.0];
         let titles = [
-            pecofence_core::i18n::text("程序"),
-            pecofence_core::i18n::text("文件夹"),
-            pecofence_core::i18n::text("文件与文档"),
+            coredesk_core::i18n::text("程序"),
+            coredesk_core::i18n::text("文件夹"),
+            coredesk_core::i18n::text("文件与文档"),
         ];
         let mut y = gap;
         let mut fences = Vec::new();
@@ -777,13 +782,13 @@ impl AppState {
         true
     }
 
-    pub fn detach_tab(&mut self, fence: FenceId) -> Option<pecofence_core::TabDetach> {
+    pub fn detach_tab(&mut self, fence: FenceId) -> Option<coredesk_core::TabDetach> {
         let change = self.config.layouts[self.layout].detach_tab(fence)?;
         self.dirty = true;
         Some(change)
     }
 
-    pub fn cancel_tab_detach(&mut self, change: &pecofence_core::TabDetach) -> bool {
+    pub fn cancel_tab_detach(&mut self, change: &coredesk_core::TabDetach) -> bool {
         let restored = self.config.layouts[self.layout].cancel_tab_detach(change);
         self.dirty |= restored;
         restored
@@ -866,8 +871,8 @@ impl AppState {
                 let mut px =
                     crate::layout::icon_px(f.view.layout, f.view.effective_icon_size(), dpi);
                 // Poster boxes are 1.5× taller; prewarm the thumbnail at the long edge.
-                if f.view.layout == pecofence_core::ViewLayout::Icons
-                    && f.view.effective_icon_shape() == pecofence_core::IconShape::Poster
+                if f.view.layout == coredesk_core::ViewLayout::Icons
+                    && f.view.effective_icon_shape() == coredesk_core::IconShape::Poster
                 {
                     px = px * 3 / 2;
                 }
@@ -918,10 +923,10 @@ impl AppState {
             if decision == Decision::Skip
                 && facts.file_name.to_lowercase().ends_with(".tmp")
                 && let Some(age) = facts.age_secs
-                && age < pecofence_core::rules::TMP_SETTLE_SECS
+                && age < coredesk_core::rules::TMP_SETTLE_SECS
             {
-                let at = pecofence_core::now_unix()
-                    + (pecofence_core::rules::TMP_SETTLE_SECS - age) as i64;
+                let at = coredesk_core::now_unix()
+                    + (coredesk_core::rules::TMP_SETTLE_SECS - age) as i64;
                 let soonest = self.tmp_settle_at.get().map_or(at, |t| t.min(at));
                 self.tmp_settle_at.set(Some(soonest));
             }
@@ -963,13 +968,13 @@ impl AppState {
         }
     }
 
-    fn facts_for(&self, entry: &DesktopEntry) -> pecofence_core::ItemFacts {
+    fn facts_for(&self, entry: &DesktopEntry) -> coredesk_core::ItemFacts {
         let last_opened = self
             .catalog
             .get(&ItemKey::from_path(&entry.path.to_string_lossy()))
             .and_then(|id| self.config.items.get(id))
             .and_then(|it| it.last_opened);
-        Self::facts_at(entry, last_opened, pecofence_core::now_unix())
+        Self::facts_at(entry, last_opened, coredesk_core::now_unix())
     }
 
     /// Whole days between `now` and the later of last write and last open; `None` when the
@@ -983,26 +988,26 @@ impl AppState {
         entry: &DesktopEntry,
         last_opened: Option<i64>,
         now: i64,
-    ) -> pecofence_core::ItemFacts {
+    ) -> coredesk_core::ItemFacts {
         let lower = entry.file_name.to_lowercase();
         let (shortcut_target, shortcut_target_ext) = if lower.ends_with(".lnk") {
             let t = shell::shortcut_target(&entry.path);
-            let ext = t.as_deref().map(pecofence_core::rules::ext_of);
+            let ext = t.as_deref().map(coredesk_core::rules::ext_of);
             (t, ext)
         } else if lower.ends_with(".url") {
             (shell::url_shortcut_target(&entry.path), Some(".url".into()))
         } else {
             (None, None)
         };
-        pecofence_core::ItemFacts {
+        coredesk_core::ItemFacts {
             file_name: entry.file_name.clone(),
             is_folder: entry.is_folder,
             size_bytes: entry.size,
             shortcut_target,
             shortcut_target_ext,
-            created_minutes_local: pecofence_platform::fileinfo::local_time_parts(entry.created)
+            created_minutes_local: coredesk_platform::fileinfo::local_time_parts(entry.created)
                 .map(|(m, _)| m),
-            created_weekday: pecofence_platform::fileinfo::local_time_parts(entry.created)
+            created_weekday: coredesk_platform::fileinfo::local_time_parts(entry.created)
                 .map(|(_, d)| d),
             origin: match entry.origin {
                 EntryOrigin::UserDesktop => Origin::UserDesktop,
@@ -1044,7 +1049,7 @@ impl AppState {
         unread: &[EntryOrigin],
     ) -> SyncReport {
         let mut report = SyncReport::default();
-        let now = pecofence_core::now_unix();
+        let now = coredesk_core::now_unix();
         let mut seen: HashSet<ItemId> = HashSet::new();
         // Naming new entries one at a time costs several ms each on a OneDrive desktop: a batch
         // of them (first run, an unpacked archive) is named per folder in one go, as
@@ -1319,7 +1324,7 @@ impl AppState {
     pub fn note_opened(&mut self, id: ItemId) {
         if let Some(it) = self.config.items.get_mut(&id) {
             it.open_count = it.open_count.saturating_add(1);
-            it.last_opened = Some(pecofence_core::now_unix());
+            it.last_opened = Some(coredesk_core::now_unix());
             self.dirty = true;
         }
     }
@@ -1648,8 +1653,8 @@ impl AppState {
         // name (abcd.dwg → abcd.bak, then sav*.tmp → abcd.dwg).
         let to_temp = new.file_name().is_some_and(|n| {
             let n = n.to_string_lossy();
-            pecofence_core::rules::is_temporary(&n, None)
-                || pecofence_core::rules::ext_of(&n) == ".bak"
+            coredesk_core::rules::is_temporary(&n, None)
+                || coredesk_core::rules::ext_of(&n) == ".bak"
         });
         if to_temp || (new_key != old_key && self.catalog.contains_key(&new_key)) {
             return false;
@@ -1704,7 +1709,7 @@ impl AppState {
         n
     }
 
-    /// Applies `.peco` `containedFiles` manifests after an import: filenames matching a file
+    /// Applies `.cde` `containedFiles` manifests after an import: filenames matching a file
     /// on the user or public desktop become members of their fence (manifest order = manual
     /// order); names nothing has are dropped without a word. `theme` also degrades folder
     /// portals whose directory does not exist here into plain virtual containers, so a
@@ -2170,12 +2175,12 @@ impl AppState {
     fn edit_appearance(
         &mut self,
         id: FenceId,
-        edit: impl FnOnce(&mut pecofence_core::AppearanceOverride),
+        edit: impl FnOnce(&mut coredesk_core::AppearanceOverride),
     ) {
         if let Some(f) = self.fence_mut(id) {
             let mut next = f.appearance.clone().unwrap_or_default();
             edit(&mut next);
-            let next = (next != pecofence_core::AppearanceOverride::default()).then_some(next);
+            let next = (next != coredesk_core::AppearanceOverride::default()).then_some(next);
             if f.appearance != next {
                 f.appearance = next;
                 self.dirty = true;
@@ -2187,7 +2192,7 @@ impl AppState {
     pub fn set_appearance(
         &mut self,
         id: FenceId,
-        backdrop: Option<pecofence_core::Backdrop>,
+        backdrop: Option<coredesk_core::Backdrop>,
         opacity: Option<f32>,
     ) {
         self.edit_appearance(id, |a| {
@@ -2202,7 +2207,7 @@ impl AppState {
         id: FenceId,
         tint_rgb: Option<[u8; 3]>,
         title_rgb: Option<[u8; 3]>,
-        title_size: Option<pecofence_core::TitleSize>,
+        title_size: Option<coredesk_core::TitleSize>,
     ) {
         self.edit_appearance(id, |a| {
             a.tint_rgb = tint_rgb;
@@ -2290,7 +2295,7 @@ impl AppState {
         self.edit_appearance(id, |a| a.tab_rgb = rgb);
     }
 
-    pub fn set_spacing(&mut self, id: FenceId, spacing: pecofence_core::Spacing) {
+    pub fn set_spacing(&mut self, id: FenceId, spacing: coredesk_core::Spacing) {
         if let Some(f) = self.fence_mut(id)
             && f.view.spacing != spacing
         {
@@ -2319,7 +2324,7 @@ impl AppState {
         }
     }
 
-    pub fn set_layout(&mut self, id: FenceId, layout: pecofence_core::ViewLayout) {
+    pub fn set_layout(&mut self, id: FenceId, layout: coredesk_core::ViewLayout) {
         if let Some(f) = self.fence_mut(id)
             && f.view.layout != layout
         {
@@ -2368,7 +2373,7 @@ impl AppState {
 
     /// The layout holds `MAX_FENCES` already: `new_fence` refuses, since a save would fail.
     pub fn fence_limit_reached(&self) -> bool {
-        self.fences().len() >= pecofence_core::config_store::MAX_FENCES
+        self.fences().len() >= coredesk_core::config_store::MAX_FENCES
     }
 
     /// None when there is no monitor to place it on or [`Self::fence_limit_reached`].
@@ -2440,7 +2445,7 @@ impl AppState {
         Ok(id)
     }
 
-    fn has_idle_cond(rule: &pecofence_core::rules::Rule) -> bool {
+    fn has_idle_cond(rule: &coredesk_core::rules::Rule) -> bool {
         rule.all_of
             .iter()
             .any(|c| matches!(c, Cond::IdleDays { .. }))
@@ -2553,7 +2558,7 @@ pub(crate) fn portal_item_id(path: &str) -> ItemId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pecofence_core::geometry::WorkArea;
+    use coredesk_core::geometry::WorkArea;
 
     fn monitor(id: &str, left: i32, w: i32, h: i32, dpi: u32) -> WorkArea {
         WorkArea {
@@ -2579,9 +2584,9 @@ mod tests {
         // One folder per test: tests saving at the same time shared config.json.tmp before.
         static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "pecofence-state-test-{}-{}-{}",
+            "coredesk-state-test-{}-{}-{}",
             std::process::id(),
-            pecofence_core::now_unix(),
+            coredesk_core::now_unix(),
             NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         let mut state = AppState {
@@ -2616,7 +2621,7 @@ mod tests {
 
     #[test]
     fn an_imported_file_never_pushes_local_snapshots_out() {
-        let snap = |name: String, ts: i64| pecofence_core::Snapshot {
+        let snap = |name: String, ts: i64| coredesk_core::Snapshot {
             id: uuid::Uuid::new_v4(),
             name,
             ts,
@@ -2628,13 +2633,13 @@ mod tests {
         state.config.snapshots = vec![snap("home".into(), 1), snap("work".into(), 2)];
         let local: Vec<uuid::Uuid> = state.config.snapshots.iter().map(|s| s.id).collect();
         let mut file = state.config.clone();
-        file.snapshots = (0..pecofence_core::MAX_SNAPSHOTS)
+        file.snapshots = (0..coredesk_core::MAX_SNAPSHOTS)
             .map(|i| snap(format!("file {i}"), 100 + i as i64))
             .collect();
         let newest = file.snapshots.last().unwrap().id;
         state.replace_config(file);
         let kept = &state.config.snapshots;
-        assert_eq!(kept.len(), pecofence_core::MAX_SNAPSHOTS);
+        assert_eq!(kept.len(), coredesk_core::MAX_SNAPSHOTS);
         assert!(local.iter().all(|id| kept.iter().any(|s| s.id == *id)));
         assert!(kept.iter().any(|s| s.id == newest));
         assert!(kept.windows(2).all(|w| w[0].ts <= w[1].ts));
@@ -2648,22 +2653,22 @@ mod tests {
         let target = state.save_snapshot("user layout", None);
         assert_eq!(
             state.restore_snapshot_with_backup(target, "恢复快照前"),
-            Some(pecofence_core::AUTO_BACKUP_SNAPSHOT_ID)
+            Some(coredesk_core::AUTO_BACKUP_SNAPSHOT_ID)
         );
         assert_eq!(
             state.restore_snapshot_with_backup(target, "恢复快照前"),
-            Some(pecofence_core::AUTO_BACKUP_SNAPSHOT_ID)
+            Some(coredesk_core::AUTO_BACKUP_SNAPSHOT_ID)
         );
         let backups: Vec<_> = state
             .config
             .snapshots
             .iter()
-            .filter(|s| s.id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID)
+            .filter(|s| s.id == coredesk_core::AUTO_BACKUP_SNAPSHOT_ID)
             .collect();
         assert_eq!(backups.len(), 1);
         assert_eq!(backups[0].is_auto_backup, Some(true));
         assert_eq!(state.config.snapshots.len(), 2);
-        assert!(!state.rename_snapshot(pecofence_core::AUTO_BACKUP_SNAPSHOT_ID, "nope"));
+        assert!(!state.rename_snapshot(coredesk_core::AUTO_BACKUP_SNAPSHOT_ID, "nope"));
         assert!(state.rename_snapshot(target, "mine"));
     }
 
@@ -2673,7 +2678,7 @@ mod tests {
     #[test]
     fn import_backups_overwrite_the_slot_and_fold_legacy_names() {
         let mut state = test_state();
-        let legacy = |name: &str, ts: i64| pecofence_core::Snapshot {
+        let legacy = |name: &str, ts: i64| coredesk_core::Snapshot {
             id: uuid::Uuid::new_v4(),
             name: name.into(),
             ts,
@@ -2696,7 +2701,7 @@ mod tests {
             .filter(|s| s.is_auto_backup == Some(true))
             .collect();
         assert_eq!(autos.len(), 1);
-        assert_eq!(autos[0].id, pecofence_core::AUTO_BACKUP_SNAPSHOT_ID);
+        assert_eq!(autos[0].id, coredesk_core::AUTO_BACKUP_SNAPSHOT_ID);
         assert_eq!(autos[0].name, "恢复备份前", "label follows the last action");
         assert_eq!(
             state.config.snapshots.len(),
@@ -2875,7 +2880,7 @@ mod tests {
             }
         }
         assert!(created > 0);
-        assert!(state.fences().len() <= pecofence_core::config_store::MAX_FENCES);
+        assert!(state.fences().len() <= coredesk_core::config_store::MAX_FENCES);
         state
             .store
             .save(&state.config)
@@ -2895,7 +2900,7 @@ mod tests {
             .expect("config must stay savable");
         assert!(matches!(
             state.store.load(),
-            pecofence_core::LoadOutcome::Primary(_)
+            coredesk_core::LoadOutcome::Primary(_)
         ));
     }
 
@@ -2994,7 +2999,7 @@ mod tests {
         keyed(&mut state, d, "elsewhere");
         state.config.items.get_mut(&gone).unwrap().orphaned_since = Some(1);
         state.fence_mut(b).unwrap().view.icon_size = 96;
-        state.fence_mut(c).unwrap().view.layout = pecofence_core::ViewLayout::Details;
+        state.fence_mut(c).unwrap().view.layout = coredesk_core::ViewLayout::Details;
         state.attach_tab(b, a);
         state.attach_tab(c, a);
         let mut got = state.tab_icons(a, a, 144);
@@ -3028,7 +3033,7 @@ mod tests {
 
     #[test]
     fn portal_navigation_preserves_folder_case_from_folded_item_keys() {
-        let root = std::env::temp_dir().join(format!("pecofence-portal-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("coredesk-portal-{}", uuid::Uuid::new_v4()));
         let nested = root.join("Nested Target").join("日本語 Folder");
         std::fs::create_dir_all(&nested).unwrap();
         let mut state = test_state();
@@ -3053,7 +3058,7 @@ mod tests {
 
     #[test]
     fn portal_reports_a_missing_folder_and_recovers() {
-        let root = std::env::temp_dir().join(format!("pecofence-portal-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("coredesk-portal-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let mut state = test_state();
         let fence = state.new_portal_fence(&root, RECT::default()).unwrap();
@@ -3184,11 +3189,11 @@ mod tests {
         // lasted a minute it is still loose — existing loose items are not re-routed, only
         // arrivals are.
         let mut fresh = desktop_entry("~WRD0002.tmp");
-        fresh.created = pecofence_core::now_unix();
+        fresh.created = coredesk_core::now_unix();
         state.sync_desktop(&[desktop_entry("report.txt"), fresh.clone()]);
         let tmp = state.item_id_for_path(&desk("~WRD0002.tmp")).unwrap();
         assert!(state.fences().iter().all(|f| !f.contains_item(tmp)));
-        fresh.created -= pecofence_core::rules::TMP_SETTLE_SECS as i64;
+        fresh.created -= coredesk_core::rules::TMP_SETTLE_SECS as i64;
         state.sync_desktop(&[desktop_entry("report.txt"), fresh]);
         assert_eq!(state.config.fence_of_item(0, tmp), None);
         assert!(state.loose_items().iter().any(|i| i.id == tmp));
@@ -3211,7 +3216,7 @@ mod tests {
         // it was written) is renamed over its name. The drawing keeps its record and fence; the
         // .bak is a file like any other.
         let mut sav = desktop_entry("sav1.tmp");
-        sav.created = pecofence_core::now_unix();
+        sav.created = coredesk_core::now_unix();
         state.sync_desktop(&[desktop_entry("report.txt"), sav]);
         assert!(!state.rename_item(&desk("report.txt"), &desk("report.bak")));
         assert!(!state.rename_item(&desk("sav1.tmp"), &desk("report.txt")));
@@ -3227,7 +3232,7 @@ mod tests {
     /// with the default they fall back to 「桌面」 as before. A new item still goes to 「桌面」.
     #[test]
     fn unmatched_items_can_stay_in_their_fence_when_the_rules_are_applied() {
-        use pecofence_core::rules::{Rule, TypeCategory};
+        use coredesk_core::rules::{Rule, TypeCategory};
         let mut state = test_state();
         let (programs, folders, docs) = (
             state.fences()[0].id,
@@ -3407,7 +3412,7 @@ mod tests {
         let fence = state.fences()[0].id;
         let id = add_item(&mut state, fence, "report");
         state.config.rules.keep_updated = true;
-        let position = pecofence_core::DesktopPosition {
+        let position = coredesk_core::DesktopPosition {
             monitor: "test".into(),
             x: 0.42,
             y: 0.23,
@@ -3437,7 +3442,7 @@ mod tests {
     /// fence for the loose desktop under the default unmatched policy.
     #[test]
     fn force_apply_wipes_manual_placements_and_refiles_everything() {
-        use pecofence_core::rules::{Rule, TypeCategory};
+        use coredesk_core::rules::{Rule, TypeCategory};
         let mut state = test_state();
         let (a, b) = (state.fences()[0].id, state.fences()[1].id);
         state.config.rules.list.clear();
@@ -3459,7 +3464,7 @@ mod tests {
         state.catalog.insert(key, keep);
         state.release_items(
             &[report],
-            Some(pecofence_core::DesktopPosition {
+            Some(coredesk_core::DesktopPosition {
                 monitor: "test".into(),
                 x: 0.5,
                 y: 0.5,
@@ -3512,7 +3517,7 @@ mod tests {
         }
         assert!(state.fences().is_empty());
         assert_eq!(state.loose_items()[0].id, item);
-        assert!(pecofence_core::config_store::validate(&state.config).is_ok());
+        assert!(coredesk_core::config_store::validate(&state.config).is_ok());
         state.ensure_layout();
         assert!(
             state.fences().is_empty(),
@@ -3553,7 +3558,7 @@ mod tests {
         assert!(!"d:\\usersx".starts_with(&dir_prefix("d:\\users")));
     }
 
-    /// A `.peco` theme's `containedFiles` re-binds by filename against this desktop: matches
+    /// A `.cde` theme's `containedFiles` re-binds by filename against this desktop: matches
     /// join the fence in manifest order (any case), names nothing has are dropped silently,
     /// and the fence never needs a physical directory.
     #[test]
@@ -3614,7 +3619,7 @@ mod tests {
     /// that does exist keeps its live listing. Plain config imports keep portals as-is.
     #[test]
     fn theme_portals_degrade_to_virtual_only_for_themes() {
-        let gone = r"C:\pecofence-no-such-dir-9e8d7c6b".to_string();
+        let gone = r"C:\coredesk-no-such-dir-9e8d7c6b".to_string();
         let kept = std::env::temp_dir().to_string_lossy().into_owned();
         let mut state = test_state();
         let geo = state.fences()[0].geometry.clone();

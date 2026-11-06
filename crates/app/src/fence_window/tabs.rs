@@ -101,7 +101,7 @@ pub(super) enum DragCancel {
     Tab,
     /// A torn-off window being dragged: the App restores the original group.
     Remote {
-        change: Box<pecofence_core::TabDetach>,
+        change: Box<coredesk_core::TabDetach>,
         hinted: bool,
     },
     Window {
@@ -114,7 +114,7 @@ pub(super) enum DragCancel {
 }
 
 pub(super) enum WindowDragOrigin {
-    Tab(Box<pecofence_core::TabDetach>),
+    Tab(Box<coredesk_core::TabDetach>),
     Caption { rect: RECT, click_expand: bool },
 }
 
@@ -458,12 +458,12 @@ impl FenceViewState {
         // opening the gap never shifts the slots under the pointer; the gap squeezes the pills
         // into the room before the chevron zone instead.
         let shift = match self.behavior.title_align.get() {
-            pecofence_core::TitleAlign::Left => 0.0,
+            coredesk_core::TitleAlign::Left => 0.0,
             align => {
                 let resting = tab_strip_rects(&natural, None, available);
                 let span = resting.last().map_or(0.0, |(x, w)| x + w - TAB_LEFT);
                 let width = self.chrome_panel.size_px().0 as f32 / self.scale();
-                pecofence_render::fence_chrome::aligned_x(align, width, TAB_LEFT, end, span)
+                coredesk_render::fence_chrome::aligned_x(align, width, TAB_LEFT, end, span)
                     - TAB_LEFT
             }
         };
@@ -491,7 +491,7 @@ impl FenceViewState {
             TAB_LEFT
         } else if self.roll_target() {
             TAB_RIGHT_RESERVE
-                + pecofence_render::fence_chrome::header_count_width(
+                + coredesk_render::fence_chrome::header_count_width(
                     width,
                     self.tabs.len(),
                     self.deco.title_x(),
@@ -533,7 +533,7 @@ impl FenceViewState {
 
     /// The tabs stack in a column on the left (标签栏位置 → 左侧, two or more tabs).
     pub(super) fn tabs_on_rail(&self) -> bool {
-        self.tabs.len() > 1 && self.behavior.tab_bar.get() == pecofence_core::TabBar::Left
+        self.tabs.len() > 1 && self.behavior.tab_bar.get() == coredesk_core::TabBar::Left
     }
 
     /// The title row holds the tab strip (two or more tabs along the top) instead of a title.
@@ -561,10 +561,7 @@ impl FenceViewState {
             .tabs
             .iter()
             .map(|t| {
-                pecofence_render::text::measure_width(
-                    &t.title,
-                    self.chrome.tab_format(t.title_size),
-                )
+                coredesk_render::text::measure_width(&t.title, self.chrome.tab_format(t.title_size))
             })
             .fold(0.0, f32::max);
         let dot = if self.tabs.iter().any(|t| t.color.is_some()) {
@@ -573,7 +570,7 @@ impl FenceViewState {
             0.0
         };
         let glyph =
-            pecofence_render::fence_chrome::tab_icon_w(self.tabs.iter().any(|t| t.folder_icon));
+            coredesk_render::fence_chrome::tab_icon_w(self.tabs.iter().any(|t| t.folder_icon));
         let room = TAB_RAIL_TEXT_ROOM + RAIL_ROW_INSET + RAIL_ROW_RIGHT;
         let fence = self.expanded_w_px as f32 / self.scale();
         (widest + dot + glyph + room)
@@ -712,11 +709,11 @@ impl FenceViewState {
                 .map(|(t, badge)| {
                     let w = cache.iter().find(|e| same(e, t, &badge)).map_or_else(
                         || {
-                            (pecofence_render::text::measure_width(
+                            (coredesk_render::text::measure_width(
                                 &t.title,
                                 self.chrome.tab_format(t.title_size),
-                            ) + pecofence_render::fence_chrome::tab_icon_w(t.folder_icon)
-                                + pecofence_render::fence_chrome::tab_text_padding(&self.theme))
+                            ) + coredesk_render::fence_chrome::tab_icon_w(t.folder_icon)
+                                + coredesk_render::fence_chrome::tab_text_padding(&self.theme))
                             .clamp(TAB_MIN_W, TAB_MAX_W)
                                 + badge
                                     .as_deref()

@@ -1,7 +1,7 @@
 # Exports 256 px Windows shell icons (real alpha) and the shell's own thumbnails of the
 # "* study.png" fixtures for the 2026-09 trailer (v3).
 #
-#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File extras\pecofence-promo\scripts\extract-trailer-icons.ps1
+#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File extras\coredesk-promo\scripts\extract-trailer-icons.ps1
 #
 # Uses IShellItemImageFactory::GetImage (SIIGBF_ICONONLY for type icons, SIIGBF_THUMBNAILONLY
 # for thumbnails) on harmless dummy files in .cache\promo2\iconsrc (nothing is executed).
@@ -13,7 +13,7 @@
 # plus 128/192 px matching templates in .cache\promo2\icon-templates for measure-trailer-targets.py.
 $ErrorActionPreference = "Stop"
 $workspace = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
-$promo = Join-Path $workspace "extras\pecofence-promo"
+$promo = Join-Path $workspace "extras\coredesk-promo"
 $outDir = Join-Path $promo "public\trailer-v3\icons"
 $srcDir = Join-Path $workspace ".cache\promo2\iconsrc"
 $studies = Join-Path $workspace ".cache\store-v2\studies"

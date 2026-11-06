@@ -6,7 +6,7 @@ $captureDir = Join-Path $projectDir ".capture"
 $publicDir = Join-Path $projectDir "public"
 $demoDir = Join-Path $captureDir "demo"
 New-Item -ItemType Directory -Force -Path $demoDir,(Join-Path $demoDir "config") | Out-Null
-Copy-Item -LiteralPath (Join-Path $workspaceDir "target\debug\pecofence.exe") -Destination (Join-Path $demoDir "pecofence.exe")
+Copy-Item -LiteralPath (Join-Path $workspaceDir "target\debug\coredesk.exe") -Destination (Join-Path $demoDir "coredesk.exe")
 Copy-Item -LiteralPath (Join-Path $workspaceDir "target\release\WebView2Loader.dll") -Destination (Join-Path $demoDir "WebView2Loader.dll")
 
 Add-Type -AssemblyName System.Drawing
@@ -53,7 +53,7 @@ foreach ($group in $groups.Keys) {
     New-Item -ItemType Directory -Force -Path $folder | Out-Null
     foreach ($name in $groups[$group]) {
         $item = Join-Path $folder $name
-        if ($name.EndsWith(".txt")) { "PecoFence promotional demo sample." | Set-Content -LiteralPath $item -Encoding utf8 }
+        if ($name.EndsWith(".txt")) { "CoreDesk promotional demo sample." | Set-Content -LiteralPath $item -Encoding utf8 }
         else { New-Item -ItemType Directory -Force -Path $item | Out-Null }
     }
 }
@@ -70,7 +70,7 @@ function Export-ShellIcon([string]$ItemPath,[string]$OutputPath) {
 Export-ShellIcon (Join-Path $captureDir "samples\Projects\Brand assets") (Join-Path $publicDir "folder-icon.png")
 Export-ShellIcon (Join-Path $captureDir "samples\Documents\Weekly plan.txt") (Join-Path $publicDir "document-icon.png")
 
-$referencePath = Join-Path $env:APPDATA "PecoFence\config.json"
+$referencePath = Join-Path $env:APPDATA "CoreDesk\config.json"
 $reference = Get-Content -LiteralPath $referencePath -Raw | ConvertFrom-Json -AsHashtable
 $reference["items"] = @{}
 $reference["snapshots"] = @()
@@ -80,7 +80,7 @@ $reference["settings"]["hideRealIcons"] = $false
 $reference["settings"]["theme"] = "dark"
 $reference["settings"]["peek"]["enabled"] = $false
 $reference["settings"]["peek"]["dim"] = $false
-$registered = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name PecoFence -ErrorAction SilentlyContinue
+$registered = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name CoreDesk -ErrorAction SilentlyContinue
 $reference["settings"]["autostart"] = ($null -ne $registered)
 $fingerprint = $reference["layouts"][0]["fingerprint"]
 $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
@@ -145,22 +145,22 @@ $backdrop.Bounds = [System.Drawing.Rectangle]::new($plateX,$plateY,$plateW,$plat
 $backdrop.BackgroundImage = [System.Drawing.Image]::FromFile((Join-Path $publicDir "wallpaper.png"))
 $backdrop.BackgroundImageLayout = [System.Windows.Forms.ImageLayout]::Stretch
 $backdrop.ShowInTaskbar = $false
-$backdrop.Text = "PecoFence promotional capture"
-$oldInstance = $env:PECOFENCE_INSTANCE
+$backdrop.Text = "CoreDesk promotional capture"
+$oldInstance = $env:COREDESK_INSTANCE
 $oldLocalAppData = $env:LOCALAPPDATA
-$oldTestWindows = $env:PECOFENCE_UI_TEST_WINDOWS
+$oldTestWindows = $env:COREDESK_UI_TEST_WINDOWS
 $appProcess = $null
 $recordingProcess = $null
 try {
     $backdrop.Show()
     [PromoNative]::SetWindowPos($backdrop.Handle,[IntPtr](-1),0,0,0,0,0x13) | Out-Null
     [System.Windows.Forms.Application]::DoEvents()
-    $env:PECOFENCE_INSTANCE = "promo-capture"
-    $env:PECOFENCE_UI_TEST_WINDOWS = "1"
+    $env:COREDESK_INSTANCE = "promo-capture"
+    $env:COREDESK_UI_TEST_WINDOWS = "1"
     $env:LOCALAPPDATA = Join-Path $captureDir "appdata"
     New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
     $arguments = @("--portable","--no-hide-icons","--dark","--wallpaper",('"' + (Join-Path $publicDir "wallpaper.png") + '"'),"--test-script",('"' + $testPath + '"'),"--exit-after","20000")
-    $appProcess = Start-Process -FilePath (Join-Path $demoDir "pecofence.exe") -ArgumentList $arguments -WindowStyle Hidden -PassThru
+    $appProcess = Start-Process -FilePath (Join-Path $demoDir "coredesk.exe") -ArgumentList $arguments -WindowStyle Hidden -PassThru
     $timer = [System.Diagnostics.Stopwatch]::StartNew()
     $saved = @{}
     $shownWindows = @{}
@@ -203,16 +203,16 @@ try {
 finally {
     if ($null -ne $appProcess -and -not $appProcess.HasExited) {
         foreach ($window in [PromoNative]::Windows([uint32]$appProcess.Id)) {
-            if ([PromoNative]::Title($window) -eq "PecoFence") { [PromoNative]::PostMessage($window,0x0010,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null }
+            if ([PromoNative]::Title($window) -eq "CoreDesk") { [PromoNative]::PostMessage($window,0x0010,[IntPtr]::Zero,[IntPtr]::Zero) | Out-Null }
         }
         $appProcess.WaitForExit(3000) | Out-Null
     }
     $backdrop.Close()
     $backdrop.BackgroundImage.Dispose()
     $backdrop.Dispose()
-    $env:PECOFENCE_INSTANCE = $oldInstance
+    $env:COREDESK_INSTANCE = $oldInstance
     $env:LOCALAPPDATA = $oldLocalAppData
-    $env:PECOFENCE_UI_TEST_WINDOWS = $oldTestWindows
+    $env:COREDESK_UI_TEST_WINDOWS = $oldTestWindows
     [PromoNative]::SetForegroundWindow($foreground) | Out-Null
 }
 Get-ChildItem -LiteralPath $publicDir | Select-Object Name,Length

@@ -1,6 +1,6 @@
 import json
 
-path = r"C:\PecoFence-0.2.3\PecoFence-0.2.3\site\schema\config.json"
+path = r"C:\CoreDesk-0.2.3\CoreDesk-0.2.3\site\schema\config.json"
 j = json.load(open(path, encoding="utf-8"))
 d = j["$defs"]
 for k in d:

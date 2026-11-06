@@ -516,7 +516,7 @@ impl App {
             .map(|(i, w)| {
                 (
                     w.device_path.clone(),
-                    pecofence_core::i18n::format(
+                    coredesk_core::i18n::format(
                         "显示器 {0} ({1}×{2})",
                         &[
                             format!("{}", i + 1),
@@ -532,13 +532,13 @@ impl App {
     pub(super) fn swap_monitors(&mut self, a: &str, b: &str) {
         let n = self.state.swap_monitors(a, b);
         if n == 0 {
-            self.settings_toast(pecofence_core::i18n::text("这两个显示器上没有栅栏"));
+            self.settings_toast(coredesk_core::i18n::text("这两个显示器上没有栅栏"));
             return;
         }
         self.end_peek_now();
         self.relayout_from_state();
         self.schedule_save();
-        self.settings_toast(&pecofence_core::i18n::format(
+        self.settings_toast(&coredesk_core::i18n::format(
             "已在两个显示器之间交换 {0} 个栅栏",
             &[n.to_string()],
         ));
@@ -635,7 +635,7 @@ impl App {
 
     /// "快速添加" from the settings page: a template's fence beside the inbox plus its rule,
     /// applied to the desktop right away. A template added before just gets shown.
-    pub(super) fn add_template(&mut self, template: pecofence_core::rules::Template) {
+    pub(super) fn add_template(&mut self, template: coredesk_core::rules::Template) {
         // The inbox may be a tab: its window is the host's.
         let inbox = self.state.inbox_id().map(|id| self.state.host_of(id));
         let centre = |r: RECT| ((r.left + r.right) / 2, (r.top + r.bottom) / 2);
@@ -665,13 +665,13 @@ impl App {
                 self.refresh_all();
                 self.schedule_save();
                 self.push_settings_state();
-                self.settings_toast(&pecofence_core::i18n::format(
+                self.settings_toast(&coredesk_core::i18n::format(
                     "已添加“{0}”，整理了 {1} 个项目",
                     &[template.title(), moved.to_string()],
                 ));
             }
             Err(existing) => {
-                self.settings_toast(&pecofence_core::i18n::format(
+                self.settings_toast(&coredesk_core::i18n::format(
                     "“{0}”已存在",
                     &[template.title()],
                 ));
@@ -688,7 +688,7 @@ impl App {
         let title = title
             .map(str::trim)
             .filter(|t| !t.is_empty())
-            .unwrap_or_else(|| pecofence_core::i18n::text("新栅栏"));
+            .unwrap_or_else(|| coredesk_core::i18n::text("新栅栏"));
         if !self.fence_room_or_notice() {
             return None;
         }
@@ -715,7 +715,7 @@ impl App {
         }
         tracing::warn!("fence limit reached; new fence refused");
         if let Some(t) = &self.tray {
-            t.show_info("PecoFence", &fence_limit_text(), true);
+            t.show_info("CoreDesk Engine", &fence_limit_text(), true);
         }
         false
     }
@@ -727,7 +727,7 @@ impl App {
                 .window_for(fence)
                 .map(|w| w.hwnd())
                 .unwrap_or(self.control.hwnd());
-            if !window::confirm(owner, &prompt, pecofence_core::i18n::text("删除栅栏")) {
+            if !window::confirm(owner, &prompt, coredesk_core::i18n::text("删除栅栏")) {
                 return;
             }
         }
@@ -738,7 +738,7 @@ impl App {
     /// icons of its own, no rule pointing at it). A folder portal's items are the folder's
     /// files and stay on disk, so only its rules count.
     fn delete_fence_prompt(&self, fence: FenceId) -> Option<String> {
-        use pecofence_core::i18n;
+        use coredesk_core::i18n;
         let f = self.state.fence(fence)?;
         let icons = if f.kind == FenceKind::FolderPortal {
             0
@@ -853,7 +853,7 @@ impl App {
         y: i32,
         near: Option<FenceId>,
     ) -> RECT {
-        let view = pecofence_core::FenceView::default();
+        let view = coredesk_core::FenceView::default();
         let w_dip = crate::layout::GridMetrics::for_icon_size(
             self.state.config.settings.icon_size,
             view.label_lines,
@@ -973,8 +973,8 @@ impl App {
 }
 
 fn fence_limit_text() -> String {
-    pecofence_core::i18n::format(
+    coredesk_core::i18n::format(
         "最多只能有 {0} 个栅栏（含标签页），请先删除或合并一些。",
-        &[pecofence_core::config_store::MAX_FENCES.to_string()],
+        &[coredesk_core::config_store::MAX_FENCES.to_string()],
     )
 }

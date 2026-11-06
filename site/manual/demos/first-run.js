@@ -16,7 +16,7 @@
     const FENCES = ['程序', '文件夹', '文件与文档', '桌面'].map((title, i) => ({ x: FX, y: 10 + i * (FH + 10), w: 246, h: FH, title }));
     // [icon, label, desktop column, row, fence, slot]
     const ITEMS = [
-        ['assets/mark.svg', 'PecoFence', 0, 0, 0, 0],
+        ['assets/mark.svg', 'CoreDesk', 0, 0, 0, 0],
         ['pdf', '合同.pdf', 0, 1, 2, 0],
         ['folder', '工作资料', 0, 2, 1, 0],
         ['exe', '截图工具', 0, 3, 0, 1],
@@ -37,13 +37,13 @@
     let PATH, CLICKS, CHIPS;
     function plan() {
         const m = menuBox();
-        const quit = { x: m.x + 170, y: m.y + rowY(trayMenu, '退出 PecoFence') };
+        const quit = { x: m.x + 170, y: m.y + rowY(trayMenu, '退出 CoreDesk') };
         PATH = [
             [0, 520, 300], [0.3, 520, 300],
-            [1.0, 37, 25], [1.5, 37, 25],                  // double-click PecoFence
+            [1.0, 37, 25], [1.5, 37, 25],                  // double-click CoreDesk
             [2.2, 430, 250], [6.9, 430, 250],
             [7.6, TRAY.x, TRAY.y], [8.05, TRAY.x, TRAY.y], // right-click the tray icon
-            [8.6, quit.x, quit.y], [9.2, quit.x, quit.y],  // 退出 PecoFence
+            [8.6, quit.x, quit.y], [9.2, quit.x, quit.y],  // 退出 CoreDesk
             [9.9, 470, 230], [D, 470, 230],
         ];
         CLICKS = [{ t: 1.12 }, { t: 1.3 }, { t: 7.8, right: true }, { t: QUIT_AT }];
@@ -63,7 +63,7 @@
         r.tb = taskbar(root);
         trayMenu = menu(r.scene, ['隐藏所有栅栏', '新建栅栏', { t: '在桌面显示文件夹', sub: 1 },
             { t: '速览所有栅栏', key: 'Ctrl+Alt+空格' }, '立即应用整理规则', '-', '恢复显示桌面图标',
-            '修复桌面图标（图标消失时使用）', '发送反馈…', '设置…', '-', '退出 PecoFence'], MENU_W);
+            '修复桌面图标（图标消失时使用）', '发送反馈…', '设置…', '-', '退出 CoreDesk'], MENU_W);
         r.menu = trayMenu;
         r.ptr = pointer(r.scene);
         plan();
@@ -74,7 +74,7 @@
         r.scene.style.opacity = loopFade(t, D, looped);
         const p = pathAt(t, PATH);
 
-        // PecoFence starts: tray icon, then the fences fade in one after another
+        // CoreDesk starts: tray icon, then the fences fade in one after another
         const on = ramp(t, 1.6, 1.85), off = ramp(t, QUIT_AT + .15, QUIT_AT + .35, E.lin);
         put(r.tb.mark, 0, 0, on * (1 - off), ` scale(${lerp(.4, 1, on)})`);
         r.fences.forEach((f, i) => {

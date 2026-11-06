@@ -67,7 +67,7 @@ impl FenceWindow {
         Self::create_mode(
             ctx,
             id,
-            "PecoFence 自由桌面",
+            "CoreDesk Engine 自由桌面",
             false,
             false,
             icon_size,
@@ -108,7 +108,7 @@ impl FenceWindow {
         // transparency path: a GDI redirection bitmap would fill the clipped corners and
         // clear glass interior, hiding composition/desktop integration bugs in the audit.
         let extended_style = if cfg!(debug_assertions)
-            && pecofence_core::brand::var_os("PECOFENCE_UI_TEST_WINDOWS").is_some()
+            && coredesk_core::brand::var_os("COREDESK_UI_TEST_WINDOWS").is_some()
         {
             style::EX_NOREDIRECTIONBITMAP
         } else {
@@ -138,14 +138,14 @@ impl FenceWindow {
         apply_system_backdrop(
             hwnd,
             ctx.behavior.backdrop.get(),
-            matches!(ctx.theme.borrow().mode, pecofence_render::ThemeMode::Dark),
+            matches!(ctx.theme.borrow().mode, coredesk_render::ThemeMode::Dark),
         );
         // WM_NCCALCSIZE was not handled during CreateWindowEx. Remove its cached native
         // resize border BEFORE sizing the composition surfaces or showing the first frame.
         let initial_client = window.client_size();
         window.recalculate_frame()?;
         tracing::debug!(
-            target: "pecofence::frame_shape",
+            target: "coredesk::frame_shape",
             title, ?initial_client, client = ?window.client_size(),
             "initial nonclient layout corrected"
         );
@@ -265,7 +265,7 @@ impl FenceWindow {
             backdrop_rect: None,
             backdrop_origin: None,
             backdrop_key: format!("backdrop:{:x}", hwnd.0 as isize),
-            gpu_glass: RefCell::new(pecofence_render::gpu_glass::GpuGlass::default()),
+            gpu_glass: RefCell::new(coredesk_render::gpu_glass::GpuGlass::default()),
             chrome_panel,
             content_panel,
             content_x: 0,
@@ -556,7 +556,7 @@ impl FenceWindow {
         let r = self.window.window_rect();
         let origin = window::screen_to_client(
             self.hwnd(),
-            pecofence_platform::POINT {
+            coredesk_platform::POINT {
                 x: r.left,
                 y: r.top,
             },
@@ -636,7 +636,7 @@ impl FenceWindow {
         at: Option<&str>,
         allowed: Option<u32>,
     ) -> (DropEffect, Option<DropEffect>) {
-        use pecofence_platform::dragdrop::DropHandler;
+        use coredesk_platform::dragdrop::DropHandler;
         let r = self.rect();
         let (x, y) = at
             .and_then(|name| {
@@ -674,7 +674,7 @@ impl FenceWindow {
     /// Pointer samples exercise the production coalescer without moving the user's cursor.
     #[cfg(debug_assertions)]
     pub fn test_input(&self, action: &str, x: i32, y: i32) {
-        if pecofence_core::brand::var_os("PECOFENCE_UI_TEST_WINDOWS").is_none() {
+        if coredesk_core::brand::var_os("COREDESK_UI_TEST_WINDOWS").is_none() {
             return;
         }
         let hwnd = self.hwnd();
@@ -709,11 +709,11 @@ impl FenceWindow {
                     "up" => (msg::WM_LBUTTONUP, 0, (x, y)),
                     "dblclk" => (msg::WM_LBUTTONDBLCLK, 1, (x, y)),
                     "caption-down" => {
-                        let p = window::client_to_screen(hwnd, pecofence_platform::POINT { x, y });
+                        let p = window::client_to_screen(hwnd, coredesk_platform::POINT { x, y });
                         (msg::WM_NCLBUTTONDOWN, msg::HTCAPTION as usize, (p.x, p.y))
                     }
                     "pointer-up" => {
-                        let p = window::screen_to_client(hwnd, pecofence_platform::POINT { x, y });
+                        let p = window::screen_to_client(hwnd, coredesk_platform::POINT { x, y });
                         (msg::WM_LBUTTONUP, 0, (p.x, p.y))
                     }
                     "escape" => (msg::WM_KEYDOWN, msg::VK_ESCAPE as usize, (0, 0)),
@@ -1362,7 +1362,7 @@ impl FenceWindow {
             .is_some_and(|v| std::mem::take(&mut v.detach_cancelled))
     }
 
-    pub fn begin_remote_drag(&self, hwnd: HWND, change: pecofence_core::TabDetach) {
+    pub fn begin_remote_drag(&self, hwnd: HWND, change: coredesk_core::TabDetach) {
         let r = window::window_rect(hwnd);
         let pt = window::cursor_pos();
         let mut started = false;
@@ -1808,7 +1808,7 @@ impl FenceWindow {
                 apply_system_backdrop(
                     v.hwnd,
                     v.backdrop_mode(),
-                    matches!(v.theme.mode, pecofence_render::ThemeMode::Dark),
+                    matches!(v.theme.mode, coredesk_render::ThemeMode::Dark),
                 );
                 v.invalidate_backdrop();
                 let _ = v.redraw();
@@ -2162,7 +2162,7 @@ impl FenceWindow {
             apply_system_backdrop(
                 hwnd,
                 mode,
-                matches!(theme.mode, pecofence_render::ThemeMode::Dark),
+                matches!(theme.mode, coredesk_render::ThemeMode::Dark),
             );
         }
         let _ = self.window.recalculate_frame();

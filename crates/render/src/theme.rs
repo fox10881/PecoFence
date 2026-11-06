@@ -76,7 +76,7 @@ pub struct Theme {
     /// get the legibility halo Liquid Glass labels always have.
     pub text_halo: bool,
     /// The 文字颜色 setting the text was drawn for.
-    pub label_color: pecofence_core::LabelColor,
+    pub label_color: coredesk_core::LabelColor,
 }
 
 impl Theme {
@@ -112,7 +112,7 @@ impl Theme {
             corner_radius: 8.0,
             title_height: 36.0,
             text_halo: false,
-            label_color: pecofence_core::LabelColor::Auto,
+            label_color: coredesk_core::LabelColor::Auto,
         }
     }
 
@@ -148,7 +148,7 @@ impl Theme {
             corner_radius: 8.0,
             title_height: 36.0,
             text_halo: false,
-            label_color: pecofence_core::LabelColor::Auto,
+            label_color: coredesk_core::LabelColor::Auto,
         }
     }
 
@@ -395,7 +395,7 @@ impl Theme {
                 );
             }
         }
-        if self.label_color == pecofence_core::LabelColor::PerFence {
+        if self.label_color == coredesk_core::LabelColor::PerFence {
             samples.sort_by(f32::total_cmp);
             samples.truncate(samples.len().div_ceil(4));
         }
@@ -429,14 +429,14 @@ impl Theme {
     /// The theme the text is drawn with. 「文字颜色」 白色 / 黑色 takes the text of this
     /// material's dark / light theme whatever the backdrop; the plate, hover and focus tokens
     /// stay as picked for it. 按栅栏自动 is kept for the ink pickers to read.
-    pub fn with_label_color(mut self, color: pecofence_core::LabelColor) -> Self {
+    pub fn with_label_color(mut self, color: coredesk_core::LabelColor) -> Self {
         self.label_color = color;
         let mode = match color {
-            pecofence_core::LabelColor::Auto | pecofence_core::LabelColor::PerFence => {
+            coredesk_core::LabelColor::Auto | coredesk_core::LabelColor::PerFence => {
                 return self;
             }
-            pecofence_core::LabelColor::White => ThemeMode::Dark,
-            pecofence_core::LabelColor::Black => ThemeMode::Light,
+            coredesk_core::LabelColor::White => ThemeMode::Dark,
+            coredesk_core::LabelColor::Black => ThemeMode::Light,
         };
         let mut ink = Self::for_mode(mode);
         if self.liquid_glass {
@@ -539,19 +539,19 @@ pub fn lerp(a: ColorF, b: ColorF, t: f32) -> ColorF {
 
 /// Segoe UI Variable is the Windows 11 system font; DirectWrite exposes the optical sizes as
 /// separate legacy family names. Windows 10 does not ship it, so these resolve to Segoe UI
-/// there (see `pecofence_platform::fonts`).
+/// there (see `coredesk_platform::fonts`).
 pub fn font_text() -> &'static str {
-    pecofence_platform::fonts::text_face()
+    coredesk_platform::fonts::text_face()
 }
 pub fn font_small() -> &'static str {
-    pecofence_platform::fonts::small_face()
+    coredesk_platform::fonts::small_face()
 }
 pub fn font_display() -> &'static str {
-    pecofence_platform::fonts::display_face()
+    coredesk_platform::fonts::display_face()
 }
 /// Glyph font (chevrons, close, etc.): Segoe Fluent Icons, or Segoe MDL2 Assets on Windows 10.
 pub fn font_icons() -> &'static str {
-    pecofence_platform::fonts::icon_face()
+    coredesk_platform::fonts::icon_face()
 }
 
 #[cfg(test)]
@@ -707,7 +707,7 @@ mod tests {
 
     #[test]
     fn fixed_label_color_overrides_the_backdrop_ink_only() {
-        use pecofence_core::LabelColor;
+        use coredesk_core::LabelColor;
         for base in [
             Theme::dark(),
             Theme::light(),
@@ -762,7 +762,7 @@ mod tests {
 
     #[test]
     fn per_fence_text_judges_by_the_darkest_quarter() {
-        use pecofence_core::LabelColor;
+        use coredesk_core::LabelColor;
         for mode in [ThemeMode::Light, ThemeMode::Dark] {
             let glass = Theme::for_mode(mode).with_liquid_glass();
             let per_fence = glass.with_label_color(LabelColor::PerFence);

@@ -1,13 +1,13 @@
 //! Host-side controller for the Start Menu styler — the native replacement
 //! for the Windhawk `windows-11-start-menu-styler` mod.
 //!
-//! `pecofence_tap.dll` is injected into `StartMenuExperienceHost.exe` by a
+//! `coredesk_tap.dll` is injected into `StartMenuExperienceHost.exe` by a
 //! `CreateRemoteThread(LoadLibraryW)` — the taskbar's `WH_CALLWNDPROC` vector
 //! can't reach SMEH: it keeps **no windows at all** until the menu first
 //! opens (31 threads, zero `HWND`s — verified via TH32CS_SNAPTHREAD +
 //! EnumThreadWindows). Once resident, the DLL runs the styling engine itself:
 //! `WM_COPYDATA` delivers the serialized theme
-//! (`pecofence_core::start_menu_themes::theme_wire`) to the injected
+//! (`coredesk_core::start_menu_themes::theme_wire`) to the injected
 //! command window, which styles the menu's XAML tree in place.
 //!
 //! `StartMenuExperienceHost.exe` is spawned lazily by the shell and can
@@ -46,7 +46,7 @@ const WM_COPYDATA: u32 = 0x004A;
 /// `COPYDATASTRUCT.dwData` values the injected DLL understands.
 const CDS_THEME: usize = u32::from_be_bytes(*b"SMST") as usize;
 const CDS_RESET: usize = u32::from_be_bytes(*b"SMSR") as usize;
-/// Announces the host pid so the DLL can restore styles if pecofence dies.
+/// Announces the host pid so the DLL can restore styles if coredesk dies.
 const CDS_HELLO: usize = u32::from_be_bytes(*b"SMHI") as usize;
 
 const TH32CS_SNAPPROCESS: u32 = 0x0000_0002;
@@ -83,7 +83,7 @@ struct CopyDataStruct {
 }
 
 struct Smeh {
-    /// The in-SMEH command window (`PecoFenceTAP` class, owned by SMEH pid).
+    /// The in-SMEH command window (`CoreDeskTAP` class, owned by SMEH pid).
     cmd_hwnd: HWND,
     /// SMEH pid the DLL is loaded in.
     pid: u32,
@@ -149,13 +149,13 @@ fn find_smeh_pid() -> Option<u32> {
     found
 }
 
-/// SMEH's `PecoFenceTAPSM` command window (a message-only window —
+/// SMEH's `CoreDeskTAPSM` command window (a message-only window —
 /// `EnumWindows` can't enumerate these; the versioned-class enumeration in
 /// `tap` resolves them and prefers the newest protocol build). The
 /// distinct class family keeps it unambiguous with explorer's
-/// `PecoFenceTAP`.
+/// `CoreDeskTAP`.
 fn find_cmd_window(pid: u32) -> Option<HWND> {
-    crate::tap::resident_windows_matching(pid, "PecoFenceTAPSM")
+    crate::tap::resident_windows_matching(pid, "CoreDeskTAPSM")
         .into_iter()
         .next()
 }
@@ -183,7 +183,7 @@ fn send_copydata(hwnd: HWND, tag: usize, payload: &[u8]) -> bool {
     }
 }
 
-/// Maps `pecofence_tap.dll` into SMEH via `CreateRemoteThread(LoadLibraryW)`,
+/// Maps `coredesk_tap.dll` into SMEH via `CreateRemoteThread(LoadLibraryW)`,
 /// then waits for its command window. `kernel32`'s image base is shared
 /// per-boot, so the local `LoadLibraryW` address is the remote one.
 fn inject(smeh: &mut Smeh, pid: u32) -> bool {
@@ -268,14 +268,14 @@ fn inject(smeh: &mut Smeh, pid: u32) -> bool {
         return false;
     }
     smeh.msg_unload =
-        unsafe { RegisterWindowMessageW(PCWSTR(wide("PecoFence.TAP.Unload").as_ptr())) };
+        unsafe { RegisterWindowMessageW(PCWSTR(wide("CoreDeskEngine.TAP.Unload").as_ptr())) };
     // Up to 5 s for the DLL to boot its command window inside SMEH.
     for _ in 0..100 {
         if let Some(cmd) = find_cmd_window(pid) {
             smeh.cmd_hwnd = cmd;
             smeh.pid = pid;
             // One resident per process — unwind any stale co-loaded build.
-            crate::tap::unload_foreign_residents_matching(pid, cmd, "PecoFenceTAPSM");
+            crate::tap::unload_foreign_residents_matching(pid, cmd, "CoreDeskTAPSM");
             return true;
         }
         unsafe { Sleep(50) };
@@ -312,7 +312,7 @@ fn deliver_locked(smeh: &mut Smeh) -> bool {
         return send_copydata(smeh.cmd_hwnd, CDS_RESET, &[]);
     }
     // Arm the DLL's host death-watch once per SMEH lifetime — styles revert
-    // to stock if pecofence dies.
+    // to stock if coredesk dies.
     if !smeh.hello_sent {
         let pid = std::process::id();
         if send_copydata(smeh.cmd_hwnd, CDS_HELLO, &pid.to_ne_bytes()) {
@@ -332,7 +332,7 @@ pub fn apply_start_menu_theme(id: &str) -> bool {
     let wire = if id.is_empty() {
         String::new() // empty wire → CDS_RESET
     } else {
-        match pecofence_core::start_menu_themes::theme_wire(id) {
+        match coredesk_core::start_menu_themes::theme_wire(id) {
             Some(w) => w,
             None => return false,
         }

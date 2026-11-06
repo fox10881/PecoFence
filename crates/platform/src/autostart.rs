@@ -38,7 +38,7 @@ fn startup_actions(
 /// unzipping a new build and launching it is enough. Also adopts the previous product
 /// name's entry and removes it only after the new one is written.
 pub fn reconcile_product(wanted: bool, development: bool) -> Result<()> {
-    use pecofence_core::brand::{LEGACY_AUTOSTART, NAME};
+    use coredesk_core::brand::{ID as NAME, LEGACY_AUTOSTART};
     if crate::process::is_packaged() {
         return Ok(());
     }
@@ -49,7 +49,9 @@ pub fn reconcile_product(wanted: bool, development: bool) -> Result<()> {
         current
             .as_deref()
             .map(|path| same_executable(path, &exe_path())),
-        registered_path(LEGACY_AUTOSTART).is_some(),
+        LEGACY_AUTOSTART
+            .iter()
+            .any(|name| registered_path(name).is_some()),
     );
     if actions.register_current {
         set_enabled(NAME, true, false)?;
@@ -58,7 +60,9 @@ pub fn reconcile_product(wanted: bool, development: bool) -> Result<()> {
         set_enabled(NAME, false, false)?;
     }
     if actions.remove_legacy {
-        set_enabled(LEGACY_AUTOSTART, false, false)?;
+        for name in LEGACY_AUTOSTART {
+            set_enabled(name, false, false)?;
+        }
     }
     Ok(())
 }
@@ -67,13 +71,15 @@ pub fn reconcile_product(wanted: bool, development: bool) -> Result<()> {
 /// Store (MSIX) installs leave the registry alone: the package startup task owns autostart.
 /// A portable copy's entry starts it with `--portable`, so it opens its own configuration.
 pub fn set_product_enabled(enabled: bool, portable: bool) -> Result<()> {
-    use pecofence_core::brand::{LEGACY_AUTOSTART, NAME};
+    use coredesk_core::brand::{ID as NAME, LEGACY_AUTOSTART};
     if crate::process::is_packaged() {
         return Ok(());
     }
     set_enabled(NAME, enabled, portable)?;
-    if registered_path(LEGACY_AUTOSTART).is_some() {
-        set_enabled(LEGACY_AUTOSTART, false, false)?;
+    for name in LEGACY_AUTOSTART {
+        if registered_path(name).is_some() {
+            set_enabled(name, false, false)?;
+        }
     }
     Ok(())
 }
@@ -82,7 +88,7 @@ pub fn set_product_enabled(enabled: bool, portable: bool) -> Result<()> {
 /// it without `--portable`, which opens the %APPDATA% configuration at sign-in: it gets the
 /// flag here.
 pub fn adopt_portable_entry() -> bool {
-    use pecofence_core::brand::NAME;
+    use coredesk_core::brand::ID as NAME;
     let Some(command) = registered_command(NAME) else {
         return false;
     };
@@ -261,10 +267,10 @@ mod tests {
         let exe = std::env::current_exe().unwrap();
         let text = exe.to_string_lossy().to_string();
         assert!(same_executable(&text, &text.to_uppercase()));
-        assert!(!same_executable(&text, r"C:\nowhere\pecofence.exe"));
+        assert!(!same_executable(&text, r"C:\nowhere\coredesk.exe"));
         assert!(same_executable(
-            r"C:\nowhere\PecoFence.exe",
-            r"c:\NOWHERE\pecofence.exe"
+            r"C:\nowhere\coredesk.exe",
+            r"c:\NOWHERE\COREDESK.EXE"
         ));
     }
 

@@ -1,7 +1,7 @@
 Vendored windows-canvas
 
 Based on Microsoft's `windows-canvas` 0.100.0 from the windows-rs project.
-The PecoFence patch adds `TextFormat::with_locale`: upstream creates every text format
+The CoreDesk patch adds `TextFormat::with_locale`: upstream creates every text format
 with the locale `en-us`, and DirectWrite then fills Han characters from the Japanese UI
 font, so Chinese file names in fences showed Japanese glyph forms mixed with YaHei.
 

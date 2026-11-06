@@ -1,4 +1,4 @@
-"""Adds the saved-themes gallery (.peco card grid) strings to every locale file."""
+"""Adds the saved-themes gallery (.cde card grid) strings to every locale file."""
 import json
 import os
 
@@ -18,18 +18,18 @@ T = {
         "ru": "Сохранённые темы",
         "zh-TW": "已儲存的主題",
     },
-    "选择一个 .peco 主题文件并应用到桌面": {
-        "en": "Choose a .peco theme file to apply to the desktop",
-        "ar": "اختر ملف ثيم .peco لتطبيقه على سطح المكتب",
-        "de": "Wählen Sie eine .peco-Designdatei aus, um sie auf den Desktop anzuwenden",
-        "es": "Elige un archivo de tema .peco y aplícalo al escritorio",
-        "fr": "Choisissez un fichier de thème .peco à appliquer au bureau",
-        "it": "Scegli un file tema .peco da applicare al desktop",
-        "ja": ".peco テーマファイルを選んでデスクトップに適用",
-        "ko": ".peco 테마 파일을 선택해 바탕 화면에 적용",
-        "pt-BR": "Escolha um arquivo de tema .peco para aplicar à área de trabalho",
-        "ru": "Выберите файл темы .peco и примените его к рабочему столу",
-        "zh-TW": "選擇一個 .peco 主題檔案並套用到桌面",
+    "选择一个 .cde 主题文件并应用到桌面": {
+        "en": "Choose a .cde theme file to apply to the desktop",
+        "ar": "اختر ملف ثيم .cde لتطبيقه على سطح المكتب",
+        "de": "Wählen Sie eine .cde-Designdatei aus, um sie auf den Desktop anzuwenden",
+        "es": "Elige un archivo de tema .cde y aplícalo al escritorio",
+        "fr": "Choisissez un fichier de thème .cde à appliquer au bureau",
+        "it": "Scegli un file tema .cde da applicare al desktop",
+        "ja": ".cde テーマファイルを選んでデスクトップに適用",
+        "ko": ".cde 테마 파일을 선택해 바탕 화면에 적용",
+        "pt-BR": "Escolha um arquivo de tema .cde para aplicar à área de trabalho",
+        "ru": "Выберите файл темы .cde и примените его к рабочему столу",
+        "zh-TW": "選擇一個 .cde 主題檔案並套用到桌面",
     },
     "尚无已保存的主题": {
         "en": "No saved themes yet",

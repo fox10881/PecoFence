@@ -1,9 +1,9 @@
 // Start Menu styler — a native Rust port of the styling engine from the
 // Windhawk `windows-11-start-menu-styler` mod, hosted inside
-// `StartMenuExperienceHost.exe` by `pecofence_tap.dll`.
+// `StartMenuExperienceHost.exe` by `coredesk_tap.dll`.
 //
-// The host (`pecofence.exe`) serializes the selected theme into a compact
-// line wire-format (`pecofence_core::start_menu_themes::theme_wire`) and
+// The host (`coredesk.exe`) serializes the selected theme into a compact
+// line wire-format (`coredesk_core::start_menu_themes::theme_wire`) and
 // delivers it via `WM_COPYDATA` to our command window — no Windhawk, no
 // external styling engine.
 //
@@ -76,15 +76,15 @@ fn rules_for_thread() -> Rc<Vec<ResolvedRuleSet>> {
 }
 
 /// Which theme wire this engine instance is styling for. The same binary
-/// ships in `StartMenuExperienceHost` (`PECO-SMS1`), `explorer` (`PECO-TBS1`)
-/// and the Notification Center hosts (`PECO-NCS1`); all route through this
+/// ships in `StartMenuExperienceHost` (`CDES-SMS1`), `explorer` (`CDES-TBS1`)
+/// and the Notification Center hosts (`CDES-NCS1`); all route through this
 /// module.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum WireKind {
     StartMenu,
     Taskbar,
     NotificationCenter,
-    /// `PECO-FES1` — File Explorer's WinUI3 islands (mux engine only).
+    /// `CDES-FES1` — File Explorer's WinUI3 islands (mux engine only).
     FileExplorer,
 }
 
@@ -506,7 +506,7 @@ fn parse_rule(s: &str) -> Result<ParsedRule, String> {
     })
 }
 
-/// Parses the `PECO-SMS1`/`PECO-TBS1` wire produced by `theme_wire` in core.
+/// Parses the `CDES-SMS1`/`CDES-TBS1` wire produced by `theme_wire` in core.
 fn parse_wire(text: &str) -> Result<(WireKind, WireTheme), String> {
     let mut theme = WireTheme::default();
     let mut lines = text.lines();
@@ -3664,9 +3664,9 @@ fn disarm_layout_detour() {
     }
 }
 
-/// `%TEMP%\peco_smeh_exit.tick` — the mod's 10 s exit throttle.
+/// `%TEMP%\cde_smeh_exit.tick` — the mod's 10 s exit throttle.
 fn throttled_exit() {
-    let path = std::env::temp_dir().join("peco_smeh_exit.tick");
+    let path = std::env::temp_dir().join("cde_smeh_exit.tick");
     let last: u64 = std::fs::read_to_string(&path)
         .ok()
         .and_then(|s| s.trim().parse().ok())

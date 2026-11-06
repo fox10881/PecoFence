@@ -10,7 +10,7 @@ text = Path(sys.argv[1]).read_text(encoding="utf-8")
 assert "ERROR" not in text, "Native render error"
 states = []
 for line in text.splitlines():
-    if 'title="Lens-Test"' not in line or " INFO pecofence::test:" not in line:
+    if 'title="Lens-Test"' not in line or " INFO coredesk::test:" not in line:
         continue
     tag = re.search(r"\[([^]]+)\] live hwnd=", line)
     if not tag:

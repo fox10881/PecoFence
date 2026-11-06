@@ -140,6 +140,109 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
+name = "coredesk"
+version = "0.3.0"
+dependencies = [
+ "coredesk-core",
+ "coredesk-ipc",
+ "coredesk-platform",
+ "coredesk-render",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "windows",
+ "windows-composition",
+ "windows-core 0.100.0",
+]
+
+[[package]]
+name = "coredesk-cli"
+version = "0.3.0"
+dependencies = [
+ "clap",
+ "coredesk-core",
+ "coredesk-ipc",
+ "coredesk-platform",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "coredesk-core"
+version = "0.3.0"
+dependencies = [
+ "schemars",
+ "serde",
+ "serde_json",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "coredesk-ipc"
+version = "0.3.0"
+dependencies = [
+ "coredesk-core",
+ "schemars",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "coredesk-platform"
+version = "0.3.0"
+dependencies = [
+ "coredesk-core",
+ "tracing",
+ "uuid",
+ "windows-core 0.100.0",
+ "windows-future 0.100.0",
+ "windows-numerics 0.100.0",
+ "windows-sys 0.61.2",
+ "windows-time",
+]
+
+[[package]]
+name = "coredesk-render"
+version = "0.3.0"
+dependencies = [
+ "bezier_easing",
+ "coredesk-core",
+ "coredesk-platform",
+ "tracing",
+ "windows-canvas",
+ "windows-collections 0.100.0",
+ "windows-composition",
+ "windows-core 0.100.0",
+ "windows-numerics 0.100.0",
+ "windows-time",
+]
+
+[[package]]
+name = "coredesk-tap"
+version = "0.3.0"
+dependencies = [
+ "retour",
+ "windows-collections 0.100.0",
+ "windows-core 0.100.0",
+ "windows-future 0.100.0",
+ "windows-numerics 0.100.0",
+ "windows-time",
+]
+
+[[package]]
+name = "coredesk-watchdog"
+version = "0.3.0"
+dependencies = [
+ "coredesk-core",
+ "coredesk-platform",
+]
+
+[[package]]
 name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -314,109 +417,6 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
-
-[[package]]
-name = "pecofence"
-version = "0.3.0"
-dependencies = [
- "pecofence-core",
- "pecofence-ipc",
- "pecofence-platform",
- "pecofence-render",
- "serde",
- "serde_json",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "windows",
- "windows-composition",
- "windows-core 0.100.0",
-]
-
-[[package]]
-name = "pecofence-cli"
-version = "0.3.0"
-dependencies = [
- "clap",
- "pecofence-core",
- "pecofence-ipc",
- "pecofence-platform",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "pecofence-core"
-version = "0.3.0"
-dependencies = [
- "schemars",
- "serde",
- "serde_json",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "pecofence-ipc"
-version = "0.3.0"
-dependencies = [
- "pecofence-core",
- "schemars",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "pecofence-platform"
-version = "0.3.0"
-dependencies = [
- "pecofence-core",
- "tracing",
- "uuid",
- "windows-core 0.100.0",
- "windows-future 0.100.0",
- "windows-numerics 0.100.0",
- "windows-sys 0.61.2",
- "windows-time",
-]
-
-[[package]]
-name = "pecofence-render"
-version = "0.3.0"
-dependencies = [
- "bezier_easing",
- "pecofence-core",
- "pecofence-platform",
- "tracing",
- "windows-canvas",
- "windows-collections 0.100.0",
- "windows-composition",
- "windows-core 0.100.0",
- "windows-numerics 0.100.0",
- "windows-time",
-]
-
-[[package]]
-name = "pecofence-tap"
-version = "0.3.0"
-dependencies = [
- "retour",
- "windows-collections 0.100.0",
- "windows-core 0.100.0",
- "windows-future 0.100.0",
- "windows-numerics 0.100.0",
- "windows-time",
-]
-
-[[package]]
-name = "pecofence-watchdog"
-version = "0.3.0"
-dependencies = [
- "pecofence-core",
- "pecofence-platform",
-]
 
 [[package]]
 name = "pin-project-lite"

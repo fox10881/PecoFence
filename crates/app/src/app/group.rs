@@ -50,7 +50,7 @@ impl App {
                 self.set_fence_selection(kept.clone());
                 self.marquee_base = Some(kept);
                 self.hide_marquee_band();
-                self.marquee_draws_band = pecofence_platform::shell_icons::desktop_icons_hidden();
+                self.marquee_draws_band = coredesk_platform::shell_icons::desktop_icons_hidden();
             }
             MarqueeEvent::Moved(rect) => {
                 for w in self.desktop_windows.values() {
@@ -111,7 +111,7 @@ impl App {
     /// The Windows icons show and Explorer's own marquee selected some of them: the drag was
     /// for those files, so the new-fence offer stays out of the way of their menu.
     fn desktop_icons_selected(&self) -> bool {
-        if pecofence_platform::shell_icons::desktop_icons_hidden() {
+        if coredesk_platform::shell_icons::desktop_icons_hidden() {
             return false;
         }
         let def_view = self
@@ -121,7 +121,7 @@ impl App {
             .and_then(|a| a.host())
             .map(|h| h.def_view);
         let selected = def_view
-            .and_then(pecofence_platform::shell_icons::desktop_selected_count)
+            .and_then(coredesk_platform::shell_icons::desktop_selected_count)
             .unwrap_or(0);
         if selected > 0 {
             tracing::info!(

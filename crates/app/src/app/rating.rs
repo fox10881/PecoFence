@@ -5,9 +5,9 @@
 //! 「关于」 page).
 
 use super::*;
-use pecofence_platform::store::{self, RatingOutcome};
+use coredesk_platform::store::{self, RatingOutcome};
 
-/// How long PecoFence is in use before it asks.
+/// How long CoreDesk Engine is in use before it asks.
 const ASK_AFTER: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 /// Not right after a start, which is usually the logon rush.
 const QUIET_AFTER_START: Duration = Duration::from_secs(10 * 60);
@@ -84,15 +84,14 @@ impl RatingPrompt {
 }
 
 impl App {
-    /// Housekeeping: offer the rating once it is due. `PECOFENCE_RATING_PROMPT=now` offers it
+    /// Housekeeping: offer the rating once it is due. `COREDESK_RATING_PROMPT=now` offers it
     /// on the next tick in any edition (tests; without a package the Store page opens instead).
     pub(super) fn offer_rating_if_due(&mut self) {
-        let forced =
-            pecofence_core::brand::var("PECOFENCE_RATING_PROMPT").is_ok_and(|v| v == "now");
+        let forced = coredesk_core::brand::var("COREDESK_RATING_PROMPT").is_ok_and(|v| v == "now");
         let ready = if forced {
             !self.rating.saved.asked
         } else {
-            pecofence_platform::process::is_packaged()
+            coredesk_platform::process::is_packaged()
                 && due(
                     unix_now(),
                     &self.rating.saved,
@@ -105,9 +104,9 @@ impl App {
         }
         match crate::notice::Notice::show(
             &self.ctx,
-            pecofence_core::i18n::text("喜欢 PecoFence 吗？"),
-            pecofence_core::i18n::text("在 Microsoft Store 给它打个分，几秒钟就好。"),
-            pecofence_core::i18n::text("去评分"),
+            coredesk_core::i18n::text("喜欢 CoreDesk Engine 吗？"),
+            coredesk_core::i18n::text("在 Microsoft Store 给它打个分，几秒钟就好。"),
+            coredesk_core::i18n::text("去评分"),
             crate::notice::locale(),
         ) {
             Ok(notice) => {
@@ -182,7 +181,7 @@ impl App {
             tracing::warn!(%error, "store rating dialog unavailable; opening the Store page");
             let page = format!(
                 "ms-windows-store://review/?ProductId={}",
-                pecofence_core::brand::STORE_PRODUCT_ID
+                coredesk_core::brand::STORE_PRODUCT_ID
             );
             let _ = shell::shell_execute(Path::new(&page), None, None);
         }
@@ -212,7 +211,7 @@ mod tests {
 
     #[test]
     fn the_state_file_survives_and_a_missing_one_starts_the_week() {
-        let dir = std::env::temp_dir().join(format!("pecofence-rating-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coredesk-rating-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         RatingPrompt::load(&dir, false);
         assert!(!dir.join(FILE).exists());

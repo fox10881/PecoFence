@@ -6,18 +6,18 @@
 
 use crate::commands::{Command, CommandQueue};
 use crate::webview_comp::{CompEnvironment, CompWebview};
-use pecofence_platform::window::{
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, RECT, dwm, frameless, monitors, msg};
-use pecofence_render::ThemeMode;
+use coredesk_platform::{HWND, RECT, dwm, frameless, monitors, msg};
+use coredesk_render::ThemeMode;
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 use windows_core::Result;
 
-pub const SETTINGS_CLASS: &str = "PecoFence.Settings";
+pub const SETTINGS_CLASS: &str = "CoreDeskEngine.Settings";
 const SETTINGS_HTML: &str = include_str!("../../../ui/settings.html");
 const I18N_JS: &str = include_str!("../../../ui/i18n.js");
 
@@ -44,19 +44,19 @@ impl WebEnvironment {
         let user_data = std::env::var_os("LOCALAPPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(std::env::temp_dir)
-            .join("PecoFence")
+            .join(coredesk_core::brand::ID)
             // Keep independent instances from sharing incompatible controller options.
             .join("WebView2Profiles")
             .join(profile_name(
-                pecofence_core::brand::var("PECOFENCE_INSTANCE")
+                coredesk_core::brand::var("COREDESK_INSTANCE")
                     .ok()
                     .as_deref(),
             ));
-        // Debug builds: `PECOFENCE_WEBVIEW_ARGS=--remote-debugging-port=9352` lets a test drive
+        // Debug builds: `COREDESK_WEBVIEW_ARGS=--remote-debugging-port=9352` lets a test drive
         // the page (the options always pass browser arguments, so WebView2's own
         // WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS is not honoured).
         let browser_args = if cfg!(debug_assertions) {
-            pecofence_core::brand::var("PECOFENCE_WEBVIEW_ARGS").unwrap_or_default()
+            coredesk_core::brand::var("COREDESK_WEBVIEW_ARGS").unwrap_or_default()
         } else {
             String::new()
         };
@@ -92,7 +92,7 @@ pub struct SettingsHost {
     /// The page reported `ready`: messages posted from now on reach its script.
     pub ready: bool,
     /// Caption icons (small/big); destroyed with the host.
-    icons: Vec<pecofence_platform::tray::OwnedIcon>,
+    icons: Vec<coredesk_platform::tray::OwnedIcon>,
 }
 
 impl SettingsHost {
@@ -275,7 +275,7 @@ impl SettingsHost {
         ));
 
         let window = WindowBuilder::new(class)
-            .title(pecofence_core::i18n::text("PecoFence 设置"))
+            .title(coredesk_core::i18n::text("CoreDesk Engine | 设置"))
             .style(style::OVERLAPPEDWINDOW | style::CLIPCHILDREN)
             .bounds(x, y, w, h)
             .create(handler)?;
@@ -290,13 +290,13 @@ impl SettingsHost {
         // `no-mica` keeps the body painting `var(--sheet)` — with the
         // composition host that sheet can be genuinely translucent, and the
         // DWM material on this HWND shows through it.
-        let payload = pecofence_core::i18n::ui_payload()
+        let payload = coredesk_core::i18n::ui_payload()
             .to_string()
             .replace('<', "\\u003c");
         let document = SETTINGS_HTML
             .replace(
-                "<!-- PECOFENCE_LOCALE -->",
-                &format!("<script>window.PECOFENCE_LOCALE={payload};</script>"),
+                "<!-- COREDESK_LOCALE -->",
+                &format!("<script>window.COREDESK_LOCALE={payload};</script>"),
             )
             .replace(
                 "<script src=\"i18n.js\"></script>",
@@ -341,7 +341,7 @@ impl SettingsHost {
     pub fn update_language(&self) {
         window::set_title(
             self.window.hwnd(),
-            pecofence_core::i18n::text("PecoFence 设置"),
+            coredesk_core::i18n::text("CoreDesk Engine | 设置"),
         );
     }
 
@@ -350,7 +350,7 @@ impl SettingsHost {
         const WM_SETICON: u32 = 0x0080;
         let mut icons = Vec::new();
         for (which, (px, bgra)) in [(0usize, small), (1usize, big)] {
-            if let Ok(icon) = pecofence_platform::tray::OwnedIcon::from_bgra(px, &bgra) {
+            if let Ok(icon) = coredesk_platform::tray::OwnedIcon::from_bgra(px, &bgra) {
                 window::send_message(self.window.hwnd(), WM_SETICON, which, icon.raw());
                 icons.push(icon);
             }
@@ -426,7 +426,7 @@ fn sheet_css(mode: ThemeMode, effect: &str, tint: Option<(u8, u8, u8, u8)>) -> S
     // opacity slider, no clamps. Unarmed = stock opaque base.
     match effect {
         "" => match mode {
-            ThemeMode::Dark => "#202020".to_string(),
+            ThemeMode::Dark => "#0d1524".to_string(),
             ThemeMode::Light => "#f3f3f3".to_string(),
         },
         _ => tint.map_or("transparent".to_string(), |(a, r, g, b)| {

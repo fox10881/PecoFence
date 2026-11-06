@@ -1,6 +1,6 @@
-//! Wire protocol between `pecofence-cli` and the running PecoFence instance.
+//! Wire protocol between `coredesk-cli` and the running CoreDesk Engine instance.
 //!
-//! Transport: the app listens on the named pipe [`pecofence_core::brand::ipc_pipe_name`]. One
+//! Transport: the app listens on the named pipe [`coredesk_core::brand::ipc_pipe_name`]. One
 //! connection carries exactly one [`Request`] and one [`Response`], each a single line of JSON
 //! terminated by `\n`. Both binaries depend on this crate only, so the CLI never links the
 //! GUI (or WebView2).
@@ -16,8 +16,8 @@ pub mod selector;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub use coredesk_core::brand::ipc_pipe_name;
 pub use dto::*;
-pub use pecofence_core::brand::ipc_pipe_name;
 
 /// Bump when the wire format changes incompatibly.
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -221,7 +221,7 @@ pub enum Method {
     /// keep the old `rules.get` output to undo. Result: `{changed, rules: RuleListDto}`.
     #[serde(rename = "rules.set")]
     RulesSet {
-        rules: pecofence_core::rules::RuleSet,
+        rules: coredesk_core::rules::RuleSet,
     },
     /// Append (or insert at `index`) a rule; `target` is a fence selector or `inbox`; `allOf`
     /// needs at least one condition. Result: `{changed, rule: RuleEntry}`.
@@ -229,7 +229,7 @@ pub enum Method {
     RulesAdd {
         name: String,
         target: String,
-        all_of: Vec<pecofence_core::rules::Cond>,
+        all_of: Vec<coredesk_core::rules::Cond>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         index: Option<usize>,
     },
@@ -295,6 +295,10 @@ pub enum Method {
     PeekStart,
     #[serde(rename = "peek.end")]
     PeekEnd,
+    /// Import a `.cde` theme archive (legacy `.peco` accepted) — the same flow as the
+    /// Settings gallery's Import button. Result: `{changed, imported: path}`.
+    #[serde(rename = "theme.import")]
+    ThemeImport { path: String },
     /// Open the Settings window. Result: `{changed: true}`.
     #[serde(rename = "settings.openUi")]
     SettingsOpenUi,
@@ -425,7 +429,7 @@ impl From<Result<Value, IpcError>> for Response {
 #[cfg_attr(feature = "describe", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
-    /// No PecoFence instance is listening (CLI-side).
+    /// No CoreDesk Engine instance is listening (CLI-side).
     NotRunning,
     /// No reply within `--timeout` (CLI-side); the app is probably inside a menu or dialog.
     Timeout,
@@ -519,7 +523,7 @@ impl IpcError {
         match err {
             selector::SelectorError::NotFound => {
                 Self::new(ErrorCode::FenceNotFound, format!("no fence matches {sel:?}"))
-                    .hint("Run `pecofence-cli fence list` and use the id or exact title")
+                    .hint("Run `coredesk-cli fence list` and use the id or exact title")
             }
             selector::SelectorError::Ambiguous(c) => Self::new(
                 ErrorCode::AmbiguousFence,
@@ -576,7 +580,7 @@ pub fn dotted_to_pointer(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pecofence_core::rules::{Cond, RuleSet, TypeCategory};
+    use coredesk_core::rules::{Cond, RuleSet, TypeCategory};
 
     fn every_method() -> Vec<Method> {
         vec![

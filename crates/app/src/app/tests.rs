@@ -48,9 +48,9 @@ mod ipc {
         prune_auto_snapshots, request_expiry, rolled_back_settings, snapshot_dto, validate_rect,
         visible_settings_json,
     };
-    use pecofence_core::geometry::WorkArea;
-    use pecofence_core::{Cond, MAX_SNAPSHOTS, Settings, Snapshot, ViewLayout};
-    use pecofence_ipc::{ErrorCode, Rect};
+    use coredesk_core::geometry::WorkArea;
+    use coredesk_core::{Cond, MAX_SNAPSHOTS, Settings, Snapshot, ViewLayout};
+    use coredesk_ipc::{ErrorCode, Rect};
     use serde_json::json;
     use std::time::Duration;
 
@@ -259,7 +259,7 @@ mod ipc {
         assert!(visible.pointer("/quickHide/delayMs").is_none());
         assert!(visible.pointer("/quickHide/enabled").is_some());
         assert!(visible.get("telemetry").is_none());
-        for path in pecofence_core::UNUSED_SETTINGS {
+        for path in coredesk_core::UNUSED_SETTINGS {
             let err = patch_settings_path(&current, path, json!(1)).unwrap_err();
             assert_eq!(err.code, ErrorCode::InvalidPath, "{path}");
         }
@@ -318,7 +318,7 @@ mod ipc {
         assert_eq!(patched.peek.custom_hotkey.as_deref(), Some("Ctrl+Shift+F"));
         // Ctrl+Alt+Space is the preset every version reads.
         let mut legacy = current.clone();
-        legacy.peek.hotkey = pecofence_core::PeekHotkey::WinSpace;
+        legacy.peek.hotkey = coredesk_core::PeekHotkey::WinSpace;
         let patched =
             patch_settings_path(&legacy, "peek.customHotkey", json!("Ctrl+Alt+Space")).unwrap();
         assert_eq!(patched.peek, current.peek);
@@ -348,7 +348,7 @@ mod ipc {
     fn settings_patch_replaces_the_whole_object() {
         let wanted = Settings {
             icon_size: 64,
-            peek: pecofence_core::PeekSettings {
+            peek: coredesk_core::PeekSettings {
                 dim: false,
                 ..Default::default()
             },
@@ -420,7 +420,7 @@ mod ipc {
         );
         assert_eq!(
             parse_fence_prop("titleSize", &json!("extraLarge")).unwrap(),
-            FenceProp::TitleSize(Some(pecofence_core::TitleSize::ExtraLarge))
+            FenceProp::TitleSize(Some(coredesk_core::TitleSize::ExtraLarge))
         );
         assert_eq!(
             parse_fence_prop("iconTextColor", &json!("#ffffff")).unwrap(),
@@ -442,11 +442,11 @@ mod ipc {
         );
         assert_eq!(
             parse_fence_prop("iconFrames", &json!("solidColor")).unwrap(),
-            FenceProp::IconFrames(pecofence_core::IconFrameStyle::SolidColor)
+            FenceProp::IconFrames(coredesk_core::IconFrameStyle::SolidColor)
         );
         assert_eq!(
             parse_fence_prop("iconFrames", &json!("solidWhite")).unwrap(),
-            FenceProp::IconFrames(pecofence_core::IconFrameStyle::SolidColor)
+            FenceProp::IconFrames(coredesk_core::IconFrameStyle::SolidColor)
         );
         assert_eq!(
             parse_fence_prop("hideWhenEmpty", &json!(true)).unwrap(),
@@ -543,8 +543,8 @@ mod ipc {
         }
     }
 
-    fn layout(devices: &[&str], fences: usize) -> pecofence_core::Layout {
-        let geometry = pecofence_core::NormGeometry {
+    fn layout(devices: &[&str], fences: usize) -> coredesk_core::Layout {
+        let geometry = coredesk_core::NormGeometry {
             monitor: devices[0].to_string(),
             x: 0.0,
             y: 0.0,
@@ -552,16 +552,16 @@ mod ipc {
             h: 200.0,
             work_w: 1920.0,
             work_h: 1032.0,
-            anchor: pecofence_core::Anchor::LeftTop,
+            anchor: coredesk_core::Anchor::LeftTop,
             skew_left: None,
             skew_right: None,
         };
-        pecofence_core::Layout {
+        coredesk_core::Layout {
             desktop_items: Default::default(),
             shown: 0,
             fingerprint: devices
                 .iter()
-                .map(|d| pecofence_core::MonitorIdentity {
+                .map(|d| coredesk_core::MonitorIdentity {
                     gdi_name: String::new(),
                     screen_px: [0, 0],
                     device_path: d.to_string(),
@@ -571,9 +571,9 @@ mod ipc {
                 .collect(),
             fences: (0..fences)
                 .map(|i| {
-                    pecofence_core::Fence::new(
+                    coredesk_core::Fence::new(
                         &format!("f{i}"),
-                        pecofence_core::FenceKind::Virtual,
+                        coredesk_core::FenceKind::Virtual,
                         geometry.clone(),
                     )
                 })
@@ -709,7 +709,7 @@ mod ipc {
     #[test]
     fn page_auto_snapshots_make_room_from_automatic_ones_only() {
         use super::super::settings::auto_snapshot_room;
-        let before_restore = pecofence_core::i18n::text("恢复快照前");
+        let before_restore = coredesk_core::i18n::text("恢复快照前");
         // Not full: nothing goes.
         let mut list = vec![snap("home", 1), snap(before_restore, 2)];
         assert!(auto_snapshot_room(&mut list, None));

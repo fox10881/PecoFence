@@ -1,6 +1,6 @@
 """Frame-difference onsets for the trailer takes (v3).
 
-uv run --with numpy python extras/pecofence-promo/scripts/analyze-trailer-takes.py
+uv run --with numpy python extras/coredesk-promo/scripts/analyze-trailer-takes.py
 Writes .capture/trailer-v3-raw/<take>-motion.json: per-frame mean change inside the
 plate and detected change segments, used to align edits with the native events.
 """

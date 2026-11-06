@@ -29,7 +29,7 @@ fn rename_error(e: std::io::Error) -> RenameError {
 }
 
 impl App {
-    pub(super) fn item_views(&self, fence: &pecofence_core::Fence) -> Vec<ItemView> {
+    pub(super) fn item_views(&self, fence: &coredesk_core::Fence) -> Vec<ItemView> {
         self.state
             .items_of(fence)
             .into_iter()
@@ -58,9 +58,9 @@ impl App {
             return;
         };
         let (base, ext) = if folder {
-            (pecofence_core::i18n::text("新建文件夹"), "")
+            (coredesk_core::i18n::text("新建文件夹"), "")
         } else {
-            (pecofence_core::i18n::text("新建 文本文档"), ".txt")
+            (coredesk_core::i18n::text("新建 文本文档"), ".txt")
         };
         let mut path = dir.join(format!("{base}{ext}"));
         let mut n = 2;
@@ -106,8 +106,8 @@ impl App {
                 tracing::warn!(error = %e, "creating desktop item failed");
                 if let Some(t) = &self.tray {
                     t.show_info(
-                        "PecoFence",
-                        &pecofence_core::i18n::format("无法在桌面创建项目：{0}", &[e.to_string()]),
+                        "CoreDesk Engine",
+                        &coredesk_core::i18n::format("无法在桌面创建项目：{0}", &[e.to_string()]),
                         true,
                     );
                 }
@@ -308,19 +308,19 @@ impl App {
                     self.start_shell_rename(old, new_name, owner);
                     None
                 }
-                None => Some(pecofence_core::i18n::format("重命名失败：{0}", &[e])),
+                None => Some(coredesk_core::i18n::format("重命名失败：{0}", &[e])),
             },
             Err(RenameError::InvalidName) => {
                 self.invalid_name_toast();
                 None
             }
             Err(RenameError::Exists) => {
-                Some(pecofence_core::i18n::text("此文件夹中已有同名项目。").to_string())
+                Some(coredesk_core::i18n::text("此文件夹中已有同名项目。").to_string())
             }
-            Err(RenameError::Io(e)) => Some(pecofence_core::i18n::format("重命名失败：{0}", &[e])),
+            Err(RenameError::Io(e)) => Some(coredesk_core::i18n::format("重命名失败：{0}", &[e])),
         };
         if let (Some(text), Some(t)) = (toast, &self.tray) {
-            t.show_info("PecoFence", &text, true);
+            t.show_info("CoreDesk Engine", &text, true);
         }
     }
 
@@ -328,8 +328,8 @@ impl App {
     pub(super) fn invalid_name_toast(&self) {
         if let Some(t) = &self.tray {
             t.show_info(
-                "PecoFence",
-                pecofence_core::i18n::text("名称不能为空，也不能包含 \\ / : * ? \" < > |"),
+                "CoreDesk Engine",
+                coredesk_core::i18n::text("名称不能为空，也不能包含 \\ / : * ? \" < > |"),
                 true,
             );
         }

@@ -1,8 +1,8 @@
-//! End-to-end mouse driver for an explicitly named portable PecoFence audit process.
+//! End-to-end mouse driver for an explicitly named portable CoreDesk Engine audit process.
 //! Uses SendInput, never sends window messages or calls the application's handlers.
 //! mouse_audit PID EXE TITLE FROM_X FROM_Y TO_X TO_Y DURATION_MS [escape|right]
 //! Coordinates are physical virtual-desktop pixels; Esc aborts a running gesture.
-use pecofence_platform::{desktop, window};
+use coredesk_platform::{desktop, window};
 use std::{
     env,
     error::Error,
@@ -89,9 +89,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         .to_string_lossy()
         .to_lowercase()
         .replace('/', "\\");
-    if !path.contains("\\.cache\\") || !path.ends_with("\\pecofence.exe") {
+    if !path.contains("\\.cache\\") || !path.ends_with("\\coredesk.exe") {
         return Err(
-            "Only a portable pecofence.exe inside a .cache audit directory is allowed".into(),
+            "Only a portable coredesk.exe inside a .cache audit directory is allowed".into(),
         );
     }
     // SAFETY: read-only process query, local output buffer, handle closed on both paths.
@@ -122,7 +122,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let target = desktop::root_ancestor(desktop::window_from_point(from.0, from.1));
     let class = desktop::class_name(target);
-    if desktop::window_pid(target) != pid || class != "PecoFence.Fence" {
+    if desktop::window_pid(target) != pid || class != "CoreDeskEngine.Fence" {
         return Err(format!(
             "Start point is covered by another window ({class}); refresh the observation"
         )
@@ -214,7 +214,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     if cancel.is_some() && after != Some(before) {
         return Err("Cancellation did not restore the source window geometry".into());
     }
-    let rect = |r: pecofence_platform::RECT| (r.left, r.top, r.right, r.bottom);
+    let rect = |r: coredesk_platform::RECT| (r.left, r.top, r.right, r.bottom);
     println!(
         "SendInput pid={pid} title={:?} from={from:?} to={to:?} samples={samples} duration_ms={} cancel={cancel:?} final_pointer=({},{}) source_before={:?} source_after={:?} capture_released=true",
         args[2],

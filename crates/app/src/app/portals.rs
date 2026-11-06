@@ -92,7 +92,7 @@ impl App {
     /// folder picker, on ids `base..base + 4`. User-facing text never says "portal"; the menu
     /// names what happens instead.
     pub(super) fn show_folder_submenu(base: u32) -> PopupMenu {
-        use pecofence_platform::shell;
+        use coredesk_platform::shell;
         let menu = PopupMenu::new();
         let known = [
             shell::user_documents(),
@@ -112,7 +112,7 @@ impl App {
         }
         menu.separator().item(
             base + 3,
-            pecofence_core::i18n::text("选择其他文件夹…"),
+            coredesk_core::i18n::text("选择其他文件夹…"),
             false,
             false,
         );
@@ -127,14 +127,14 @@ impl App {
         y: i32,
         near: Option<FenceId>,
     ) {
-        use pecofence_platform::shell;
+        use coredesk_platform::shell;
         let folder = match offset {
             0 => shell::user_documents(),
             1 => shell::user_downloads(),
             2 => shell::user_pictures(),
-            _ => match pecofence_platform::filedialog::pick_folder(
+            _ => match coredesk_platform::filedialog::pick_folder(
                 None,
-                pecofence_core::i18n::text("选择要在桌面显示的文件夹"),
+                coredesk_core::i18n::text("选择要在桌面显示的文件夹"),
             ) {
                 Ok(p) => p,
                 Err(e) => {
@@ -154,8 +154,8 @@ impl App {
             tracing::warn!(folder = %folder.display(), "portal: not a directory");
             if let Some(t) = &self.tray {
                 t.show_info(
-                    "PecoFence",
-                    &pecofence_core::i18n::format(
+                    "CoreDesk Engine",
+                    &coredesk_core::i18n::format(
                         "无法在桌面显示：{0} 不是文件夹",
                         &[format!("{}", folder.display())],
                     ),

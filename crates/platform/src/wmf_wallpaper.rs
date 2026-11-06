@@ -50,7 +50,7 @@ const SM_CXVIRTUALSCREEN: i32 = 78;
 const SM_CYVIRTUALSCREEN: i32 = 79;
 const RPC_E_CHANGED_MODE: i32 = 0x8001_0106u32 as i32;
 
-/// Size of the thumbnail kept in `latest_frame` (used for `.peco` export previews): small
+/// Size of the thumbnail kept in `latest_frame` (used for `.cde` export previews): small
 /// enough that keeping it around costs ~1 MB instead of a full-resolution frame.
 const THUMB_W: usize = 640;
 const THUMB_H: usize = 360;
@@ -60,7 +60,7 @@ const THUMB_H: usize = 360;
 /// `WS_EX_NOREDIRECTIONBITMAP`-style composition surface always comes back
 /// black, so the app sources its still from [`WmfWallpaperPlayer::latest_frame`]
 /// instead of screenshotting its own player.
-pub const VIDEO_WINDOW_CLASS: &str = "PecoFence.WmfWallpaper";
+pub const VIDEO_WINDOW_CLASS: &str = "CoreDeskEngine.WmfWallpaper";
 
 // WMF GUIDs for source reader attributes and video subtypes.
 pub(crate) const MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING: GUID =
@@ -240,11 +240,11 @@ fn open_sw_reader(path: &Path, mem: Option<&[u8]>) -> std::result::Result<Reader
         .is_some_and(|e| e.eq_ignore_ascii_case("mp4"))
     {
         tracing::error!(path = %path.display(), "wmf: rejected non-mp4 extension");
-        return Err(pecofence_core::i18n::text("仅支持 H.264 编码的 MP4 视频文件").to_string());
+        return Err(coredesk_core::i18n::text("仅支持 H.264 编码的 MP4 视频文件").to_string());
     }
     if !path.is_file() {
         tracing::error!(path = %path.display(), "wmf: video file does not exist");
-        return Err(pecofence_core::i18n::text("找不到所选的视频文件").to_string());
+        return Err(coredesk_core::i18n::text("找不到所选的视频文件").to_string());
     }
     let clean_path = path
         .to_string_lossy()
@@ -367,7 +367,7 @@ fn try_open_reader(
             );
             return Err(format!(
                 "{} (codec GUID: {subtype:?})",
-                pecofence_core::i18n::text("仅支持 H.264 编码的 MP4 视频文件")
+                coredesk_core::i18n::text("仅支持 H.264 编码的 MP4 视频文件")
             ));
         }
 
@@ -748,7 +748,7 @@ pub fn decode_video_first_frame(path: &Path) -> std::result::Result<VideoFrame, 
     // SAFETY: reader is a valid opened IMFSourceReader on this thread.
     let ok = unsafe { read_next_frame(reader, kind, &mut w, &mut h, &mut stride, &mut bgra) };
     if !ok || bgra.is_empty() {
-        return Err(pecofence_core::i18n::text("无法解码此 MP4 视频文件").to_string());
+        return Err(coredesk_core::i18n::text("无法解码此 MP4 视频文件").to_string());
     }
     Ok(VideoFrame {
         width: w,
@@ -761,8 +761,8 @@ pub fn decode_video_first_frame(path: &Path) -> std::result::Result<VideoFrame, 
 /// full-screen application/game or a maximized application that completely obscures the desktop.
 ///
 /// Crucially ignores:
-/// - Our own process (`PecoFence.Settings`, fence windows) so the user sees the wallpaper while
-///   configuring PecoFence.
+/// - Our own process (`CoreDeskEngine.Settings`, fence windows) so the user sees the wallpaper while
+///   configuring CoreDeskEngine.
 /// - Explorer desktop/taskbar windows (`Progman`, `WorkerW`, `Shell_TrayWnd`).
 /// - Transparent / non-activating / toolwindow overlays (e.g., `NVIDIA GeForce Overlay`
 ///   `CEF-OSC-WIDGET`) which permanently span `(0, 0, screen_w, screen_h)`.
@@ -980,7 +980,7 @@ impl WmfWallpaperPlayer {
         let video_path = path.clone();
 
         let thread = std::thread::Builder::new()
-            .name("pecofence-wmf-wallpaper".into())
+            .name("coredesk-wmf-wallpaper".into())
             .spawn(move || {
                 run_player_thread(
                     video_path,
@@ -1043,7 +1043,7 @@ impl WmfWallpaperPlayer {
         self.thread.as_ref().is_some_and(|t| !t.is_finished())
     }
 
-    /// A small (≤640x360) thumbnail of the most recently decoded frame, for `.peco` export
+    /// A small (≤640x360) thumbnail of the most recently decoded frame, for `.cde` export
     /// previews. Downscaled on the player thread instead of cloning a full-resolution frame.
     pub fn latest_frame(&self) -> Option<VideoFrame> {
         self.latest_frame.lock().ok().and_then(|g| g.clone())
@@ -1247,7 +1247,7 @@ unsafe fn present_hwnd(hwnd: HWND) {
 // (`IMF2DBuffer::Lock2D`) and blitting pixels through GDI (`StretchDIBits`), the frame
 // goes texture → `ID3D11VideoProcessor` (on-GPU NV12→BGRA + cover-crop scale) →
 // `IDXGISwapChain1` → `IDComposition` visual on the desktop HWND. The CPU never touches
-// a pixel; the only maps done are a thumbnail copy once per 30 frames for `.peco`
+// a pixel; the only maps done are a thumbnail copy once per 30 frames for `.cde`
 // previews.
 
 /// `DXGI_USAGE_RENDER_TARGET_OUTPUT` — not emitted as a named constant by bindgen.
@@ -1526,7 +1526,7 @@ impl GpuPipeline {
             video_ctx.VideoProcessorSetStreamDestRect(&vp, 0, true, Some(&dst_rect));
             video_ctx.VideoProcessorSetOutputTargetRect(&vp, true, Some(&out_rect));
 
-            // CPU-readable staging texture used ONLY for `.peco` thumbnail captures
+            // CPU-readable staging texture used ONLY for `.cde` thumbnail captures
             // (once per 30 frames) — never part of the per-frame render path.
             let staging_desc = D3D11_TEXTURE2D_DESC {
                 Width: vid_w,
@@ -1815,7 +1815,7 @@ impl GpuPipeline {
 
     /// Copies the decoded NV12 texture into the staging texture and returns a scaled
     /// BGRA thumbnail — the only CPU readback in the GPU path, throttled to every
-    /// 30 frames for `.peco` previews.
+    /// 30 frames for `.cde` previews.
     /// SAFETY: D3D11 copy/map on live resources.
     unsafe fn capture_thumb(&self, tex: &ID3D11Texture2D, slice: u32) -> Option<Vec<u8>> {
         unsafe {
@@ -1866,7 +1866,7 @@ unsafe fn create_video_window(
         let hwnd = CreateWindowExW(
             (WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT) as u32,
             PCWSTR(class_name.as_ptr()),
-            windows_core::w!("PecoFence Video Wallpaper"),
+            windows_core::w!("CoreDesk Engine Video Wallpaper"),
             WS_POPUP,
             0,
             0,
@@ -2528,7 +2528,7 @@ fn run_player_thread(
         )
     };
     if !first_ok || raw_frame.is_empty() {
-        let msg = pecofence_core::i18n::text("无法解码此 MP4 视频文件").to_string();
+        let msg = coredesk_core::i18n::text("无法解码此 MP4 视频文件").to_string();
         tracing::error!(path = %path.display(), "wmf: failed to decode first video frame");
         let _ = startup_tx.send(Err(msg));
         return;
@@ -2840,7 +2840,7 @@ pub fn encode_jpeg(width: u32, height: u32, bgra: &[u8]) -> Result<Vec<u8>> {
     }
     let _com = ComThreadGuard::init();
     let tmp_path = std::env::temp_dir().join(format!(
-        "pecofence-preview-{}-{}.jpg",
+        "coredesk-preview-{}-{}.jpg",
         std::process::id(),
         uuid::Uuid::new_v4()
     ));
@@ -2987,7 +2987,7 @@ mod tests {
         let mut dims_changed = false;
         // SAFETY: all objects live on this thread; the hidden window is destroyed at the end.
         unsafe {
-            let class_name = to_wide("PecoFence.WmfWallpaper.GpuTest");
+            let class_name = to_wide("CoreDeskEngine.WmfWallpaper.GpuTest");
             let hwnd = create_video_window(&class_name, 0).expect("video window");
             let gp = GpuPipeline::new(
                 hwnd,
@@ -3153,7 +3153,7 @@ mod tests {
             .expect("hardware reader (pass 2)");
         let reader2 = &opened2.reader;
         unsafe {
-            let class_name = to_wide("PecoFence.WmfWallpaper.GpuDiag");
+            let class_name = to_wide("CoreDeskEngine.WmfWallpaper.GpuDiag");
             let hwnd = create_video_window(&class_name, 0).expect("window");
             let gp = GpuPipeline::new(
                 hwnd,

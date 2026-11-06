@@ -1,4 +1,4 @@
-"""Write crates/app/assets/pecofence.ico (the executables' embedded icon).
+"""Write crates/app/assets/coredesk.ico (the executables' embedded icon).
 
 Uses the variant E renderer from make-msix-assets.py (white mark on the indigo plate,
 same style as the Square44x44Logo target-size icons) at every size Explorer, the
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_OUT = HERE.parent / "crates" / "app" / "assets" / "pecofence.ico"
+DEFAULT_OUT = HERE.parent / "crates" / "app" / "assets" / "coredesk.ico"
 SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 
 

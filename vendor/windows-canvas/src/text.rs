@@ -82,7 +82,7 @@ impl TextFormat {
         Self::with_locale(family, size, weight, "en-us")
     }
 
-    /// Creates a text format with the given font weight and BCP 47 locale (PecoFence patch).
+    /// Creates a text format with the given font weight and BCP 47 locale (CoreDesk patch).
     /// DirectWrite picks fallback fonts by this locale: Han text in a `zh-CN` format comes
     /// from Microsoft YaHei UI, in `ja-JP` from Yu Gothic UI.
     pub fn with_locale(family: &str, size: f32, weight: FontWeight, locale: &str) -> Result<Self> {

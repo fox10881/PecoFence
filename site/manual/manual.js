@@ -1,4 +1,4 @@
-// PecoFence manual: the demo engine and player. Every demo is a pure function of time
+// CoreDesk manual: the demo engine and player. Every demo is a pure function of time
 // (render(t)), so the player can play, loop, scrub and jump to a step, and ?seek=<s> freezes
 // a frame for review. Demos live in demos/*.js and register themselves with PM.register.
 (() => {
@@ -333,7 +333,7 @@
         el('div', 'tb-time', n, '10:24');
         return { n, mark };
     }
-    // Stage coordinates of the PecoFence tray icon's centre.
+    // Stage coordinates of the CoreDesk tray icon's centre.
     const TRAY = { x: SW - 62 - 7, y: SH - 14 };
 
     // ---------- registry and player ----------

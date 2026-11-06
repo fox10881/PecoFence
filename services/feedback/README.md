@@ -1,8 +1,8 @@
 # Feedback service
 
 Receives reports from the settings page's 「反馈」 page and files each one as an issue in the
-private repository `DayuanJiang/PecoFence-feedback`; GitHub then notifies the maintainer.
-Live at `https://api.pecofence.jiang.jp/feedback` (Cloudflare Worker `pecofence-feedback`).
+private repository `DayuanJiang/CoreDesk-feedback`; GitHub then notifies the maintainer.
+Live at `https://api.coredesk.jiang.jp/feedback` (Cloudflare Worker `coredesk-feedback`).
 
 - `POST /feedback` with a JSON report (`kind`, `message`, optional `email`, `app`, and, when
   the user leaves the diagnostic log on, `language`, `system`, `log`). Answers `201`, or `400`
@@ -20,4 +20,4 @@ repository only).
 The app side: `crates/app/src/app/feedback.rs` (what may be sent), `crates/app/src/share_log.rs`
 (the in-memory sanitized log excerpt that is safe to send) and the 「反馈」 page in
 `ui/settings.html`. A test instance can
-post elsewhere with `PECOFENCE_FEEDBACK_URL` (an `https://` URL or `http://127.0.0.1:<port>`).
+post elsewhere with `COREDESK_FEEDBACK_URL` (an `https://` URL or `http://127.0.0.1:<port>`).

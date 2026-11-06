@@ -17,7 +17,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use pecofence_platform::{HWND, POINT};
+use coredesk_platform::{HWND, POINT};
 use windows::Win32::Foundation::HWND as DCompHwnd;
 use windows::Win32::Graphics::DirectComposition::{
     DCompositionCreateDevice, IDCompositionDevice, IDCompositionTarget, IDCompositionVisual,
@@ -1266,7 +1266,7 @@ impl CompWebview {
         lparam: isize,
         tracked: &std::cell::Cell<bool>,
     ) -> bool {
-        use pecofence_platform::{msg, window};
+        use coredesk_platform::{msg, window};
         const MOUSE_KIND: &[(u32, i32)] = &[
             (0x0200, 512), // WM_MOUSEMOVE
             (0x0201, 513), // WM_LBUTTONDOWN

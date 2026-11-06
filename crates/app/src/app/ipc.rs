@@ -1,4 +1,4 @@
-//! UI-thread half of the CLI IPC (`pecofence-cli`): drains the requests the pipe threads queued
+//! UI-thread half of the CLI IPC (`coredesk-cli`): drains the requests the pipe threads queued
 //! (`ipc_server.rs`), runs each `Method` against the `App` exactly like a queued `Command`,
 //! saves the configuration, and hands the reply back to the waiting connection thread.
 //!
@@ -7,18 +7,18 @@
 
 use super::*;
 use crate::ipc_server::Pending;
-use fence_options::{layout_name, parse_fence_prop, sort_name};
-use items::RenameError;
-use pecofence_core::geometry;
-use pecofence_core::rules::{self, Rule};
-use pecofence_core::{AssignedBy, Fence, Item, ItemSourceSpec, Settings, Snapshot};
-use pecofence_ipc::selector::{self, SelectorError};
-use pecofence_ipc::{
+use coredesk_core::geometry;
+use coredesk_core::rules::{self, Rule};
+use coredesk_core::{AssignedBy, Fence, Item, ItemSourceSpec, Settings, Snapshot};
+use coredesk_ipc::selector::{self, SelectorError};
+use coredesk_ipc::{
     AdjustedDto, BIG_MOVE_SNAPSHOT_ITEMS, BackupDto, EVENT_HEARTBEAT_SECS, EVENT_NAMES, ErrorCode,
     EventDto, FenceDto, FitDto, IpcError, ItemDto, ItemMovePlanDto, MAX_SUBSCRIBERS, Method,
     MonitorDto, PROTOCOL_VERSION, PlannedMoveDto, PortalDto, Rect, Response, RuleEntry,
     RuleListDto, SnapshotDto, StatusDto, dotted_to_pointer, mutation,
 };
+use fence_options::{layout_name, parse_fence_prop, sort_name};
+use items::RenameError;
 use serde_json::{Value, json};
 use std::sync::mpsc;
 use uuid::Uuid;
@@ -81,7 +81,7 @@ fn absolute_path(path: &str) -> std::result::Result<std::path::PathBuf, IpcError
             ErrorCode::InvalidValue,
             format!("{path:?} is not an absolute path"),
         )
-        .hint("Pass a full path such as C:\\Users\\<you>\\Desktop\\pecofence.json"));
+        .hint("Pass a full path such as C:\\Users\\<you>\\Desktop\\coredesk.json"));
     }
     Ok(p)
 }
@@ -156,7 +156,9 @@ pub(super) fn validate_rect(
             "rect centre is outside every monitor's work area",
             &ids,
         )
-        .hint("Run `pecofence-cli monitor list`; the rect is in physical pixels of the virtual screen")
+        .hint(
+            "Run `coredesk-cli monitor list`; the rect is in physical pixels of the virtual screen",
+        )
         .details(json!({ "centre": { "x": cx, "y": cy }, "workAreas": areas })));
     };
     let scale = work.scale();
@@ -255,10 +257,10 @@ fn invalid_path(root: &Value, path: &str) -> IpcError {
 /// Pure: `current` with the value at the dotted camelCase `path` replaced (`""` = the whole
 /// object), re-validated as a `Settings`.
 /// `settings get` / `settings.patch` output: the Settings JSON without
-/// `pecofence_core::UNUSED_SETTINGS` (the file keeps them for older versions; nothing reads them).
+/// `coredesk_core::UNUSED_SETTINGS` (the file keeps them for older versions; nothing reads them).
 pub(super) fn visible_settings_json(settings: &Settings) -> std::result::Result<Value, IpcError> {
     let mut root = to_json(settings)?;
-    for path in pecofence_core::UNUSED_SETTINGS {
+    for path in coredesk_core::UNUSED_SETTINGS {
         let pointer = dotted_to_pointer(path);
         if let Some((parent, key)) = pointer.rsplit_once('/')
             && let Some(obj) = root.pointer_mut(parent).and_then(Value::as_object_mut)
@@ -287,7 +289,7 @@ pub(super) fn patch_settings_path(
                 ErrorCode::ValidationFailed,
                 "the whole settings object must be a JSON object",
             )
-            .hint("Run `pecofence-cli settings get` to see the shape"));
+            .hint("Run `coredesk-cli settings get` to see the shape"));
         }
         root = value;
     } else {
@@ -306,7 +308,7 @@ pub(super) fn patch_settings_path(
     if settings.peek.custom_hotkey != current.peek.custom_hotkey
         && let Some(text) = settings.peek.custom_hotkey.clone()
     {
-        let h = pecofence_core::hotkey::Hotkey::parse(&text)
+        let h = coredesk_core::hotkey::Hotkey::parse(&text)
             .and_then(|h| h.check())
             .map_err(|problem| {
                 IpcError::new(
@@ -381,7 +383,7 @@ pub(super) fn prune_auto_snapshots(
 fn auto_snapshot_name() -> String {
     format!(
         "{AUTO_SNAPSHOT_PREFIX}{}",
-        pecofence_platform::fileinfo::format_local_timestamp(pecofence_core::now_unix())
+        coredesk_platform::fileinfo::format_local_timestamp(coredesk_core::now_unix())
     )
 }
 
@@ -392,7 +394,7 @@ fn auto_snapshot_name() -> String {
 /// [`prune_auto_snapshots`]).
 pub(super) fn auto_snapshot_slot(snapshots: &mut Vec<Snapshot>, protect: Option<Uuid>) -> bool {
     prune_auto_snapshots(snapshots, AUTO_SNAPSHOTS_KEPT.saturating_sub(1), protect);
-    snapshots.len() < pecofence_core::MAX_SNAPSHOTS
+    snapshots.len() < coredesk_core::MAX_SNAPSHOTS
 }
 
 /// How long a queued request stays runnable: the client's timeout, but never under
@@ -416,14 +418,14 @@ fn is_desktop_alias(sel: &str) -> bool {
 
 /// `rules.add` needs at least one condition; an empty `allOf` would match everything.
 pub(super) fn check_rule_conditions(
-    all_of: &[pecofence_core::Cond],
+    all_of: &[coredesk_core::Cond],
 ) -> std::result::Result<(), IpcError> {
     if all_of.is_empty() {
         return Err(IpcError::invalid_value(
             "a rule needs at least one condition in allOf",
             &["allOf: [<condition>, ...]"],
         )
-        .hint("Run `pecofence-cli describe --schema Cond` for the condition shapes"));
+        .hint("Run `coredesk-cli describe --schema Cond` for the condition shapes"));
     }
     Ok(())
 }
@@ -461,8 +463,8 @@ pub(super) fn rolled_back_settings(requested: &Settings, applied: &Settings) -> 
 /// snapshot was taken (every monitor set shows them), else (snapshots from 0.1.3 and earlier)
 /// of the layout for the current monitors, else of the first.
 pub(super) fn snapshot_dto(s: &Snapshot, monitors: &[geometry::WorkArea]) -> SnapshotDto {
-    let current = pecofence_core::last_shown(&s.layouts)
-        .or_else(|| pecofence_core::layout_for(&s.layouts, monitors).map(|m| m.index))
+    let current = coredesk_core::last_shown(&s.layouts)
+        .or_else(|| coredesk_core::layout_for(&s.layouts, monitors).map(|m| m.index))
         .and_then(|i| s.layouts.get(i))
         .or_else(|| s.layouts.first());
     SnapshotDto {
@@ -517,7 +519,7 @@ impl App {
             let method = request.method.name();
             if arrived.elapsed() > request_expiry(request.timeout_ms) {
                 tracing::debug!(
-                    target: "pecofence::ipc",
+                    target: "coredesk::ipc",
                     method,
                     waited_ms = arrived.elapsed().as_millis() as u64,
                     "request expired before it could run; dropped"
@@ -545,7 +547,7 @@ impl App {
             let spent = started.elapsed();
             if spent > Duration::from_millis(8) {
                 tracing::info!(
-                    target: "pecofence::ipc",
+                    target: "coredesk::ipc",
                     ms = spent.as_secs_f32() * 1000.0,
                     method,
                     "slow request"
@@ -761,7 +763,7 @@ impl App {
                 let rolled_back = rolled_back_settings(&requested, after);
                 if !rolled_back.is_empty() {
                     self.ipc_warnings.push(format!(
-                        "PecoFence rolled back {}: the change could not be applied (see the log)",
+                        "CoreDesk Engine rolled back {}: the change could not be applied (see the log)",
                         rolled_back.join(", ")
                     ));
                 }
@@ -853,18 +855,18 @@ impl App {
                 include_wallpaper,
             } => {
                 let name = checked_name("snapshot name", name)?;
-                if self.state.config.snapshots.len() >= pecofence_core::MAX_SNAPSHOTS {
+                if self.state.config.snapshots.len() >= coredesk_core::MAX_SNAPSHOTS {
                     return Err(IpcError::new(
                         ErrorCode::LimitReached,
                         format!(
                             "{} snapshots already exist (the maximum)",
-                            pecofence_core::MAX_SNAPSHOTS
+                            coredesk_core::MAX_SNAPSHOTS
                         ),
                     )
-                    .hint("Delete one with `pecofence-cli snapshot delete <id>` first"));
+                    .hint("Delete one with `coredesk-cli snapshot delete <id>` first"));
                 }
                 let wallpaper = include_wallpaper
-                    .then(pecofence_platform::sysparams::desktop_wallpaper)
+                    .then(coredesk_platform::sysparams::desktop_wallpaper)
                     .flatten();
                 let id = self.state.save_snapshot(&name, wallpaper);
                 self.schedule_save();
@@ -889,7 +891,7 @@ impl App {
                     .config
                     .snapshots
                     .iter()
-                    .any(|s| s.id == pecofence_core::AUTO_BACKUP_SNAPSHOT_ID);
+                    .any(|s| s.id == coredesk_core::AUTO_BACKUP_SNAPSHOT_ID);
                 // The backup the existing mechanism takes is this call's auto snapshot; when
                 // the list is full of the user's snapshots the layout is restored without one
                 // (warned) rather than evicting theirs.
@@ -975,9 +977,14 @@ impl App {
             Method::PeekEnd => {
                 let active = self.peek.as_ref().is_some_and(|p| !p.is_closing());
                 if active {
-                    self.end_peek("pecofence-cli");
+                    self.end_peek("coredesk-cli");
                 }
                 Ok(mutation(active, None, Value::Null))
+            }
+            Method::ThemeImport { path } => {
+                let p = PathBuf::from(path);
+                self.import_theme_from(&p);
+                Ok(json!({ "changed": true, "imported": p }))
             }
             Method::SettingsOpenUi => {
                 self.handle(Command::OpenSettings);
@@ -1022,7 +1029,7 @@ impl App {
         .map_err(|e| match e {
             SelectorError::NotFound => {
                 IpcError::new(ErrorCode::RuleNotFound, format!("no rule matches {sel:?}"))
-                    .hint("Run `pecofence-cli rule list` and use the id, the index or the exact name")
+                    .hint("Run `coredesk-cli rule list` and use the id, the index or the exact name")
             }
             SelectorError::Ambiguous(c) => IpcError::new(
                 ErrorCode::RuleNotFound,
@@ -1040,7 +1047,7 @@ impl App {
             ErrorCode::SnapshotNotFound,
             format!("no snapshot matches {sel:?}"),
         )
-        .hint("Run `pecofence-cli snapshot list` and use the id or the exact name")
+        .hint("Run `coredesk-cli snapshot list` and use the id or the exact name")
     }
 
     /// `config.export`: the complete configuration as pretty JSON at an absolute path.
@@ -1059,7 +1066,7 @@ impl App {
             ));
         }
         self.state.save_if_dirty();
-        pecofence_core::ConfigStore::export_to(&self.state.config, &target).map_err(|e| {
+        coredesk_core::ConfigStore::export_to(&self.state.config, &target).map_err(|e| {
             IpcError::internal(format!("could not write {}: {e}", target.display()))
         })?;
         let bytes = std::fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
@@ -1089,9 +1096,9 @@ impl App {
         else {
             return Err(IpcError::new(
                 ErrorCode::InvalidValue,
-                format!("{path:?} is not one of PecoFence's backups"),
+                format!("{path:?} is not one of CoreDesk Engine's backups"),
             )
-            .hint("Run `pecofence-cli backup list` and pass one of its paths verbatim")
+            .hint("Run `coredesk-cli backup list` and pass one of its paths verbatim")
             .details(json!({
                 "allowed": backups.iter().map(|p| p.to_string_lossy()).collect::<Vec<_>>()
             })));
@@ -1111,7 +1118,7 @@ impl App {
             IpcError::new(
                 ErrorCode::ValidationFailed,
                 format!(
-                    "{} is not a usable PecoFence configuration: {e}",
+                    "{} is not a usable CoreDesk Engine configuration: {e}",
                     source.display()
                 ),
             )
@@ -1162,7 +1169,7 @@ impl App {
         );
         let not_found = || {
             IpcError::new(ErrorCode::ItemNotFound, format!("no item matches {sel:?}"))
-                .hint("Run `pecofence-cli item list` and use the id or the full path")
+                .hint("Run `coredesk-cli item list` and use the id or the full path")
         };
         if sel.is_empty() {
             return Err(not_found());
@@ -1218,7 +1225,7 @@ impl App {
     // ---- DTOs ----------------------------------------------------------------------------
 
     fn status_dto(&self) -> StatusDto {
-        let memory_mb = pecofence_platform::memstats::MemoryStats::current()
+        let memory_mb = coredesk_platform::memstats::MemoryStats::current()
             .map(|m| m.private_working_set as f64 / (1024.0 * 1024.0))
             .unwrap_or(0.0);
         StatusDto {
@@ -1240,7 +1247,7 @@ impl App {
                 "light"
             }
             .to_string(),
-            desktop_icons_hidden: pecofence_platform::shell_icons::desktop_icons_hidden(),
+            desktop_icons_hidden: coredesk_platform::shell_icons::desktop_icons_hidden(),
         }
     }
 
@@ -1394,8 +1401,8 @@ impl App {
                 .and_then(Value::as_str)
                 .map(|t| with_hash(t.to_string())),
             icon_shape: match f.view.effective_icon_shape() {
-                pecofence_core::IconShape::Standard => "standard",
-                pecofence_core::IconShape::Poster => "poster",
+                coredesk_core::IconShape::Standard => "standard",
+                coredesk_core::IconShape::Poster => "poster",
             }
             .to_string(),
             custom_icon_size: f.view.custom_icon_size,
@@ -1513,7 +1520,7 @@ impl App {
         let kind = if it.is_namespace() {
             "namespace".to_string()
         } else {
-            let facts = pecofence_core::ItemFacts {
+            let facts = coredesk_core::ItemFacts {
                 file_name: file_name.clone(),
                 is_folder: it.is_folder,
                 size_bytes: it.size,
@@ -1719,7 +1726,7 @@ impl App {
                         .find(|w| w.device_path == m)
                         .ok_or_else(|| {
                             IpcError::invalid_value(format!("unknown monitor {m:?}"), &ids)
-                                .hint("Run `pecofence-cli monitor list`")
+                                .hint("Run `coredesk-cli monitor list`")
                         })?,
                     None => self
                         .state
@@ -1733,12 +1740,12 @@ impl App {
         if let Some(folder) = portal {
             return self.ipc_create_portal(folder, title, rect, cx, cy);
         }
-        if self.state.fences().len() >= pecofence_core::config_store::MAX_FENCES {
+        if self.state.fences().len() >= coredesk_core::config_store::MAX_FENCES {
             return Err(IpcError::new(
                 ErrorCode::LimitReached,
                 format!(
                     "{} fences already exist (the maximum)",
-                    pecofence_core::config_store::MAX_FENCES
+                    coredesk_core::config_store::MAX_FENCES
                 ),
             )
             .hint("Delete or merge a fence first"));
@@ -1794,12 +1801,12 @@ impl App {
         if let Some(id) = existing_portal(self) {
             return Ok(mutation(false, None, self.fence_extra(id)?));
         }
-        if self.state.fences().len() >= pecofence_core::config_store::MAX_FENCES {
+        if self.state.fences().len() >= coredesk_core::config_store::MAX_FENCES {
             return Err(IpcError::new(
                 ErrorCode::LimitReached,
                 format!(
                     "{} fences already exist (the maximum)",
-                    pecofence_core::config_store::MAX_FENCES
+                    coredesk_core::config_store::MAX_FENCES
                 ),
             )
             .hint("Delete or merge a fence first"));
@@ -1903,7 +1910,7 @@ impl App {
         else {
             return Err(
                 IpcError::invalid_value(format!("unknown monitor {monitor:?}"), &ids)
-                    .hint("Run `pecofence-cli monitor list`"),
+                    .hint("Run `coredesk-cli monitor list`"),
             );
         };
         if f.geometry.monitor == monitor {
@@ -2132,7 +2139,7 @@ impl App {
                 f.title
             ))
             .hint(
-                "Click its tab in the host window, or `pecofence-cli fence detach` it, then retry",
+                "Click its tab in the host window, or `coredesk-cli fence detach` it, then retry",
             ));
         }
         let Some(mut rect) = self.expanded_rect(host) else {
@@ -2237,7 +2244,7 @@ impl App {
                 ErrorCode::LimitReached,
                 format!("{MAX_SUBSCRIBERS} event streams are already open"),
             )
-            .hint("Stop one of the running `pecofence-cli watch` processes"));
+            .hint("Stop one of the running `coredesk-cli watch` processes"));
         }
         let fence_id = fence
             .map(|sel| {
@@ -2278,7 +2285,7 @@ impl App {
             seq: 0,
             last_sent: Instant::now(),
         });
-        tracing::info!(target: "pecofence::ipc", subscribers = self.ipc_subscribers.len(), "event stream opened");
+        tracing::info!(target: "coredesk::ipc", subscribers = self.ipc_subscribers.len(), "event stream opened");
         Ok(json!({
             "subscribed": true,
             "fence": fence_id,
@@ -2394,7 +2401,7 @@ impl App {
             self.ipc_event_state = Some(now_state);
             return;
         };
-        let ts = pecofence_core::now_unix();
+        let ts = coredesk_core::now_unix();
         let blank = |event: &str| EventDto {
             seq: 0,
             ts,
@@ -2506,7 +2513,7 @@ impl App {
         }
         for i in gone.into_iter().rev() {
             self.ipc_subscribers.remove(i);
-            tracing::info!(target: "pecofence::ipc", subscribers = self.ipc_subscribers.len(), "event stream closed");
+            tracing::info!(target: "coredesk::ipc", subscribers = self.ipc_subscribers.len(), "event stream closed");
         }
         if self.ipc_subscribers.is_empty() {
             window::kill_timer(self.control.hwnd(), TIMER_IPC_EVENTS);
@@ -2538,7 +2545,7 @@ impl App {
         &mut self,
         name: &str,
         target: &str,
-        all_of: &[pecofence_core::Cond],
+        all_of: &[coredesk_core::Cond],
         index: Option<usize>,
     ) -> IpcResult {
         let name = checked_name("rule name", name)?;

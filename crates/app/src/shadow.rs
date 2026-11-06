@@ -1,17 +1,17 @@
 //! Soft drop shadow for a fence, drawn in a separate click-through layered window so the fence
 //! HWND stays exactly the size of its visible body (plan review: no dead zones around fences).
 
-use pecofence_platform::layered::{self, LayeredImage};
-use pecofence_platform::window::{
+use coredesk_platform::layered::{self, LayeredImage};
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, RECT, msg};
-use pecofence_render::Image;
+use coredesk_platform::{HWND, RECT, msg};
+use coredesk_render::Image;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use windows_core::Result;
 
-pub const SHADOW_CLASS: &str = "PecoFence.Shadow";
+pub const SHADOW_CLASS: &str = "CoreDeskEngine.Shadow";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShadowStyle {
@@ -88,7 +88,7 @@ fn draw_ring(img: &mut Image, pad: i32, w: i32, h: i32, scale: f32, ring: &Selec
     let corner = radius.ceil() as i32 + reach;
     let shape = ring
         .continuous
-        .then(|| pecofence_render::glass_shape::GlassShape::new(w as f32, h as f32, radius));
+        .then(|| coredesk_render::glass_shape::GlassShape::new(w as f32, h as f32, radius));
     let sdf = |fx: f32, fy: f32| -> f32 {
         if let Some(shape) = &shape {
             return -shape.edge(fx, fy).2;
@@ -142,7 +142,7 @@ fn render_shadow(w: i32, h: i32, scale: f32, style: &ShadowStyle) -> Image {
     // Anti-aliased coverage of the rounded body (signed-distance field) at a body-local point.
     let shape = style
         .continuous
-        .then(|| pecofence_render::glass_shape::GlassShape::new(w as f32, h as f32, radius));
+        .then(|| coredesk_render::glass_shape::GlassShape::new(w as f32, h as f32, radius));
     let body_cov = |fx: f32, fy: f32| -> f32 {
         if let Some(shape) = &shape {
             return shape.coverage(fx, fy);
@@ -509,7 +509,7 @@ impl ShadowWindow {
         if let Some(ring) = self.ring {
             draw_ring(&mut img, pad, w, h, scale, &ring);
         }
-        if pecofence_core::brand::var_os("PECOFENCE_DEBUG_SHADOW").is_some() {
+        if coredesk_core::brand::var_os("COREDESK_DEBUG_SHADOW").is_some() {
             let mut bmp = Vec::new();
             let (iw, ih) = (img.width as i32, img.height as i32);
             let size = 54 + (iw * ih * 4) as u32;
@@ -572,7 +572,7 @@ impl ShadowWindow {
             self.last = None;
             return;
         }
-        if pecofence_core::brand::var_os("PECOFENCE_DEBUG_SHADOW").is_some() {
+        if coredesk_core::brand::var_os("COREDESK_DEBUG_SHADOW").is_some() {
             let r = window::window_rect(self.window.hwnd());
             tracing::info!(?r, visible = self.window.is_visible(), body = ?body, "shadow window placed");
         }
@@ -589,7 +589,7 @@ impl ShadowWindow {
 /// Class check used by hit-testing code.
 #[allow(dead_code)]
 pub fn is_shadow_class(hwnd: HWND) -> bool {
-    pecofence_platform::desktop::class_name(hwnd) == SHADOW_CLASS
+    coredesk_platform::desktop::class_name(hwnd) == SHADOW_CLASS
 }
 
 #[cfg(test)]

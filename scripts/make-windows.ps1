@@ -38,7 +38,7 @@ try {
     throw "Package version must match Cargo.toml ($workspaceVersion)"
   }
   if (-not $Repository) { $Repository = $env:GITHUB_REPOSITORY }
-  if (-not $Repository) { $Repository = "fox10881/PecoFence" }
+  if (-not $Repository) { $Repository = "fox10881/CoreDesk" }
   if ($Repository -notmatch '^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$' -or $Repository.Split('/')[1] -in @('.', '..')) {
     throw "Repository must be a GitHub owner/repository name"
   }
@@ -51,29 +51,29 @@ try {
     $env:PATH = (Join-Path $env:USERPROFILE ".cargo/bin") + ";" + $env:PATH
   }
   if (-not $SkipBuild) {
-    & cargo build --locked --release -p pecofence -p pecofence-watchdog -p pecofence-tap --target-dir $TargetDir
+    & cargo build --locked --release -p coredesk -p coredesk-watchdog -p coredesk-tap --target-dir $TargetDir
     if ($LASTEXITCODE -ne 0) { throw "App/watchdog build failed" }
     # Keep the CLI's schemars feature out of the GUI executable.
-    & cargo build --locked --release -p pecofence-cli --target-dir $TargetDir
+    & cargo build --locked --release -p coredesk-cli --target-dir $TargetDir
     if ($LASTEXITCODE -ne 0) { throw "CLI build failed" }
   }
 
   $release = [IO.Path]::GetFullPath((Join-Path $TargetDir "release"))
-  foreach ($exe in @("pecofence.exe", "pecofence-watchdog.exe", "pecofence-cli.exe", "pecofence_tap.dll")) {
+  foreach ($exe in @("coredesk.exe", "coredesk-watchdog.exe", "coredesk-cli.exe", "coredesk_tap.dll")) {
     if (-not (Test-Path -LiteralPath (Join-Path $release $exe) -PathType Leaf)) {
       throw "Missing $exe in $release"
     }
   }
   # Catch stale --SkipBuild output before assigning it the current release name.
-  $builtVersion = (Get-Item -LiteralPath (Join-Path $release "pecofence.exe")).VersionInfo.ProductVersion
+  $builtVersion = (Get-Item -LiteralPath (Join-Path $release "coredesk.exe")).VersionInfo.ProductVersion
   if ($builtVersion -cne $Version) { throw "Built app version '$builtVersion' does not match $Version; rebuild with the Windows SDK installed" }
 
   $distRoot = Join-Path $root "dist"
   $stagingRoot = [IO.Path]::GetFullPath((Join-Path $distRoot ".staging"))
-  $baseName = "pecofence-v$Version-x64"
+  $baseName = "coredesk-v$Version-x64"
   $common = Join-Path $stagingRoot "$baseName-common"
   Reset-Stage $common
-  foreach ($exe in @("pecofence.exe", "pecofence-watchdog.exe", "pecofence-cli.exe", "pecofence_tap.dll")) {
+  foreach ($exe in @("coredesk.exe", "coredesk-watchdog.exe", "coredesk-cli.exe", "coredesk_tap.dll")) {
     Copy-Item -LiteralPath (Join-Path $release $exe) -Destination $common
   }
   Copy-Item -LiteralPath "third_party/webview2/WebView2Loader.x64.dll" -Destination (Join-Path $common "WebView2Loader.dll")
@@ -87,7 +87,7 @@ try {
   Copy-Item -LiteralPath "docs/WALLPAPER_ENGINE.md" -Destination $common
   Copy-Item -LiteralPath "docs/GLASS_RENDERING.md" -Destination $common
   Copy-Item -LiteralPath "docs/DESKTOP_CONTAINERS.md" -Destination $common
-  Copy-Item -LiteralPath "skills/pecofence-cli/SKILL.md" -Destination (Join-Path $common "SKILL.md")
+  Copy-Item -LiteralPath "skills/coredesk-cli/SKILL.md" -Destination (Join-Path $common "SKILL.md")
   $assetsStage = Join-Path $common "assets"
   New-Item -ItemType Directory -Path $assetsStage -Force | Out-Null
   Copy-Item -LiteralPath "assets/wallpapers" -Destination $assetsStage -Recurse
@@ -106,7 +106,7 @@ try {
       Compress-Archive -Path "$stage/*" -DestinationPath $zip -Force
       Write-Checksum $zip
     } else {
-      & $Iscc --quiet "--define=PayloadDir=$stage" "--define=AppVersion=$Version" "--define=Repository=$Repository" "--output-dir=$distRoot" "--output-filename=$baseName-setup" packaging/inno/pecofence.iss
+      & $Iscc --quiet "--define=PayloadDir=$stage" "--define=AppVersion=$Version" "--define=Repository=$Repository" "--output-dir=$distRoot" "--output-filename=$baseName-setup" packaging/inno/coredesk.iss
       if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
       Write-Checksum (Join-Path $distRoot "$baseName-setup.exe")
     }

@@ -1,11 +1,11 @@
 //! `describe`: a self-contained catalog for agents, generated without talking to the app.
 
-use pecofence_ipc::schema::{SCHEMA_NAMES, schema};
-use pecofence_ipc::{ErrorCode, IpcError, PROTOCOL_VERSION};
+use coredesk_ipc::schema::{SCHEMA_NAMES, schema};
+use coredesk_ipc::{ErrorCode, IpcError, PROTOCOL_VERSION};
 use serde_json::{Value, json};
 
 #[cfg(test)]
-use pecofence_ipc::Method;
+use coredesk_ipc::Method;
 
 /// One CLI leaf: command, wire method (`None` for client-only commands), summary, example.
 pub struct Entry {
@@ -31,301 +31,307 @@ pub const COMMANDS: &[Entry] = &[
         "status",
         Some("status.get"),
         "App version, pid, config path, counters; the is-it-running probe",
-        "pecofence-cli status"
+        "coredesk-cli status"
     ),
     entry!(
         "monitor list",
         Some("monitors.list"),
         "Connected monitors: id, rect, workArea, dpi, primary",
-        "pecofence-cli monitor list"
+        "coredesk-cli monitor list"
     ),
     entry!(
         "describe",
         None,
         "This catalog; --schema <Name> prints a JSON Schema (offline)",
-        "pecofence-cli describe --schema Settings"
+        "coredesk-cli describe --schema Settings"
     ),
     entry!(
         "skill",
         None,
         "Print the bundled SKILL.md for coding agents (offline)",
-        "pecofence-cli skill"
+        "coredesk-cli skill"
     ),
     entry!(
         "fence list",
         Some("fences.list"),
         "Fences of the active layout with geometry and options",
-        "pecofence-cli fence list"
+        "coredesk-cli fence list"
     ),
     entry!(
         "fence get",
         Some("fences.get"),
         "One fence",
-        "pecofence-cli fence get Work"
+        "coredesk-cli fence get Work"
     ),
     entry!(
         "fence create",
         Some("fences.create"),
         "New virtual fence (--rect, --monitor, or --below/--above/--right-of/--left-of FENCE [--size W,H]) or folder portal (--portal DIR, --title optional)",
-        "pecofence-cli fence create --title Work --rect 100,100,600,400"
+        "coredesk-cli fence create --title Work --rect 100,100,600,400"
     ),
     entry!(
         "fence delete",
         Some("fences.delete"),
         "Delete; items go back to the desktop fence, rules targeting it are removed",
-        "pecofence-cli fence delete Temp"
+        "coredesk-cli fence delete Temp"
     ),
     entry!(
         "fence rename",
         Some("fences.rename"),
         "Rename",
-        "pecofence-cli fence rename Work Projects"
+        "coredesk-cli fence rename Work Projects"
     ),
     entry!(
         "fence move",
         Some("fences.setBounds"),
         "--rect or --x/--y (fences.setBounds), or --monitor (fences.moveToMonitor)",
-        "pecofence-cli fence move Work --x 1200 --y 80"
+        "coredesk-cli fence move Work --x 1200 --y 80"
     ),
     entry!(
         "fence fit",
         Some("fences.fit"),
         "Height that shows every item without scrolling (fit.fittingHeight of fence get); a tab resizes its host",
-        "pecofence-cli fence fit Tools"
+        "coredesk-cli fence fit Tools"
     ),
     entry!(
         "fence resize",
         Some("fences.setBounds"),
         "--w and/or --h, position kept",
-        "pecofence-cli fence resize Work --w 800"
+        "coredesk-cli fence resize Work --w 800"
     ),
     entry!(
         "fence set",
         Some("fences.setOption"),
         "Per-fence option (--string forces text); --all applies to every fence one by one, skipping hosted tabs",
-        "pecofence-cli fence set Work layout list"
+        "coredesk-cli fence set Work layout list"
     ),
     entry!(
         "fence roll",
         Some("fences.roll"),
         "Roll up to the title bar (rolled=true); --all",
-        "pecofence-cli fence roll Work"
+        "coredesk-cli fence roll Work"
     ),
     entry!(
         "fence unroll",
         Some("fences.roll"),
         "Expand (rolled=false); --all",
-        "pecofence-cli fence unroll --all"
+        "coredesk-cli fence unroll --all"
     ),
     entry!(
         "fence dock-top",
         Some("fences.dockTop"),
         "Dock to the top edge of its monitor",
-        "pecofence-cli fence dock-top Work"
+        "coredesk-cli fence dock-top Work"
     ),
     entry!(
         "fence merge",
         Some("fences.merge"),
         "Merge into another fence as a tab",
-        "pecofence-cli fence merge Games --into Work"
+        "coredesk-cli fence merge Games --into Work"
     ),
     entry!(
         "fence detach",
         Some("fences.detach"),
         "Split a tab into its own window",
-        "pecofence-cli fence detach Games"
+        "coredesk-cli fence detach Games"
     ),
     entry!(
         "fence hide-all",
         Some("fences.setVisible"),
         "Quick-hide every fence (visible=false)",
-        "pecofence-cli fence hide-all"
+        "coredesk-cli fence hide-all"
     ),
     entry!(
         "fence show-all",
         Some("fences.setVisible"),
         "Show every fence (visible=true)",
-        "pecofence-cli fence show-all"
+        "coredesk-cli fence show-all"
     ),
     entry!(
         "fence open-options",
         Some("fences.openOptions"),
         "Open the Settings window on the fence's options page",
-        "pecofence-cli fence open-options Work"
+        "coredesk-cli fence open-options Work"
     ),
     entry!(
         "item list",
         Some("items.list"),
         "Items of every fence or of --fence, with kind/ext/size/modified/created/openCount/lastOpened/shortcutTarget/shortcutArguments; --kind/--ext filter client-side",
-        "pecofence-cli item list --fence Work"
+        "coredesk-cli item list --fence Work"
     ),
     entry!(
         "item rename",
         Some("items.rename"),
         "Rename the file behind an item on disk; keeps the extension unless --keep-ext false",
-        "pecofence-cli item rename \"C:\\Users\\me\\Desktop\\IMG_2031.pdf\" \"2026-09 electricity bill\""
+        "coredesk-cli item rename \"C:\\Users\\me\\Desktop\\IMG_2031.pdf\" \"2026-09 electricity bill\""
     ),
     entry!(
         "item move",
         Some("items.move"),
         "Move items (id, path, or name) or --glob matches into --to; into/out of a folder portal moves real files (--glob skips portal items unless --from names the portal); --dry-run (items.planMove) lists action/destination/skip per item",
-        "pecofence-cli item move --glob \"*.pdf\" --to Docs"
+        "coredesk-cli item move --glob \"*.pdf\" --to Docs"
     ),
     entry!(
         "settings get",
         Some("settings.get"),
         "Whole Settings or one dotted camelCase path",
-        "pecofence-cli settings get peek.enabled"
+        "coredesk-cli settings get peek.enabled"
     ),
     entry!(
         "settings set",
         Some("settings.patch"),
         "Set one value (JSON or text; --string forces text)",
-        "pecofence-cli settings set peek.enabled false"
+        "coredesk-cli settings set peek.enabled false"
     ),
     entry!(
         "settings open-ui",
         Some("settings.openUi"),
         "Open the Settings window",
-        "pecofence-cli settings open-ui"
+        "coredesk-cli settings open-ui"
     ),
     entry!(
         "rule list",
         Some("rules.get"),
         "Rules in order with defaultTarget and keepUpdated",
-        "pecofence-cli rule list"
+        "coredesk-cli rule list"
     ),
     entry!(
         "rule add",
         Some("rules.add"),
         "Add a rule from --ext/--type/--name-*/--glob/--folders-only/--files-only/--plain-files/--json",
-        "pecofence-cli rule add --name PDFs --ext pdf --to Docs"
+        "coredesk-cli rule add --name PDFs --ext pdf --to Docs"
     ),
     entry!(
         "rule remove",
         Some("rules.remove"),
         "Remove by id, index, or name",
-        "pecofence-cli rule remove PDFs"
+        "coredesk-cli rule remove PDFs"
     ),
     entry!(
         "rule enable",
         Some("rules.enable"),
         "Enable (enabled=true)",
-        "pecofence-cli rule enable 0"
+        "coredesk-cli rule enable 0"
     ),
     entry!(
         "rule disable",
         Some("rules.enable"),
         "Disable (enabled=false)",
-        "pecofence-cli rule disable PDFs"
+        "coredesk-cli rule disable PDFs"
     ),
     entry!(
         "rule move",
         Some("rules.move"),
         "Reorder to a 0-based index",
-        "pecofence-cli rule move PDFs --to 0"
+        "coredesk-cli rule move PDFs --to 0"
     ),
     entry!(
         "rule import",
         Some("rules.set"),
         "Replace the whole rule set from a RuleSet JSON file or stdin (-)",
-        "pecofence-cli rule import rules.json"
+        "coredesk-cli rule import rules.json"
     ),
     entry!(
         "rule apply",
         Some("rules.apply"),
         "Re-file every desktop item through the rules now (auto snapshot when something moves); --dry-run lists the moves without making them",
-        "pecofence-cli rule apply --dry-run"
+        "coredesk-cli rule apply --dry-run"
     ),
     entry!(
         "snapshot list",
         Some("snapshots.list"),
         "Saved layout snapshots",
-        "pecofence-cli snapshot list"
+        "coredesk-cli snapshot list"
     ),
     entry!(
         "snapshot save",
         Some("snapshots.save"),
         "Save the current fence layout; --wallpaper also stores the desktop wallpaper; keep the returned snapshot.id for restore",
-        "pecofence-cli snapshot save before-cleanup --wallpaper"
+        "coredesk-cli snapshot save before-cleanup --wallpaper"
     ),
     entry!(
         "snapshot restore",
         Some("snapshots.restore"),
         "Restore by id (names only while unique); the current layout is snapshotted first; a saved wallpaper is restored too",
-        "pecofence-cli snapshot restore 3f9c2a1e"
+        "coredesk-cli snapshot restore 3f9c2a1e"
     ),
     entry!(
         "snapshot rename",
         Some("snapshots.rename"),
         "Rename a snapshot by id (or unique name)",
-        "pecofence-cli snapshot rename 3f9c2a1e work-setup"
+        "coredesk-cli snapshot rename 3f9c2a1e work-setup"
     ),
     entry!(
         "snapshot delete",
         Some("snapshots.delete"),
         "Delete a snapshot by id (or unique name)",
-        "pecofence-cli snapshot delete 3f9c2a1e"
+        "coredesk-cli snapshot delete 3f9c2a1e"
     ),
     entry!(
         "config export",
         Some("config.export"),
         "Write the whole configuration to an absolute JSON path (overwrites)",
-        "pecofence-cli config export C:\\Users\\me\\Desktop\\pecofence.json"
+        "coredesk-cli config export C:\\Users\\me\\Desktop\\coredesk.json"
     ),
     entry!(
         "config import",
         Some("config.import"),
         "Replace the configuration from a JSON file; the current layout is snapshotted first",
-        "pecofence-cli config import C:\\Users\\me\\Desktop\\pecofence.json"
+        "coredesk-cli config import C:\\Users\\me\\Desktop\\coredesk.json"
     ),
     entry!(
         "config check",
         None,
         "Validate a config.json / export file offline: parse like the app, then lint rule targets, portal folders, tabs, $schema (exit 1 on errors)",
-        "pecofence-cli config check C:\\Users\\me\\Desktop\\pecofence.json"
+        "coredesk-cli config check C:\\Users\\me\\Desktop\\coredesk.json"
     ),
     entry!(
         "backup list",
         Some("backups.list"),
         "Legacy daily config backups beside config.json (path, name), newest first; no longer written",
-        "pecofence-cli backup list"
+        "coredesk-cli backup list"
     ),
     entry!(
         "backup restore",
         Some("backups.restore"),
         "Restore a backup by the exact path from `backup list`; the current layout is snapshotted first",
-        "pecofence-cli backup restore C:\\Users\\me\\AppData\\Roaming\\PecoFence\\backups\\2026-09-23.json"
+        "coredesk-cli backup restore C:\\Users\\me\\AppData\\Roaming\\CoreDeskEngine\\backups\\2026-09-23.json"
+    ),
+    entry!(
+        "theme import",
+        Some("theme.import"),
+        "Import a .cde theme archive (legacy .peco files import the same way)",
+        "coredesk-cli theme import C:\\Users\\me\\Desktop\\desert.cde"
     ),
     entry!(
         "peek start",
         Some("peek.start"),
         "Float every fence above other windows",
-        "pecofence-cli peek start"
+        "coredesk-cli peek start"
     ),
     entry!(
         "peek end",
         Some("peek.end"),
         "End Peek",
-        "pecofence-cli peek end"
+        "coredesk-cli peek end"
     ),
     entry!(
         "watch",
         Some("events.subscribe"),
         "Stream EventDto JSON lines (item.added/removed/moved, fence.created/deleted/changed) until Ctrl+C; --fence/--events filter, --once exits after the first",
-        "pecofence-cli watch --fence desktop --once"
+        "coredesk-cli watch --fence desktop --once"
     ),
     entry!(
         "log",
         None,
         "Print the tail of the app's log as text (not JSON); -f follows, -n lines",
-        "pecofence-cli log -n 100"
+        "coredesk-cli log -n 100"
     ),
     entry!(
         "paths",
         None,
-        "Where PecoFence keeps config.json, backups, the log and crash dumps (offline; asks a running instance first)",
-        "pecofence-cli paths"
+        "Where CoreDesk Engine keeps config.json, backups, the log and crash dumps (offline; asks a running instance first)",
+        "coredesk-cli paths"
     ),
 ];
 
@@ -336,7 +342,7 @@ const EXTRA_METHODS: &[&str] = &["fences.moveToMonitor", "items.planMove"];
 pub const ERROR_CODES: &[(ErrorCode, &str)] = &[
     (
         ErrorCode::NotRunning,
-        "No PecoFence instance is listening (exit 3)",
+        "No CoreDesk Engine instance is listening (exit 3)",
     ),
     (
         ErrorCode::Timeout,
@@ -412,7 +418,7 @@ pub const NOTES: &[&str] = &[
     "Geometry: a hosted tab reports its host's rect and windowRect null. fence get .fit {columns, rows, fittingHeight, overflow} says whether the items fit (fence fit applies fittingHeight). When the app changes a rect on its own (autoHeight after setBounds; iconSize/spacing/layout/labelLines snapping to whole columns and rows) the reply carries adjusted {requested, applied, reason}.",
     "Settings paths are dotted camelCase (peek.enabled, peek.customHotkey (\"Ctrl+Shift+F\"), quickHide.enabled, rollUp.hoverPeek, snapping.gapPx, iconSize, theme, themeStyle, hideRealIcons, autostart, icons.chameleon, icons.chameleonIntensity); see describe --schema Settings.",
     "fence set props: title (or fence rename), iconSize 32|48|64|96, spacing compact|normal|loose, autoHeight, locked, excludeFromQuickHide, opacity default|clear|solid|transparent, tint \"#RRGGBB\"|null, tintTitleOnly (the tint washes only the title row), tabColor \"#RRGGBB\"|null (the bar under a tab; null = its tint), titleColor theme|tint|white|black|\"#RRGGBB\", titleSize small|normal|large|extraLarge, titleOnHover default|hover|always (default follows rollUp.titleOnHover), layout icons|list|details, sort manual|name|type|date|size|openCount, reverse, groupByDate, labelLines, portalNavigate, portalTitleIcon, hideWhenEmpty (legacy configuration only). --string keeps numeric-looking text (title 2024) a string.",
-    "The app must be running; the CLI never edits config.json. --instance <name> only addresses a test instance started with PECOFENCE_INSTANCE=<name>. Offline exceptions: describe, skill, paths, log, config check.",
+    "The app must be running; the CLI never edits config.json. --instance <name> only addresses a test instance started with COREDESK_INSTANCE=<name>. Offline exceptions: describe, skill, paths, log, config check.",
     "watch streams one EventDto per line (describe --schema EventDto) and never returns by itself; use --once from scripts (wait for one event, then run a batch such as item list + item move). Heartbeats every 30 s are hidden unless --heartbeat. item list carries kind/ext/size/modified/created/openCount/lastOpened/shortcutTarget so most items can be sorted without opening them. items.move of 20+ desktop items takes an automatic snapshot (snapshotId); with a portal on either side it replies fileMove: true and the files arrive a moment later; names that already exist at the destination are skipped (skipped[], warning) instead of opening Explorer's replace dialog.",
 ];
 
@@ -439,7 +445,7 @@ pub fn catalog() -> Value {
             "0": "success",
             "1": "the app returned an error, or part of a batch failed",
             "2": "usage error (clap message on stderr, or code usage)",
-            "3": "PecoFence is not running",
+            "3": "CoreDesk Engine is not running",
             "4": "timeout waiting for the app",
         },
         "errorCodes": error_codes,
@@ -460,7 +466,7 @@ pub fn run(schema_name: Option<&str>) -> Result<Value, IpcError> {
                 .and_then(|n| schema(n));
             canonical.ok_or_else(|| {
                 IpcError::usage(format!("unknown schema {name:?}"))
-                    .hint("Run `pecofence-cli describe` and pick one of .schemas")
+                    .hint("Run `coredesk-cli describe` and pick one of .schemas")
                     .details(json!({ "allowed": SCHEMA_NAMES }))
             })
         }
@@ -604,7 +610,7 @@ mod tests {
     fn every_command_has_a_distinct_example_starting_with_the_binary() {
         let mut seen = BTreeSet::new();
         for e in COMMANDS {
-            assert!(e.example.starts_with("pecofence-cli "), "{}", e.command);
+            assert!(e.example.starts_with("coredesk-cli "), "{}", e.command);
             assert!(
                 e.example.contains(e.command),
                 "{} vs {}",
@@ -680,7 +686,7 @@ mod tests {
         use clap::Parser;
         for e in COMMANDS {
             let words = shell_words(e.example);
-            assert_eq!(words[0], "pecofence-cli", "{}", e.example);
+            assert_eq!(words[0], "coredesk-cli", "{}", e.example);
             crate::cli::Cli::try_parse_from(&words)
                 .unwrap_or_else(|err| panic!("{}: {err}", e.example));
         }

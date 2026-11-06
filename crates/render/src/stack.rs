@@ -1,6 +1,6 @@
 //! The per-thread composition stack: dispatcher queue, compositor, GPU device.
 
-use pecofence_platform::HWND;
+use coredesk_platform::HWND;
 use std::cell::RefCell;
 use windows_canvas::{GpuDevice, RenderTarget};
 use windows_composition::{
@@ -13,7 +13,7 @@ enum QueueOwner {
     Wrapper(#[allow(dead_code)] DispatcherQueueController),
     /// Queue created by our own binding with DQTAT_COM_NONE (used when the wrapper fails on
     /// an OLE-initialized thread).
-    Platform(#[allow(dead_code)] pecofence_platform::dispatcher::DispatcherQueue),
+    Platform(#[allow(dead_code)] coredesk_platform::dispatcher::DispatcherQueue),
 }
 
 /// Owns everything needed to composite on the current (UI) thread.
@@ -90,8 +90,7 @@ impl RenderStack {
                 tracing::warn!(error = %e, "composition dispatcher queue failed; using DQTAT_COM_NONE fallback");
                 (
                     QueueOwner::Platform(
-                        pecofence_platform::dispatcher::DispatcherQueue::create_on_current_thread(
-                        )?,
+                        coredesk_platform::dispatcher::DispatcherQueue::create_on_current_thread()?,
                     ),
                     "platform(DQTAT_COM_NONE)",
                 )
@@ -210,7 +209,7 @@ impl RenderStack {
     /// (sleep, driver update), or to hand back GPU memory the old device kept. Callers must
     /// then recreate every drawing surface. A stack that started on hardware falls back to
     /// WARP only with `allow_warp`; otherwise a hardware device that cannot be created yet is
-    /// an error, so the caller retries instead of drawing on the CPU until PecoFence restarts.
+    /// an error, so the caller retries instead of drawing on the CPU until CoreDesk Engine restarts.
     pub fn recover(&self, allow_warp: bool) -> Result<()> {
         let generation = self.gpu.borrow().generation + 1;
         let (gpu, is_warp) = create_gpu(&self.compositor, generation, allow_warp || self.is_warp)?;
@@ -230,7 +229,7 @@ impl RenderStack {
         // SAFETY: the caller guarantees `hwnd` is a live window owned by this thread.
         unsafe {
             self.compositor
-                .create_desktop_window_target_for_hwnd(pecofence_platform::hwnd_ptr(hwnd), false)
+                .create_desktop_window_target_for_hwnd(coredesk_platform::hwnd_ptr(hwnd), false)
         }
     }
 }

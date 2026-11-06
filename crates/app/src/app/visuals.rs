@@ -8,15 +8,15 @@ use super::*;
 /// AccentFillColorDefault: AccentLight2 on dark, AccentDark1 on light).
 pub(super) fn theme_for(
     mode: ThemeMode,
-    style: pecofence_core::ThemeStyle,
+    style: coredesk_core::ThemeStyle,
     accent: Option<&systheme::AccentPalette>,
 ) -> Theme {
     let mut theme = Theme::for_mode(mode);
     match style {
-        pecofence_core::ThemeStyle::Fluent => {}
-        pecofence_core::ThemeStyle::LiquidGlass => theme = theme.with_liquid_glass(),
-        pecofence_core::ThemeStyle::Bookshelf => theme = theme.with_bookshelf(),
-        pecofence_core::ThemeStyle::InvisibleCanvas => theme = theme.with_invisible_canvas(),
+        coredesk_core::ThemeStyle::Fluent => {}
+        coredesk_core::ThemeStyle::LiquidGlass => theme = theme.with_liquid_glass(),
+        coredesk_core::ThemeStyle::Bookshelf => theme = theme.with_bookshelf(),
+        coredesk_core::ThemeStyle::InvisibleCanvas => theme = theme.with_invisible_canvas(),
     }
     match accent {
         Some(p) => theme.with_accent(if mode == ThemeMode::Dark {
@@ -55,12 +55,12 @@ pub(super) fn pick_theme_mode(setting: ThemeSetting, args: &Args) -> ThemeMode {
     }
 }
 
-/// Developer knob: `PECOFENCE_ACRYLIC="tint_alpha,luminosity_opacity,blur_sigma_px"` overrides the
+/// Developer knob: `COREDESK_ACRYLIC="tint_alpha,luminosity_opacity,blur_sigma_px"` overrides the
 /// acrylic recipe so the material can be tuned without rebuilding.
 fn tuned_tint(
-    mut tint: pecofence_render::backdrop::MicaTint,
-) -> pecofence_render::backdrop::MicaTint {
-    if let Ok(spec) = pecofence_core::brand::var("PECOFENCE_ACRYLIC") {
+    mut tint: coredesk_render::backdrop::MicaTint,
+) -> coredesk_render::backdrop::MicaTint {
+    if let Ok(spec) = coredesk_core::brand::var("COREDESK_ACRYLIC") {
         let parts: Vec<f32> = spec
             .split(',')
             .filter_map(|p| p.trim().parse().ok())
@@ -78,7 +78,7 @@ fn tuned_tint(
                 lum,
                 sigma,
                 chroma = tint.chroma,
-                "acrylic recipe overridden via PECOFENCE_ACRYLIC"
+                "acrylic recipe overridden via COREDESK_ACRYLIC"
             );
         }
     }
@@ -117,7 +117,7 @@ pub(super) struct MonitorRecipe {
     /// The bounding box of all monitors, which a Span picture covers.
     span: RECT,
     background: [u8; 3],
-    tint: pecofence_render::backdrop::MicaTint,
+    tint: coredesk_render::backdrop::MicaTint,
     downscale: u32,
     decode_divisor: u32,
     /// A capture of the live wallpaper covering this monitor, shown instead of the picture.
@@ -188,7 +188,7 @@ impl MonitorRecipe {
                 };
                 if self.position == WallpaperPosition::Span {
                     // This monitor's part, already at the backdrop's size.
-                    decoded = pecofence_render::backdrop::map_span(
+                    decoded = coredesk_render::backdrop::map_span(
                         &picture,
                         span_w,
                         span_h,
@@ -351,7 +351,7 @@ pub(super) fn monitor_recipes(
             decode_divisor: if theme.liquid_glass { 1 } else { 2 },
             live: None,
             frost_blur: theme.liquid_glass.then_some(
-                pecofence_render::backdrop::MicaTint::ACRYLIC_DARK.blur_sigma_dip * scale,
+                coredesk_render::backdrop::MicaTint::ACRYLIC_DARK.blur_sigma_dip * scale,
             ),
         };
         if let Some(image) = live
@@ -419,7 +419,7 @@ fn build_snapshot_backdrops(
     live: &[LiveWallpaper],
     signature: &str,
 ) -> Result<Rc<BackdropSets>> {
-    if pecofence_core::brand::var_os("PECOFENCE_SOLID").is_some() {
+    if coredesk_core::brand::var_os("COREDESK_SOLID").is_some() {
         return Ok(Rc::new(BackdropSets::default()));
     }
     let backdrops = build_backdrops(theme, snapshot, live)?;
@@ -480,12 +480,12 @@ impl StartupBackdrops {
         let work = {
             let slot = slot.clone();
             move || {
-                let outcome = pecofence_platform::com::MtaGuard::init().and_then(|_com| {
+                let outcome = coredesk_platform::com::MtaGuard::init().and_then(|_com| {
                     let snapshot = wallpaper_snapshot(wallpaper_override.as_deref());
                     let _ = stage_tx.send(());
                     let snapshot = snapshot?;
                     let signature = snapshot.signature();
-                    let recipes = if pecofence_core::brand::var_os("PECOFENCE_SOLID").is_some() {
+                    let recipes = if coredesk_core::brand::var_os("COREDESK_SOLID").is_some() {
                         Vec::new()
                     } else {
                         monitor_recipes(&theme, &snapshot, &[])
@@ -520,7 +520,7 @@ impl StartupBackdrops {
             }
         };
         if let Err(error) = std::thread::Builder::new()
-            .name("pecofence-wallpaper-startup".into())
+            .name("coredesk-wallpaper-startup".into())
             .spawn(work)
         {
             tracing::warn!(%error, "wallpaper startup thread failed to start");
@@ -591,7 +591,7 @@ impl StartupBackdrops {
             recipes,
             images,
         } = result.map_err(failed)?;
-        if pecofence_core::brand::var_os("PECOFENCE_SOLID").is_some() {
+        if coredesk_core::brand::var_os("COREDESK_SOLID").is_some() {
             return Ok((Rc::new(BackdropSets::default()), snapshot, signature));
         }
         let backdrops: Vec<MonitorBackdrop> = recipes
@@ -636,9 +636,9 @@ pub(super) fn verify_wallpaper_later(control: HWND, signature: String) {
         );
     };
     let spawned = std::thread::Builder::new()
-        .name("pecofence-wallpaper-verify".into())
+        .name("coredesk-wallpaper-verify".into())
         .spawn(move || {
-            let same = pecofence_platform::com::MtaGuard::init()
+            let same = coredesk_platform::com::MtaGuard::init()
                 .ok()
                 .and_then(|_com| wallpaper::signature())
                 .is_some_and(|current| current == signature);
@@ -713,13 +713,13 @@ fn other_desktop_snapshots(
     out
 }
 
-pub(super) fn backdrop_mode_for(b: pecofence_core::Backdrop) -> BackdropMode {
+pub(super) fn backdrop_mode_for(b: coredesk_core::Backdrop) -> BackdropMode {
     match b {
-        pecofence_core::Backdrop::Acrylic => BackdropMode::Acrylic,
+        coredesk_core::Backdrop::Acrylic => BackdropMode::Acrylic,
     }
 }
 
-pub(super) fn icon_variant_for(s: &pecofence_core::IconSettings) -> IconVariant {
+pub(super) fn icon_variant_for(s: &coredesk_core::IconSettings) -> IconVariant {
     IconVariant {
         tint: s.tint_rgb,
         tint_strength: (s.tint_strength.clamp(0.0, 1.0) * 100.0).round() as u8,
@@ -729,9 +729,9 @@ pub(super) fn icon_variant_for(s: &pecofence_core::IconSettings) -> IconVariant 
     }
 }
 
-pub(super) fn fence_style_for(f: &pecofence_core::Fence) -> FenceStyle {
+pub(super) fn fence_style_for(f: &coredesk_core::Fence) -> FenceStyle {
     let a = f.appearance.as_ref();
-    let rgb = |c: [u8; 3]| pecofence_render::ColorF::from_rgba8(c[0], c[1], c[2], 0xFF);
+    let rgb = |c: [u8; 3]| coredesk_render::ColorF::from_rgba8(c[0], c[1], c[2], 0xFF);
     FenceStyle {
         tint: a.and_then(|a| a.tint_rgb).map(rgb),
         tint_title_only: a.is_some_and(|a| a.tint_title_only),
@@ -744,7 +744,7 @@ pub(super) fn fence_style_for(f: &pecofence_core::Fence) -> FenceStyle {
         },
         // Global (标题对齐, 标签栏位置, the count and chevron): the window takes them from
         // `Behavior` at draw time.
-        title_align: pecofence_core::TitleAlign::Left,
+        title_align: coredesk_core::TitleAlign::Left,
         tab_rail: 0.0,
         hide_count_and_chevron: false,
     }
@@ -770,111 +770,42 @@ pub(super) fn shadow_style_for(theme: &Theme) -> ShadowStyle {
 }
 
 pub(super) fn tray_icon_image(size: i32, _accent: [u8; 3], _dark: bool) -> Vec<u8> {
-    // The product mark, variant E: white corner brackets and a 2×2 grid on an indigo rounded
-    // plate. Same geometry as scripts/make-msix-assets.py (64-unit mark), so the tray, the
-    // settings window, the exe and the Store tiles all show one icon. Premultiplied BGRA.
-    const PLATE: [f32; 3] = [0x47 as f32, 0x68 as f32, 0xDE as f32];
-    const SS: i32 = 4; // supersampling per axis
-    let side = size as f32;
-    let plate_r = side * 0.22;
-    // Mark occupies 76% of the side (12% margin), like the taskbar-size tiles.
-    let unit = side * 0.76 / 64.0;
-    let origin = side * 0.12;
-    let sample = |sx: f32, sy: f32| -> (f32, f32) {
-        // (plate coverage, mark alpha) at one sample point.
-        let dx = (sx - side / 2.0).abs() - (side / 2.0 - plate_r);
-        let dy = (sy - side / 2.0).abs() - (side / 2.0 - plate_r);
-        let d = (dx.max(0.0).powi(2) + dy.max(0.0).powi(2)).sqrt() + dx.max(dy).min(0.0) - plate_r;
-        let plate = (0.5 - d).clamp(0.0, 1.0);
-        // Mark coordinates in 64-unit space.
-        let mx = (sx - origin) / unit;
-        let my = (sy - origin) / unit;
-        let mut mark = 0.0f32;
-        let stroke_half = 3.0;
-        // Straight legs of the four brackets as capsules (round caps).
-        let legs: [((f32, f32), (f32, f32)); 8] = [
-            ((27.0, 8.0), (14.0, 8.0)),
-            ((8.0, 14.0), (8.0, 27.0)),
-            ((37.0, 8.0), (50.0, 8.0)),
-            ((56.0, 14.0), (56.0, 27.0)),
-            ((8.0, 37.0), (8.0, 50.0)),
-            ((14.0, 56.0), (27.0, 56.0)),
-            ((56.0, 37.0), (56.0, 50.0)),
-            ((50.0, 56.0), (37.0, 56.0)),
-        ];
-        for ((ax, ay), (bx, by)) in legs {
-            let (vx, vy) = (bx - ax, by - ay);
-            let t = (((mx - ax) * vx + (my - ay) * vy) / (vx * vx + vy * vy)).clamp(0.0, 1.0);
-            let (cx, cy) = (ax + vx * t, ay + vy * t);
-            let dist = ((mx - cx).powi(2) + (my - cy).powi(2)).sqrt() - stroke_half;
-            mark = mark.max((0.5 - dist * unit).clamp(0.0, 1.0));
-        }
-        // Quarter arcs of radius 6 around the bracket corners, limited to their quadrant.
-        let arcs: [((f32, f32), bool, bool); 4] = [
-            ((14.0, 14.0), true, true),
-            ((50.0, 14.0), false, true),
-            ((14.0, 50.0), true, false),
-            ((50.0, 50.0), false, false),
-        ];
-        for ((cx, cy), left, top) in arcs {
-            let in_quadrant =
-                (if left { mx <= cx } else { mx >= cx }) && (if top { my <= cy } else { my >= cy });
-            if in_quadrant {
-                let dist =
-                    (((mx - cx).powi(2) + (my - cy).powi(2)).sqrt() - 6.0).abs() - stroke_half;
-                mark = mark.max((0.5 - dist * unit).clamp(0.0, 1.0));
-            }
-        }
-        // 2×2 rounded squares (8 units, radius 2); the off-diagonal pair is lighter.
-        let squares: [(f32, f32, f32); 4] = [
-            (22.0, 22.0, 1.0),
-            (35.0, 22.0, 0.65),
-            (22.0, 35.0, 0.65),
-            (35.0, 35.0, 1.0),
-        ];
-        for (qx, qy, alpha) in squares {
-            let (ccx, ccy) = (qx + 4.0, qy + 4.0);
-            let ex = (mx - ccx).abs() - 2.0;
-            let ey = (my - ccy).abs() - 2.0;
-            let dist =
-                (ex.max(0.0).powi(2) + ey.max(0.0).powi(2)).sqrt() + ex.max(ey).min(0.0) - 2.0;
-            mark = mark.max((0.5 - dist * unit).clamp(0.0, 1.0) * alpha);
-        }
-        (plate, mark)
-    };
-    let mut bgra = vec![0u8; (size * size * 4) as usize];
-    let inv = 1.0 / (SS * SS) as f32;
-    for y in 0..size {
-        for x in 0..size {
-            let (mut plate, mut mark) = (0.0f32, 0.0f32);
-            for sy in 0..SS {
-                for sx in 0..SS {
-                    let px = x as f32 + (sx as f32 + 0.5) / SS as f32;
-                    let py = y as f32 + (sy as f32 + 0.5) / SS as f32;
-                    let (p, m) = sample(px, py);
-                    plate += p;
-                    mark += m * p;
+    // The CoreDesk Engine fox badge, baked to 64x64 premultiplied BGRA from the
+    // icon source (scripts/make-app-icon.py -> assets/coredesk.ico). Box-filtered
+    // to the requested size so the tray, window frame and taskbar all show one mark.
+    const SRC: usize = 64;
+    const BADGE: &[u8] = include_bytes!("../../assets/badge-64.bgra");
+    let dst = size.max(1) as usize;
+    if dst == SRC {
+        return BADGE.to_vec();
+    }
+    let scale = SRC as f64 / dst as f64;
+    let mut out = vec![0u8; dst * dst * 4];
+    for dy in 0..dst {
+        let sy0 = (dy as f64 * scale) as usize;
+        let sy1 = (((dy + 1) as f64 * scale).ceil() as usize).min(SRC);
+        for dx in 0..dst {
+            let sx0 = (dx as f64 * scale) as usize;
+            let sx1 = (((dx + 1) as f64 * scale).ceil() as usize).min(SRC);
+            let n = ((sy1 - sy0) * (sx1 - sx0)) as f64;
+            let (mut b, mut g, mut r, mut a) = (0f64, 0f64, 0f64, 0f64);
+            for sy in sy0..sy1 {
+                for sx in sx0..sx1 {
+                    let i = (sy * SRC + sx) * 4;
+                    b += BADGE[i] as f64;
+                    g += BADGE[i + 1] as f64;
+                    r += BADGE[i + 2] as f64;
+                    a += BADGE[i + 3] as f64;
                 }
             }
-            plate *= inv;
-            mark *= inv;
-            if plate <= 0.0 {
-                continue;
-            }
-            // Composite white mark over the plate, then premultiply by the plate coverage.
-            let mix = |c: f32| {
-                (c * (plate - mark) + 255.0 * mark)
-                    .round()
-                    .clamp(0.0, 255.0) as u8
-            };
-            let i = ((y * size + x) * 4) as usize;
-            bgra[i] = mix(PLATE[2]);
-            bgra[i + 1] = mix(PLATE[1]);
-            bgra[i + 2] = mix(PLATE[0]);
-            bgra[i + 3] = (plate * 255.0).round() as u8;
+            let o = (dy * dst + dx) * 4;
+            out[o] = (b / n).round() as u8;
+            out[o + 1] = (g / n).round() as u8;
+            out[o + 2] = (r / n).round() as u8;
+            out[o + 3] = (a / n).round() as u8;
         }
     }
-    bgra
+    out
 }
 
 impl App {
@@ -883,7 +814,7 @@ impl App {
     pub(super) fn prewarm_wallpapers(&mut self) {
         if self.prewarm.is_some()
             || self.wallpaper_override.is_some()
-            || pecofence_core::brand::var_os("PECOFENCE_SOLID").is_some()
+            || coredesk_core::brand::var_os("COREDESK_SOLID").is_some()
         {
             return;
         }
@@ -929,9 +860,9 @@ impl App {
                 let result = result.clone();
                 let control = self.control.hwnd().0 as isize;
                 std::thread::Builder::new()
-                    .name("pecofence-wallpaper-prewarm".into())
+                    .name("coredesk-wallpaper-prewarm".into())
                     .spawn(move || {
-                        let images = pecofence_platform::com::MtaGuard::init()
+                        let images = coredesk_platform::com::MtaGuard::init()
                             .and_then(|_com| {
                                 recipes
                                     .iter()
@@ -1167,11 +1098,7 @@ impl App {
         let changed = self
             .ctx
             .chrome
-            .set_icon_title_font(
-                &f.family,
-                f.size_dip,
-                pecofence_render::FontWeight(f.weight),
-            )
+            .set_icon_title_font(&f.family, f.size_dip, coredesk_render::FontWeight(f.weight))
             .unwrap_or(false);
         if !changed {
             return;
@@ -1201,6 +1128,7 @@ impl App {
                     open_settings: false,
                     portal: None,
                     test_script: None,
+                    theme_path: None,
                     instance: None,
                 },
             )
@@ -1210,9 +1138,9 @@ impl App {
         let style = self.state.config.settings.theme_style;
         let style_changed = {
             let theme = self.ctx.theme.borrow();
-            theme.liquid_glass != (style == pecofence_core::ThemeStyle::LiquidGlass)
-                || theme.bookshelf != (style == pecofence_core::ThemeStyle::Bookshelf)
-                || theme.invisible_canvas != (style == pecofence_core::ThemeStyle::InvisibleCanvas)
+            theme.liquid_glass != (style == coredesk_core::ThemeStyle::LiquidGlass)
+                || theme.bookshelf != (style == coredesk_core::ThemeStyle::Bookshelf)
+                || theme.invisible_canvas != (style == coredesk_core::ThemeStyle::InvisibleCanvas)
         };
         if mode == self.theme_mode && !style_changed && !accent_changed && !force {
             return;
@@ -1305,8 +1233,8 @@ impl App {
 #[cfg(test)]
 mod prewarm_tests {
     use super::other_desktop_snapshots;
-    use pecofence_platform::RECT;
-    use pecofence_platform::wallpaper::{MonitorWallpaper, Position, WallpaperSnapshot};
+    use coredesk_platform::RECT;
+    use coredesk_platform::wallpaper::{MonitorWallpaper, Position, WallpaperSnapshot};
     use std::path::PathBuf;
 
     #[test]
@@ -1387,7 +1315,7 @@ mod tray_icon_tests {
         }
     }
 
-    /// Writes raw BGRA dumps for a visual check: `cargo test -p pecofence tray_icon_dump -- --ignored`.
+    /// Writes raw BGRA dumps for a visual check: `cargo test -p coredesk tray_icon_dump -- --ignored`.
     #[test]
     #[ignore]
     fn tray_icon_dump() {

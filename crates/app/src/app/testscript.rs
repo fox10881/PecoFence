@@ -1,12 +1,12 @@
 //! `--test-script <file>`: drives the running app from a plain text script so UI behaviour can
 //! be exercised and inspected without a human at the mouse (a second instance with
-//! `PECOFENCE_INSTANCE=test --portable --no-hide-icons` is the intended host).
+//! `COREDESK_INSTANCE=test --portable --no-hide-icons` is the intended host).
 //!
 //! One command per line, `#` comments, blank lines ignored:
 //!
 //! ```text
 //! sleep <ms>                 wait
-//! dump <tag>                 log one `pecofence::test` line per fence window (+ dying ones)
+//! dump <tag>                 log one `coredesk::test` line per fence window (+ dying ones)
 //! feedback-info              log what the 「反馈」 form would send besides the user's text
 //! message <json>             send the same JSON command as the settings WebView
 //! quick-hide | quick-show    the desktop double-click toggle
@@ -65,8 +65,8 @@
 
 use super::App;
 use crate::commands::Command;
-use pecofence_core::FenceId;
-use pecofence_platform::{RECT, desktop, window};
+use coredesk_core::FenceId;
+use coredesk_platform::{RECT, desktop, window};
 use std::time::{Duration, Instant};
 
 pub(super) struct TestScript {
@@ -106,7 +106,7 @@ impl App {
                 t.wait_until = None;
             }
             let Some(line) = t.lines.get(t.pos).cloned() else {
-                tracing::info!(target: "pecofence::test", "script finished");
+                tracing::info!(target: "coredesk::test", "script finished");
                 self.test = None;
                 return;
             };
@@ -114,7 +114,7 @@ impl App {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            tracing::info!(target: "pecofence::test", ">> {line}");
+            tracing::info!(target: "coredesk::test", ">> {line}");
             let words: Vec<&str> = line.split_whitespace().collect();
             match words.as_slice() {
                 ["sleep", ms] => {
@@ -126,7 +126,7 @@ impl App {
                 ["dump", tag] => self.test_dump(tag),
                 ["feedback-info"] => {
                     let info = self.feedback_info_json();
-                    tracing::info!(target: "pecofence::test", "feedback-info {info}");
+                    tracing::info!(target: "coredesk::test", "feedback-info {info}");
                 }
                 #[cfg(debug_assertions)]
                 ["live-activity", state @ ("on" | "off" | "system")] => {
@@ -138,7 +138,7 @@ impl App {
                 }
                 #[cfg(debug_assertions)]
                 ["pace", ms] => {
-                    if pecofence_core::brand::var_os("PECOFENCE_UI_TEST_WINDOWS").is_some()
+                    if coredesk_core::brand::var_os("COREDESK_UI_TEST_WINDOWS").is_some()
                         && let Ok(ms) = ms.parse::<u32>()
                     {
                         window::set_timer(
@@ -162,20 +162,20 @@ impl App {
                         && let Some(w) = self.fences.get(&self.state.host_of(id))
                     {
                         let path = std::path::PathBuf::from(path);
-                        match pecofence_platform::dragdrop::data_object_for_paths(&[path.as_path()])
+                        match coredesk_platform::dragdrop::data_object_for_paths(&[path.as_path()])
                         {
                             Ok(data) => {
                                 let (at, allowed) = test_drop_options(at);
                                 let (entered, dropped) =
                                     w.test_drop(&self.ctx, &data, 0, *perform == "1", at, allowed);
                                 tracing::info!(
-                                    target: "pecofence::test",
+                                    target: "coredesk::test",
                                     "drop-files {}: enter={entered:?} drop={dropped:?}",
                                     path.display()
                                 );
                             }
                             Err(e) => tracing::warn!(
-                                target: "pecofence::test",
+                                target: "coredesk::test",
                                 error = %e,
                                 "drop-files: no data object for {}",
                                 path.display()
@@ -191,7 +191,7 @@ impl App {
                         match std::fs::read(file)
                             .map_err(|e| e.to_string())
                             .and_then(|b| {
-                                pecofence_platform::dragdrop::unmarshal_data_object(&b)
+                                coredesk_platform::dragdrop::unmarshal_data_object(&b)
                                     .map_err(|e| e.to_string())
                             }) {
                             Ok(data) => {
@@ -199,12 +199,12 @@ impl App {
                                 let (entered, dropped) =
                                     w.test_drop(&self.ctx, &data, 0, *perform == "1", at, allowed);
                                 tracing::info!(
-                                    target: "pecofence::test",
+                                    target: "coredesk::test",
                                     "drop-marshaled {file}: enter={entered:?} drop={dropped:?}"
                                 );
                             }
                             Err(e) => tracing::warn!(
-                                target: "pecofence::test",
+                                target: "coredesk::test",
                                 error = %e,
                                 "drop-marshaled: no data object in {file}"
                             ),
@@ -219,7 +219,7 @@ impl App {
                         let name = self.state.item(item).map(|it| it.display_name.clone());
                         let labels = self.item_menu_labels(id, item);
                         tracing::info!(
-                            target: "pecofence::test",
+                            target: "coredesk::test",
                             "item-menu {name:?}: {}",
                             labels.join(" | ")
                         );
@@ -236,7 +236,7 @@ impl App {
                 ["device-state"] => {
                     let lost = self.fences.values().filter(|w| w.device_lost()).count();
                     tracing::info!(
-                        target: "pecofence::test",
+                        target: "coredesk::test",
                         "device-state lost={lost}/{}",
                         self.fences.len()
                     );
@@ -254,7 +254,7 @@ impl App {
                 ["monitors", specs @ ..] => {
                     let areas: Vec<_> = specs.iter().filter_map(|s| test_monitor(s)).collect();
                     super::fences::TEST_MONITORS.with_borrow_mut(|m| *m = Some(areas));
-                    let display_change = pecofence_platform::msg::WM_DISPLAYCHANGE;
+                    let display_change = coredesk_platform::msg::WM_DISPLAYCHANGE;
                     window::post_message(self.control.hwnd(), display_change, 0, 0);
                 }
                 ["housekeeping"] => self.housekeeping(),
@@ -263,7 +263,7 @@ impl App {
                     // The close box's path: WM_DESTROY closes the controller, WindowGone
                     // drops the host.
                     if let Some(host) = &self.settings {
-                        window::post_message(host.hwnd(), pecofence_platform::msg::WM_CLOSE, 0, 0);
+                        window::post_message(host.hwnd(), coredesk_platform::msg::WM_CLOSE, 0, 0);
                     }
                 }
                 ["bounds", title, x, y, w, h] => {
@@ -305,7 +305,7 @@ impl App {
                     {
                         let r = window.test_size(wmsz + 1, x, y);
                         tracing::info!(
-                            target: "pecofence::test",
+                            target: "coredesk::test",
                             "sized {title:?} {edge} to ({x},{y}): rect=({},{},{},{})",
                             r.left,
                             r.top,
@@ -341,7 +341,7 @@ impl App {
                 ["peek"] => self.queue.push(Command::TogglePeek),
                 ["pin-test-windows"] | ["pin-test-windows", "raw"] => {
                     if cfg!(debug_assertions)
-                        && pecofence_core::brand::var_os("PECOFENCE_UI_TEST_WINDOWS").is_some()
+                        && coredesk_core::brand::var_os("COREDESK_UI_TEST_WINDOWS").is_some()
                         && let Some(a) = self.anchor.borrow_mut().as_mut()
                     {
                         a.set_peek(true, &[]);
@@ -483,7 +483,7 @@ impl App {
                                 crate::commands::TransferMode::Move,
                             );
                         } else {
-                            tracing::warn!(target: "pecofence::test", "transfer: {into:?} is not a portal");
+                            tracing::warn!(target: "coredesk::test", "transfer: {into:?} is not a portal");
                         }
                     }
                 }
@@ -495,7 +495,7 @@ impl App {
                     let dump = words.get(3).map(|s| s.to_string());
                     let p = std::path::Path::new(path);
                     for icon_only in [true, false] {
-                        match pecofence_platform::shell::shell_image(p, px, icon_only) {
+                        match coredesk_platform::shell::shell_image(p, px, icon_only) {
                             Ok(img) => {
                                 let opaque = img
                                     .bgra
@@ -504,13 +504,13 @@ impl App {
                                     .iter()
                                     .filter(|c| c[3] > 0)
                                     .count();
-                                tracing::info!(target: "pecofence::test", path, px, icon_only, w = img.width, h = img.height, opaque_px = opaque, "icon-probe ok");
+                                tracing::info!(target: "coredesk::test", path, px, icon_only, w = img.width, h = img.height, opaque_px = opaque, "icon-probe ok");
                                 if icon_only && let Some(d) = &dump {
                                     let _ = std::fs::write(d, &img.bgra);
                                 }
                             }
                             Err(e) => {
-                                tracing::info!(target: "pecofence::test", path, px, icon_only, error = %e, "icon-probe FAILED")
+                                tracing::info!(target: "coredesk::test", path, px, icon_only, error = %e, "icon-probe FAILED")
                             }
                         }
                     }
@@ -519,17 +519,17 @@ impl App {
                     // What the shell does at the end of a drag-out from a portal: a new file
                     // appears in a watched folder. Timestamp here vs. "portal refreshed" /
                     // "desktop resynced" = watcher-to-screen latency.
-                    match std::fs::write(path, b"pecofence test\n") {
-                        Ok(()) => tracing::info!(target: "pecofence::test", path, "file created"),
+                    match std::fs::write(path, b"coredesk test\n") {
+                        Ok(()) => tracing::info!(target: "coredesk::test", path, "file created"),
                         Err(e) => {
-                            tracing::warn!(target: "pecofence::test", path, error = %e, "create-file failed")
+                            tracing::warn!(target: "coredesk::test", path, error = %e, "create-file failed")
                         }
                     }
                 }
                 ["delete-file", path] => match std::fs::remove_file(path) {
-                    Ok(()) => tracing::info!(target: "pecofence::test", path, "file deleted"),
+                    Ok(()) => tracing::info!(target: "coredesk::test", path, "file deleted"),
                     Err(e) => {
-                        tracing::warn!(target: "pecofence::test", path, error = %e, "delete-file failed")
+                        tracing::warn!(target: "coredesk::test", path, error = %e, "delete-file failed")
                     }
                 },
                 ["new-folder", title] | ["new-text", title] => {
@@ -567,7 +567,7 @@ impl App {
                 ["crash"] => {
                     // Exercises platform::crashlog: an access violation from the UI thread must
                     // leave a CRASH line + minidump behind.
-                    tracing::info!(target: "pecofence::test", "forcing an access violation");
+                    tracing::info!(target: "coredesk::test", "forcing an access violation");
                     // SAFETY: deliberately not — this is the crash under test.
                     unsafe {
                         std::ptr::null_mut::<u32>().write_volatile(1);
@@ -585,7 +585,7 @@ impl App {
                     window::quit_after(50);
                     return;
                 }
-                _ => tracing::warn!(target: "pecofence::test", "unknown script line: {line}"),
+                _ => tracing::warn!(target: "coredesk::test", "unknown script line: {line}"),
             }
         }
     }
@@ -598,7 +598,7 @@ impl App {
             .find(|f| f.title.contains(title))
             .map(|f| f.id);
         if id.is_none() {
-            tracing::warn!(target: "pecofence::test", "no fence titled like {title:?}");
+            tracing::warn!(target: "coredesk::test", "no fence titled like {title:?}");
         }
         id
     }
@@ -615,7 +615,7 @@ impl App {
     }
 
     fn test_dump(&self, tag: &str) {
-        tracing::info!(target: "pecofence::test", "[{tag}] live_material {}", self.live_render_state());
+        tracing::info!(target: "coredesk::test", "[{tag}] live_material {}", self.live_render_state());
         for (kind, w) in self
             .fences
             .values()
@@ -625,7 +625,7 @@ impl App {
             let hwnd = w.hwnd();
             let r = w.rect();
             tracing::info!(
-                target: "pecofence::test",
+                target: "coredesk::test",
                 "[{tag}] {kind} hwnd={:#x} visible={} rect=({},{},{},{}) {}",
                 hwnd.0 as isize,
                 desktop::is_visible(hwnd),
@@ -655,7 +655,7 @@ impl App {
                     .map(|g| g.shown().into_iter().map(rect).collect())
             })
             .unwrap_or_default();
-        tracing::info!(target: "pecofence::test", "[{tag}] outline={outline:?} guides={guides:?}");
+        tracing::info!(target: "coredesk::test", "[{tag}] outline={outline:?} guides={guides:?}");
         let selected: Vec<String> = self
             .ctx
             .behavior
@@ -671,29 +671,29 @@ impl App {
             .filter_map(|(id, _)| self.state.fence(*id).map(|f| f.title.clone()))
             .collect();
         let band = self.marquee_band_shown().map(rect);
-        tracing::info!(target: "pecofence::test", "[{tag}] selection={selected:?} ringed={ringed:?} band={band:?}");
+        tracing::info!(target: "coredesk::test", "[{tag}] selection={selected:?} ringed={ringed:?} band={band:?}");
         let peek = self.peek.is_some();
         for (monitor, w) in &self.desktop_windows {
-            tracing::info!(target: "pecofence::test", "[{tag}] desktop monitor={monitor:?} state={}", w.debug_state());
+            tracing::info!(target: "coredesk::test", "[{tag}] desktop monitor={monitor:?} state={}", w.debug_state());
         }
-        tracing::info!(target: "pecofence::test", "[{tag}] loose-items={}", self.state.loose_items().len());
+        tracing::info!(target: "coredesk::test", "[{tag}] loose-items={}", self.state.loose_items().len());
         let rename = crate::rename::active_target().is_some();
-        tracing::info!(target: "pecofence::test", "[{tag}] fences={} dying={} peek={peek} rename={rename} hide_setting={} icons_hidden={}",
+        tracing::info!(target: "coredesk::test", "[{tag}] fences={} dying={} peek={peek} rename={rename} hide_setting={} icons_hidden={}",
             self.fences.len(), self.dying.len(), self.state.config.settings.hide_real_icons,
-            pecofence_platform::shell_icons::desktop_icons_hidden());
+            coredesk_platform::shell_icons::desktop_icons_hidden());
     }
 }
 
 /// `monitors` spec `<id>@<x>,<y>,<w>,<h>@<dpi>`: a monitor whose work area is that rectangle.
 #[cfg(debug_assertions)]
-fn test_monitor(spec: &str) -> Option<pecofence_core::geometry::WorkArea> {
+fn test_monitor(spec: &str) -> Option<coredesk_core::geometry::WorkArea> {
     let mut parts = spec.split('@');
     let (id, rect, dpi) = (parts.next()?, parts.next()?, parts.next()?.parse().ok()?);
     let n: Vec<i32> = rect.split(',').filter_map(|v| v.parse().ok()).collect();
     let [x, y, w, h] = n[..] else {
         return None;
     };
-    Some(pecofence_core::geometry::WorkArea {
+    Some(coredesk_core::geometry::WorkArea {
         device_path: id.to_string(),
         gdi_name: String::new(),
         left: x,
@@ -713,7 +713,7 @@ fn test_monitor(spec: &str) -> Option<pecofence_core::geometry::WorkArea> {
 /// Start menu offers Link alone).
 #[cfg(debug_assertions)]
 fn test_drop_options<'a>(rest: &[&'a str]) -> (Option<&'a str>, Option<u32>) {
-    use pecofence_platform::dragdrop::DropEffect;
+    use coredesk_platform::dragdrop::DropEffect;
     let mut at = None;
     let mut allowed = None;
     for t in rest {

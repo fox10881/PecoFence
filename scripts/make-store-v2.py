@@ -125,7 +125,7 @@ def header(image, language, number, white=False):
     d = ImageDraw.Draw(image)
     foreground = "#f7f7ff" if white else INK
     muted = "#c3c8de" if white else "#596277"
-    label(image, "PecoFence", (76, 32), 22, foreground, bold=True)
+    label(image, "CoreDesk", (76, 32), 22, foreground, bold=True)
     label(image, copy["label"], (220, 35), 16, muted, language)
     title = copy["titles"][number]
     face = fit(d, title, 68, 1770, language, True)
@@ -145,7 +145,7 @@ def peek(language):
     # The original capture has clear wallpaper above the actual document window.
     d = ImageDraw.Draw(image)
     d.rectangle((0, 0, 1919, 145), fill="#161c31")
-    label(image, "PecoFence / PEEK", (77, 27), 19, "#b4bfd9", bold=True)
+    label(image, "CoreDesk / PEEK", (77, 27), 19, "#b4bfd9", bold=True)
     f = fit(d, TEXT[language]["titles"][1], 65, 1760, language, True)
     d.text((74, 68), TEXT[language]["titles"][1], font=f, fill="#ffffff", anchor="lt")
     d.rounded_rectangle((605, 989, 1315, 1055), radius=16, fill="#131b32", outline="#51627d", width=1)
@@ -169,7 +169,7 @@ def tabs(language):
 
 def autosort(language):
     image = Image.new("RGB", SIZE, "#e8f1ed")
-    label(image, "PecoFence / " + TEXT[language]["labels"]["autosort"], (80, 50), 20, "#416961", language, True)
+    label(image, "CoreDesk / " + TEXT[language]["labels"]["autosort"], (80, 50), 20, "#416961", language, True)
     d = ImageDraw.Draw(image)
     copy = TEXT[language]
     f = fit(d, copy["titles"][3], 80, 470, language, True)
@@ -299,16 +299,16 @@ def upload_pack(listings):
     (folder / "art").mkdir(exist_ok=True)
     for name in ("super-hero-1920x1080.png", "app-icon-300x300.png"):
         shutil.copy2(OUT / "art" / name, folder / "art" / name)
-    # Trailer v3 (extras/pecofence-promo, `npm run trailer:finish`): the Store copy is 1080p30 with a frame of the film as thumbnail.
-    promo = ROOT / "extras/pecofence-promo/out"
+    # Trailer v3 (extras/coredesk-promo, `npm run trailer:finish`): the Store copy is 1080p30 with a frame of the film as thumbnail.
+    promo = ROOT / "extras/coredesk-promo/out"
     trailer = folder / "trailer"
-    if (promo / "PecoFence-trailer-v3-store-1080p30.mp4").exists():
+    if (promo / "CoreDesk-trailer-v3-store-1080p30.mp4").exists():
         trailer.mkdir(exist_ok=True)
-        shutil.copy2(promo / "PecoFence-trailer-v3-store-1080p30.mp4", trailer / "PecoFence-trailer-v3-30s-en.mp4")
-        shutil.copy2(promo / "PecoFence-trailer-v3-thumbnail.png", trailer / "thumbnail-1920x1080.png")
+        shutil.copy2(promo / "CoreDesk-trailer-v3-store-1080p30.mp4", trailer / "CoreDesk-trailer-v3-30s-en.mp4")
+        shutil.copy2(promo / "CoreDesk-trailer-v3-thumbnail.png", trailer / "thumbnail-1920x1080.png")
     shutil.copy2(ROOT / "docs/store/V2.md", OUT / "README.md")
     shutil.copy2(ROOT / "docs/store/V2.md", folder / "README.md")
-    with zipfile.ZipFile(OUT / "PecoFence-store-v2.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(OUT / "CoreDesk-store-v2.zip", "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(folder.rglob("*")):
             if path.is_file():
                 archive.write(path, path.relative_to(folder).as_posix())
@@ -318,7 +318,7 @@ def upload_pack(listings):
 def contact_sheet():
     sheet = Image.new("RGB", (1600, 1450), "#f5f5f7")
     d = ImageDraw.Draw(sheet)
-    label(sheet, "PecoFence / 第二版", (38, 25), 34, INK, "zh-CN", True)
+    label(sheet, "CoreDesk / 第二版", (38, 25), 34, INK, "zh-CN", True)
     label(sheet, "重新拍摄的原生界面 · 一图一个主题", (40, 77), 20, "#667184", "zh-CN")
     for index, name in enumerate(NAMES):
         col, row = index % 2, index // 2
@@ -330,7 +330,7 @@ def contact_sheet():
     label(sheet, f"新的桌面、新的演示文件、\n新的构图和信息层级。\n\n{len(TEXT)} 种语言 · {len(TEXT)*len(NAMES)} 张宣传图\n1920 × 1080", (860, 1130), 25, "#566177", "zh-CN")
     sheet.save(OUT / "contact-sheet.jpg", quality=94)
     overview = Image.new("RGB", (1600, 100 + ((len(LANGUAGES)+1)//2)*485), "#f5f5f7")
-    label(overview, f"PecoFence / {len(TEXT)} 种语言", (38, 25), 34, INK, "zh-CN", True)
+    label(overview, f"CoreDesk / {len(TEXT)} 种语言", (38, 25), 34, INK, "zh-CN", True)
     for index, entry in enumerate(LANGUAGES):
         x, y = 36 + (index % 2)*782, 104 + (index // 2)*485
         label(overview, entry["name"], (x, y), 26, INK, entry["storeCode"], True)

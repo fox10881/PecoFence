@@ -1,5 +1,5 @@
 //! Read-only diagnostics for the windows immediately above Explorer's icon host.
-use pecofence_platform::{desktop, window};
+use coredesk_platform::{desktop, window};
 
 fn main() {
     let Some(host) = desktop::resolve_icon_host(desktop::detect_generation()) else {

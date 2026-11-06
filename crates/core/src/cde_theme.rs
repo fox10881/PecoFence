@@ -1,6 +1,6 @@
-//! `.peco` Custom Theme Archive packer/unpacker and layout preview renderer.
+//! `.cde` Custom Theme Archive packer/unpacker and layout preview renderer.
 //!
-//! A `.peco` file is an uncompressed (`STORE`, method = 0) ZIP archive containing:
+//! A `.cde` file is an uncompressed (`STORE`, method = 0) ZIP archive containing:
 //! - `config.json`: all current fences, exact coordinates, sizes, and visual settings.
 //! - `background.<ext>`: the background media file (image or H.264 `.mp4` video).
 //! - `theme.json`: adaptive-engine metadata (source monitor canvas, per-fence asset
@@ -19,17 +19,17 @@ const END_OF_CENTRAL_DIR_SIG: u32 = 0x0605_4b50;
 const UTF8_FLAG: u16 = 0x0800;
 const STORE_METHOD: u16 = 0;
 
-/// Maximum `.peco` archive size accepted on import (512 MB, accommodating high-bitrate MP4 loops).
-const MAX_PECO_ARCHIVE_BYTES: u64 = 512 * 1024 * 1024;
+/// Maximum `.cde` archive size accepted on import (512 MB, accommodating high-bitrate MP4 loops).
+const MAX_CDE_ARCHIVE_BYTES: u64 = 512 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PecoArchiveEntry {
+pub struct CdeArchiveEntry {
     pub name: String,
     pub data: Vec<u8>,
 }
 
 #[derive(Clone, Debug)]
-pub struct ExtractedPecoTheme {
+pub struct ExtractedCdeTheme {
     pub temp_dir: PathBuf,
     pub config_path: PathBuf,
     pub background_path: Option<PathBuf>,
@@ -142,9 +142,9 @@ fn sanitize_entry_name(raw: &str) -> Option<String> {
 }
 
 /// Unpacks an uncompressed (`STORE`, method 0) ZIP archive into memory entries.
-pub fn unpack_uncompressed_zip(archive: &[u8]) -> Result<Vec<PecoArchiveEntry>, String> {
+pub fn unpack_uncompressed_zip(archive: &[u8]) -> Result<Vec<CdeArchiveEntry>, String> {
     if archive.len() < 22 {
-        return Err("invalid .peco archive (too short)".into());
+        return Err("invalid .cde archive (too short)".into());
     }
     // Locate End of Central Directory record near the end of the file.
     let search_from = archive.len().saturating_sub(65_557);
@@ -156,7 +156,7 @@ pub fn unpack_uncompressed_zip(archive: &[u8]) -> Result<Vec<PecoArchiveEntry>, 
         }
     }
     let eocd =
-        eocd_pos.ok_or_else(|| "invalid .peco archive (missing central directory)".to_string())?;
+        eocd_pos.ok_or_else(|| "invalid .cde archive (missing central directory)".to_string())?;
     let entry_count = read_u16(archive, eocd + 10).ok_or("corrupt EOCD")? as usize;
     let cd_offset = read_u32(archive, eocd + 16).ok_or("corrupt EOCD")? as usize;
 
@@ -164,12 +164,12 @@ pub fn unpack_uncompressed_zip(archive: &[u8]) -> Result<Vec<PecoArchiveEntry>, 
     let mut cursor = cd_offset;
     for _ in 0..entry_count {
         if read_u32(archive, cursor) != Some(CENTRAL_DIR_HEADER_SIG) {
-            return Err("corrupt central directory header in .peco archive".into());
+            return Err("corrupt central directory header in .cde archive".into());
         }
         let method = read_u16(archive, cursor + 10).ok_or("corrupt CDH")?;
         if method != STORE_METHOD {
             return Err(
-                "unsupported compression method in .peco archive (expected uncompressed STORE)"
+                "unsupported compression method in .cde archive (expected uncompressed STORE)"
                     .into(),
             );
         }
@@ -182,7 +182,7 @@ pub fn unpack_uncompressed_zip(archive: &[u8]) -> Result<Vec<PecoArchiveEntry>, 
         let local_offset = read_u32(archive, cursor + 42).ok_or("corrupt CDH")? as usize;
 
         if comp_size != uncomp_size {
-            return Err("mismatched size in uncompressed .peco entry".into());
+            return Err("mismatched size in uncompressed .cde entry".into());
         }
         let name_slice = archive
             .get(cursor + 46..cursor + 46 + name_len)
@@ -197,7 +197,7 @@ pub fn unpack_uncompressed_zip(archive: &[u8]) -> Result<Vec<PecoArchiveEntry>, 
         };
 
         if read_u32(archive, local_offset) != Some(LOCAL_FILE_HEADER_SIG) {
-            return Err("corrupt local file header in .peco archive".into());
+            return Err("corrupt local file header in .cde archive".into());
         }
         let lfh_name_len = read_u16(archive, local_offset + 26).ok_or("corrupt LFH")? as usize;
         let lfh_extra_len = read_u16(archive, local_offset + 28).ok_or("corrupt LFH")? as usize;
@@ -209,13 +209,13 @@ pub fn unpack_uncompressed_zip(archive: &[u8]) -> Result<Vec<PecoArchiveEntry>, 
             .ok_or("overflow in entry data")?;
         let data = archive
             .get(data_start..data_end)
-            .ok_or("truncated entry payload in .peco archive")?;
+            .ok_or("truncated entry payload in .cde archive")?;
 
         if crc32(data) != expected_crc {
-            return Err(format!("CRC mismatch in .peco entry {clean_name}"));
+            return Err(format!("CRC mismatch in .cde entry {clean_name}"));
         }
 
-        entries.push(PecoArchiveEntry {
+        entries.push(CdeArchiveEntry {
             name: clean_name,
             data: data.to_vec(),
         });
@@ -224,10 +224,10 @@ pub fn unpack_uncompressed_zip(archive: &[u8]) -> Result<Vec<PecoArchiveEntry>, 
     Ok(entries)
 }
 
-/// Writes a `.peco` theme archive containing `config.json`, the modder
+/// Writes a `.cde` theme archive containing `config.json`, the modder
 /// sidecars (`sidecars` — `Widget_config.json`, `Live_Effects_config.json`),
 /// optional `theme.json`, optional `background.<ext>`, and `preview.jpg`.
-pub fn write_peco_file(
+pub fn write_cde_file(
     path: &Path,
     config_json: &str,
     sidecars: &[(&str, &str)],
@@ -309,14 +309,14 @@ fn is_background_media_name(name: &str) -> bool {
     )
 }
 
-/// Largest `preview.jpg` payload accepted from a `.peco` (the generated previews are ~40 KB;
+/// Largest `preview.jpg` payload accepted from a `.cde` (the generated previews are ~40 KB;
 /// this only stops a malformed archive from making the gallery read megabytes).
 const MAX_PREVIEW_BYTES: u64 = 16 * 1024 * 1024;
 
-/// Reads just the `preview.jpg`/`preview.jpeg` entry out of a `.peco` archive. The archive's
+/// Reads just the `preview.jpg`/`preview.jpeg` entry out of a `.cde` archive. The archive's
 /// background video can be hundreds of MB, so only the end-of-central-directory tail and the
 /// one entry's byte range are read — never the whole file.
-pub fn read_peco_preview(path: &Path) -> Option<Vec<u8>> {
+pub fn read_cde_preview(path: &Path) -> Option<Vec<u8>> {
     use std::io::{Read, Seek, SeekFrom};
     let mut f = fs::File::open(path).ok()?;
     let len = f.metadata().ok()?.len();
@@ -388,16 +388,16 @@ pub fn read_peco_preview(path: &Path) -> Option<Vec<u8>> {
     None
 }
 
-/// Extracts a `.peco` archive into a fresh temporary directory and returns the extracted paths.
-pub fn extract_peco_to_temp(peco_path: &Path) -> Result<ExtractedPecoTheme, String> {
-    let meta = fs::metadata(peco_path).map_err(|e| e.to_string())?;
-    if meta.len() > MAX_PECO_ARCHIVE_BYTES {
+/// Extracts a `.cde` archive into a fresh temporary directory and returns the extracted paths.
+pub fn extract_cde_to_temp(cde_path: &Path) -> Result<ExtractedCdeTheme, String> {
+    let meta = fs::metadata(cde_path).map_err(|e| e.to_string())?;
+    if meta.len() > MAX_CDE_ARCHIVE_BYTES {
         return Err("theme file exceeds maximum supported size".into());
     }
-    let bytes = fs::read(peco_path).map_err(|e| e.to_string())?;
+    let bytes = fs::read(cde_path).map_err(|e| e.to_string())?;
     let entries = unpack_uncompressed_zip(&bytes)?;
 
-    let temp_dir = std::env::temp_dir().join(format!("pecofence-theme-{}", Uuid::new_v4()));
+    let temp_dir = std::env::temp_dir().join(format!("coredesk-theme-{}", Uuid::new_v4()));
     fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
 
     let mut config_path = None;
@@ -425,10 +425,10 @@ pub fn extract_peco_to_temp(peco_path: &Path) -> Result<ExtractedPecoTheme, Stri
 
     let Some(config_path) = config_path else {
         let _ = fs::remove_dir_all(&temp_dir);
-        return Err("missing config.json in .peco theme archive".into());
+        return Err("missing config.json in .cde theme archive".into());
     };
 
-    Ok(ExtractedPecoTheme {
+    Ok(ExtractedCdeTheme {
         temp_dir,
         config_path,
         background_path,
@@ -580,7 +580,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn read_peco_preview_extracts_only_the_jpeg_entry() {
+    fn read_cde_preview_extracts_only_the_jpeg_entry() {
         let cfg_json = r#"{"schemaVersion":1}"#;
         // A multi-megabyte background proves the reader does not depend on archive size.
         let big_media = vec![0xABu8; 3 * 1024 * 1024];
@@ -590,11 +590,11 @@ mod tests {
             ("background.mp4", &big_media),
             ("preview.jpg", jpg),
         ]);
-        let dir = std::env::temp_dir().join(format!("peco-preview-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("cde-preview-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
-        let peco = dir.join("theme.peco");
-        fs::write(&peco, &packed).unwrap();
-        let preview = read_peco_preview(&peco).expect("preview entry");
+        let cde = dir.join("theme.cde");
+        fs::write(&cde, &packed).unwrap();
+        let preview = read_cde_preview(&cde).expect("preview entry");
         assert_eq!(preview, jpg);
         let _ = fs::remove_dir_all(&dir);
     }
@@ -626,11 +626,11 @@ mod tests {
             canvas_space: crate::adaptive::CanvasSpace::Media,
         };
         let meta_json = serde_json::to_string(&meta).unwrap();
-        let dir = std::env::temp_dir().join(format!("peco-meta-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("cde-meta-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
 
-        let with_meta = dir.join("with-meta.peco");
-        write_peco_file(
+        let with_meta = dir.join("with-meta.cde");
+        write_cde_file(
             &with_meta,
             cfg_json,
             &[],
@@ -639,28 +639,28 @@ mod tests {
             b"\xFF\xD8\xFF\xE0p",
         )
         .unwrap();
-        let ex = extract_peco_to_temp(&with_meta).unwrap();
+        let ex = extract_cde_to_temp(&with_meta).unwrap();
         let got = ex.meta.expect("theme.json parsed");
         assert_eq!(got.source.as_ref().unwrap().resolution, [3840, 2160]);
         assert_eq!(got.source.as_ref().unwrap().dpi, 192);
         assert_eq!(got.canvas["fence-1"].w, 0.5);
         let _ = fs::remove_dir_all(&ex.temp_dir);
 
-        let legacy = dir.join("legacy.peco");
-        write_peco_file(&legacy, cfg_json, &[], None, None, b"\xFF\xD8\xFF\xE0p").unwrap();
-        let ex = extract_peco_to_temp(&legacy).unwrap();
+        let legacy = dir.join("legacy.cde");
+        write_cde_file(&legacy, cfg_json, &[], None, None, b"\xFF\xD8\xFF\xE0p").unwrap();
+        let ex = extract_cde_to_temp(&legacy).unwrap();
         assert!(ex.meta.is_none());
         let _ = fs::remove_dir_all(&ex.temp_dir);
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// The modder-split `.peco`: `Widget_config.json`/`Live_Effects_config.json`
+    /// The modder-split `.cde`: `Widget_config.json`/`Live_Effects_config.json`
     /// ride the archive as sibling entries and overlay onto the imported
     /// config at parse — while a legacy single-file archive still yields a
     /// complete `Config` from its embedded fields (serde defaults elsewhere).
     #[test]
     fn sidecar_entries_overlay_on_import_and_legacy_still_parses() {
-        let dir = std::env::temp_dir().join(format!("peco-split-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("cde-split-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
 
         // New-format archive: lean config.json + both sidecars.
@@ -677,9 +677,9 @@ mod tests {
         );
         let split =
             crate::config_store::split_config_json(&crate::ConfigStore::to_json(&cfg).unwrap());
-        let peco = dir.join("split.peco");
-        write_peco_file(
-            &peco,
+        let cde = dir.join("split.cde");
+        write_cde_file(
+            &cde,
             &split.main,
             &[
                 (crate::config_store::WIDGET_CONFIG_FILE, &split.widget),
@@ -693,7 +693,7 @@ mod tests {
             b"\xFF\xD8\xFF\xE0p",
         )
         .unwrap();
-        let ex = extract_peco_to_temp(&peco).unwrap();
+        let ex = extract_cde_to_temp(&cde).unwrap();
         // Sidecar entries materialized as sibling files — the import overlay
         // reads exactly these.
         assert!(
@@ -719,7 +719,7 @@ mod tests {
 
         // Legacy archive: monolithic config.json, zero sidecars — the
         // embedded fields still populate, missing ones get serde defaults.
-        let legacy = dir.join("legacy.peco");
+        let legacy = dir.join("legacy.cde");
         let mut legacy_cfg = Config::default();
         legacy_cfg.settings.desktop_effect = "sakura".into();
         legacy_cfg.settings.clock_style = "d9".into();
@@ -732,8 +732,8 @@ mod tests {
         );
         // The FULL document — what old builds packed before the split existed.
         let mono = crate::ConfigStore::to_json(&legacy_cfg).unwrap();
-        write_peco_file(&legacy, &mono, &[], None, None, b"\xFF\xD8\xFF\xE0p").unwrap();
-        let ex2 = extract_peco_to_temp(&legacy).unwrap();
+        write_cde_file(&legacy, &mono, &[], None, None, b"\xFF\xD8\xFF\xE0p").unwrap();
+        let ex2 = extract_cde_to_temp(&legacy).unwrap();
         let imported2 = store.import_file(&ex2.config_path).unwrap();
         assert_eq!(imported2.settings.desktop_effect, "sakura");
         assert_eq!(imported2.settings.clock_style, "d9");
@@ -753,7 +753,7 @@ mod tests {
             ("background.mp4", fake_media),
             ("preview.jpg", fake_preview),
         ]);
-        let unpacked = unpack_uncompressed_zip(&packed).expect("unpack .peco");
+        let unpacked = unpack_uncompressed_zip(&packed).expect("unpack .cde");
         assert_eq!(unpacked.len(), 3);
         assert_eq!(unpacked[0].name, "config.json");
         assert_eq!(unpacked[0].data, cfg_json.as_bytes());
@@ -767,7 +767,7 @@ mod tests {
     /// an image bundle keeps the picture and clears the video field.
     #[test]
     fn background_entry_bundles_image_and_prunes_video_path() {
-        let dir = std::env::temp_dir().join(format!("peco-bg-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("cde-bg-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let img = dir.join("wall.webp");
         let pixels = b"fake-webp-payload";
@@ -784,7 +784,7 @@ mod tests {
 
     #[test]
     fn background_entry_keeps_video_path_for_video_bundle() {
-        let dir = std::env::temp_dir().join(format!("peco-bg-test-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("cde-bg-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let vid = dir.join("wall.mp4");
         fs::write(&vid, b"fake-mp4").unwrap();
@@ -797,7 +797,7 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// `cargo test -p pecofence-core wall_dir -- --ignored --nocapture` —
+    /// `cargo test -p coredesk-core wall_dir -- --ignored --nocapture` —
     /// bundles a real image from the user's wallpaper folder like the export does.
     #[test]
     #[ignore = "reads real files from the local wallpaper folder"]

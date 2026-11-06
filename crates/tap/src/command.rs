@@ -11,13 +11,13 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Class names are derived from this resident's own module filename so two
 /// different builds can co-exist in one host process: the host injects a
-/// unique-per-build copy (`pecofence_tap_v<ver>_<hash>.dll`), and if a stale
-/// image is still mapped it already owns `PecoFenceTAP` — `RegisterClassExW`
+/// unique-per-build copy (`coredesk_tap_v<ver>_<hash>.dll`), and if a stale
+/// image is still mapped it already owns `CoreDeskTAP` — `RegisterClassExW`
 /// on an existing atom fails, and a colliding `CreateWindowEx` would deliver
 /// the new resident's wires to the stale resident's wndproc instead.
-/// `pecofence_tap.dll` → `PecoFenceTAP`; `pecofence_tap_v4_<h>.dll` →
-/// `PecoFenceTAP_v4_<h>` (SMEH variant: `PecoFenceTAPSM…`; Notification
-/// Center hosts: `PecoFenceTAPNC…`).
+/// `coredesk_tap.dll` → `CoreDeskTAP`; `coredesk_tap_v4_<h>.dll` →
+/// `CoreDeskTAP_v4_<h>` (SMEH variant: `CoreDeskTAPSM…`; Notification
+/// Center hosts: `CoreDeskTAPNC…`).
 fn window_class() -> &'static [u16] {
     static CLASS: std::sync::OnceLock<Vec<u16>> = std::sync::OnceLock::new();
     CLASS
@@ -35,24 +35,27 @@ fn window_class() -> &'static [u16] {
                 let file = path.rsplit(['\\', '/']).next().unwrap_or_default();
                 file.strip_suffix(".dll").unwrap_or(file).to_owned()
             } else {
-                "pecofence_tap".to_owned()
+                "coredesk_tap".to_owned()
             };
-            let suffix = stem.strip_prefix("pecofence_tap").unwrap_or("");
+            let suffix = stem.strip_prefix("coredesk_tap").unwrap_or("");
             let base = if crate::is_smeh() {
-                "PecoFenceTAPSM"
+                "CoreDeskTAPSM"
             } else if crate::is_nch() {
-                "PecoFenceTAPNC"
+                "CoreDeskTAPNC"
             } else {
-                "PecoFenceTAP"
+                "CoreDeskTAP"
             };
             format!("{base}{suffix}\0").encode_utf16().collect()
         })
         .as_slice()
 }
-const UNLOAD_NAME: &[u16] = &[
-    0x50, 0x65, 0x63, 0x6f, 0x46, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x54, 0x41, 0x50, 0x2e, 0x55, 0x6e,
-    0x6c, 0x6f, 0x61, 0x64, 0x00, // "PecoFence.TAP.Unload"
-];
+/// `"CoreDeskEngine.TAP.Unload"` as a null-terminated UTF-16 constant —
+/// the registered window message the host sends for full teardown.
+fn unload_name() -> &'static [u16] {
+    static NAME: std::sync::OnceLock<Vec<u16>> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| "CoreDeskEngine.TAP.Unload\0".encode_utf16().collect())
+        .as_slice()
+}
 
 static UNLOAD_MSG: AtomicU32 = AtomicU32::new(0);
 
@@ -128,7 +131,7 @@ fn start_worker() {
     let (tx, rx) = std::sync::mpsc::channel::<Job>();
     let _ = WORK.set(tx);
     let _ = std::thread::Builder::new()
-        .name("pecofence-tap-work".into())
+        .name("coredesk-tap-work".into())
         .spawn(move || {
             while let Ok(job) = rx.recv() {
                 if is_unloaded() {
@@ -140,22 +143,22 @@ fn start_worker() {
 }
 
 /// Command-protocol build stamp — set as a window property
-/// (`PecoFence.TAP.Build`) so the host can tell a stale resident apart:
+/// (`CoreDeskEngine.TAP.Build`) so the host can tell a stale resident apart:
 /// `InitializeXamlDiagnosticsEx` pins the DLL in the host process, so an
 /// older image survives unload/rebuild cycles with its older protocol.
 /// Bump whenever the command surface changes incompatibly.
 /// `1` = transparency + Start Menu styler; `2` = + taskbar styler
-/// (`PECO-TBS1` COPYDATA markers); `3` = legacy accent command surface
-/// removed (`PecoFence.TAP.Command` no longer exists — a v2 resident can
+/// (`CDES-TBS1` COPYDATA markers); `3` = legacy accent command surface
+/// removed (`CoreDeskEngine.TAP.Command` no longer exists — a v2 resident can
 /// still carry an armed accent detour, so it must read as stale);
-/// `4` = + File Explorer styler (`PECO-FES1` markers + WinUI3 session);
-/// `5` = File Explorer styler removed (`PECO-FES1` markers + the WinUI3
+/// `4` = + File Explorer styler (`CDES-FES1` markers + WinUI3 session);
+/// `5` = File Explorer styler removed (`CDES-FES1` markers + the WinUI3
 /// diagnostics session gone — a v4 resident still carries the whole mux
 /// machinery, so it must read as stale and go inert);
-/// `6` = + Notification Center styler (`PECO-NCS1` markers +
-/// `PecoFenceTAPNC` class in `ShellExperienceHost.exe`/`ShellHost.exe` —
+/// `6` = + Notification Center styler (`CDES-NCS1` markers +
+/// `CoreDeskTAPNC` class in `ShellExperienceHost.exe`/`ShellHost.exe` —
 /// a v5 resident can't register there, so it must read as stale);
-/// `7` = + File Explorer styler restored (`PECO-FES1` markers + a second
+/// `7` = + File Explorer styler restored (`CDES-FES1` markers + a second
 /// diagnostics session on `Microsoft.Internal.FrameworkUdk.dll` for the
 /// CabinetWClass WinUI3 islands — a v6 resident has no FEST handler, so
 /// it must read as stale);
@@ -163,10 +166,13 @@ fn start_worker() {
 /// (`SLNK` marker + periodic sync against `HKCU\...\Shell Icons\29`).
 /// Keep in sync with `crates/platform/src/tap.rs::TAP_PROTOCOL_VERSION`.
 pub const TAP_PROTOCOL_VERSION: usize = 8;
-const BUILD_PROP_NAME: &[u16] = &[
-    0x50, 0x65, 0x63, 0x6f, 0x46, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x54, 0x41, 0x50, 0x2e, 0x42, 0x75,
-    0x69, 0x6c, 0x64, 0x00, // "PecoFence.TAP.Build"
-];
+/// `"CoreDeskEngine.TAP.Build"` — the window property the host reads to
+/// version-check this resident's build.
+fn build_prop_name() -> &'static [u16] {
+    static NAME: std::sync::OnceLock<Vec<u16>> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| "CoreDeskEngine.TAP.Build\0".encode_utf16().collect())
+        .as_slice()
+}
 
 pub fn run() {
     // Spawn the FIFO worker first — `LoadLibraryW`/`FreeLibrary` and COM
@@ -174,7 +180,7 @@ pub fn run() {
     start_worker();
     unsafe {
         UNLOAD_MSG.store(
-            RegisterWindowMessageW(pcwstr(UNLOAD_NAME)),
+            RegisterWindowMessageW(pcwstr(unload_name())),
             Ordering::Release,
         );
 
@@ -217,7 +223,7 @@ pub fn run() {
         // resident instead of letting its messages drop silently.
         let _ = SetPropW(
             hwnd,
-            pcwstr(BUILD_PROP_NAME),
+            pcwstr(build_prop_name()),
             TAP_PROTOCOL_VERSION as *mut core::ffi::c_void,
         );
         shared::lock().command_window = hwnd;
@@ -245,10 +251,11 @@ pub fn run() {
 
 /// `GetPropW` name the host reads off `Shell_TrayWnd` to discover this
 /// process's command window — see `stamp_host_props`.
-pub const CMD_PROP_NAME: &[u16] = &[
-    0x50, 0x65, 0x63, 0x6f, 0x46, 0x65, 0x6e, 0x63, 0x65, 0x2e, 0x54, 0x41, 0x50, 0x2e, 0x43, 0x6d,
-    0x64, 0x48, 0x77, 0x6e, 0x64, 0x00, // "PecoFence.TAP.CmdHwnd"
-];
+pub fn cmd_prop_name() -> &'static [u16] {
+    static NAME: std::sync::OnceLock<Vec<u16>> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| "CoreDeskEngine.TAP.CmdHwnd\0".encode_utf16().collect())
+        .as_slice()
+}
 
 fn stamp_host_props(cmd: HWND) {
     unsafe extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> windows_core::BOOL {
@@ -270,7 +277,7 @@ fn stamp_host_props(cmd: HWND) {
                     unsafe {
                         let _ = crate::win32::SetPropW(
                             hwnd,
-                            windows_core::PCWSTR(CMD_PROP_NAME.as_ptr()),
+                            windows_core::PCWSTR(cmd_prop_name().as_ptr()),
                             lparam as *mut core::ffi::c_void,
                         );
                     }
@@ -299,7 +306,7 @@ fn unstamp_host_props(cmd: HWND) {
             if pid != unsafe { crate::win32::GetCurrentProcessId() } {
                 return;
             }
-            let name = windows_core::PCWSTR(CMD_PROP_NAME.as_ptr());
+            let name = windows_core::PCWSTR(cmd_prop_name().as_ptr());
             let cur = unsafe { crate::win32::GetPropW(hwnd, name) };
             if cur as isize == lparam {
                 unsafe {
@@ -340,15 +347,15 @@ const WM_TIMER: u32 = 0x0113;
 /// cheap forever after.
 const RETRY_TIMER_ID: usize = 1;
 const RETRY_TIMER_MS: u32 = 2000;
-/// Start Menu (`PECO-SMS1`) markers — sent to the `PecoFenceTAPSM` window.
+/// Start Menu (`CDES-SMS1`) markers — sent to the `CoreDeskTAPSM` window.
 const CDS_THEME: usize = u32::from_be_bytes(*b"SMST") as usize;
 const CDS_RESET: usize = u32::from_be_bytes(*b"SMSR") as usize;
 const CDS_HELLO: usize = u32::from_be_bytes(*b"SMHI") as usize;
-/// Taskbar (`PECO-TBS1`) markers — sent to the explorer `PecoFenceTAP` window.
+/// Taskbar (`CDES-TBS1`) markers — sent to the explorer `CoreDeskTAP` window.
 const CDS_TB_THEME: usize = u32::from_be_bytes(*b"TBST") as usize;
 const CDS_TB_RESET: usize = u32::from_be_bytes(*b"TBSR") as usize;
 const CDS_TB_HELLO: usize = u32::from_be_bytes(*b"TBHI") as usize;
-/// Notification Center (`PECO-NCS1`) markers — sent to the `PecoFenceTAPNC`
+/// Notification Center (`CDES-NCS1`) markers — sent to the `CoreDeskTAPNC`
 /// window inside `ShellExperienceHost.exe`/`ShellHost.exe`.
 const CDS_NC_THEME: usize = u32::from_be_bytes(*b"NCST") as usize;
 const CDS_NC_RESET: usize = u32::from_be_bytes(*b"NCSR") as usize;
@@ -400,8 +407,8 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
         return;
     }
     if msg == WM_COPYDATA {
-        // COPYDATA carries a UTF-8 theme wire (`PECO-SMS1` / `PECO-TBS1` /
-        // `PECO-NCS1`) or a host-pid hello; the marker decides the engine.
+        // COPYDATA carries a UTF-8 theme wire (`CDES-SMS1` / `CDES-TBS1` /
+        // `CDES-NCS1`) or a host-pid hello; the marker decides the engine.
         let cds = lparam as *const CopyDataStruct;
         if cds.is_null() {
             return;
@@ -431,7 +438,7 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
                 if !cds.lp_data.is_null() && cds.cb_data == 4 =>
             {
                 // Host announced itself — arm the death watch so styles
-                // restore if pecofence.exe dies. Cheap OpenProcess +
+                // restore if coredesk.exe dies. Cheap OpenProcess +
                 // RegisterWaitForSingleObject; stays on the pump so the
                 // watch is armed before the SendMessage returns.
                 let pid = unsafe { *(cds.lp_data as *const u32) };
@@ -461,7 +468,7 @@ fn handle_message(_hwnd: HWND, msg: u32, _wparam: WPARAM, lparam: LPARAM) {
 /// Why this lives in the resident: `windows.storage.dll` reads
 /// `Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons\29` from
 /// `HKLM` only (`HKCU` is ignored). When `HKLM` holds a broken entry like
-/// `shell32.dll,-50` and PecoFence runs unelevated, `SHIL_JUMBO` (256x256)
+/// `shell32.dll,-50` and CoreDesk Engine runs unelevated, `SHIL_JUMBO` (256x256)
 /// punches a 128x128 transparent hole in the bottom-left corner of every
 /// `.lnk` icon in File Explorer and on the Desktop. Calling
 /// `IImageList2::SetOverlayImage` in-process replaces the overlay slot with

@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = (ROOT / "dist").resolve()
-STAGE = (DIST / "github-source" / "PecoFence").resolve()
+STAGE = (DIST / "github-source" / "CoreDesk").resolve()
 
 
 def main():
@@ -44,11 +44,11 @@ def main():
             continue
         if source.name.startswith(".env") and source.name != ".env.example":
             continue
-        if name.startswith("extras/pecofence-promo/public/") and source.name != "README.md":
+        if name.startswith("extras/coredesk-promo/public/") and source.name != "README.md":
             continue
         if name.startswith("docs/history/"):
             continue
-        if name.startswith("extras/pecofence-promo/review/"):
+        if name.startswith("extras/coredesk-promo/review/"):
             continue
         if not source.resolve().is_relative_to(ROOT):
             raise SystemExit(f"Source leaves workspace: {name}")
@@ -59,10 +59,10 @@ def main():
         shutil.copy2(source, destination)
         copied.append(name)
     version = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))["workspace"]["package"]["version"]
-    archive = DIST / f"pecofence-{version}-source.zip"
+    archive = DIST / f"coredesk-{version}-source.zip"
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as package:
         for name in copied:
-            package.write(STAGE / name, "PecoFence/" + name)
+            package.write(STAGE / name, "CoreDesk/" + name)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     Path(str(archive) + ".sha256").write_text(f"{digest}  {archive.name}\n", encoding="ascii")
     print(f"Exported {len(copied)} files")

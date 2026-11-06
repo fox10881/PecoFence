@@ -1,4 +1,4 @@
-// PecoFence feedback service. The app's settings page (「反馈」) posts a report here and it is
+// CoreDesk feedback service. The app's settings page (「反馈」) posts a report here and it is
 // filed as an issue in the private repository GITHUB_REPO, so GitHub notifies the maintainer.
 //
 // Secret: GITHUB_TOKEN, a fine-grained token with Issues read/write on that repository only.
@@ -85,7 +85,7 @@ export function issueFor(report) {
     const lines = report.log.split('\n').length;
     parts.push('### Log', `<details><summary>Shareable log, ${lines} lines</summary>\n\n${block(report.log)}\n\n</details>`);
   }
-  parts.push('', '_Sent from the PecoFence settings page._');
+  parts.push('', '_Sent from the CoreDesk settings page._');
   return { title: title(report), body: parts.join('\n\n'), labels };
 }
 
@@ -121,7 +121,7 @@ export default {
         Authorization: `Bearer ${env.GITHUB_TOKEN}`,
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'pecofence-feedback',
+        'User-Agent': 'coredesk-feedback',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(issueFor(report)),

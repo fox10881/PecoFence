@@ -91,7 +91,7 @@ That revision targets iOS 27 and contains a native Apple comparison harness.
 Its test results do not establish fidelity for this Windows implementation.
 We adapted formulas and material structure, not the entire Flutter renderer.
 
-Both projects are Apache-2.0 licensed, as is PecoFence. The PecoFence source
+Both projects are Apache-2.0 licensed, as is CoreDeskEngine. The CoreDesk Engine source
 license remains in the package. These modifications and the sources above are
 recorded here; upstream authors do not endorse this personal build.
 
@@ -101,7 +101,7 @@ shader for Windows.
 
 ## Validation
 
-`cargo test -p pecofence-render --lib` covers the common silhouette, signed edge
+`cargo test -p coredesk-render --lib` covers the common silhouette, signed edge
 distance, tangent joins, small controls, DPI invariance, flat center and edge
 lighting. `gpu_glass_bench` exercises actual GPU output: opacity, neutral color,
 live source replacement, negative monitor coordinates, scaled source mapping,

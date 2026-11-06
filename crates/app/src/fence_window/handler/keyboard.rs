@@ -1,7 +1,7 @@
 //! Keyboard, char, context-menu key and activation / focus messages.
 
 use super::*;
-use pecofence_platform::quicklook;
+use coredesk_platform::quicklook;
 
 // Selection colour follows activation (Explorer: accent only in the active
 // view). Our own rename popup and a context menu keep the fence "active".
@@ -17,7 +17,7 @@ pub(super) fn on_activate(
         let other = HWND(lparam as *mut core::ffi::c_void);
         !other.0.is_null() && {
             let cls = desktop::class_name(desktop::root_ancestor(other));
-            cls == "PecoFence.Rename" || cls == "#32768"
+            cls == "CoreDeskEngine.Rename" || cls == "#32768"
         }
     };
     if !stays

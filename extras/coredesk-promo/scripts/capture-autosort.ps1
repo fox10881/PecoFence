@@ -39,15 +39,15 @@ $plateX=[int](($screen.Width-2560)/2);$plateY=[int](($screen.Height-1440)/2)
 $reference=Get-Content -LiteralPath (Join-Path $projectDir ".capture\launch\hero\app\config\config.json") -Raw|ConvertFrom-Json -AsHashtable
 $fingerprint=$reference.layouts[0].fingerprint
 $dpiScale=$fingerprint[0].dpi/96.0
-$binary=Join-Path $projectDir ".capture\reviewed-build\target-auto\debug\pecofence.exe"
-Copy-Item -LiteralPath $binary -Destination (Join-Path $appDir "pecofence.exe")
+$binary=Join-Path $projectDir ".capture\reviewed-build\target-auto\debug\coredesk.exe"
+Copy-Item -LiteralPath $binary -Destination (Join-Path $appDir "coredesk.exe")
 $loader=Join-Path $workspaceDir "third_party\webview2\WebView2Loader.x64.dll"
 Copy-Item -LiteralPath $loader -Destination (Join-Path $appDir "WebView2Loader.dll")
 
 [IO.File]::WriteAllText((Join-Path $payloadDir "Notes.txt"),"Website launch notes.")
 Copy-Item -LiteralPath (Join-Path $projectDir "public\launch\demo-images\Dunes.png") -Destination (Join-Path $filesDir "Dunes.png")
 $briefText=Join-Path $payloadDir "Brief.txt"
-[IO.File]::WriteAllText($briefText,"PecoFence demonstration brief.")
+[IO.File]::WriteAllText($briefText,"CoreDesk demonstration brief.")
 $wsh=New-Object -ComObject WScript.Shell
 $shortcut=$wsh.CreateShortcut((Join-Path $payloadDir "Brief.lnk"))
 $shortcut.TargetPath=$briefText
@@ -128,26 +128,26 @@ function Save-Plate([string]$Name){
 $background=[Windows.Forms.Form]::new()
 $background.FormBorderStyle="None";$background.StartPosition="Manual";$background.ShowInTaskbar=$false
 $background.Bounds=$screen
-$background.Text="PecoFence isolated automatic sorting capture"
+$background.Text="CoreDesk isolated automatic sorting capture"
 $background.BackgroundImage=[Drawing.Image]::FromFile((Join-Path $projectDir "public\wallpaper.png"))
 $background.BackgroundImageLayout="Stretch"
-$savedEnv=@{instance=$env:PECOFENCE_INSTANCE;test=$env:PECOFENCE_UI_TEST_WINDOWS;fixture=$env:PECOFENCE_DEMO_DESKTOP;local=$env:LOCALAPPDATA;log=$env:RUST_LOG}
+$savedEnv=@{instance=$env:COREDESK_INSTANCE;test=$env:COREDESK_UI_TEST_WINDOWS;fixture=$env:COREDESK_DEMO_DESKTOP;local=$env:LOCALAPPDATA;log=$env:RUST_LOG}
 $savedPointer=[Windows.Forms.Cursor]::Position
 $events=[Collections.Generic.List[object]]::new()
 $done=@{};$shown=@{};$app=$null;$recorder=$null;$recordAt=0.0
 try {
- $env:PECOFENCE_INSTANCE="video-$Take"
- $env:PECOFENCE_UI_TEST_WINDOWS="1"
- $env:PECOFENCE_DEMO_DESKTOP=$filesDir
+ $env:COREDESK_INSTANCE="video-$Take"
+ $env:COREDESK_UI_TEST_WINDOWS="1"
+ $env:COREDESK_DEMO_DESKTOP=$filesDir
  $env:LOCALAPPDATA=Join-Path $caseDir "appdata"
- $env:RUST_LOG="pecofence=debug"
+ $env:RUST_LOG="coredesk=debug"
  New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force|Out-Null
  $background.Show()
  [AutoNative]::SetWindowPos($background.Handle,[IntPtr](-1),0,0,0,0,0x13)|Out-Null
  [Windows.Forms.Cursor]::Position=[Drawing.Point]::new($screen.Left+20,$screen.Top+20)
  [Windows.Forms.Application]::DoEvents()
  $arguments=@("--portable","--no-hide-icons","--dark","--wallpaper",('"'+(Join-Path $projectDir "public\wallpaper.png")+'"'),"--test-script",('"'+$scriptFile+'"'),"--exit-after","33000")
- $app=Start-Process -FilePath (Join-Path $appDir "pecofence.exe") -ArgumentList $arguments -WindowStyle Hidden -PassThru
+ $app=Start-Process -FilePath (Join-Path $appDir "coredesk.exe") -ArgumentList $arguments -WindowStyle Hidden -PassThru
  $timer=[Diagnostics.Stopwatch]::StartNew()
  Write-Output "Recording isolated automatic file routing."
  while($timer.Elapsed.TotalSeconds -lt 29 -and -not $app.HasExited){
@@ -229,14 +229,14 @@ try {
  $events|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $assetDir "events.json") -Encoding utf8
  $finalProof|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $assetDir "final-proof.json") -Encoding utf8
  @{
-  take=$Take;product="PecoFence";sourceVersion="v3";sourceFingerprint=$sourceManifest.originalSourceFingerprint
+  take=$Take;product="CoreDesk";sourceVersion="v3";sourceFingerprint=$sourceManifest.originalSourceFingerprint
   executableSha256=(Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant()
   rulesKeepUpdated=$true;newFiles=@("Coast.png","Notes.txt");sampleCount=4;nativeFsResyncs=$resyncs
   noManualRoutingCommands=$true;controlCommands=$controlLines
   language="en";themeStyle="liquidGlass";groupKind="virtual";uiTestWindowStyles=$true
   fixtureOverride="Only debug known-Desktop resolution points to the isolated workspace fixture."
   encoderExit=$recorder.ExitCode;applicationExit=$app.ExitCode
-  buildCommand="cargo build --locked --offline --manifest-path extras/pecofence-promo/.capture/reviewed-build/source-v3/Cargo.toml --target-dir extras/pecofence-promo/.capture/reviewed-build/target-auto -p pecofence"
+  buildCommand="cargo build --locked --offline --manifest-path extras/coredesk-promo/.capture/reviewed-build/source-v3/Cargo.toml --target-dir extras/coredesk-promo/.capture/reviewed-build/target-auto -p coredesk"
   recordedAt=[DateTime]::UtcNow.ToString("o")
  }|ConvertTo-Json -Depth 12|Set-Content -LiteralPath (Join-Path $assetDir "capture-manifest.json") -Encoding utf8
  Write-Output "Verified new-file watcher routing, exact rule IDs, unchanged files, and native tab continuity."
@@ -244,8 +244,8 @@ try {
  if($recorder -and -not $recorder.HasExited){$recorder.Kill();$recorder.WaitForExit(3000)|Out-Null}
  if($app -and -not $app.HasExited){$app.Kill();$app.WaitForExit(3000)|Out-Null}
  $background.Close();$background.BackgroundImage.Dispose();$background.Dispose()
- $env:PECOFENCE_INSTANCE=$savedEnv.instance;$env:PECOFENCE_UI_TEST_WINDOWS=$savedEnv.test
- $env:PECOFENCE_DEMO_DESKTOP=$savedEnv.fixture;$env:LOCALAPPDATA=$savedEnv.local;$env:RUST_LOG=$savedEnv.log
+ $env:COREDESK_INSTANCE=$savedEnv.instance;$env:COREDESK_UI_TEST_WINDOWS=$savedEnv.test
+ $env:COREDESK_DEMO_DESKTOP=$savedEnv.fixture;$env:LOCALAPPDATA=$savedEnv.local;$env:RUST_LOG=$savedEnv.log
  [Windows.Forms.Cursor]::Position=$savedPointer
  [AutoNative]::SetForegroundWindow($priorForeground)|Out-Null
 }

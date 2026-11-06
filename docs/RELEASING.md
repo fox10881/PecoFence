@@ -15,8 +15,8 @@ python scripts/package-source.py
 
 Inno Setup 7 is required for setup compilation. Four release assets appear in `dist/`:
 
-- `pecofence-v<version>-x64-portable.zip` and its `.sha256` file.
-- `pecofence-v<version>-x64-setup.exe` and its `.sha256` file.
+- `coredesk-v<version>-x64-portable.zip` and its `.sha256` file.
+- `coredesk-v<version>-x64-setup.exe` and its `.sha256` file.
 
 The staging directories contain only explicit program, license and documentation
 files. Do not upload
@@ -25,12 +25,12 @@ the same release binaries; the Store/MSIX script keeps its separate staging path
 
 For fork testing, pass `-Repository owner/repo` to packaging and
 `--repository owner/repo` to the test. Actions always passes `github.repository`. This sets
-the installer's support and release links without editing tracked source URLs. Locally, the default is `GITHUB_REPOSITORY`, then `DayuanJiang/PecoFence`.
+the installer's support and release links without editing tracked source URLs. Locally, the default is `GITHUB_REPOSITORY`, then `DayuanJiang/CoreDesk Engine`.
 It does not change the installer's application identity or implement automatic
 updates. Keep fork tests isolated with the test script.
 
 The source exporter creates
-`dist/github-source/PecoFence/` and a separate source ZIP. It includes existing
+`dist/github-source/CoreDesk Engine/` and a separate source ZIP. It includes existing
 tracked and untracked project source while excluding ignored files, internal
 engineering archives, local media and Git history.
 Curated images and GIFs in `docs/assets/` are included so the root README and the
@@ -48,7 +48,7 @@ source directory, replace the example remote with its actual URL:
 ```powershell
 git init -b main
 git add .
-git commit -m "Initial PecoFence release"
+git commit -m "Initial CoreDesk Engine release"
 git remote add origin https://github.com/YOUR-ACCOUNT/YOUR-REPOSITORY.git
 git push -u origin main
 ```
@@ -81,15 +81,15 @@ so start the winget update by hand once the release exists:
 gh workflow run winget.yml -f tag=v0.1.0
 ```
 
-It only works once `DayuanJiang.PecoFence` is in winget-pkgs. Until the first-submission
+It only works once `DayuanJiang.CoreDesk Engine` is in winget-pkgs. Until the first-submission
 PR (microsoft/winget-pkgs#433982) is merged, move its manifest folder to the new version
 instead (new URL, `InstallerSha256`, `ReleaseDate`, `ReleaseNotesUrl`), run
 `winget validate --manifest <folder>` and push to the PR branch. The workflow copies the
-previous manifest, which lists both portable commands (`pecofence` and `pecofence-cli`)
+previous manifest, which lists both portable commands (`coredesk` and `coredesk-cli`)
 since 0.1.0.
 
 Current packaging is x64 and unsigned. ARM64 is not configured. The official winget
-workflow is restricted to `DayuanJiang/PecoFence`, including manual dispatch; forks
+workflow is restricted to `DayuanJiang/CoreDesk Engine`, including manual dispatch; forks
 cannot update that package identifier. It continues selecting the portable ZIP
 using `-x64-portable.zip`; moving the winget manifest to the Inno installer is a
 separate migration.
@@ -100,14 +100,14 @@ and uploaded in Partner Center, see
 
 ## Config JSON Schema on the website
 
-`config.json` carries `"$schema": "https://pecofence.jiang.jp/schema/config.json"`. That file is
+`config.json` carries `"$schema": "https://coredesk.jiang.jp/schema/config.json"`. That file is
 `site/schema/config.json`, copied into `dist/site/schema/` by `scripts/build-site.py`. Regenerate
 it whenever `Config`, `Settings`, `Fence`, `Rule`/`Cond` or another model type changes, then deploy
 the site:
 
 ```powershell
-cargo build -p pecofence-cli
-target\debug\pecofence-cli.exe describe --schema Config --compact | Set-Content -Encoding utf8 -NoNewline site\schema\config.json
+cargo build -p coredesk-cli
+target\debug\coredesk-cli.exe describe --schema Config --compact | Set-Content -Encoding utf8 -NoNewline site\schema\config.json
 ```
 
-`pecofence-cli config check` warns when a file's `$schema` differs from the published URL.
+`coredesk-cli config check` warns when a file's `$schema` differs from the published URL.

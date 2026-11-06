@@ -106,7 +106,7 @@ impl FenceViewState {
             self.shadow.hide();
             return;
         }
-        if pecofence_core::brand::var_os("PECOFENCE_NO_SHADOW").is_some() {
+        if coredesk_core::brand::var_os("COREDESK_NO_SHADOW").is_some() {
             self.shadow.hide();
             return;
         }

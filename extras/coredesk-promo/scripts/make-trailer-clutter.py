@@ -1,6 +1,6 @@
 """Original "messy desktop" thumbnails for the 2026-09 trailer (v3) intro.
 
-uv run --with pillow --with numpy python extras/pecofence-promo/scripts/make-trailer-clutter.py
+uv run --with pillow --with numpy python extras/coredesk-promo/scripts/make-trailer-clutter.py
 
 Everything is drawn procedurally (no stock, no screenshots, no third-party UI or logos):
 4 abstract app "screenshots", 2 photo-like procedural landscapes, 2 paper documents.

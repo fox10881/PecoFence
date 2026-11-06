@@ -3,7 +3,7 @@
 # dependencies = ["numpy", "scipy", "pedalboard", "soundfile", "pyloudnorm", "matplotlib", "numba"]
 # ///
 """
-make-trailer-audio-b.py - PecoFence trailer v3 soundtrack, variant B
+make-trailer-audio-b.py - CoreDesk trailer v3 soundtrack, variant B
 "Warm melodic future pop" - 120 BPM, 4/4, A major, exactly 30.0 s.
 
 Everything is synthesized in this file (numpy / scipy / numba DSP + a couple of
@@ -1841,7 +1841,7 @@ def plot_spectrogram(y, ts, L, sec_loud, path):
     ax0.invert_yaxis()
     for s in SEGS:
         ax0.text(s["t0"] + 0.05, -0.55, s["chord"], fontsize=7.5, color=ink2, va="bottom")
-    ax0.set_title("PecoFence trailer v3 - variant B soundtrack: cue lanes (color = cue family), mel "
+    ax0.set_title("CoreDesk trailer v3 - variant B soundtrack: cue lanes (color = cue family), mel "
                   "spectrogram, short-term loudness", fontsize=11, color=ink, loc="left")
     # spectrogram
     ax1.imshow(M, origin="lower", aspect="auto", cmap=cmap, vmin=vmax - 70, vmax=vmax,

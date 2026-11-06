@@ -200,7 +200,7 @@ pub struct FenceViewState {
     pub(super) backdrop_origin: Option<(i32, i32, i32, i32)>,
     /// `BitmapCache` key of the uploaded crop (per window; dropped whenever the crop changes).
     pub(super) backdrop_key: String,
-    pub(super) gpu_glass: RefCell<pecofence_render::gpu_glass::GpuGlass>,
+    pub(super) gpu_glass: RefCell<coredesk_render::gpu_glass::GpuGlass>,
     pub(super) chrome_panel: Panel,
     pub(super) content_panel: Panel,
     /// Device px from the window's top-left corner to the content panel as last laid out

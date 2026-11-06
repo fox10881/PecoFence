@@ -1,6 +1,6 @@
 # Product website
 
-The product page at <https://pecofence.jiang.jp> is a static site generated from
+The product page at <https://coredesk.jiang.jp> is a static site generated from
 `site/` and published with Cloudflare Pages. It needs no Node toolchain: the build is
 `scripts/build-site.py` and the standard library.
 
@@ -68,17 +68,17 @@ keys differ from `en.json` (the deployment workflow uses it).
 
 ## Publishing
 
-The site is served by **Cloudflare Pages** from the project `pecofence`
-(`pecofence.pages.dev`), which was created as a direct-upload project: deployments are
+The site is served by **Cloudflare Pages** from the project `coredesk`
+(`coredesk.pages.dev`), which was created as a direct-upload project: deployments are
 pushed to it with wrangler rather than pulled from Git. The custom domain
-`pecofence.jiang.jp` is attached to the project; the zone `jiang.jp` lives in the same
+`coredesk.jiang.jp` is attached to the project; the zone `jiang.jp` lives in the same
 Cloudflare account.
 
 ### Deploy from this machine
 
 ```powershell
 uv run python scripts/build-site.py --strict
-npx wrangler pages deploy dist/site --project-name pecofence --branch main
+npx wrangler pages deploy dist/site --project-name coredesk --branch main
 ```
 
 `npx wrangler login` once beforehand. The `--branch main` deployment becomes production;
@@ -96,7 +96,7 @@ Pages does not create the record on its own. The zone needs one record, proxied 
 DNS-only:
 
 ```
-CNAME  pecofence  pecofence.pages.dev
+CNAME  coredesk  coredesk.pages.dev
 ```
 
 The domain shows as **Active** in the project's Custom domains tab a few minutes after
@@ -110,7 +110,7 @@ harmless here.
 manually from the Actions tab. To use it as the real host instead: in the repository's
 **Settings → Pages** set **Source** to **GitHub Actions**, point the DNS record at
 `<account>.github.io` (DNS only until the certificate exists), enter
-`pecofence.jiang.jp` as the custom domain, and turn on **Enforce HTTPS**.
+`coredesk.jiang.jp` as the custom domain, and turn on **Enforce HTTPS**.
 
 ## Changing copy
 
@@ -162,7 +162,7 @@ when changing them.
 ## Refreshing media
 
 `uv run --with pillow python scripts/make-site-media.py` regenerates the clips, posters, panels and
-wallpaper from `extras/pecofence-promo/public/`, which is a local, ignored directory.
+wallpaper from `extras/coredesk-promo/public/`, which is a local, ignored directory.
 Revision-2 scene captures and original wallpaper under `.cache/store-v2/` supply the
 current hero backdrop and feature covers. Add `--stills-only` to update only these images
 without re-encoding the unchanged videos.
@@ -175,7 +175,7 @@ and Open Graph/Twitter metadata declares the corresponding localized image.
 
 ## Analytics
 
-The template loads the Cloudflare Web Analytics beacon (site `pecofence.jiang.jp` in the
+The template loads the Cloudflare Web Analytics beacon (site `coredesk.jiang.jp` in the
 Cloudflare account, token in `site/template.html`). It counts page views and Core Web
 Vitals without cookies or fingerprinting; the dashboard is under **Analytics & Logs →
 Web Analytics** in Cloudflare.

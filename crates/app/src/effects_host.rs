@@ -19,16 +19,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 
-use pecofence_platform::window::{
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, desktop, dwm, monitors, msg, wmf_wallpaper};
-use pecofence_render::{Panel, RenderStack};
+use coredesk_platform::{HWND, desktop, dwm, monitors, msg, wmf_wallpaper};
+use coredesk_render::{Panel, RenderStack};
 use windows_composition::{ContainerVisual, DesktopWindowTarget};
 use windows_core::Result;
 
 use crate::commands::{Command, CommandQueue};
-use pecofence_core::EffectParams;
+use coredesk_core::EffectParams;
 
 use crate::effects_engine::{Effect, Engine, FxCache, LiveParams};
 
@@ -226,7 +226,7 @@ impl EffectsHost {
         // with `WS_EX_NOREDIRECTIONBITMAP`; the composition tree provides the
         // transparency itself.
         let window = WindowBuilder::new(&self.class)
-            .title("PecoFence Desktop Effects")
+            .title("CoreDesk Engine Desktop Effects")
             .style(style::POPUP | style::CLIPCHILDREN | style::CLIPSIBLINGS)
             .ex_style(style::EX_NOACTIVATE | style::EX_TOOLWINDOW | style::EX_NOREDIRECTIONBITMAP)
             .bounds(vx, vy, w_px, h_px)
@@ -384,7 +384,7 @@ impl HostCore {
     }
 
     /// 500 ms: is a fullscreen app / game / maximized window hiding the
-    /// desktop? PecoFence-owned windows are exempt inside
+    /// desktop? CoreDesk Engine-owned windows are exempt inside
     /// `should_pause_playback` (own-PID + NOACTIVATE filters cover the video
     /// wallpaper HWND, the overlay itself, fences, settings and the clock).
     fn occlusion_check(&mut self) {
@@ -478,7 +478,7 @@ impl HostCore {
 fn user_notice_blocked() -> bool {
     monitors::enumerate().len() <= 1
         && matches!(
-            pecofence_platform::store::user_notification_state(),
+            coredesk_platform::store::user_notification_state(),
             Some(3) // QUNS_RUNNING_D3D_FULL_SCREEN
         )
 }

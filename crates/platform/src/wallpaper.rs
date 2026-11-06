@@ -214,7 +214,7 @@ pub fn window_desktop(hwnd: HWND) -> Option<u128> {
     use std::mem::ManuallyDrop;
     // Never released at exit: thread-local destructors run inside ExitProcess, where releasing
     // Explorer's object waits for an RPC reply that never comes. The process then hangs for
-    // good, holding the single-instance mutex, and PecoFence cannot start again.
+    // good, holding the single-instance mutex, and CoreDesk Engine cannot start again.
     thread_local! {
         static MANAGER: std::cell::RefCell<Option<ManuallyDrop<IVirtualDesktopManager>>> =
             const { std::cell::RefCell::new(None) };
@@ -254,11 +254,11 @@ pub fn watch_changes(on_change: impl Fn() + Send + 'static) -> Result<()> {
     let on_change = std::sync::Arc::new(std::sync::Mutex::new(on_change));
     let mut result = Err(windows_core::Error::from_hresult(E_FAIL));
     for (path, subtree, name) in [
-        (r"Control Panel\Desktop", false, "pecofence-wallpaper-watch"),
+        (r"Control Panel\Desktop", false, "coredesk-wallpaper-watch"),
         (
             r"Software\Microsoft\Windows\CurrentVersion\Explorer\VirtualDesktops",
             true,
-            "pecofence-desktop-watch",
+            "coredesk-desktop-watch",
         ),
     ] {
         let callback = on_change.clone();
@@ -766,7 +766,7 @@ mod tests {
         use std::{sync::mpsc, time::Duration};
         use windows_sys::Win32::System::Registry as registry;
         let path = format!(
-            r"Software\PecoFenceWallpaperWatchTest-{}",
+            r"Software\CoreDeskWallpaperWatchTest-{}",
             std::process::id()
         );
         let wide_path = to_wide(&path);
@@ -863,10 +863,10 @@ mod tests {
         assert_ne!(fit, snapshot.signature());
     }
 
-    /// `cargo test -p pecofence-platform wall_export_probe -- --ignored --nocapture` —
+    /// `cargo test -p coredesk-platform wall_export_probe -- --ignored --nocapture` —
     /// applies a real image from `C:\Users\yahya\Downloads\WALL` as the desktop wallpaper
     /// (like the user's "switch back to a static image"), then verifies every provider the
-    /// theme exporter uses reports that image and that a `.peco` written from it bundles
+    /// theme exporter uses reports that image and that a `.cde` written from it bundles
     /// the image with `video_wallpaper_path` cleared.
     #[test]
     #[ignore = "changes the real desktop wallpaper"]
@@ -908,10 +908,10 @@ mod tests {
         assert!(is_image, "provider still reports video: {}", bg.display());
 
         // The export payload path, end to end: entry → archive → extract → verify.
-        let mut cfg = pecofence_core::Config::default();
+        let mut cfg = coredesk_core::Config::default();
         cfg.settings.video_wallpaper_path = Some(r"C:\stale\video.mp4".into());
         let (name, data) =
-            pecofence_core::peco_theme::background_entry(&mut cfg, &bg).expect("bg entry");
+            coredesk_core::cde_theme::background_entry(&mut cfg, &bg).expect("bg entry");
         assert!(name.starts_with("background."));
         assert!(!name.ends_with(".mp4"));
         assert_eq!(cfg.settings.video_wallpaper_path, None);
@@ -920,28 +920,28 @@ mod tests {
         let preview = decode_scaled(&bg, 640, 360).expect("preview decode");
         eprintln!("preview {}x{} from {name}", preview.width, preview.height);
 
-        let cfg_json = pecofence_core::ConfigStore::to_json(&cfg).expect("json");
+        let cfg_json = coredesk_core::ConfigStore::to_json(&cfg).expect("json");
         assert!(!cfg_json.contains("stale\\video.mp4"));
-        let dir = std::env::temp_dir().join("peco-wall-probe");
+        let dir = std::env::temp_dir().join("cde-wall-probe");
         let _ = std::fs::create_dir_all(&dir);
-        let peco = dir.join("wall-image.peco");
-        pecofence_core::peco_theme::write_peco_file(
-            &peco,
+        let cde = dir.join("wall-image.cde");
+        coredesk_core::cde_theme::write_cde_file(
+            &cde,
             &cfg_json,
             &[],
             None,
             Some((&name, &data)),
             b"\xFF\xD8\xFF\xE0preview",
         )
-        .expect("write .peco");
-        let ex = pecofence_core::peco_theme::extract_peco_to_temp(&peco).expect("extract");
+        .expect("write .cde");
+        let ex = coredesk_core::cde_theme::extract_cde_to_temp(&cde).expect("extract");
         let bundled = ex.background_path.expect("background bundled");
         eprintln!("extracted background = {}", bundled.display());
         assert_eq!(std::fs::read(&bundled).unwrap(), data);
         let _ = std::fs::remove_dir_all(&ex.temp_dir);
     }
 
-    /// `cargo test -p pecofence-platform wall_explorer_apply -- --ignored` —
+    /// `cargo test -p coredesk-platform wall_explorer_apply -- --ignored` —
     /// applies a WALL image through `IDesktopWallpaper::SetWallpaper`, the path File
     /// Explorer's "Set as desktop background" takes. Unlike `SystemParametersInfo` this
     /// does not broadcast `SPI_SETDESKWALLPAPER`, so it exercises the app's
@@ -993,14 +993,14 @@ mod tests {
             }
         }
         let jpg = crate::wmf_wallpaper::encode_jpeg(w as u32, h as u32, &px).expect("jpeg");
-        let dir = std::env::temp_dir().join(format!("peco-adaptive-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cde-adaptive-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let src = dir.join("src.jpg");
         std::fs::write(&src, &jpg).unwrap();
 
         let (dw, dh) = (320u32, 90u32); // 32:9 target — strict Contain
-        let fit = pecofence_core::adaptive::adaptive_fit(160, 90, dw, dh, true);
-        let bg = pecofence_core::adaptive::bg_rect(&fit, dw, dh);
+        let fit = coredesk_core::adaptive::adaptive_fit(160, 90, dw, dh, true);
+        let bg = coredesk_core::adaptive::bg_rect(&fit, dw, dh);
         assert!(bg[0] > 0 && bg[2] < dw as i32, "expected side bars: {bg:?}");
         let img = adaptive_wallpaper(&src, dw, dh, bg).expect("composite");
         assert_eq!((img.width, img.height), (dw, dh));

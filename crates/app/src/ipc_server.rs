@@ -1,4 +1,4 @@
-//! Named-pipe server for `pecofence-cli`: a listener thread accepts connections, a small pool
+//! Named-pipe server for `coredesk-cli`: a listener thread accepts connections, a small pool
 //! of connection threads reads one request each, hands it to the UI thread through
 //! [`PendingQueue`] + `WM_APP_COMMAND` (the same worker→UI pattern as `fileops.rs`) and writes
 //! the reply back. Nothing here touches app state; see `app/ipc.rs` for the UI-thread half.
@@ -10,10 +10,10 @@
 //! The release profile aborts on panic, so no I/O result is ever unwrapped on these threads.
 
 use crate::commands::WM_APP_COMMAND;
-use pecofence_ipc::{ErrorCode, IpcError, MAX_REQUEST_BYTES, PROTOCOL_VERSION, Request, Response};
-use pecofence_platform::HWND;
-use pecofence_platform::pipe::{self, PipeListener, ThreadHandle};
-use pecofence_platform::window;
+use coredesk_ipc::{ErrorCode, IpcError, MAX_REQUEST_BYTES, PROTOCOL_VERSION, Request, Response};
+use coredesk_platform::HWND;
+use coredesk_platform::pipe::{self, PipeListener, ThreadHandle};
+use coredesk_platform::window;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -64,7 +64,7 @@ impl IpcServer {
         let listener = match PipeListener::bind(pipe_name) {
             Ok(l) => l,
             Err(error) => {
-                tracing::warn!(target: "pecofence::ipc", pipe = pipe_name, %error, "pipe name unavailable; CLI disabled");
+                tracing::warn!(target: "coredesk::ipc", pipe = pipe_name, %error, "pipe name unavailable; CLI disabled");
                 return None;
             }
         };
@@ -73,12 +73,12 @@ impl IpcServer {
         let thread = {
             let stop = stop.clone();
             std::thread::Builder::new()
-                .name("pecofence-ipc".into())
+                .name("coredesk-ipc".into())
                 .spawn(move || listen_loop(listener, stop, control, pending))
         };
         match thread {
             Ok(handle) => {
-                tracing::info!(target: "pecofence::ipc", pipe = pipe_name, "listening");
+                tracing::info!(target: "coredesk::ipc", pipe = pipe_name, "listening");
                 Some(Self {
                     name: pipe_name.to_string(),
                     stop,
@@ -86,7 +86,7 @@ impl IpcServer {
                 })
             }
             Err(error) => {
-                tracing::warn!(target: "pecofence::ipc", %error, "listener thread failed to start");
+                tracing::warn!(target: "coredesk::ipc", %error, "listener thread failed to start");
                 None
             }
         }
@@ -123,7 +123,7 @@ fn listen_loop(
                 if stop.load(Ordering::SeqCst) {
                     break;
                 }
-                tracing::warn!(target: "pecofence::ipc", %error, "accept failed");
+                tracing::warn!(target: "coredesk::ipc", %error, "accept failed");
                 if !listener.is_listening() {
                     // No instance could be created: wait before trying again, but stay
                     // responsive to the stop flag.
@@ -137,20 +137,20 @@ fn listen_loop(
         }
         if active.load(Ordering::SeqCst) >= MAX_CONNECTIONS {
             if busy.load(Ordering::SeqCst) >= MAX_BUSY_REPLIES {
-                tracing::warn!(target: "pecofence::ipc", "connection flood; dropped unanswered");
+                tracing::warn!(target: "coredesk::ipc", "connection flood; dropped unanswered");
                 continue;
             }
             busy.fetch_add(1, Ordering::SeqCst);
             let counter = busy.clone();
             let spawned = std::thread::Builder::new()
-                .name("pecofence-ipc-busy".into())
+                .name("coredesk-ipc-busy".into())
                 .spawn(move || {
                     serve_busy(connection);
                     counter.fetch_sub(1, Ordering::SeqCst);
                 });
             if let Err(error) = spawned {
                 busy.fetch_sub(1, Ordering::SeqCst);
-                tracing::warn!(target: "pecofence::ipc", %error, "busy-reply thread failed to start");
+                tracing::warn!(target: "coredesk::ipc", %error, "busy-reply thread failed to start");
             }
             continue;
         }
@@ -158,14 +158,14 @@ fn listen_loop(
         let counter = active.clone();
         let pending = pending.clone();
         let spawned = std::thread::Builder::new()
-            .name("pecofence-ipc-conn".into())
+            .name("coredesk-ipc-conn".into())
             .spawn(move || serve(connection, control, &pending, &counter));
         if let Err(error) = spawned {
             active.fetch_sub(1, Ordering::SeqCst);
-            tracing::warn!(target: "pecofence::ipc", %error, "connection thread failed to start");
+            tracing::warn!(target: "coredesk::ipc", %error, "connection thread failed to start");
         }
     }
-    tracing::debug!(target: "pecofence::ipc", "listener stopped");
+    tracing::debug!(target: "coredesk::ipc", "listener stopped");
 }
 
 /// Cancels the calling thread's blocking pipe I/O when it is still running after `after`, and
@@ -183,7 +183,7 @@ impl IoDeadline {
             let flag = armed.clone();
             let thread = thread.clone();
             let spawned = std::thread::Builder::new()
-                .name("pecofence-ipc-deadline".into())
+                .name("coredesk-ipc-deadline".into())
                 .spawn(move || {
                     let (lock, disarmed) = &*flag;
                     let Ok(mut armed) = lock.lock() else {
@@ -210,13 +210,13 @@ impl IoDeadline {
                     }
                     drop(armed);
                     if cancels > 0 {
-                        tracing::debug!(target: "pecofence::ipc", after_ms = after.as_millis() as u64, cancels, "connection I/O deadline hit");
+                        tracing::debug!(target: "coredesk::ipc", after_ms = after.as_millis() as u64, cancels, "connection I/O deadline hit");
                     }
                 });
             match spawned {
                 Ok(worker) => Some(worker),
                 Err(error) => {
-                    tracing::warn!(target: "pecofence::ipc", %error, "deadline thread failed to start; connection runs unbounded");
+                    tracing::warn!(target: "coredesk::ipc", %error, "deadline thread failed to start; connection runs unbounded");
                     None
                 }
             }
@@ -254,7 +254,7 @@ fn serve(connection: File, control: isize, pending: &PendingQueue, active: &Atom
     let started = Instant::now();
     let thread = ThreadHandle::current().map(Arc::new);
     if thread.is_none() {
-        tracing::warn!(target: "pecofence::ipc", "no thread handle; connection deadlines disabled");
+        tracing::warn!(target: "coredesk::ipc", "no thread handle; connection deadlines disabled");
     }
     let read = {
         let _deadline = IoDeadline::arm(&thread, READ_DEADLINE);
@@ -262,12 +262,12 @@ fn serve(connection: File, control: isize, pending: &PendingQueue, active: &Atom
     };
     let (method, response, flush, stream) = match read {
         Err(ReadError::PeerGone) => {
-            tracing::debug!(target: "pecofence::ipc", ms = started.elapsed().as_secs_f32() * 1000.0, "client left before sending a request");
+            tracing::debug!(target: "coredesk::ipc", ms = started.elapsed().as_secs_f32() * 1000.0, "client left before sending a request");
             active.fetch_sub(1, Ordering::SeqCst);
             return;
         }
         Err(ReadError::TimedOut) => {
-            tracing::info!(target: "pecofence::ipc", "no request within the deadline; connection dropped");
+            tracing::info!(target: "coredesk::ipc", "no request within the deadline; connection dropped");
             active.fetch_sub(1, Ordering::SeqCst);
             return;
         }
@@ -294,8 +294,8 @@ fn serve(connection: File, control: isize, pending: &PendingQueue, active: &Atom
             let response = match rx.recv_timeout(timeout) {
                 Ok(r) => r,
                 Err(_) => Response::err(
-                    IpcError::new(ErrorCode::Timeout, "PecoFence did not answer in time")
-                        .hint("Close any open PecoFence menu or dialog and retry"),
+                    IpcError::new(ErrorCode::Timeout, "CoreDesk Engine did not answer in time")
+                        .hint("Close any open CoreDesk Engine menu or dialog and retry"),
                 ),
             };
             let stream = (is_stream && response.ok).then_some(rx);
@@ -310,14 +310,14 @@ fn serve(connection: File, control: isize, pending: &PendingQueue, active: &Atom
     // the failed requests unless RUST_LOG asks for debug.
     if response.ok {
         tracing::debug!(
-            target: "pecofence::ipc",
+            target: "coredesk::ipc",
             method,
             ms = started.elapsed().as_secs_f32() * 1000.0,
             "request"
         );
     } else {
         tracing::info!(
-            target: "pecofence::ipc",
+            target: "coredesk::ipc",
             method,
             ok = false,
             ms = started.elapsed().as_secs_f32() * 1000.0,
@@ -347,7 +347,7 @@ fn serve(connection: File, control: isize, pending: &PendingQueue, active: &Atom
         pipe::finish(&connection);
     }
     tracing::info!(
-        target: "pecofence::ipc",
+        target: "coredesk::ipc",
         lines,
         secs = started.elapsed().as_secs_f32(),
         "event stream ended"
@@ -424,12 +424,12 @@ fn read_request(connection: impl Read) -> Result<Request, ReadError> {
             return Err(IpcError::new(
                 ErrorCode::VersionMismatch,
                 format!(
-                    "the CLI speaks protocol {v}, this PecoFence {} speaks protocol {PROTOCOL_VERSION}",
+                    "the CLI speaks protocol {v}, this CoreDesk Engine {} speaks protocol {PROTOCOL_VERSION}",
                     env!("CARGO_PKG_VERSION")
                 ),
             )
             .hint(format!(
-                "Update pecofence-cli to match PecoFence {}, or restart PecoFence",
+                "Update coredesk-cli to match CoreDesk Engine {}, or restart CoreDesk Engine",
                 env!("CARGO_PKG_VERSION")
             ))
             .into());
@@ -462,7 +462,7 @@ fn read_request(connection: impl Read) -> Result<Request, ReadError> {
 
 fn usage(message: impl Into<String>) -> IpcError {
     IpcError::usage(message).hint(
-        "Send one JSON object per line, e.g. {\"protocol\":1,\"method\":\"status.get\"}; run `pecofence-cli describe` for the method list",
+        "Send one JSON object per line, e.g. {\"protocol\":1,\"method\":\"status.get\"}; run `coredesk-cli describe` for the method list",
     )
 }
 
@@ -475,7 +475,7 @@ fn write_reply(connection: &File, response: &Response, flush: bool) -> bool {
     let mut bytes = match serde_json::to_vec(response) {
         Ok(b) => b,
         Err(error) => {
-            tracing::warn!(target: "pecofence::ipc", %error, "reply could not be serialized");
+            tracing::warn!(target: "coredesk::ipc", %error, "reply could not be serialized");
             return false;
         }
     };
@@ -483,7 +483,7 @@ fn write_reply(connection: &File, response: &Response, flush: bool) -> bool {
     let mut writer = connection;
     if let Err(error) = writer.write_all(&bytes) {
         if !pipe::is_peer_gone(&error) && !pipe::is_cancelled(&error) {
-            tracing::debug!(target: "pecofence::ipc", %error, "reply write failed");
+            tracing::debug!(target: "coredesk::ipc", %error, "reply write failed");
         }
         return false;
     }
@@ -496,7 +496,7 @@ fn write_reply(connection: &File, response: &Response, flush: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pecofence_ipc::Method;
+    use coredesk_ipc::Method;
 
     fn read(text: &str) -> Result<Request, ReadError> {
         read_request(text.as_bytes())
@@ -513,7 +513,7 @@ mod tests {
     fn valid_requests_parse() {
         let req = read("{\"protocol\":1,\"method\":\"status.get\"}\n").unwrap();
         assert_eq!(req.method, Method::StatusGet);
-        assert_eq!(req.timeout_ms, pecofence_ipc::DEFAULT_TIMEOUT_MS);
+        assert_eq!(req.timeout_ms, coredesk_ipc::DEFAULT_TIMEOUT_MS);
         // A missing trailing newline is fine when the client closes the pipe.
         let req = read("{\"protocol\":1,\"timeoutMs\":7,\"method\":\"peek.end\"}").unwrap();
         assert_eq!(req.method, Method::PeekEnd);
@@ -599,7 +599,10 @@ mod tests {
 
     /// A connected pipe: the server end (as `accept` returns it) and the client end.
     fn pipe_pair() -> (File, File) {
-        let name = format!(r"\\.\pipe\PecoFence.deadline-test-{}", uuid::Uuid::new_v4());
+        let name = format!(
+            r"\\.\pipe\CoreDeskEngine.deadline-test-{}",
+            uuid::Uuid::new_v4()
+        );
         let mut listener = PipeListener::bind(&name).unwrap();
         let client = std::fs::OpenOptions::new()
             .read(true)

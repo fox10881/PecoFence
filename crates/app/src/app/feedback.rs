@@ -6,9 +6,9 @@
 use super::*;
 
 /// The feedback service (the Cloudflare Worker in `services/feedback`), which files each report
-/// as an issue in a private repository. `PECOFENCE_FEEDBACK_URL` points a test instance
+/// as an issue in a private repository. `COREDESK_FEEDBACK_URL` points a test instance
 /// elsewhere (e.g. `wrangler dev`).
-const FEEDBACK_URL: &str = "https://api.pecofence.jiang.jp/feedback";
+const FEEDBACK_URL: &str = "https://api.coredesk.jiang.jp/feedback";
 /// How much of each shareable log goes with a report, at most: its first and last lines.
 const LOG_EXCERPT_BYTES: usize = 24 * 1024;
 /// The first lines of a longer log that go with it: the startup lines (monitors, config,
@@ -95,7 +95,7 @@ impl App {
     /// user paths, so none of it ever goes out with a report — the shareable excerpt does.
     fn raw_log(&self, suffix: &str) -> Option<String> {
         let dir = crate::log_dir()?;
-        let name = pecofence_core::brand::log_file_name(self.instance.as_deref(), suffix);
+        let name = coredesk_core::brand::log_file_name(self.instance.as_deref(), suffix);
         std::fs::read(dir.join(name))
             .ok()
             .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
@@ -104,7 +104,7 @@ impl App {
     /// At startup: if the last run crashed, offer to report it from a tray balloon.
     pub(super) fn offer_crash_feedback(&mut self) {
         let crashed = self
-            .raw_log(pecofence_core::brand::PREVIOUS_LOG)
+            .raw_log(coredesk_core::brand::PREVIOUS_LOG)
             .is_some_and(|log| log_records_crash(&log));
         self.feedback.previous_run_crashed = crashed;
         if !crashed {
@@ -113,8 +113,8 @@ impl App {
         tracing::info!("previous run crashed; offering to send feedback");
         if let Some(t) = &self.tray {
             t.show_info(
-                "PecoFence",
-                pecofence_core::i18n::text("PecoFence 上次意外关闭了。点击这里报告问题。"),
+                "CoreDesk Engine",
+                coredesk_core::i18n::text("CoreDesk Engine 上次意外关闭了。点击这里报告问题。"),
                 true,
             );
             self.feedback.crash_offer_pending = true;
@@ -164,7 +164,7 @@ impl App {
 
     /// What the page may send besides the user's own text, shown to them before sending.
     pub(super) fn feedback_info_json(&self) -> serde_json::Value {
-        let install = if pecofence_platform::process::is_packaged() {
+        let install = if coredesk_platform::process::is_packaged() {
             "Microsoft Store"
         } else {
             "ZIP / winget"
@@ -186,7 +186,7 @@ impl App {
         // Task Manager's number first, then where else memory sits: private commit counts
         // pages Windows trimmed, GPU memory the surfaces and textures.
         const MB: f64 = 1024.0 * 1024.0;
-        let mem = pecofence_platform::memstats::MemoryStats::current().unwrap_or_default();
+        let mem = coredesk_platform::memstats::MemoryStats::current().unwrap_or_default();
         let gpu = match self.ctx.stack.gpu_memory() {
             Some((local, shared)) => format!(
                 "GPU {:.1} MB dedicated, {:.1} MB shared",
@@ -248,13 +248,13 @@ impl App {
             self.state.storage_kind()
         );
         let system = serde_json::json!({
-            "app": format!("PecoFence {} ({install})", env!("CARGO_PKG_VERSION")),
-            "windows": format!("build {}", pecofence_platform::desktop::os_build()),
+            "app": format!("CoreDesk Engine {} ({install})", env!("CARGO_PKG_VERSION")),
+            "windows": format!("build {}", coredesk_platform::desktop::os_build()),
             "displays": fact(displays.join(", ")),
             "settings": fact(behavior),
             "state": fact(windows),
             "startup": fact(startup),
-            "language": pecofence_core::i18n::language().tag(),
+            "language": coredesk_core::i18n::language().tag(),
             "theme": format!(
                 "{:?}, {}",
                 settings.theme_style,
@@ -278,7 +278,7 @@ impl App {
             &crate::share_log::shared_text(),
             LOG_EXCERPT_BYTES,
         ));
-        let url = pecofence_core::brand::var("PECOFENCE_FEEDBACK_URL")
+        let url = coredesk_core::brand::var("COREDESK_FEEDBACK_URL")
             .ok()
             .filter(|u| u.starts_with("https://") || u.starts_with("http://127.0.0.1:"))
             .unwrap_or_else(|| FEEDBACK_URL.to_string());
@@ -286,7 +286,7 @@ impl App {
             "type": "feedbackInfo",
             "url": url,
             "app": env!("CARGO_PKG_VERSION"),
-            "language": pecofence_core::i18n::language().tag(),
+            "language": coredesk_core::i18n::language().tag(),
             "crashed": self.feedback.previous_run_crashed,
             "system": system,
             "log": log,
@@ -323,13 +323,13 @@ mod tests {
     #[test]
     fn crash_lines_are_recognised() {
         assert!(log_records_crash(
-            "2026-10-04T12:00:00Z ERROR pecofence: PANIC location=crates/app/src/x.rs:1:2 payload=boom\n"
+            "2026-10-04T12:00:00Z ERROR coredesk: PANIC location=crates/app/src/x.rs:1:2 payload=boom\n"
         ));
         assert!(log_records_crash(
-            "t ERROR pecofence_platform::crashlog: CRASH (unhandled exception) code=0xc0000005\n"
+            "t ERROR coredesk_platform::crashlog: CRASH (unhandled exception) code=0xc0000005\n"
         ));
         assert!(!log_records_crash(
-            "t  INFO pecofence::app: config loaded fences=7\n"
+            "t  INFO coredesk::app: config loaded fences=7\n"
         ));
     }
 

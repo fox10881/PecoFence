@@ -1,6 +1,6 @@
 """Writes src/trailer/cues.json: the shared timeline for picture, music and sound effects.
 
-uv run python extras/pecofence-promo/scripts/make-trailer-cues.py
+uv run python extras/coredesk-promo/scripts/make-trailer-cues.py
 120 BPM, 4/4, one bar = 2 s. All times are seconds from the first frame (60 fps).
 """
 import json
@@ -42,7 +42,7 @@ cues = {
         {"name": "intro", "start": 0, "end": 4, "energy": 0.25,
          "notes": "Messy desktop. Filtered pad + sparse keys motif; quiet pops on icon appearances; riser 3.0-4.0; reverse swell ends exactly at 4.0."},
         {"name": "brand", "start": 4, "end": 8, "energy": 0.7,
-         "notes": "HIT at 4.0: icons fly into fences. Drums + bass enter. Light sweep dark->light at 5.0. Title 'PecoFence / Make room for what matters.'"},
+         "notes": "HIT at 4.0: icons fly into fences. Drums + bass enter. Light sweep dark->light at 5.0. Title 'CoreDesk / Make room for what matters.'"},
         {"name": "autosort", "start": 8, "end": 12, "energy": 0.75,
          "notes": "New files land in fences at 8.75, 9.5, 10.25, 11.0: each landing is a pitched pluck (rising chord tones) + soft pop."},
         {"name": "tabs", "start": 12, "end": 16, "energy": 0.8,
@@ -89,12 +89,12 @@ cues = {
     ],
     "prompt": {"text": prompt, "typeStart": type_start, "typeEnd": type_end, "submit": 17.95},
     "commands": [
-        {"t": 18.0, "cmd": "pecofence-cli fence create --title Docs", "native": 4.783},
-        {"t": 18.5, "cmd": "pecofence-cli fence set Docs autoHeight true", "native": 5.917},
-        {"t": 19.0, "cmd": "pecofence-cli rule add --name PDFs --ext pdf --to Docs", "native": 7.3},
-        {"t": 19.4, "cmd": "pecofence-cli rule apply", "native": 8.183, "result": "moved 4 files to Docs"},
-        {"t": 19.95, "cmd": "pecofence-cli fence set --all iconSize 96", "native": 10.733},
-        {"t": 21.95, "cmd": "pecofence-cli fence set --all tint \"#E86A5C\"", "native": 13.2},
+        {"t": 18.0, "cmd": "coredesk-cli fence create --title Docs", "native": 4.783},
+        {"t": 18.5, "cmd": "coredesk-cli fence set Docs autoHeight true", "native": 5.917},
+        {"t": 19.0, "cmd": "coredesk-cli rule add --name PDFs --ext pdf --to Docs", "native": 7.3},
+        {"t": 19.4, "cmd": "coredesk-cli rule apply", "native": 8.183, "result": "moved 4 files to Docs"},
+        {"t": 19.95, "cmd": "coredesk-cli fence set --all iconSize 96", "native": 10.733},
+        {"t": 21.95, "cmd": "coredesk-cli fence set --all tint \"#E86A5C\"", "native": 13.2},
     ],
 }
 OUT.write_text(json.dumps(cues, indent=1), encoding="utf-8")

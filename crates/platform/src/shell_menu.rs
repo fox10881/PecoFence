@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn binds_and_populates_for_a_file() {
         let _com = crate::com::OleGuard::init().expect("COM");
-        let dir = std::env::temp_dir().join("pecofence-shell-menu-test");
+        let dir = std::env::temp_dir().join("coredesk-shell-menu-test");
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("probe.txt");
         std::fs::write(&file, b"x").unwrap();

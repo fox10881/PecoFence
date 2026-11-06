@@ -1,4 +1,4 @@
-//! Named-pipe server side of the CLI IPC (`\\.\pipe\PecoFence.<user SID>[.<instance>]`).
+//! Named-pipe server side of the CLI IPC (`\\.\pipe\CoreDeskEngine.<user SID>[.<instance>]`).
 //!
 //! One pipe instance serves one connection. [`PipeListener`] keeps exactly one instance waiting
 //! in `ConnectNamedPipe` at all times: the next instance is created *before* a connected one is
@@ -168,9 +168,9 @@ pub fn owner_only_sddl(user_sid: &str) -> String {
     format!("D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;{user_sid})")
 }
 
-/// [`pecofence_core::brand::ipc_pipe_name`] for the account this process runs as.
+/// [`coredesk_core::brand::ipc_pipe_name`] for the account this process runs as.
 pub fn ipc_pipe_name(instance: Option<&str>) -> Result<String> {
-    Ok(pecofence_core::brand::ipc_pipe_name(
+    Ok(coredesk_core::brand::ipc_pipe_name(
         &current_user_sid()?,
         instance,
     ))
@@ -370,7 +370,7 @@ mod tests {
     #[test]
     fn accept_blocked_with_no_client_is_released_by_cancelling_the_threads_io() {
         let name = format!(
-            r"\\.\pipe\PecoFence.test-{}-{}",
+            r"\\.\pipe\CoreDeskEngine.test-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

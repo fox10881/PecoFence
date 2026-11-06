@@ -160,7 +160,7 @@ impl FenceWindow {
             group: RefCell::new(Vec::new()),
         };
         let trace_test_input = cfg!(debug_assertions)
-            && pecofence_core::brand::var_os("PECOFENCE_UI_TEST_WINDOWS").is_some();
+            && coredesk_core::brand::var_os("COREDESK_UI_TEST_WINDOWS").is_some();
         Box::new(
             move |hwnd: HWND, message: u32, wparam: usize, lparam: isize| -> Option<isize> {
                 let h = &ctx;
@@ -176,7 +176,7 @@ impl FenceWindow {
                     )
                 {
                     tracing::info!(
-                        target: "pecofence::input_audit",
+                        target: "coredesk::input_audit",
                         ?hwnd, message, wparam, lparam,
                         "native pointer event"
                     );

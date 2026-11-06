@@ -63,7 +63,7 @@
         r.scene.style.opacity = loopFade(t, D, looped);
         const p = pathAt(t, PATH);
 
-        // 1. marquee, drawn by PecoFence while the desktop icons are hidden
+        // 1. marquee, drawn by CoreDesk while the desktop icons are hidden
         if (show(r.marquee, t >= 1.22 && t < 2.58)) {
             const x0 = 318, y0 = 56, x1 = Math.max(x0, p.x), y1 = Math.max(y0, p.y);
             r.marquee.style.width = (x1 - x0) + 'px';

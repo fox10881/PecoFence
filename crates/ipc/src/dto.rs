@@ -2,8 +2,8 @@
 //! `layout`, `sort`, …) stay strings here, so `fence get` output can be fed straight back into
 //! `fence set`.
 
-use pecofence_core::NormGeometry;
-use pecofence_core::rules::{Rule, Target, Unmatched};
+use coredesk_core::NormGeometry;
+use coredesk_core::rules::{Rule, Target, Unmatched};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -18,8 +18,8 @@ pub struct Rect {
     pub h: i32,
 }
 
-impl From<pecofence_core::geometry::PxRect> for Rect {
-    fn from(r: pecofence_core::geometry::PxRect) -> Self {
+impl From<coredesk_core::geometry::PxRect> for Rect {
+    fn from(r: coredesk_core::geometry::PxRect) -> Self {
         Self {
             x: r.left,
             y: r.top,
@@ -29,7 +29,7 @@ impl From<pecofence_core::geometry::PxRect> for Rect {
     }
 }
 
-impl From<Rect> for pecofence_core::geometry::PxRect {
+impl From<Rect> for coredesk_core::geometry::PxRect {
     fn from(r: Rect) -> Self {
         Self {
             left: r.x,
@@ -72,7 +72,7 @@ pub struct StatusDto {
     pub app_version: String,
     pub protocol: u32,
     pub pid: u32,
-    /// `PECOFENCE_INSTANCE` of the answering process; `null` for the main instance.
+    /// `COREDESK_INSTANCE` of the answering process; `null` for the main instance.
     pub instance: Option<String>,
     pub config_path: String,
     pub fence_count: usize,
@@ -285,7 +285,7 @@ pub struct ItemDto {
     pub modified: Option<i64>,
     /// Creation time, Unix seconds (`null` when the file cannot be read right now).
     pub created: Option<i64>,
-    /// Launches from a fence since PecoFence started tracking the item.
+    /// Launches from a fence since CoreDesk Engine started tracking the item.
     pub open_count: u32,
     /// Unix seconds of the last launch from a fence (`null` = never).
     pub last_opened: Option<i64>,
@@ -458,7 +458,7 @@ mod tests {
                 h: 200
             }
         );
-        let px: pecofence_core::geometry::PxRect = r.into();
+        let px: coredesk_core::geometry::PxRect = r.into();
         assert_eq!((px.left, px.top, px.right, px.bottom), (10, 20, 310, 220));
         assert_eq!(Rect::from(px), r);
         assert!(Rect::parse("1,2,3").is_err());

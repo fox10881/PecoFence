@@ -48,7 +48,7 @@ struct ApiAsset {
 }
 
 pub fn setup_name(version: &str) -> String {
-    format!("pecofence-v{version}-x64-setup.exe")
+    format!("coredesk-v{version}-x64-setup.exe")
 }
 
 /// Parses `releases/latest`. Files only count at their exact place under `download_base`
@@ -160,17 +160,17 @@ mod tests {
 
     #[test]
     fn picks_the_setup_from_this_repository() {
-        let exe = format!("{BASE}v0.1.4/pecofence-v0.1.4-x64-setup.exe");
+        let exe = format!("{BASE}v0.1.4/coredesk-v0.1.4-x64-setup.exe");
         let json = release_json(
             "v0.1.4",
             &[
                 (
-                    "pecofence-v0.1.4-x64-portable.zip",
+                    "coredesk-v0.1.4-x64-portable.zip",
                     "https://example.invalid/zip",
                 ),
-                ("pecofence-v0.1.4-x64-setup.exe", &exe),
+                ("coredesk-v0.1.4-x64-setup.exe", &exe),
                 (
-                    "pecofence-v0.1.4-x64-setup.exe.sha256",
+                    "coredesk-v0.1.4-x64-setup.exe.sha256",
                     &format!("{exe}.sha256"),
                 ),
             ],
@@ -185,7 +185,7 @@ mod tests {
         assert_eq!(
             release.setup,
             Some(SetupAsset {
-                name: "pecofence-v0.1.4-x64-setup.exe".into(),
+                name: "coredesk-v0.1.4-x64-setup.exe".into(),
                 url: exe.clone(),
                 sha256_url: format!("{exe}.sha256"),
             })
@@ -194,8 +194,8 @@ mod tests {
 
     #[test]
     fn a_setup_without_its_checksum_is_not_offered() {
-        let exe = format!("{BASE}v0.1.4/pecofence-v0.1.4-x64-setup.exe");
-        let json = release_json("v0.1.4", &[("pecofence-v0.1.4-x64-setup.exe", &exe)]);
+        let exe = format!("{BASE}v0.1.4/coredesk-v0.1.4-x64-setup.exe");
+        let json = release_json("v0.1.4", &[("coredesk-v0.1.4-x64-setup.exe", &exe)]);
         assert_eq!(parse_release(&json, BASE).unwrap().setup, None);
     }
 
@@ -210,7 +210,7 @@ mod tests {
         let elsewhere = release_json(
             "v0.1.4",
             &[(
-                "pecofence-v0.1.4-x64-setup.exe",
+                "coredesk-v0.1.4-x64-setup.exe",
                 "https://example.invalid/setup.exe",
             )],
         );
@@ -219,8 +219,8 @@ mod tests {
         let climbing = release_json(
             "v0.1.4",
             &[(
-                "pecofence-v0.1.4-x64-setup.exe",
-                &format!("{escaping}pecofence-v0.1.4-x64-setup.exe"),
+                "coredesk-v0.1.4-x64-setup.exe",
+                &format!("{escaping}coredesk-v0.1.4-x64-setup.exe"),
             )],
         );
         assert_eq!(parse_release(&climbing, BASE).unwrap().setup, None);

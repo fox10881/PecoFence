@@ -1,18 +1,18 @@
-# PecoFence — English product videos
+# CoreDesk — English product videos
 
 ## Trailer v3 (current, 2026-09)
 
 A 30-second trailer in the warm Liquid Glass look of the website and Store v2
 listing, with the AI + CLI story as its climax. Remotion composition
-`PecoFence-Trailer` (`src/trailer/`), 1920 × 1080, 60 fps master.
+`CoreDesk-Trailer` (`src/trailer/`), 1920 × 1080, 60 fps master.
 
 | Time | What the viewer sees |
 |---|---|
 | 0–4 s | A cluttered desktop: "Screenshots. Downloads. Drafts. / Everywhere." |
-| 4–8 s | On the hit the icons fly into three native glass fences; light sweeps the dark desk; "PecoFence / Make room for what matters." |
+| 4–8 s | On the hit the icons fly into three native glass fences; light sweeps the dark desk; "CoreDesk / Make room for what matters." |
 | 8–12 s | Native auto-sort take: four new files land on the beat |
 | 12–16 s | Native tabs take: merge, then two tab switches |
-| 16–26 s | "Or just ask your AI.": an agent card types a request and lists the real `pecofence-cli` commands; the native fences react (Docs fence, PDFs move, every fence grows on the drop at 20 s, warm tint at 22 s); "Your desktop. Configured by your AI." |
+| 16–26 s | "Or just ask your AI.": an agent card types a request and lists the real `coredesk-cli` commands; the native fences react (Docs fence, PDFs move, every fence grows on the drop at 20 s, warm tint at 22 s); "Your desktop. Configured by your AI." |
 | 26–30 s | End card: app icon, "Free and open source for Windows 11", Microsoft Store and site |
 
 All product pixels come from native 4K60 captures of the current source (only the
@@ -34,9 +34,9 @@ npm run trailer:render          # silent 1080p60 picture
 npm run trailer:finish          # master, Store 1080p30, web 720p, thumbnail
 ```
 
-Outputs in `out/`: `PecoFence-trailer-v3-1080p60.mp4` (master),
-`PecoFence-trailer-v3-store-1080p30.mp4` (Microsoft Store),
-`PecoFence-trailer-v3-web-720p.mp4` (site) and `PecoFence-trailer-v3-thumbnail.png`.
+Outputs in `out/`: `CoreDesk-trailer-v3-1080p60.mp4` (master),
+`CoreDesk-trailer-v3-store-1080p30.mp4` (Microsoft Store),
+`CoreDesk-trailer-v3-web-720p.mp4` (site) and `CoreDesk-trailer-v3-thumbnail.png`.
 
 ## Earlier 30-second spot
 
@@ -50,7 +50,7 @@ demonstrations. Headlines hold long enough to read; Peek, shortcuts and file
 opening are left to the feature clips on the product site.
 
 - 1920 × 1080, 30 fps, H.264 MP4 with stereo AAC audio.
-- Real PecoFence captures with English demo folders and files.
+- Real CoreDesk captures with English demo folders and files.
 - Programmed motion design, English on-screen copy, original instrumental soundtrack.
 - No voiceover.
 
@@ -64,8 +64,8 @@ npm run reviewed:render
 npm run reviewed:verify
 ```
 
-Current output: `out/PecoFence-autosort-en-1080p.mp4` and
-`out/PecoFence-autosort-en-1080p-poster.png`. Preview composition: `PecoFence-Reviewed`.
+Current output: `out/CoreDesk-autosort-en-1080p.mp4` and
+`out/CoreDesk-autosort-en-1080p-poster.png`. Preview composition: `CoreDesk-Reviewed`.
 Delivery uses 1080p H.264, BT.709, 30 fps and stereo AAC.
 The current music is an original 128 BPM dance track with a four-on-the-floor
 kick, backbeat claps, offbeat hats, syncopated bass and transition risers.
@@ -136,8 +136,8 @@ npm run launch:stills
 npm run launch:render
 ```
 
-Earlier output: `out/PecoFence-launch-en-1080p.mp4` and
-`out/PecoFence-launch-poster.png`. Preview composition: `PecoFence-Launch`.
+Earlier output: `out/CoreDesk-launch-en-1080p.mp4` and
+`out/CoreDesk-launch-poster.png`. Preview composition: `CoreDesk-Launch`.
 
 | Time | What the viewer sees |
 |---|---|
@@ -145,7 +145,7 @@ Earlier output: `out/PecoFence-launch-en-1080p.mp4` and
 | 3–8 s | Complete groups with documents, folders and image thumbnails |
 | 8–15 s | Work / Art tab switching and native tab separation |
 | 15–23 s | Peek brings files above a staged project workspace |
-| 23–28 s | PecoFence: Make room for focus |
+| 23–28 s | CoreDesk: Make room for focus |
 
 See `LAUNCH-STORYBOARD.md` for the short-film plan. It favors benefits and native
 motion over instructions. It contains no voiceover or numbered tutorial steps.
@@ -185,15 +185,15 @@ npm run features:stills
 npm run features:render
 ```
 
-Earlier output: `out/PecoFence-features-en-1080p.mp4` and
-`out/PecoFence-features-poster.png`.
+Earlier output: `out/CoreDesk-features-en-1080p.mp4` and
+`out/CoreDesk-features-poster.png`.
 
 The earlier timeline is `src/features/FeatureFilm.tsx`. Its English headings,
 step-by-step captions and operation callouts accompany six native recordings:
 
 | Time | Demonstration |
 |---|---|
-| 0–4 s | What PecoFence does |
+| 0–4 s | What CoreDesk does |
 | 4–14 s | Create and name a group, drag in two files, move and resize |
 | 14–26 s | New PNG and TXT files automatically reach the configured groups |
 | 26–39 s | Browse a folder portal, return to the parent, see a new file appear |
@@ -222,7 +222,7 @@ npm run render
 The renderer uses installed Google Chrome on Windows. To use a different compatible
 browser, set `REMOTION_BROWSER_EXECUTABLE` to its executable path.
 
-Output: `out/PecoFence-promo-en-1080p.mp4` and `out/PecoFence-poster.png`.
+Output: `out/CoreDesk-promo-en-1080p.mp4` and `out/CoreDesk-poster.png`.
 
 Each scene is also registered separately in Remotion Studio. Copy and layout live in
 `src/scenes/`; the main timeline is `src/Promo.tsx`.
@@ -255,7 +255,7 @@ The file grouping shot illustrates functionality documented in the main project 
   to the staged `-demo` filenames.
 - `public/soundtrack-features.wav` and `.m4a`: 75 seconds of original synthesized
   instrumental music and edit sounds.
-- `public/panel-*.png`: captured from the local PecoFence debug build.
+- `public/panel-*.png`: captured from the local CoreDesk debug build.
 - `public/product-demo.mp4`: real desktop capture of the demo instance.
 - `public/product-detail.mp4`: crop of that recording.
 - `public/folder-icon.png`, `public/document-icon.png`: local Windows shell icons,
@@ -263,7 +263,7 @@ The file grouping shot illustrates functionality documented in the main project 
 - `public/wallpaper.png`: original procedural graphic created by `scripts/make-assets.mjs`.
 - `public/soundtrack.wav` and its AAC copy `soundtrack.m4a`: original synthesized music and edit sounds from the same script;
   no stock music, external samples or cloned voices.
-- The simple PecoFence motion mark is authored as SVG in `src/design.tsx`.
+- The simple CoreDesk motion mark is authored as SVG in `src/design.tsx`.
 
 `scripts/capture-product.ps1` uses an isolated portable demo configuration and sample
 files under the ignored `.capture/` directory. It temporarily shows a capture

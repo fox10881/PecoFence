@@ -1,8 +1,8 @@
 //! Headless material study using the production crop and Direct2D fence chrome.
-//! cargo run -p pecofence-render --example liquid_glass_preview -- .cache/liquid-glass-native.bmp
+//! cargo run -p coredesk-render --example liquid_glass_preview -- .cache/liquid-glass-native.bmp
 //! No desktop capture, configuration writes or visible windows.
 
-use pecofence_render::{
+use coredesk_render::{
     BitmapCache, ColorF, Image, MonitorBackdrop, Rect, RoundedRect, Theme, Vector2,
     fence_chrome::{Backdrop, BackdropCrop, FenceChrome, FenceStyle, TitleDeco, TitleState},
     liquid_glass::{self, GlassOptics},
@@ -26,9 +26,9 @@ fn save_bmp(path: &Path, width: u32, height: u32, pixels: &[u8]) -> std::io::Res
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ole = pecofence_platform::com::OleGuard::init()?;
-    let stack = pecofence_render::RenderStack::new()?;
-    let motion = pecofence_render::motion::Motion::new(&stack)?;
+    let _ole = coredesk_platform::com::OleGuard::init()?;
+    let stack = coredesk_render::RenderStack::new()?;
+    let motion = coredesk_render::motion::Motion::new(&stack)?;
     let root = stack.compositor.create_container_visual();
     // Exercise the actual Windows clip API: reuse during collapse/resize, remove on switching
     // to Fluent, then reinstall. This creates no HWND or visible desktop surface.

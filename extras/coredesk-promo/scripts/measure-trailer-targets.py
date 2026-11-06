@@ -1,6 +1,6 @@
 """Measure landing targets for the 2026-09 trailer (v3) from the native 4K takes.
 
-uv run --with numpy --with pillow --with opencv-python-headless python extras/pecofence-promo/scripts/measure-trailer-targets.py
+uv run --with numpy --with pillow --with opencv-python-headless python extras/coredesk-promo/scripts/measure-trailer-targets.py
 
 Needs the shell icons/templates from extract-trailer-icons.ps1 (public/trailer-v3/icons and
 .cache/promo2/icon-templates). Writes
@@ -31,7 +31,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[3]
-PROMO = ROOT / "extras/pecofence-promo"
+PROMO = ROOT / "extras/coredesk-promo"
 PUB = PROMO / "public/trailer-v3"
 ICONS = PUB / "icons"
 CACHE = ROOT / ".cache/promo2"

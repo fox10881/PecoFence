@@ -7,9 +7,9 @@ use uuid::Uuid;
 
 pub const SCHEMA_VERSION: u32 = 1;
 
-/// Published JSON Schema of `config.json` (`pecofence-cli describe --schema Config` prints the
+/// Published JSON Schema of `config.json` (`coredesk-cli describe --schema Config` prints the
 /// same document). Written into the file's `$schema` field so editors validate and complete it.
-pub const CONFIG_SCHEMA_URL: &str = "https://pecofence.jiang.jp/schema/config.json";
+pub const CONFIG_SCHEMA_URL: &str = "https://coredesk.jiang.jp/schema/config.json";
 
 pub type FenceId = Uuid;
 pub type ItemId = Uuid;
@@ -157,18 +157,18 @@ pub struct Settings {
     /// material shows the moving wallpaper. Off = a still capture is frosted instead.
     #[serde(default = "default_true")]
     pub live_wallpaper_capture: bool,
-    /// Active H.264 `.mp4` video wallpaper path played by PecoFence's WMF desktop player.
+    /// Active H.264 `.mp4` video wallpaper path played by CoreDesk Engine's WMF desktop player.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_wallpaper_path: Option<String>,
     /// The Start Menu style applied through Windhawk's
     /// `windows-11-start-menu-styler` mod — a [`crate::start_menu_themes`]
     /// catalog id, `""` = Windows Default (the mod's `theme` setting cleared).
-    /// `.peco` themes carry it; a machine without the mod keeps its own.
+    /// `.cde` themes carry it; a machine without the mod keeps its own.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub start_menu_style: String,
     /// The Taskbar style applied through the native XAML styler — a
     /// [`crate::taskbar_themes`] catalog id, `""` = Windows Default (stock
-    /// taskbar restored). `.peco` themes carry it.
+    /// taskbar restored). `.cde` themes carry it.
     /// Always serialized (unlike `startMenuStyle`): the CLI's
     /// `settings set` allowlist comes from the serialized object, so a
     /// skipped-empty field could never be set.
@@ -177,14 +177,14 @@ pub struct Settings {
     /// The Notification Center style applied through the native XAML
     /// styler — a [`crate::notification_center_themes`] catalog id, `""` =
     /// Windows Default (stock Action/Notification Center restored).
-    /// `.peco` themes carry it.
+    /// `.cde` themes carry it.
     #[serde(default)]
     pub notification_center_style: String,
     /// File Explorer window glass — the ExplorerBlurMica recipe applied
     /// natively: `""` = Windows Default (stock chrome + backdrop);
     /// `"blur"`/`"acrylic"`/`"mica"`/`"blurclear"`/`"micaalt"` map to
     /// EBM's `effect=` (Blur/Acrylic/Mica/Blur (Clear)/Mica Alt).
-    /// `.peco` themes carry the whole `fe_*` recipe — applying a theme
+    /// `.cde` themes carry the whole `fe_*` recipe — applying a theme
     /// restores the author's Explorer material (and `""` disarms to
     /// stock).
     #[serde(default)]
@@ -214,7 +214,7 @@ pub struct Settings {
     /// strict Contain (the whole frame centered and uncropped, the leftover
     /// margins filled with a blurred copy). Replaces `stretchTolerancePct` —
     /// a negative value there meant Contain ([`crate::config_store::migrate`]).
-    /// `.peco` themes carry it.
+    /// `.cde` themes carry it.
     #[serde(default)]
     pub contain_background: bool,
     /// Legacy `stretchTolerancePct`: read only so `migrate` can map `< 0` →
@@ -222,7 +222,7 @@ pub struct Settings {
     #[serde(default, skip_serializing)]
     #[cfg_attr(feature = "schema", schemars(skip))]
     pub stretch_tolerance_pct: i8,
-    /// The `.peco` the last applied/saved theme lives in — the gallery's "One Theme =
+    /// The `.cde` the last applied/saved theme lives in — the gallery's "One Theme =
     /// One File" anchor. The unsaved-changes prompt's Save and the daily auto-update
     /// overwrite exactly this file, never a copy. `None` until a theme is applied or
     /// saved, and cleared by config imports and by deleting the file.
@@ -233,7 +233,7 @@ pub struct Settings {
     #[serde(default)]
     pub theme_auto_update_daily: bool,
     /// Desktop clock widget design: `"none"` = hidden (default);
-    /// `"g1".."g10"` and `"d1".."d10"` pick a design. `.peco` themes
+    /// `"g1".."g10"` and `"d1".."d10"` pick a design. `.cde` themes
     /// carry it (with `clock_bounds`).
     #[serde(default = "clock_style_default")]
     pub clock_style: String,
@@ -264,7 +264,7 @@ pub struct Settings {
     pub desktop_effect_intensity: u8,
     /// Per-effect tuning overrides for the native desktop-effects engine,
     /// keyed by effect id (`"rain"`, `"fireflies"`, … — `EFFECT_IDS`).
-    /// Every field is optional; `None` keeps the compiled default. `.peco`
+    /// Every field is optional; `None` keeps the compiled default. `.cde`
     /// themes carry it so a theme preserves the author's tuning exactly.
     /// Values are validated/clamped by `Config::sanitize_external`.
     /// Serialized to `Live_Effects_config.json` at the file boundary.
@@ -397,7 +397,7 @@ pub fn effect_display_name(effect_id: &str) -> &'static str {
 
 /// Externalizable tuning for one desktop effect (`تأثيرات سطح المكتب`).
 /// Every field is optional — `None` keeps the compiled-in default. Parsed
-/// from `config.json` / `.peco` archives and applied only at the apply
+/// from `config.json` / `.cde` archives and applied only at the apply
 /// boundary (`effects_host::apply` → `open`); there is no file watcher.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -1633,7 +1633,7 @@ pub struct Fence {
     pub hide_when_empty: bool,
     #[serde(default)]
     pub items: Vec<ItemRef>,
-    /// `.peco` theme manifest: the filenames that belong in this fence, written in place of
+    /// `.cde` theme manifest: the filenames that belong in this fence, written in place of
     /// absolute `items` paths at export and re-bound against the local desktop on apply.
     /// Always empty in a running configuration.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1799,7 +1799,7 @@ impl Item {
         self.path.as_deref().or_else(|| self.key.as_path())
     }
 
-    /// The name a `.peco` manifest uses for this item: the filename as spelled on disk, or
+    /// The name a `.cde` manifest uses for this item: the filename as spelled on disk, or
     /// the `::{CLSID}` parsing name for a namespace item (machine-independent). `None` for
     /// records without a portable name (pure PIDL).
     pub fn manifest_name(&self) -> Option<String> {
@@ -2471,7 +2471,7 @@ impl Config {
         Some(a)
     }
 
-    /// Rewrites `self` for a portable `.peco` theme: each non-portal fence records its
+    /// Rewrites `self` for a portable `.cde` theme: each non-portal fence records its
     /// contents as `containedFiles` filenames in display order and releases its `ItemRef`s,
     /// then the items table is pruned to what fences and `desktop_items` still reference —
     /// no absolute member path leaves the machine. Folder portals keep their source path
@@ -2517,7 +2517,7 @@ impl Config {
     }
 
     /// Normalize shell-facing fields arriving from an external source (a
-    /// `.peco` archive or an imported `config.json`). Legacy archives predate
+    /// `.cde` archive or an imported `config.json`). Legacy archives predate
     /// fields, and hand-edited or cross-version archives may carry ids this
     /// build doesn't know; feeding unknown styling ids or corrupt geometry
     /// into the shell-styling surfaces (taskbar/Start/Notification Center
@@ -3653,7 +3653,7 @@ mod tests {
     #[test]
     fn effect_params_defaults_and_roundtrip() {
         // All-optional: empty JSON yields all-None; unset fields never
-        // serialize (`.peco` themes stay compact).
+        // serialize (`.cde` themes stay compact).
         let p: EffectParams = serde_json::from_str("{}").unwrap();
         assert_eq!(p, EffectParams::default());
         assert_eq!(serde_json::to_string(&p).unwrap(), "{}");
@@ -3732,7 +3732,7 @@ mod tests {
     #[test]
     fn clock_use_24_hour_defaults_and_roundtrips() {
         // Global 24-hour format: on by default, camelCase on the wire,
-        // and absent (older configs/.peco themes) keeps the default.
+        // and absent (older configs/.cde themes) keeps the default.
         let s = Settings::default();
         assert!(s.clock_use_24_hour);
         let mut v = serde_json::to_value(&s).unwrap();
@@ -3778,7 +3778,7 @@ mod tests {
         assert_eq!(p.particle_count, Some(EFFECT_MAX_PARTICLES));
         assert_eq!(p.primary_color.as_deref(), Some("#112233"));
 
-        // `.peco`-shaped round-trip: serialize + parse preserves the tuning.
+        // `.cde`-shaped round-trip: serialize + parse preserves the tuning.
         let v = serde_json::to_value(&cfg.settings).unwrap();
         let s2: Settings = serde_json::from_value(v).unwrap();
         assert_eq!(
@@ -3919,7 +3919,7 @@ mod theme_portable_tests {
 
     #[test]
     fn theme_portable_keeps_fe_explorer_recipe() {
-        // The .peco archive carries the whole fe_* ExplorerBlurMica recipe —
+        // The .cde archive carries the whole fe_* ExplorerBlurMica recipe —
         // applying a theme restores the author's Explorer material. A stray
         // reset here silently regresses themes back to "local-only" styling.
         let mut c = Config::default();

@@ -67,11 +67,11 @@ pub fn theme(id: &str) -> Option<&'static serde_json::Value> {
 }
 
 /// Serializes the theme into the line wire-format the injected
-/// `pecofence_tap.dll` parses inside `ShellExperienceHost.exe`/`ShellHost.exe`
+/// `coredesk_tap.dll` parses inside `ShellExperienceHost.exe`/`ShellHost.exe`
 /// (the host transports it with `WM_COPYDATA`):
 ///
 /// ```text
-/// PECO-NCS1
+/// CDES-NCS1
 /// T <target>
 /// S <style>
 /// ...
@@ -90,7 +90,7 @@ pub fn theme(id: &str) -> Option<&'static serde_json::Value> {
 pub fn theme_wire(id: &str) -> Option<String> {
     let theme = theme(id)?;
     let mut out = String::with_capacity(64 * 1024);
-    out.push_str("PECO-NCS1\n");
+    out.push_str("CDES-NCS1\n");
     out.push_str("T ToggleSwitch#HeaderToggleSwitch\n");
     out.push_str("S Style={StaticResource DefaultToggleSwitchStyle}\n");
 
@@ -231,10 +231,10 @@ mod tests {
     #[test]
     fn theme_wire_serializes_rules_and_resources() {
         let wire = theme_wire("TranslucentShell").expect("wire for known theme");
-        assert!(wire.starts_with("PECO-NCS1\n"));
+        assert!(wire.starts_with("CDES-NCS1\n"));
         // The mod's always-on diagnostics fixup leads every wire.
         assert!(wire.starts_with(
-            "PECO-NCS1\nT ToggleSwitch#HeaderToggleSwitch\nS Style={StaticResource DefaultToggleSwitchStyle}\n"
+            "CDES-NCS1\nT ToggleSwitch#HeaderToggleSwitch\nS Style={StaticResource DefaultToggleSwitchStyle}\n"
         ));
         assert!(wire.ends_with("E\n"));
         assert!(wire.contains("T Grid#NotificationCenterGrid\n"));

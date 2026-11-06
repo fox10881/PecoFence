@@ -1,7 +1,7 @@
-# PecoFence — Windows Hooking & XAML Injection Guardrails
+# CoreDesk — Windows Hooking & XAML Injection Guardrails
 
 Permanent architectural constitution for this repository. These rules are
-non-negotiable; they encode hard-won failure modes of the `pecofence_tap.dll`
+non-negotiable; they encode hard-won failure modes of the `coredesk_tap.dll`
 resident and the host-side injection layer. If a change appears to violate
 one of them, stop and re-check the design before touching code.
 
@@ -31,7 +31,7 @@ through the single `styler::wux` engine.**
 
 - **Taskbar** — `Windows.UI.Xaml` (UWP XAML / wux) inside the *shell*
   `explorer.exe` (the `find_taskbar` process). Styled by `styler::wux`
-  over `styler_bindings`, wire `PECO-TBS1` (`TBST`/`TBSR`).
+  over `styler_bindings`, wire `CDES-TBS1` (`TBST`/`TBSR`).
 - `bindings` and `styler_bindings` contain identically
   named COM types with **different IIDs** — they are not interchangeable.
   Share code through the `xb` facade in `styler.rs`; convert only through
@@ -42,13 +42,13 @@ through the single `styler::wux` engine.**
 ## Rule 3 — Lifecycle & Death-Watch (self-heal)
 
 **Every injected resident MUST ride the `WM_TIMER` cadence and revert
-cleanly when `pecofence.exe` exits.**
+cleanly when `coredesk.exe` exits.**
 
 - The command window's `WM_TIMER` (~2 s) drives `site::ensure_watching`
   (diagnostics install + watcher advise). Never move this work to
   blocking loops on the ixde thread.
 - The host-pid `HELLO` (`TBHI`/`SMHI`) arms the resident's death watch:
-  when pecofence.exe dies, the resident restores all original property
+  when coredesk.exe dies, the resident restores all original property
   values, unadvises watchers, and unloads. Every new resident must
   receive the hello before it counts as armed.
 - Armed intent is recorded host-side *before* delivery (`apply` stores
@@ -62,8 +62,8 @@ cleanly when `pecofence.exe` exits.**
 
 ## Rule 5 — Unique Module Name (stale-resident eviction)
 
-**Inject only the versioned copy `pecofence_tap_v<ver>_<filehash>.dll`,
-never `pecofence_tap.dll` directly.**
+**Inject only the versioned copy `coredesk_tap_v<ver>_<filehash>.dll`,
+never `coredesk_tap.dll` directly.**
 
 - A resident image can be pinned inside its host for the process's whole
   life (IXDEx holds COM references; `FreeLibrary` can't evict it).
@@ -72,7 +72,7 @@ never `pecofence_tap.dll` directly.**
   The only way a fresh resident co-loads is a module name the stale
   image doesn't own.
 - The resident derives its window class from its own module filename
-  (`pecofence_tap_v4_<h>.dll` → `PecoFenceTAP_v4_<h>`), so two builds can
+  (`coredesk_tap_v4_<h>.dll` → `CoreDeskTAP_v4_<h>`), so two builds can
   register command windows side by side — `RegisterClassExW` on an
   existing atom would fail, and a colliding `CreateWindowEx` would
   silently deliver the new resident's wires to the stale wndproc.
@@ -81,17 +81,17 @@ never `pecofence_tap.dll` directly.**
   protocol — never `FindWindowW` on a fixed class name. A resident only
   counts as usable when its class equals `expected_resident_class`
   (version ≥ `TAP_PROTOCOL_VERSION` *and* our build's module name).
-- A stale resident's `WM_TIMER` keeps re-stamping `PecoFence.TAP.CmdHwnd`
+- A stale resident's `WM_TIMER` keeps re-stamping `CoreDeskEngine.TAP.CmdHwnd`
   with *its* HWND forever — the prop ping-pongs between builds. Always
   fall back to enumeration when the stamped prop fails `resident_usable`;
   never trust the prop alone.
 - On discovering our resident, `unload_foreign_residents` sends
-  `PecoFence.TAP.Unload` to every other resident window in the process —
+  `CoreDeskEngine.TAP.Unload` to every other resident window in the process —
   one resident applies styles per process.
 
 ## Rule 4 — No External Dependencies
 
-**PecoFence is 100% standalone.**
+**CoreDesk is 100% standalone.**
 
 - Never call into, bridge to, or depend on Windhawk, TranslucentTB,
   ExplorerPatcher, StartAllBack, or any third-party mod — including for
@@ -111,8 +111,8 @@ never `pecofence_tap.dll` directly.**
 
 | Surface | Process | Framework | Engine | Wire | Session |
 |---|---|---|---|---|---|
-| Taskbar | shell `explorer.exe` | `Windows.UI.Xaml` | `styler::wux` | `PECO-TBS1` (`TBST`/`TBSR`) | `Windows.UI.Xaml.dll` ixde |
-| Start Menu | `StartMenuExperienceHost.exe` | `Windows.UI.Xaml` | `styler::wux` | `PECO-SMS1` (`SMST`/`SMSR`) | same, `PecoFenceTAPSM` class |
+| Taskbar | shell `explorer.exe` | `Windows.UI.Xaml` | `styler::wux` | `CDES-TBS1` (`TBST`/`TBSR`) | `Windows.UI.Xaml.dll` ixde |
+| Start Menu | `StartMenuExperienceHost.exe` | `Windows.UI.Xaml` | `styler::wux` | `CDES-SMS1` (`SMST`/`SMSR`) | same, `CoreDeskTAPSM` class |
 
 Resident protocol version: `TAP_PROTOCOL_VERSION` — kept in sync between
 `crates/tap/src/command.rs` and `crates/platform/src/tap.rs`; bump on any

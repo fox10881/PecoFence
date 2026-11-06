@@ -1,4 +1,4 @@
-"""Adds the WMF video wallpaper and .peco theme export/import strings to every locale file."""
+"""Adds the WMF video wallpaper and .cde theme export/import strings to every locale file."""
 import json
 import os
 
@@ -44,18 +44,18 @@ T = {
         "ru": "Экспортировать эту тему",
         "zh-TW": "匯出此主題",
     },
-    "导出为 .peco 主题": {
-        "en": "Export as .peco Theme",
-        "ar": "تصدير كـ ثيم .peco",
-        "de": "Als .peco-Design exportieren",
-        "es": "Exportar como tema .peco",
-        "fr": "Exporter comme thème .peco",
-        "it": "Esporta come tema .peco",
-        "ja": ".peco テーマとしてエクスポート",
-        "ko": ".peco 테마로 내보내기",
-        "pt-BR": "Exportar como tema .peco",
-        "ru": "Экспортировать как тему .peco",
-        "zh-TW": "匯出為 .peco 主題",
+    "导出为 .cde 主题": {
+        "en": "Export as .cde Theme",
+        "ar": "تصدير كـ ثيم .cde",
+        "de": "Als .cde-Design exportieren",
+        "es": "Exportar como tema .cde",
+        "fr": "Exporter comme thème .cde",
+        "it": "Esporta come tema .cde",
+        "ja": ".cde テーマとしてエクスポート",
+        "ko": ".cde 테마로 내보내기",
+        "pt-BR": "Exportar como tema .cde",
+        "ru": "Экспортировать как тему .cde",
+        "zh-TW": "匯出為 .cde 主題",
     },
     "导入主题": {
         "en": "Import Theme",
@@ -83,18 +83,18 @@ T = {
         "ru": "Видео MP4 (*.mp4)",
         "zh-TW": "MP4 影片 (*.mp4)",
     },
-    "PecoFence 主题 (*.peco)": {
-        "en": "PecoFence Theme (*.peco)",
-        "ar": "ثيم PecoFence (*.peco)",
-        "de": "PecoFence-Design (*.peco)",
-        "es": "Tema de PecoFence (*.peco)",
-        "fr": "Thème PecoFence (*.peco)",
-        "it": "Tema PecoFence (*.peco)",
-        "ja": "PecoFence テーマ (*.peco)",
-        "ko": "PecoFence 테마 (*.peco)",
-        "pt-BR": "Tema do PecoFence (*.peco)",
-        "ru": "Тема PecoFence (*.peco)",
-        "zh-TW": "PecoFence 主題 (*.peco)",
+    "CoreDesk 主题 (*.cde)": {
+        "en": "CoreDesk Theme (*.cde)",
+        "ar": "ثيم CoreDesk (*.cde)",
+        "de": "CoreDesk-Design (*.cde)",
+        "es": "Tema de CoreDesk (*.cde)",
+        "fr": "Thème CoreDesk (*.cde)",
+        "it": "Tema CoreDesk (*.cde)",
+        "ja": "CoreDesk テーマ (*.cde)",
+        "ko": "CoreDesk 테마 (*.cde)",
+        "pt-BR": "Tema do CoreDesk (*.cde)",
+        "ru": "Тема CoreDesk (*.cde)",
+        "zh-TW": "CoreDesk 主題 (*.cde)",
     },
     "已导入主题": {
         "en": "Theme imported",

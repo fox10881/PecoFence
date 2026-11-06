@@ -1,11 +1,11 @@
 name: Bug report
-description: Report a reproducible problem in PecoFence
+description: Report a reproducible problem in CoreDesk
 body:
   - type: input
     id: environment
     attributes:
       label: Environment
-      description: PecoFence version, Windows build, display scaling and interface language
+      description: CoreDesk version, Windows build, display scaling and interface language
     validations:
       required: true
   - type: textarea

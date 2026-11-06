@@ -73,7 +73,7 @@
         taskbar(root);
         trayMenu = menu(S, ['隐藏所有栅栏', '新建栅栏', { t: '在桌面显示文件夹', sub: 1 },
             { t: '速览所有栅栏', key: 'Ctrl+Alt+空格' }, '立即应用整理规则', '-', '恢复显示桌面图标',
-            '修复桌面图标（图标消失时使用）', '发送反馈…', '设置…', '-', '退出 PecoFence'], MENU_W);
+            '修复桌面图标（图标消失时使用）', '发送反馈…', '设置…', '-', '退出 CoreDesk'], MENU_W);
         r.menu = trayMenu;
         r.ptr = pointer(S);
         plan();

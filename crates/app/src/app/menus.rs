@@ -120,7 +120,7 @@ mod glyph {
     pub const VIEW: char = '\u{E890}';
     /// Hide (Fluent ED1A). Segoe MDL2 Assets has no crossed-out eye, so Windows 10 shows RedEye.
     pub fn hide() -> char {
-        if pecofence_platform::fonts::fluent_icons() {
+        if coredesk_platform::fonts::fluent_icons() {
             '\u{ED1A}'
         } else {
             '\u{E7B3}'
@@ -145,9 +145,9 @@ impl App {
         menu.item(
             CMD_TOGGLE_FENCES,
             if hidden {
-                pecofence_core::i18n::text("显示所有栅栏")
+                coredesk_core::i18n::text("显示所有栅栏")
             } else {
-                pecofence_core::i18n::text("隐藏所有栅栏")
+                coredesk_core::i18n::text("隐藏所有栅栏")
             },
             false,
             false,
@@ -155,13 +155,13 @@ impl App {
         .icon(if hidden { glyph::VIEW } else { glyph::hide() })
         .item(
             CMD_NEW_FENCE,
-            pecofence_core::i18n::text("新建栅栏"),
+            coredesk_core::i18n::text("新建栅栏"),
             false,
             false,
         )
         .icon(glyph::ADD_TO)
         .submenu(
-            pecofence_core::i18n::text("在桌面显示文件夹"),
+            coredesk_core::i18n::text("在桌面显示文件夹"),
             Self::show_folder_submenu(CMD_SHOW_FOLDER),
         )
         .icon(glyph::FOLDER)
@@ -169,9 +169,9 @@ impl App {
             CMD_PEEK,
             &match self.peek_hotkey {
                 Some(h) => {
-                    pecofence_core::i18n::format("速览所有栅栏\t{0}", &[peek_hotkey_label(h)])
+                    coredesk_core::i18n::format("速览所有栅栏\t{0}", &[peek_hotkey_label(h)])
                 }
-                None => pecofence_core::i18n::text("速览所有栅栏").to_string(),
+                None => coredesk_core::i18n::text("速览所有栅栏").to_string(),
             },
             false,
             false,
@@ -179,7 +179,7 @@ impl App {
         .icon(glyph::TASK_VIEW)
         .item(
             CMD_APPLY_RULES,
-            pecofence_core::i18n::text("立即应用整理规则"),
+            coredesk_core::i18n::text("立即应用整理规则"),
             false,
             false,
         )
@@ -189,10 +189,10 @@ impl App {
         menu.separator()
             .item(
                 CMD_HIDE_ICONS_AGAIN,
-                if pecofence_platform::shell_icons::desktop_icons_hidden() {
-                    pecofence_core::i18n::text("恢复显示桌面图标")
+                if coredesk_platform::shell_icons::desktop_icons_hidden() {
+                    coredesk_core::i18n::text("恢复显示桌面图标")
                 } else {
-                    pecofence_core::i18n::text("重新隐藏桌面图标")
+                    coredesk_core::i18n::text("重新隐藏桌面图标")
                 },
                 false,
                 false,
@@ -200,21 +200,21 @@ impl App {
             .icon(glyph::MONITOR)
             .item(
                 CMD_REPAIR_ICONS,
-                pecofence_core::i18n::text("修复桌面图标（图标消失时使用）"),
+                coredesk_core::i18n::text("修复桌面图标（图标消失时使用）"),
                 false,
                 false,
             )
             .icon(glyph::REPAIR)
             .item(
                 CMD_FEEDBACK,
-                pecofence_core::i18n::text("发送反馈…"),
+                coredesk_core::i18n::text("发送反馈…"),
                 false,
                 false,
             )
             .icon(glyph::MESSAGE)
             .item(
                 CMD_SETTINGS,
-                pecofence_core::i18n::text("设置…"),
+                coredesk_core::i18n::text("设置…"),
                 false,
                 false,
             )
@@ -222,7 +222,7 @@ impl App {
             .separator()
             .item(
                 CMD_EXIT,
-                pecofence_core::i18n::text("退出 PecoFence"),
+                coredesk_core::i18n::text("退出 CoreDesk Engine"),
                 false,
                 false,
             )
@@ -242,7 +242,7 @@ impl App {
             CMD_REPAIR_ICONS => self.set_desktop_icons_hidden(false),
             CMD_HIDE_ICONS_AGAIN => {
                 self.set_desktop_icons_hidden(
-                    !pecofence_platform::shell_icons::desktop_icons_hidden(),
+                    !coredesk_platform::shell_icons::desktop_icons_hidden(),
                 );
             }
             CMD_FEEDBACK => self.open_feedback(false),
@@ -364,26 +364,26 @@ impl App {
         );
         menu.item(
             CMD_ITEM_OPEN,
-            pecofence_core::i18n::text("打开\tEnter"),
+            coredesk_core::i18n::text("打开\tEnter"),
             false,
             false,
         )
         .default_item(CMD_ITEM_OPEN)
         .item(
             CMD_ITEM_LOCATION,
-            pecofence_core::i18n::text("打开文件所在位置"),
+            coredesk_core::i18n::text("打开文件所在位置"),
             false,
             items.len() != 1 || single_namespace,
         )
         .item(
             CMD_ITEM_RENAME,
-            pecofence_core::i18n::text("重命名\tF2"),
+            coredesk_core::i18n::text("重命名\tF2"),
             false,
             items.len() != 1 || single_namespace,
         )
         .item(
             CMD_ITEM_DELETE,
-            pecofence_core::i18n::text("删除\tDelete"),
+            coredesk_core::i18n::text("删除\tDelete"),
             false,
             single_namespace,
         )
@@ -391,7 +391,7 @@ impl App {
         if self.single_folder_of(items).is_some() {
             menu.item(
                 CMD_ITEM_PORTAL,
-                pecofence_core::i18n::text("在桌面显示此文件夹"),
+                coredesk_core::i18n::text("在桌面显示此文件夹"),
                 false,
                 false,
             );
@@ -406,12 +406,12 @@ impl App {
             .enumerate()
             .map(|(i, f)| {
                 let label = if self.state.portal_path(f.id).is_some() {
-                    pecofence_core::i18n::format(
+                    coredesk_core::i18n::format(
                         "{0}（文件会移到此文件夹）",
                         &[self.state.display_title(f).to_string()],
                     )
                 } else if from_portal {
-                    pecofence_core::i18n::format(
+                    coredesk_core::i18n::format(
                         "{0}（文件会移到桌面）",
                         std::slice::from_ref(&f.title),
                     )
@@ -424,13 +424,13 @@ impl App {
         for (id, title, disabled) in &targets {
             move_menu.item(*id, title, false, *disabled);
         }
-        menu.submenu(pecofence_core::i18n::text("移动到栅栏"), move_menu);
+        menu.submenu(coredesk_core::i18n::text("移动到栅栏"), move_menu);
         menu.item(
             CMD_ITEM_TO_INBOX,
             if self.state.portal_path(fence).is_some() {
-                pecofence_core::i18n::text("移出到桌面（移动文件）")
+                coredesk_core::i18n::text("移出到桌面（移动文件）")
             } else {
-                pecofence_core::i18n::text("移出栅栏，放到桌面")
+                coredesk_core::i18n::text("移出栅栏，放到桌面")
             },
             false,
             on_desktop,
@@ -464,7 +464,7 @@ impl App {
             shell_menu = None;
             menu.item(
                 CMD_ITEM_PROPERTIES,
-                pecofence_core::i18n::text("属性\tAlt+Enter"),
+                coredesk_core::i18n::text("属性\tAlt+Enter"),
                 false,
                 false,
             );
@@ -488,9 +488,9 @@ impl App {
         menu.item(
             CMD_FENCE_ROLL,
             if rolled {
-                pecofence_core::i18n::text("展开")
+                coredesk_core::i18n::text("展开")
             } else {
-                pecofence_core::i18n::text("收起")
+                coredesk_core::i18n::text("收起")
             },
             false,
             false,
@@ -502,7 +502,7 @@ impl App {
         })
         .item(
             CMD_FENCE_RENAME,
-            pecofence_core::i18n::text("重命名…"),
+            coredesk_core::i18n::text("重命名…"),
             false,
             false,
         )
@@ -511,7 +511,7 @@ impl App {
         if portal_dir.is_some() {
             menu.item(
                 CMD_FENCE_OPEN_FOLDER,
-                pecofence_core::i18n::text("在资源管理器中打开文件夹"),
+                coredesk_core::i18n::text("在资源管理器中打开文件夹"),
                 false,
                 false,
             )
@@ -519,14 +519,14 @@ impl App {
             if self.state.portal_navigated(fence) {
                 menu.item(
                     CMD_PORTAL_UP,
-                    pecofence_core::i18n::text("返回上一级\tBackspace"),
+                    coredesk_core::i18n::text("返回上一级\tBackspace"),
                     false,
                     false,
                 )
                 .icon(glyph::UP)
                 .item(
                     CMD_PORTAL_HOME,
-                    pecofence_core::i18n::text("返回最初的文件夹"),
+                    coredesk_core::i18n::text("返回最初的文件夹"),
                     false,
                     false,
                 )
@@ -538,115 +538,115 @@ impl App {
         view_menu
             .item(
                 CMD_FENCE_VIEW_ICONS,
-                pecofence_core::i18n::text("图标"),
+                coredesk_core::i18n::text("图标"),
                 f.view.layout == ViewLayout::Icons,
                 false,
             )
             .item(
                 CMD_FENCE_VIEW_LIST,
-                pecofence_core::i18n::text("列表"),
+                coredesk_core::i18n::text("列表"),
                 f.view.layout == ViewLayout::List,
                 false,
             )
             .item(
                 CMD_FENCE_VIEW_DETAILS,
-                pecofence_core::i18n::text("详细信息"),
+                coredesk_core::i18n::text("详细信息"),
                 f.view.layout == ViewLayout::Details,
                 false,
             )
             .separator()
             .item(
                 CMD_FENCE_ICON_32,
-                pecofence_core::i18n::text("小图标"),
+                coredesk_core::i18n::text("小图标"),
                 f.view.icon_size == 32,
                 false,
             )
             .item(
                 CMD_FENCE_ICON_48,
-                pecofence_core::i18n::text("中等图标"),
+                coredesk_core::i18n::text("中等图标"),
                 f.view.icon_size == 48,
                 false,
             )
             .item(
                 CMD_FENCE_ICON_64,
-                pecofence_core::i18n::text("较大图标"),
+                coredesk_core::i18n::text("较大图标"),
                 f.view.icon_size == 64,
                 false,
             )
             .item(
                 CMD_FENCE_ICON_96,
-                pecofence_core::i18n::text("大图标"),
+                coredesk_core::i18n::text("大图标"),
                 f.view.icon_size == 96,
                 false,
             );
-        menu.submenu(pecofence_core::i18n::text("视图"), view_menu)
+        menu.submenu(coredesk_core::i18n::text("视图"), view_menu)
             .icon(glyph::VIEW_ALL);
         let sort_menu = PopupMenu::new();
         sort_menu
             .item(
                 CMD_FENCE_SORT_MANUAL,
-                pecofence_core::i18n::text("手动"),
+                coredesk_core::i18n::text("手动"),
                 f.view.sort == SortMode::Manual,
                 false,
             )
             .item(
                 CMD_FENCE_SORT_NAME,
-                pecofence_core::i18n::text("按名称"),
+                coredesk_core::i18n::text("按名称"),
                 f.view.sort == SortMode::Name,
                 false,
             )
             .item(
                 CMD_FENCE_SORT_TYPE,
-                pecofence_core::i18n::text("按类型"),
+                coredesk_core::i18n::text("按类型"),
                 f.view.sort == SortMode::Type,
                 false,
             )
             .item(
                 CMD_FENCE_SORT_DATE,
-                pecofence_core::i18n::text("按修改日期"),
+                coredesk_core::i18n::text("按修改日期"),
                 f.view.sort == SortMode::Date,
                 false,
             )
             .item(
                 CMD_FENCE_SORT_SIZE,
-                pecofence_core::i18n::text("按大小"),
+                coredesk_core::i18n::text("按大小"),
                 f.view.sort == SortMode::Size,
                 false,
             )
             .item(
                 CMD_FENCE_SORT_OPENED,
-                pecofence_core::i18n::text("按打开次数"),
+                coredesk_core::i18n::text("按打开次数"),
                 f.view.sort == SortMode::OpenCount,
                 false,
             )
             .separator()
             .item(
                 CMD_FENCE_SORT_REVERSE,
-                pecofence_core::i18n::text("倒序"),
+                coredesk_core::i18n::text("倒序"),
                 f.view.reverse,
                 false,
             )
             .separator()
             .item(
                 CMD_FENCE_SORT_GROUP,
-                pecofence_core::i18n::text("按时间分组"),
+                coredesk_core::i18n::text("按时间分组"),
                 f.view.group_by_date,
                 false,
             );
-        menu.submenu(pecofence_core::i18n::text("排序方式"), sort_menu)
+        menu.submenu(coredesk_core::i18n::text("排序方式"), sort_menu)
             .icon(glyph::SORT);
         let new_menu = PopupMenu::new();
         new_menu
             .item(
                 CMD_FENCE_NEW_FOLDER,
-                pecofence_core::i18n::text("新建\x04文件夹"),
+                coredesk_core::i18n::text("新建\x04文件夹"),
                 false,
                 false,
             )
             .icon(glyph::FOLDER)
             .item(
                 CMD_FENCE_NEW_TEXT,
-                pecofence_core::i18n::text("文本文档"),
+                coredesk_core::i18n::text("文本文档"),
                 false,
                 false,
             )
@@ -654,15 +654,15 @@ impl App {
             .separator()
             .item(
                 CMD_TAB_NEW,
-                pecofence_core::i18n::text("新建\x04标签页"),
+                coredesk_core::i18n::text("新建\x04标签页"),
                 false,
                 false,
             );
-        menu.submenu(pecofence_core::i18n::text("新建"), new_menu)
+        menu.submenu(coredesk_core::i18n::text("新建"), new_menu)
             .icon(glyph::ADD)
             .item(
                 CMD_FENCE_PASTE,
-                pecofence_core::i18n::text("粘贴\tCtrl+V"),
+                coredesk_core::i18n::text("粘贴\tCtrl+V"),
                 false,
                 !clipboard::has_file_list(),
             )
@@ -684,15 +684,15 @@ impl App {
             if tabs.len() >= 2 {
                 // A left tab column moves its tabs up and down.
                 let (earlier, later) =
-                    if self.ctx.behavior.tab_bar.get() == pecofence_core::TabBar::Left {
+                    if self.ctx.behavior.tab_bar.get() == coredesk_core::TabBar::Left {
                         (
-                            pecofence_core::i18n::text("上移"),
-                            pecofence_core::i18n::text("下移"),
+                            coredesk_core::i18n::text("上移"),
+                            coredesk_core::i18n::text("下移"),
                         )
                     } else {
                         (
-                            pecofence_core::i18n::text("左移"),
-                            pecofence_core::i18n::text("右移"),
+                            coredesk_core::i18n::text("左移"),
+                            coredesk_core::i18n::text("右移"),
                         )
                     };
                 tab_menu
@@ -700,7 +700,7 @@ impl App {
                     .item(CMD_TAB_MOVE_RIGHT, later, false, tab_idx + 1 >= tabs.len())
                     .item(
                         CMD_TAB_DETACH,
-                        pecofence_core::i18n::text("拆出为独立栅栏"),
+                        coredesk_core::i18n::text("拆出为独立栅栏"),
                         false,
                         false,
                     );
@@ -713,17 +713,17 @@ impl App {
                 for (id, title) in &other_hosts {
                     attach_menu.item(*id, title, false, false);
                 }
-                tab_menu.submenu(pecofence_core::i18n::text("合并到…"), attach_menu);
+                tab_menu.submenu(coredesk_core::i18n::text("合并到…"), attach_menu);
             }
-            menu.submenu(pecofence_core::i18n::text("标签页"), tab_menu)
+            menu.submenu(coredesk_core::i18n::text("标签页"), tab_menu)
                 .icon(glyph::TAB);
         }
         menu.item(
             CMD_FENCE_LOCK,
             if h.locked {
-                pecofence_core::i18n::text("解除锁定")
+                coredesk_core::i18n::text("解除锁定")
             } else {
-                pecofence_core::i18n::text("锁定位置和大小")
+                coredesk_core::i18n::text("锁定位置和大小")
             },
             false,
             false,
@@ -732,20 +732,20 @@ impl App {
         menu.separator()
             .item(
                 CMD_FENCE_OPTIONS,
-                pecofence_core::i18n::text("栅栏选项…"),
+                coredesk_core::i18n::text("栅栏选项…"),
                 false,
                 false,
             )
             .icon(glyph::SETTING)
             .item(
                 CMD_FENCE_NEW,
-                pecofence_core::i18n::text("新建栅栏"),
+                coredesk_core::i18n::text("新建栅栏"),
                 false,
                 false,
             )
             .icon(glyph::ADD_TO)
             .submenu(
-                pecofence_core::i18n::text("在桌面显示文件夹"),
+                coredesk_core::i18n::text("在桌面显示文件夹"),
                 Self::show_folder_submenu(CMD_FENCE_SHOW_FOLDER),
             )
             .icon(glyph::FOLDER);
@@ -754,14 +754,14 @@ impl App {
         if f.kind == FenceKind::Inbox {
             menu.item(
                 CMD_FENCE_HIDE_EMPTY,
-                pecofence_core::i18n::text("为空时自动隐藏"),
+                coredesk_core::i18n::text("为空时自动隐藏"),
                 f.hide_when_empty,
                 false,
             );
         } else {
             menu.item(
                 CMD_FENCE_DELETE,
-                pecofence_core::i18n::text("删除栅栏"),
+                coredesk_core::i18n::text("删除栅栏"),
                 false,
                 false,
             )
@@ -788,7 +788,7 @@ impl App {
                 });
                 if let Some(id) = self
                     .state
-                    .new_fence(pecofence_core::i18n::text("新标签页"), rect)
+                    .new_fence(coredesk_core::i18n::text("新标签页"), rect)
                 {
                     self.state.attach_tab(id, host);
                     self.resync_windows();
@@ -914,29 +914,29 @@ impl App {
         };
         let mut vis = f.view.columns_visible.unwrap_or([true; 3]);
         let menu = PopupMenu::new();
-        menu.item(CMD_COL_NAME, pecofence_core::i18n::text("名称"), true, true)
+        menu.item(CMD_COL_NAME, coredesk_core::i18n::text("名称"), true, true)
             .item(
                 CMD_COL_DATE,
-                pecofence_core::i18n::text("修改日期"),
+                coredesk_core::i18n::text("修改日期"),
                 vis[0],
                 false,
             )
             .item(
                 CMD_COL_TYPE,
-                pecofence_core::i18n::text("类型"),
+                coredesk_core::i18n::text("类型"),
                 vis[1],
                 false,
             )
             .item(
                 CMD_COL_SIZE,
-                pecofence_core::i18n::text("大小"),
+                coredesk_core::i18n::text("大小"),
                 vis[2],
                 false,
             )
             .separator()
             .item(
                 CMD_COL_RESET_WIDTHS,
-                pecofence_core::i18n::text("恢复默认列宽"),
+                coredesk_core::i18n::text("恢复默认列宽"),
                 false,
                 false,
             );
@@ -1001,7 +1001,7 @@ impl App {
         let menu = PopupMenu::new();
         menu.item(
             CMD_NEW_FENCE_HERE,
-            pecofence_core::i18n::text("在此新建栅栏"),
+            coredesk_core::i18n::text("在此新建栅栏"),
             false,
             false,
         );
@@ -1019,7 +1019,7 @@ mod tests {
 
     #[test]
     fn open_location_falls_back_to_the_shortcut_when_it_has_no_file_target() {
-        let dir = std::env::temp_dir().join(format!("pecofence-location-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coredesk-location-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let plain = dir.join("note.txt");
         let remote = dir.join("site.url");

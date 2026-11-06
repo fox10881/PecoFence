@@ -1,6 +1,6 @@
 """Compacts public/trailer-v3/targets.json (measured on the native takes) into src/trailer/targets.json.
 
-uv run python extras/pecofence-promo/scripts/make-trailer-targets.py
+uv run python extras/coredesk-promo/scripts/make-trailer-targets.py
 """
 import json
 from pathlib import Path

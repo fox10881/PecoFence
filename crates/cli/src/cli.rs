@@ -2,11 +2,11 @@
 //! line per option, one example per leaf.
 
 use clap::{ArgGroup, Args, Parser, Subcommand};
-use pecofence_ipc::{DEFAULT_TIMEOUT_MS, Rect};
+use coredesk_ipc::{DEFAULT_TIMEOUT_MS, Rect};
 
-const ABOUT: &str = "Control a running PecoFence (Windows desktop fences) from the terminal.\n\
+const ABOUT: &str = "Control a running CoreDesk Engine (Windows desktop fences) from the terminal.\n\
 Every command prints JSON (pretty on a terminal, one line otherwise); errors go to stderr as JSON.\n\
-Agents: start with `pecofence-cli describe` (command catalog) and `pecofence-cli skill` (usage guide).";
+Agents: start with `coredesk-cli describe` (command catalog) and `coredesk-cli skill` (usage guide).";
 
 const FENCE_HELP: &str =
     "Fence: id, unique id prefix (>=6 hex), or title (exact, then unique substring)";
@@ -14,10 +14,10 @@ const RULE_HELP: &str = "Rule: id, 0-based index, or name";
 const RECT_HELP: &str = "x,y,w,h in physical pixels, virtual-screen coordinates";
 
 #[derive(Parser, Debug)]
-#[command(name = "pecofence-cli", version, about = ABOUT, long_about = None)]
+#[command(name = "coredesk-cli", version, about = ABOUT, long_about = None)]
 #[command(propagate_version = true, disable_help_subcommand = true)]
 pub struct Cli {
-    /// Talk to a named test instance (PECOFENCE_INSTANCE)
+    /// Talk to a named test instance (COREDESK_INSTANCE)
     #[arg(long, global = true, value_name = "NAME")]
     pub instance: Option<String>,
     /// Milliseconds to wait for the app's reply
@@ -42,7 +42,7 @@ pub struct Cli {
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// App version, pid, config path and counters (also the "is it running?" probe)
-    #[command(after_help = "Example: pecofence-cli status")]
+    #[command(after_help = "Example: coredesk-cli status")]
     Status,
     /// Monitors
     Monitor {
@@ -50,14 +50,14 @@ pub enum Command {
         cmd: MonitorCmd,
     },
     /// Machine-readable catalog of commands, exit codes and JSON Schemas (works offline)
-    #[command(after_help = "Example: pecofence-cli describe --schema Settings")]
+    #[command(after_help = "Example: coredesk-cli describe --schema Settings")]
     Describe {
         /// Print the JSON Schema of one type instead (Settings, FenceDto, Cond, ...)
         #[arg(long, value_name = "NAME")]
         schema: Option<String>,
     },
     /// Print the bundled SKILL.md for coding agents (Claude Code, Codex)
-    #[command(after_help = "Example: pecofence-cli skill > .claude/skills/pecofence-cli/SKILL.md")]
+    #[command(after_help = "Example: coredesk-cli skill > .claude/skills/coredesk-cli/SKILL.md")]
     Skill,
     /// Fences (virtual fences, folder portals, tabs)
     Fence {
@@ -94,6 +94,11 @@ pub enum Command {
         #[command(subcommand)]
         cmd: BackupCmd,
     },
+    /// Themes (.cde archives; legacy .peco accepted)
+    Theme {
+        #[command(subcommand)]
+        cmd: ThemeCmd,
+    },
     /// Peek (float every fence above other windows)
     Peek {
         #[command(subcommand)]
@@ -101,7 +106,7 @@ pub enum Command {
     },
     /// Stream desktop events as JSON lines (item added/removed/moved, fence created/deleted/changed) until Ctrl+C
     #[command(
-        after_help = "Example: pecofence-cli watch --fence desktop --once\n         pecofence-cli watch --events item.added,item.moved\n\nEach line is an EventDto (`describe --schema EventDto`); a heartbeat arrives every 30 s on a quiet\nstream and is hidden unless --heartbeat. Typical use: a script waits with --once, then runs a batch."
+        after_help = "Example: coredesk-cli watch --fence desktop --once\n         coredesk-cli watch --events item.added,item.moved\n\nEach line is an EventDto (`describe --schema EventDto`); a heartbeat arrives every 30 s on a quiet\nstream and is hidden unless --heartbeat. Typical use: a script waits with --once, then runs a batch."
     )]
     Watch {
         /// Only items entering or leaving this fence, and that fence's own events
@@ -118,9 +123,7 @@ pub enum Command {
         heartbeat: bool,
     },
     /// Print the app's log file as text (not JSON); -f keeps following it until Ctrl+C
-    #[command(
-        after_help = "Example: pecofence-cli log -n 100\n         pecofence-cli log --follow"
-    )]
+    #[command(after_help = "Example: coredesk-cli log -n 100\n         coredesk-cli log --follow")]
     Log {
         /// Keep printing new lines as they are written
         #[arg(long, short = 'f')]
@@ -129,32 +132,32 @@ pub enum Command {
         #[arg(long, short = 'n', value_name = "N", default_value_t = 50)]
         lines: usize,
     },
-    /// Where PecoFence keeps its files: config, backups, log, crash dumps (works offline)
-    #[command(after_help = "Example: pecofence-cli paths")]
+    /// Where CoreDesk Engine keeps its files: config, backups, log, crash dumps (works offline)
+    #[command(after_help = "Example: coredesk-cli paths")]
     Paths,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum MonitorCmd {
     /// Connected monitors with id, rect, work area, DPI
-    #[command(after_help = "Example: pecofence-cli monitor list")]
+    #[command(after_help = "Example: coredesk-cli monitor list")]
     List,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum FenceCmd {
     /// Fences of the active layout with geometry and options
-    #[command(after_help = "Example: pecofence-cli fence list")]
+    #[command(after_help = "Example: coredesk-cli fence list")]
     List,
     /// One fence
-    #[command(after_help = "Example: pecofence-cli fence get Work")]
+    #[command(after_help = "Example: coredesk-cli fence get Work")]
     Get {
         #[arg(help = FENCE_HELP)]
         fence: String,
     },
     /// New virtual fence, or a folder portal with --portal
     #[command(
-        after_help = "Example: pecofence-cli fence create --title Work --rect 100,100,600,400\n         pecofence-cli fence create --title Tools --below Games --size 1152,400\n\n--below/--above/--right-of/--left-of place the fence next to another one, edges aligned and\nthe snapping gap between them; the size defaults to that fence's."
+        after_help = "Example: coredesk-cli fence create --title Work --rect 100,100,600,400\n         coredesk-cli fence create --title Tools --below Games --size 1152,400\n\n--below/--above/--right-of/--left-of place the fence next to another one, edges aligned and\nthe snapping gap between them; the size defaults to that fence's."
     )]
     #[command(group(ArgGroup::new("place").multiple(false)))]
     Create {
@@ -186,13 +189,13 @@ pub enum FenceCmd {
         size: Option<(i32, i32)>,
     },
     /// Delete any fence; its icons return to the free desktop, rules targeting it are removed
-    #[command(after_help = "Example: pecofence-cli fence delete Temp")]
+    #[command(after_help = "Example: coredesk-cli fence delete Temp")]
     Delete {
         #[arg(help = FENCE_HELP)]
         fence: String,
     },
     /// Rename a fence
-    #[command(after_help = "Example: pecofence-cli fence rename Work Projects")]
+    #[command(after_help = "Example: coredesk-cli fence rename Work Projects")]
     Rename {
         #[arg(help = FENCE_HELP)]
         fence: String,
@@ -200,7 +203,7 @@ pub enum FenceCmd {
         title: String,
     },
     /// Move a fence: absolute --rect, new --x/--y, or another --monitor
-    #[command(after_help = "Example: pecofence-cli fence move Work --x 1200 --y 80")]
+    #[command(after_help = "Example: coredesk-cli fence move Work --x 1200 --y 80")]
     #[command(group(ArgGroup::new("where").required(true).multiple(true)))]
     Move {
         #[arg(help = FENCE_HELP)]
@@ -229,14 +232,14 @@ pub enum FenceCmd {
     },
     /// Size a fence so all of its items show without scrolling (see `fit` in `fence get`)
     #[command(
-        after_help = "Example: pecofence-cli fence fit Tools\n\nThe height becomes fit.fittingHeight. A tab resizes its host window; only the tab currently shown\ncan be measured."
+        after_help = "Example: coredesk-cli fence fit Tools\n\nThe height becomes fit.fittingHeight. A tab resizes its host window; only the tab currently shown\ncan be measured."
     )]
     Fit {
         #[arg(help = FENCE_HELP)]
         fence: String,
     },
     /// Resize a fence (physical px); position is kept
-    #[command(after_help = "Example: pecofence-cli fence resize Work --w 800")]
+    #[command(after_help = "Example: coredesk-cli fence resize Work --w 800")]
     #[command(group(ArgGroup::new("size").required(true).multiple(true)))]
     Resize {
         #[arg(help = FENCE_HELP)]
@@ -250,8 +253,8 @@ pub enum FenceCmd {
     },
     /// Set a per-fence option (title, iconSize, spacing, autoHeight, locked, excludeFromQuickHide, opacity, tint, tintTitleOnly, tabColor, titleColor, titleSize, titleOnHover, layout, sort, reverse, groupByDate, labelLines, portalNavigate, portalTitleIcon, hideWhenEmpty); `fence rename` is the friendlier way to set title
     #[command(
-        override_usage = "pecofence-cli fence set [OPTIONS] <FENCE> <PROP> <VALUE>\n       pecofence-cli fence set [OPTIONS] --all <PROP> <VALUE>",
-        after_help = "Arguments:\n  <FENCE>  Fence: id, unique id prefix (>=6 hex), or title (exact, then unique substring)\n  <PROP>   Option name as shown by `fence get` (title: prefer `fence rename`)\n  <VALUE>  JSON value or bare text: 48, true, list, null; quote # colours: \"#ff8800\" or '\"#ff8800\"'\n\nExample: pecofence-cli fence set Work layout list\n         pecofence-cli fence set Work tint \"#ff8800\"\n         pecofence-cli fence set --all opacity clear"
+        override_usage = "coredesk-cli fence set [OPTIONS] <FENCE> <PROP> <VALUE>\n       coredesk-cli fence set [OPTIONS] --all <PROP> <VALUE>",
+        after_help = "Arguments:\n  <FENCE>  Fence: id, unique id prefix (>=6 hex), or title (exact, then unique substring)\n  <PROP>   Option name as shown by `fence get` (title: prefer `fence rename`)\n  <VALUE>  JSON value or bare text: 48, true, list, null; quote # colours: \"#ff8800\" or '\"#ff8800\"'\n\nExample: coredesk-cli fence set Work layout list\n         coredesk-cli fence set Work tint \"#ff8800\"\n         coredesk-cli fence set --all opacity clear"
     )]
     Set {
         /// FENCE PROP VALUE, or PROP VALUE with --all
@@ -265,7 +268,7 @@ pub enum FenceCmd {
         string: bool,
     },
     /// Roll a fence up to its title bar
-    #[command(after_help = "Example: pecofence-cli fence roll Work")]
+    #[command(after_help = "Example: coredesk-cli fence roll Work")]
     Roll {
         #[arg(help = FENCE_HELP, required_unless_present = "all", conflicts_with = "all")]
         fence: Option<String>,
@@ -274,7 +277,7 @@ pub enum FenceCmd {
         all: bool,
     },
     /// Expand a rolled-up fence
-    #[command(after_help = "Example: pecofence-cli fence unroll --all")]
+    #[command(after_help = "Example: coredesk-cli fence unroll --all")]
     Unroll {
         #[arg(help = FENCE_HELP, required_unless_present = "all", conflicts_with = "all")]
         fence: Option<String>,
@@ -283,13 +286,13 @@ pub enum FenceCmd {
         all: bool,
     },
     /// Dock a fence to the top edge of its monitor (rolled up, expands on hover)
-    #[command(after_help = "Example: pecofence-cli fence dock-top Work")]
+    #[command(after_help = "Example: coredesk-cli fence dock-top Work")]
     DockTop {
         #[arg(help = FENCE_HELP)]
         fence: String,
     },
     /// Merge a fence into another one as a tab
-    #[command(after_help = "Example: pecofence-cli fence merge Games --into Work")]
+    #[command(after_help = "Example: coredesk-cli fence merge Games --into Work")]
     Merge {
         #[arg(help = FENCE_HELP)]
         fence: String,
@@ -298,20 +301,20 @@ pub enum FenceCmd {
         into: String,
     },
     /// Split a tab out into its own window
-    #[command(after_help = "Example: pecofence-cli fence detach Games")]
+    #[command(after_help = "Example: coredesk-cli fence detach Games")]
     Detach {
         /// Tab (fence selector)
         #[arg(help = FENCE_HELP)]
         fence: String,
     },
     /// Quick-hide every fence
-    #[command(after_help = "Example: pecofence-cli fence hide-all")]
+    #[command(after_help = "Example: coredesk-cli fence hide-all")]
     HideAll,
     /// Show every fence again
-    #[command(after_help = "Example: pecofence-cli fence show-all")]
+    #[command(after_help = "Example: coredesk-cli fence show-all")]
     ShowAll,
     /// Open the Settings window on this fence's options page
-    #[command(after_help = "Example: pecofence-cli fence open-options Work")]
+    #[command(after_help = "Example: coredesk-cli fence open-options Work")]
     OpenOptions {
         #[arg(help = FENCE_HELP)]
         fence: String,
@@ -322,7 +325,7 @@ pub enum FenceCmd {
 pub enum ItemCmd {
     /// Items in containers and on the free desktop, with kind, ext, size and file metadata
     #[command(
-        after_help = "Example: pecofence-cli item list --fence Work\n         pecofence-cli item list --fence desktop --kind documents --ext pdf"
+        after_help = "Example: coredesk-cli item list --fence Work\n         coredesk-cli item list --fence desktop --kind documents --ext pdf"
     )]
     List {
         #[arg(long, value_name = "FENCE", help = FENCE_HELP)]
@@ -336,7 +339,7 @@ pub enum ItemCmd {
     },
     /// Rename the file behind an item (a real rename on disk, like F2)
     #[command(
-        after_help = "Example: pecofence-cli item rename \"C:\\Users\\me\\Desktop\\IMG_2031.pdf\" \"2026-09 electricity bill\"\n         pecofence-cli item rename notes notes.md --keep-ext false\n\nThe current extension is kept unless NAME already ends with it; --keep-ext false renames verbatim."
+        after_help = "Example: coredesk-cli item rename \"C:\\Users\\me\\Desktop\\IMG_2031.pdf\" \"2026-09 electricity bill\"\n         coredesk-cli item rename notes notes.md --keep-ext false\n\nThe current extension is kept unless NAME already ends with it; --keep-ext false renames verbatim."
     )]
     Rename {
         /// Item id, full path, or unique display name
@@ -349,7 +352,7 @@ pub enum ItemCmd {
     },
     /// Move icons into a fence or --to desktop (a folder portal moves the real files)
     #[command(
-        after_help = "Example: pecofence-cli item move --glob \"*.pdf\" --to Docs\n         pecofence-cli item move \"C:\\Users\\me\\Desktop\\report.pdf\" Steam --to Work\n         pecofence-cli item move --glob \"*.jpg\" --from Games --to Pictures --dry-run\n\n--dry-run lists per item: membership (icon only), fileMove (a real move, with destination),\nnone, or skip (reason exists / notAFile). A name that already exists at the destination is\nskipped by the real move too, instead of opening Explorer's replace dialog. Files moved through a\nportal arrive a moment after the reply: list the fence again to see them."
+        after_help = "Example: coredesk-cli item move --glob \"*.pdf\" --to Docs\n         coredesk-cli item move \"C:\\Users\\me\\Desktop\\report.pdf\" Steam --to Work\n         coredesk-cli item move --glob \"*.jpg\" --from Games --to Pictures --dry-run\n\n--dry-run lists per item: membership (icon only), fileMove (a real move, with destination),\nnone, or skip (reason exists / notAFile). A name that already exists at the destination is\nskipped by the real move too, instead of opening Explorer's replace dialog. Files moved through a\nportal arrive a moment after the reply: list the fence again to see them."
     )]
     #[command(group(ArgGroup::new("which").required(true)))]
     Move {
@@ -378,13 +381,13 @@ pub enum ItemCmd {
 #[derive(Subcommand, Debug)]
 pub enum SettingsCmd {
     /// The whole Settings object, or one value at a dotted camelCase path
-    #[command(after_help = "Example: pecofence-cli settings get peek.enabled")]
+    #[command(after_help = "Example: coredesk-cli settings get peek.enabled")]
     Get {
         /// Dotted path such as peek.enabled, quickHide.enabled, iconSize
         path: Option<String>,
     },
     /// Set one value; the app applies it immediately
-    #[command(after_help = "Example: pecofence-cli settings set peek.enabled false")]
+    #[command(after_help = "Example: coredesk-cli settings set peek.enabled false")]
     Set {
         /// Dotted camelCase path (see `describe --schema Settings`)
         path: String,
@@ -396,38 +399,38 @@ pub enum SettingsCmd {
         string: bool,
     },
     /// Open the Settings window
-    #[command(after_help = "Example: pecofence-cli settings open-ui")]
+    #[command(after_help = "Example: coredesk-cli settings open-ui")]
     OpenUi,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum RuleCmd {
     /// Rules in evaluation order, with defaultTarget and keepUpdated
-    #[command(after_help = "Example: pecofence-cli rule list")]
+    #[command(after_help = "Example: coredesk-cli rule list")]
     List,
     /// Add a rule; every given condition must match (AND)
-    #[command(after_help = "Example: pecofence-cli rule add --name PDFs --ext pdf --to Docs")]
+    #[command(after_help = "Example: coredesk-cli rule add --name PDFs --ext pdf --to Docs")]
     Add(Box<RuleAddArgs>),
     /// Remove a rule
-    #[command(after_help = "Example: pecofence-cli rule remove PDFs")]
+    #[command(after_help = "Example: coredesk-cli rule remove PDFs")]
     Remove {
         #[arg(help = RULE_HELP)]
         rule: String,
     },
     /// Enable a rule
-    #[command(after_help = "Example: pecofence-cli rule enable 0")]
+    #[command(after_help = "Example: coredesk-cli rule enable 0")]
     Enable {
         #[arg(help = RULE_HELP)]
         rule: String,
     },
     /// Disable a rule (kept in the list)
-    #[command(after_help = "Example: pecofence-cli rule disable PDFs")]
+    #[command(after_help = "Example: coredesk-cli rule disable PDFs")]
     Disable {
         #[arg(help = RULE_HELP)]
         rule: String,
     },
     /// Reorder: place a rule at a 0-based index
-    #[command(after_help = "Example: pecofence-cli rule move PDFs --to 0")]
+    #[command(after_help = "Example: coredesk-cli rule move PDFs --to 0")]
     Move {
         #[arg(help = RULE_HELP)]
         rule: String,
@@ -437,7 +440,7 @@ pub enum RuleCmd {
     },
     /// Replace the whole rule set from a RuleSet JSON file (or stdin with -)
     #[command(
-        after_help = "Example: pecofence-cli rule list | jq '.keepUpdated=false' | pecofence-cli rule import -"
+        after_help = "Example: coredesk-cli rule list | jq '.keepUpdated=false' | coredesk-cli rule import -"
     )]
     Import {
         /// Path to a RuleSet JSON file, or - for stdin
@@ -445,7 +448,7 @@ pub enum RuleCmd {
     },
     /// Re-file every desktop item through the rules now; --dry-run only lists what would move
     #[command(
-        after_help = "Example: pecofence-cli rule apply --dry-run\n         pecofence-cli rule apply"
+        after_help = "Example: coredesk-cli rule apply --dry-run\n         coredesk-cli rule apply"
     )]
     Apply {
         /// Report the moves without making them (no snapshot, nothing changes)
@@ -513,11 +516,11 @@ pub struct RuleAddArgs {
 #[derive(Subcommand, Debug)]
 pub enum SnapshotCmd {
     /// Saved snapshots (newest first)
-    #[command(after_help = "Example: pecofence-cli snapshot list")]
+    #[command(after_help = "Example: coredesk-cli snapshot list")]
     List,
     /// Save the current layout as a snapshot
     #[command(
-        after_help = "Example: pecofence-cli snapshot save before-cleanup\n         pecofence-cli snapshot save gaming-setup --wallpaper\n\n--wallpaper also stores the current desktop wallpaper; a restore of this snapshot re-applies it."
+        after_help = "Example: coredesk-cli snapshot save before-cleanup\n         coredesk-cli snapshot save gaming-setup --wallpaper\n\n--wallpaper also stores the current desktop wallpaper; a restore of this snapshot re-applies it."
     )]
     Save {
         /// Snapshot name
@@ -527,14 +530,14 @@ pub enum SnapshotCmd {
         wallpaper: bool,
     },
     /// Restore a snapshot (the current layout is snapshotted first)
-    #[command(after_help = "Example: pecofence-cli snapshot restore 3f9c2a1e
+    #[command(after_help = "Example: coredesk-cli snapshot restore 3f9c2a1e
          (snapshot.id or a unique id prefix from `snapshot save` / `snapshot list`; a name works only while it is unique)\n\nA snapshot saved with --wallpaper restores the desktop wallpaper too.")]
     Restore {
         /// Snapshot id, unique id prefix, or (unique) name
         id: String,
     },
     /// Rename a snapshot
-    #[command(after_help = "Example: pecofence-cli snapshot rename 3f9c2a1e work-setup")]
+    #[command(after_help = "Example: coredesk-cli snapshot rename 3f9c2a1e work-setup")]
     Rename {
         /// Snapshot id, unique id prefix, or (unique) name
         id: String,
@@ -542,7 +545,7 @@ pub enum SnapshotCmd {
         name: String,
     },
     /// Delete a snapshot
-    #[command(after_help = "Example: pecofence-cli snapshot delete 3f9c2a1e")]
+    #[command(after_help = "Example: coredesk-cli snapshot delete 3f9c2a1e")]
     Delete {
         /// Snapshot id, unique id prefix, or (unique) name
         id: String,
@@ -553,7 +556,7 @@ pub enum SnapshotCmd {
 pub enum ConfigCmd {
     /// Write the complete configuration (settings, rules, layouts, snapshots) to a JSON file
     #[command(
-        after_help = "Example: pecofence-cli config export C:\\Users\\me\\Desktop\\pecofence.json
+        after_help = "Example: coredesk-cli config export C:\\Users\\me\\Desktop\\coredesk.json
          (absolute path; an existing file is overwritten)"
     )]
     Export {
@@ -562,7 +565,7 @@ pub enum ConfigCmd {
     },
     /// Replace the configuration with a JSON file (the current layout is snapshotted first)
     #[command(
-        after_help = "Example: pecofence-cli config import C:\\Users\\me\\Desktop\\pecofence.json"
+        after_help = "Example: coredesk-cli config import C:\\Users\\me\\Desktop\\coredesk.json"
     )]
     Import {
         /// Absolute path of a `config export` file or a config.json
@@ -570,7 +573,7 @@ pub enum ConfigCmd {
     },
     /// Validate a config.json or export file without the app: parse, then cross-check rule targets, portal folders, tabs, $schema
     #[command(
-        after_help = "Example: pecofence-cli config check C:\\Users\\me\\Desktop\\pecofence.json\n         pecofence-cli config check            (the running or default config.json)\n\nExit 0 = loads and no errors (warnings may be listed); exit 1 = the app would reject it or a problem was found."
+        after_help = "Example: coredesk-cli config check C:\\Users\\me\\Desktop\\coredesk.json\n         coredesk-cli config check            (the running or default config.json)\n\nExit 0 = loads and no errors (warnings may be listed); exit 1 = the app would reject it or a problem was found."
     )]
     Check {
         /// File to check (default: the config.json in use, see `paths`)
@@ -581,11 +584,11 @@ pub enum ConfigCmd {
 #[derive(Subcommand, Debug)]
 pub enum BackupCmd {
     /// Legacy daily backups beside config.json, newest first
-    #[command(after_help = "Example: pecofence-cli backup list")]
+    #[command(after_help = "Example: coredesk-cli backup list")]
     List,
     /// Restore one of the listed backups (the current layout is snapshotted first)
     #[command(
-        after_help = "Example: pecofence-cli backup restore \"C:\\Users\\me\\AppData\\Roaming\\PecoFence\\backups\\2026-09-23.json\"
+        after_help = "Example: coredesk-cli backup restore \"C:\\Users\\me\\AppData\\Roaming\\CoreDeskEngine\\backups\\2026-09-23.json\"
          (a path exactly as printed by `backup list`)"
     )]
     Restore {
@@ -595,12 +598,22 @@ pub enum BackupCmd {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum ThemeCmd {
+    /// Import a .cde theme archive (legacy .peco files import the same way)
+    #[command(after_help = "Example: coredesk-cli theme import C:\\Users\\me\\Desktop\\desert.cde")]
+    Import {
+        /// Path to the .cde/.peco archive
+        file: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 pub enum PeekCmd {
     /// Float every fence above the current windows
-    #[command(after_help = "Example: pecofence-cli peek start")]
+    #[command(after_help = "Example: coredesk-cli peek start")]
     Start,
     /// End Peek
-    #[command(after_help = "Example: pecofence-cli peek end")]
+    #[command(after_help = "Example: coredesk-cli peek end")]
     End,
 }
 
@@ -646,7 +659,7 @@ mod tests {
     }
 
     fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
-        Cli::try_parse_from(std::iter::once("pecofence-cli").chain(args.iter().copied()))
+        Cli::try_parse_from(std::iter::once("coredesk-cli").chain(args.iter().copied()))
     }
 
     #[test]

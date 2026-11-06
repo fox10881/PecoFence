@@ -68,11 +68,11 @@ pub fn theme(id: &str) -> Option<&'static serde_json::Value> {
 }
 
 /// Serializes the theme into the line wire-format the injected
-/// `pecofence_tap.dll` parses inside `StartMenuExperienceHost.exe` (the host
+/// `coredesk_tap.dll` parses inside `StartMenuExperienceHost.exe` (the host
 /// transports it with `WM_COPYDATA`):
 ///
 /// ```text
-/// PECO-SMS1
+/// CDES-SMS1
 /// L <windowsDefault|forceNewLayout|newLayoutSideBySide>
 /// T <target>
 /// S <style>
@@ -90,7 +90,7 @@ pub fn theme(id: &str) -> Option<&'static serde_json::Value> {
 pub fn theme_wire(id: &str) -> Option<String> {
     let theme = theme(id)?;
     let mut out = String::with_capacity(64 * 1024);
-    out.push_str("PECO-SMS1\n");
+    out.push_str("CDES-SMS1\n");
     let layout = theme["startMenuLayout"]
         .as_str()
         .unwrap_or("windowsDefault");
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn theme_wire_serializes_rules_resources_and_layout() {
         let wire = theme_wire("TranslucentStartMenu").expect("wire for known theme");
-        assert!(wire.starts_with("PECO-SMS1\n"));
+        assert!(wire.starts_with("CDES-SMS1\n"));
         assert!(wire.ends_with("E\n"));
         assert!(wire.contains("L windowsDefault\n"));
         assert!(wire.contains("T Border#AcrylicBorder\n"));

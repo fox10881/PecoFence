@@ -3,14 +3,14 @@
 //! when its title is over that fence's title. A click-through layered window placed directly
 //! below the dragged fence (so above the fence it outlines).
 
-use pecofence_platform::layered::LayeredImage;
-use pecofence_platform::window::{
+use coredesk_platform::layered::LayeredImage;
+use coredesk_platform::window::{
     self, ClassOptions, MessageHandler, Window, WindowBuilder, WindowClass, style,
 };
-use pecofence_platform::{HWND, RECT, desktop, msg};
+use coredesk_platform::{HWND, RECT, desktop, msg};
 use windows_core::Result;
 
-pub const DROP_PREVIEW_CLASS: &str = "PecoFence.DropPreview";
+pub const DROP_PREVIEW_CLASS: &str = "CoreDeskEngine.DropPreview";
 
 pub struct DropPreview {
     _class: WindowClass,

@@ -9,13 +9,13 @@ const report = (overrides = {}) => ({
   app: '0.1.4',
   language: 'zh-CN',
   crash: false,
-  system: { app: 'PecoFence 0.1.4 (ZIP / winget)', windows: 'build 26200' },
-  log: '2026-10-04T12:00:00Z  INFO pecofence::app: config loaded fences=7',
+  system: { app: 'CoreDesk 0.1.4 (ZIP / winget)', windows: 'build 26200' },
+  log: '2026-10-04T12:00:00Z  INFO coredesk::app: config loaded fences=7',
   ...overrides,
 });
 
 const post = (body, headers = {}) =>
-  new Request('https://api.pecofence.jiang.jp/feedback', {
+  new Request('https://api.coredesk.jiang.jp/feedback', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.7', ...headers },
     body: typeof body === 'string' ? body : JSON.stringify(body),
@@ -31,7 +31,7 @@ async function run(request, { github = () => new Response('{}', { status: 201 })
   };
   const limiterKeys = [];
   const env = {
-    GITHUB_REPO: 'DayuanJiang/PecoFence-feedback',
+    GITHUB_REPO: 'DayuanJiang/CoreDesk-feedback',
     GITHUB_TOKEN: 'test-token',
     LIMITER: { limit: async ({ key }) => (limiterKeys.push(key), { success: !limited }) },
   };
@@ -49,7 +49,7 @@ test('a valid report becomes an issue in the private repository', async () => {
   assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
   assert.deepEqual(limiterKeys, ['203.0.113.7']);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, 'https://api.github.com/repos/DayuanJiang/PecoFence-feedback/issues');
+  assert.equal(calls[0].url, 'https://api.github.com/repos/DayuanJiang/CoreDesk-feedback/issues');
   assert.equal(calls[0].init.headers.Authorization, 'Bearer test-token');
   const { title, body, labels } = calls[0].issue;
   assert.equal(title, '[0.1.4] Fences vanish after sleep');
@@ -103,12 +103,12 @@ test('bad reports are refused before GitHub is called', async () => {
 });
 
 test('protocol errors', async () => {
-  const preflight = await worker.fetch(new Request('https://api.pecofence.jiang.jp/feedback', { method: 'OPTIONS' }), {});
+  const preflight = await worker.fetch(new Request('https://api.coredesk.jiang.jp/feedback', { method: 'OPTIONS' }), {});
   assert.equal(preflight.status, 204);
   assert.equal(preflight.headers.get('Access-Control-Allow-Headers'), 'Content-Type');
   assert.equal((await run(post(report(), { 'Content-Type': 'text/plain' }))).response.status, 415);
-  assert.equal((await worker.fetch(new Request('https://api.pecofence.jiang.jp/feedback'), {})).status, 405);
-  assert.equal((await worker.fetch(new Request('https://api.pecofence.jiang.jp/other'), {})).status, 404);
+  assert.equal((await worker.fetch(new Request('https://api.coredesk.jiang.jp/feedback'), {})).status, 405);
+  assert.equal((await worker.fetch(new Request('https://api.coredesk.jiang.jp/other'), {})).status, 404);
   assert.equal((await run(post(report()), { limited: true })).response.status, 429);
   assert.equal((await run(post('x'.repeat(70 * 1024)))).response.status, 413);
 });

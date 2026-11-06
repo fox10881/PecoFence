@@ -1,12 +1,12 @@
 //! Host-side controller for the taskbar XAML styler — the native
 //! replacement for the Windhawk `windows-11-taskbar-styler` mod.
 //!
-//! `tap::ensure_resident` guarantees `pecofence_tap.dll` is resident in
+//! `tap::ensure_resident` guarantees `coredesk_tap.dll` is resident in
 //! `explorer.exe` with its command window up, then `WM_COPYDATA` delivers
-//! the serialized theme (`pecofence_core::taskbar_themes::theme_wire`, a
-//! `PECO-TBS1` wire) which the injected styler applies to the taskbar's
+//! the serialized theme (`coredesk_core::taskbar_themes::theme_wire`, a
+//! `CDES-TBS1` wire) which the injected styler applies to the taskbar's
 //! XAML tree in place. The DLL's death watch restores stock styling if
-//! pecofence.exe dies.
+//! coredesk.exe dies.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -155,11 +155,11 @@ fn deliver(hwnd: crate::bindings::HWND, tb: &mut Tb) -> bool {
 /// settings reverts.
 pub fn apply(id: &str) -> bool {
     let use_variant =
-        pecofence_core::taskbar_themes::variant_feature(id).is_some_and(feature_enabled);
+        coredesk_core::taskbar_themes::variant_feature(id).is_some_and(feature_enabled);
     let wire = if id.is_empty() {
         return reset();
     } else {
-        pecofence_core::taskbar_themes::theme_wire(id, use_variant)
+        coredesk_core::taskbar_themes::theme_wire(id, use_variant)
     };
     let Some(wire) = wire else {
         return false;

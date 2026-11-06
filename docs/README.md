@@ -1,7 +1,7 @@
 # Documentation
 
-- [Let your AI agent configure PecoFence: quick start and examples](CLI.md#start-with-your-ai-agent)
-- [Upgrading to PecoFence](UPGRADING.md)
+- [Let your AI agent configure CoreDesk Engine: quick start and examples](CLI.md#start-with-your-ai-agent)
+- [Upgrading to CoreDesk Engine](UPGRADING.md)
 - [Development and verification](DEVELOPMENT.md)
 - [Languages and translation contributions](LOCALIZATION.md)
 - [Preparing and publishing a release](RELEASING.md)

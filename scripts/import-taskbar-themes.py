@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Convert the Windhawk `windows-11-taskbar-styler` theme structs into the
-PecoFence backend catalog (crates/core/data/taskbar_themes.json).
+CoreDesk backend catalog (crates/core/data/taskbar_themes.json).
 
 The source is the mod's published C++ source: `const Theme g_theme<Name> = {{...},
 {...}, {...}}` aggregates — three lists (targetStyles, styleConstants,

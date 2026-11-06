@@ -122,7 +122,7 @@ pub fn local_time_parts(unix: i64) -> Option<(u16, u8)> {
 }
 
 /// Local calendar date (year, month 1..=12, day 1..=31) of a Unix time — the input of the
-/// "按时间分组" bucketing in `pecofence_core::date_group`.
+/// "按时间分组" bucketing in `coredesk_core::date_group`.
 pub fn local_civil_date(unix: i64) -> Option<(i32, u8, u8)> {
     let st = local_system_time(unix)?;
     Some((i32::from(st.wYear), st.wMonth as u8, st.wDay as u8))
