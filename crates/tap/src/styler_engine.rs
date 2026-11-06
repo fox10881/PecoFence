@@ -146,6 +146,47 @@ fn known() -> std::sync::MutexGuard<'static, BTreeMap<u64, String>> {
     KNOWN.lock().unwrap_or_else(|p| p.into_inner())
 }
 
+/// Reported-type prefix marking the immersive ComposableShell experiences
+/// surfaces (Task View, the Alt+Tab switcher, the touch-keyboard input
+/// switcher). Their elements — and every descendant — must never enter the
+/// styling path: the watcher callback is delivered on the surface's own UI
+/// thread, so matcher ancestor-walks and `SetValue` writes into a subtree
+/// that is still constructing/animating stall the island's activation and
+/// leave Task View wedged for the whole explorer session.
+const IMMERSIVE_PREFIX: &str = "WindowsInternal.ComposableShell.Experiences.";
+
+/// Handles inside the immersive subtree. A reported `Experiences.*` type
+/// marks a subtree root; `relation.Parent` then propagates the mark to
+/// every descendant, so generic children (`Border`, `Grid`,
+/// `ContentPresenter`) under switcher elements are skipped at O(1) instead
+/// of walked.
+fn immersive() -> std::sync::MutexGuard<'static, std::collections::BTreeSet<u64>> {
+    static IMMERSIVE: Mutex<std::collections::BTreeSet<u64>> =
+        Mutex::new(std::collections::BTreeSet::new());
+    IMMERSIVE.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// `true` when `handle` lives inside an immersive experiences subtree —
+/// either its reported type starts with `IMMERSIVE_PREFIX` or its parent
+/// handle was already marked. Marks the handle so its own descendants take
+/// the same early-out.
+fn is_immersive(handle: u64, parent: u64, reported_type: &str) -> bool {
+    let mut set = immersive();
+    if set.contains(&handle) {
+        return true;
+    }
+    if reported_type.starts_with(IMMERSIVE_PREFIX) {
+        crate::tap_log!("styler: immersive subtree excluded root={reported_type}");
+        set.insert(handle);
+        return true;
+    }
+    if set.contains(&parent) {
+        set.insert(handle);
+        return true;
+    }
+    false
+}
+
 /// `g_elementPropertyModifying` — set while we write a property so the
 /// re-apply callback skips our own writes.
 static MODIFYING: AtomicBool = AtomicBool::new(false);
@@ -4114,6 +4155,15 @@ pub fn on_element(
     parent: u64,
     reported_type: &str,
 ) {
+    if is_immersive(element.Handle.0, parent, reported_type) {
+        // Excluded subtree — release the reported handles without any
+        // matcher, dispatcher or write work. Immersive churn also stays
+        // out of the storm counter so a Task View open can never pause
+        // taskbar styling.
+        queue_release(element.Handle.0);
+        queue_release(parent);
+        return;
+    }
     known().insert(element.Handle.0, reported_type.to_string());
     queue_release(element.Handle.0);
     queue_release(parent);
@@ -4203,6 +4253,9 @@ pub fn on_element(
 /// `OnVisualTreeChange` (Remove) — `CleanupCustomizations`: drop state,
 /// unregister, restore originals, propagate capture removal.
 pub fn on_element_removed(handle: u64) {
+    // Handles recycle across tree lifetimes — drop the mark so a reused
+    // handle is never mistaken for immersive later.
+    immersive().remove(&handle);
     known().remove(&handle);
     queue_release(handle);
     let es = {
@@ -4276,8 +4329,46 @@ pub fn shutdown() {
         eng.to_release.clear();
     }
     known().clear();
+    immersive().clear();
     TL_RULES.with(|t| *t.borrow_mut() = (0, Rc::new(Vec::new())));
     TREE_NODES.with(|p| p.borrow_mut().clear());
     PROP_QUEUE.with(|q| q.borrow_mut().clear());
     disarm_layout_detour();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn immersive_marks_prefix_roots_and_propagates_to_descendants() {
+        let root = 0xA11;
+        let child = 0xA12;
+        let grandchild = 0xA13;
+        let outside = 0xB11;
+        let outside_child = 0xB12;
+        assert!(!immersive().contains(&root));
+        // A ComposableShell.Experiences type marks itself…
+        assert!(is_immersive(
+            root,
+            0,
+            "WindowsInternal.ComposableShell.Experiences.Switcher.SwitchItemList"
+        ));
+        // …and every descendant — even generic controls — inherits the mark.
+        assert!(is_immersive(child, root, "Windows.UI.Xaml.Controls.Grid"));
+        assert!(is_immersive(grandchild, child, "Windows.UI.Xaml.Controls.Border"));
+        assert!(immersive().contains(&child));
+        assert!(immersive().contains(&grandchild));
+        // Unrelated trees stay untouched.
+        assert!(!is_immersive(outside, 0, "Taskbar.TaskbarFrame"));
+        assert!(!is_immersive(outside_child, outside, "Windows.UI.Xaml.Controls.Grid"));
+        assert!(!immersive().contains(&outside));
+        // …including near-miss prefixes that only resemble the namespace.
+        assert!(!is_immersive(0xC11, 0, "WindowsInternal.ComposableShell.NotExperiences.X"));
+        assert!(!is_immersive(0xC12, 0, "MyOwn.Experiences.Switcher"));
+        // Remove drops the mark so a recycled handle is never misjudged.
+        immersive().remove(&child);
+        assert!(!immersive().contains(&child));
+        immersive().clear();
+    }
 }

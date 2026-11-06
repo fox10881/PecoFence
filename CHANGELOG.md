@@ -19,6 +19,20 @@
   `bounds`/`adaptiveColor` stay live-mirrored — they can't witness a
   hand-edit and would otherwise mark the active design "app-authored" on
   every drag.
+- **Win+Tab / Task View no longer wedges**: the injected XAML styler was
+  matching and writing properties inside the immersive ComposableShell
+  subtree (Task View, the Alt+Tab switcher, the input switcher) — the
+  Windhawk themes it ports deliberately carry `Experiences.Switcher`
+  targets, so every reported switcher element ran matcher ancestor-walks
+  and `SetValue` writes on the island's own UI thread while it was still
+  constructing. That stalls the island's activation and leaves Task View
+  broken for the whole explorer session. Elements whose reported type is
+  under `WindowsInternal.ComposableShell.Experiences.` — and all of their
+  descendants — are now excluded from matching, dispatch and writes at
+  O(1); the marks drop on element removal so recycled handles stay
+  correct, and immersive churn no longer counts against the vtw storm
+  limiter. Taskbar, Start Menu, Notification Center and File Explorer
+  styling are unaffected.
 
 ## 0.3.0 — 2026-11-06
 
