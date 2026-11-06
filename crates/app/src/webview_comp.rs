@@ -12,6 +12,7 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(clippy::missing_transmute_annotations)]
+#![allow(clippy::upper_case_acronyms)]
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -221,7 +222,7 @@ impl IWv2Controller3 {
             (Interface::vtable(self).get_CoreWebView2)(Interface::as_raw(self), &mut webview)
                 .ok()?;
         }
-        webview.ok_or_else(|| windows_core::Error::empty())
+        webview.ok_or_else(windows_core::Error::empty)
     }
     pub unsafe fn put_DefaultBackgroundColor(&self, color: Wv2Color) -> Result<()> {
         unsafe {
@@ -314,7 +315,7 @@ impl IWv2 {
         unsafe {
             (Interface::vtable(self).Settings)(Interface::as_raw(self), &mut settings).ok()?;
         }
-        settings.ok_or_else(|| windows_core::Error::empty())
+        settings.ok_or_else(windows_core::Error::empty)
     }
     pub unsafe fn NavigateToString(&self, html: &HSTRING) -> Result<()> {
         unsafe {
@@ -748,7 +749,7 @@ struct CursorChanged(Rc<RefCell<dyn FnMut(&IWv2CompositionController)>>);
 impl IWv2CursorChanged_Impl for CursorChanged_Impl {
     fn Invoke(&self, sender: Ref<IWv2CompositionController>, _args: Ref<IUnknown>) -> Result<()> {
         if let Ok(sender) = sender.ok() {
-            (self.0.borrow_mut())(&sender);
+            (self.0.borrow_mut())(sender);
         }
         Ok(())
     }
@@ -1319,7 +1320,7 @@ impl CompWebview {
                 };
                 let mouse_data = match message {
                     0x020A | 0x020E => (msg::hi_u16(wparam) as u16 as i16) as i32 as u32,
-                    0x020B | 0x020C | 0x020D => msg::hi_u16(wparam),
+                    0x020B..=0x020D => msg::hi_u16(wparam),
                     _ => 0,
                 };
                 self.send_mouse(kind, msg::lo_u16(wparam) as i32, mouse_data, x, y);

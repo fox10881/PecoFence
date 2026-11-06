@@ -68,9 +68,7 @@ pub fn user_accepts_notifications() -> bool {
 /// `4` = presentation mode) without the private module leaking.
 pub fn user_notification_state() -> Option<i32> {
     // SAFETY: plain FFI call with an out parameter.
-    unsafe { SHQueryUserNotificationState() }
-        .ok()
-        .map(|s| s as i32)
+    unsafe { SHQueryUserNotificationState() }.ok()
 }
 
 /// Whether Windows' startup switch for the package (Settings > Apps > Startup, the manifest's

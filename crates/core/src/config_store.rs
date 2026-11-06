@@ -2278,7 +2278,7 @@ mod tests {
 
         // The bytes on disk are valid UTF-8 and contain the names unescaped
         // (serde_json JSON-escapes backslashes, so match the Unicode stems).
-        let raw = fs::read(&store.primary_path()).unwrap();
+        let raw = fs::read(store.primary_path()).unwrap();
         let text = String::from_utf8(raw).expect("config.json must be UTF-8");
         assert!(
             text.contains("سماء زرقاء"),

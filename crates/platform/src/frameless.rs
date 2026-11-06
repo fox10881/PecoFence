@@ -273,7 +273,7 @@ pub fn nc_button(
                 );
             },
             HTCLOSE => {
-                let _ = window::post_message(hwnd, msg::WM_CLOSE, 0, 0);
+                window::post_message(hwnd, msg::WM_CLOSE, 0, 0);
             }
             HTCAPTION => {
                 let (x, y) = nc_point(lparam);

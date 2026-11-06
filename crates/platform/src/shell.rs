@@ -855,12 +855,11 @@ fn write_overlay_override(root: HKEY, value: &str) -> bool {
     let wide = to_wide(value);
     let bytes: Vec<u8> = wide.iter().flat_map(|c| c.to_le_bytes()).collect();
     // SAFETY: `bytes` is the UTF-16 image of `value`; key closed on all paths.
-    let ok = unsafe {
+    unsafe {
         let s = RegSetValueExW(hkey, PCWSTR(name.as_ptr()), None, REG_SZ, Some(&bytes));
         let _ = RegCloseKey(hkey);
         s.0 == 0
-    };
-    ok
+    }
 }
 
 /// Tells the shell the association icons changed so Explorer and

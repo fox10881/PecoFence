@@ -48,6 +48,11 @@ pub enum Effect {
     QuantumSwarm,
     CyberGridReveal,
     RepulsionDust,
+    Bokeh,
+    Leaves,
+    Warp,
+    Pulse,
+    Meteors,
 }
 
 impl Effect {
@@ -72,6 +77,11 @@ impl Effect {
             "quantum_swarm" => Self::QuantumSwarm,
             "cyber_grid_reveal" => Self::CyberGridReveal,
             "repulsion_dust" => Self::RepulsionDust,
+            "bokeh" => Self::Bokeh,
+            "leaves" => Self::Leaves,
+            "warp" => Self::Warp,
+            "pulse" => Self::Pulse,
+            "meteors" => Self::Meteors,
             _ => return None,
         })
     }
@@ -96,6 +106,11 @@ impl Effect {
             Self::QuantumSwarm => "quantum_swarm",
             Self::CyberGridReveal => "cyber_grid_reveal",
             Self::RepulsionDust => "repulsion_dust",
+            Self::Bokeh => "bokeh",
+            Self::Leaves => "leaves",
+            Self::Warp => "warp",
+            Self::Pulse => "pulse",
+            Self::Meteors => "meteors",
         }
     }
 
@@ -224,6 +239,8 @@ pub struct FxCache {
     glow_mist: Vec<RadialGradient>,
     /// Petal-pink radial (sakura).
     petal: Vec<RadialGradient>,
+    /// Cool blue-white soft orb (bokeh).
+    bokeh: Vec<RadialGradient>,
     /// Emerald → cyan → violet vertical column (aurora ribbons).
     ribbon: Vec<LinearGradient>,
     /// White → transparent horizontal tail (meteor).
@@ -327,6 +344,9 @@ pub struct Engine {
     met: P,
     met_live: bool,
     next_met: f32,
+    /// Emitters' shared countdown — pulse rings / meteor shower streaks
+    /// claim dead slots when it fires (both are ambient, never cursor-driven).
+    next_emit: f32,
     // Cursor channel (ripples + constellation + the interactive effects).
     cursor: (f32, f32),
     cursor_prev: (f32, f32),
@@ -385,6 +405,7 @@ impl Engine {
             met: P::default(),
             met_live: false,
             next_met: 0.0,
+            next_emit: 0.0,
             cursor: (0.0, 0.0),
             cursor_prev: (0.0, 0.0),
             button_down: false,
@@ -637,6 +658,61 @@ impl Engine {
                 p.life = 1.0;
             }
             Effect::CyberGridReveal => {}
+            Effect::Bokeh => {
+                // Depth tiers: near orbs are huge and faint, far ones small
+                // and slightly brighter — the classic defocused-light look.
+                if anywhere {
+                    p.y = self.range(0.0, h);
+                } else {
+                    p.y = h + self.range(20.0, 90.0);
+                }
+                p.k = (i % 3) as f32;
+                p.r = match p.k as usize {
+                    0 => self.range(80.0, 150.0),
+                    1 => self.range(40.0, 80.0),
+                    _ => self.range(16.0, 40.0),
+                };
+                p.a = match p.k as usize {
+                    0 => self.range(0.05, 0.09),
+                    1 => self.range(0.08, 0.14),
+                    _ => self.range(0.10, 0.18),
+                };
+                p.vy = -self.range(6.0, 22.0);
+                p.ph = self.range(0.0, std::f32::consts::TAU);
+                p.fq = self.range(0.15, 0.55);
+            }
+            Effect::Leaves => {
+                if anywhere {
+                    p.y = self.range(0.0, h);
+                } else {
+                    p.y = self.range(-70.0, -12.0);
+                }
+                p.r = self.range(5.5, 11.0);
+                p.vy = self.range(45.0, 110.0);
+                p.ph = self.range(0.0, std::f32::consts::TAU);
+                p.fq = self.range(0.8, 1.8);
+                p.rot = self.range(0.0, std::f32::consts::TAU);
+                p.vr = self.range(-3.2, 3.2);
+                p.k = (i % 4) as f32; // autumn palette tier
+            }
+            Effect::Warp => {
+                // ph = travel bearing, r = current distance from center;
+                // velocity is derived radially in tick_warp.
+                p.ph = self.range(0.0, std::f32::consts::TAU);
+                p.r = if anywhere {
+                    self.range(8.0, w.max(h) * 0.5)
+                } else {
+                    self.range(4.0, 30.0)
+                };
+                p.fq = self.range(0.7, 1.6);
+                p.a = self.range(0.4, 0.95);
+                p.k = self.range(0.0, 1.0); // warm↔cool hue mix
+            }
+            // Emitter-driven actor pools: slots stay dead (life 0) until the
+            // shared `next_emit` timer claims one per ring/streak.
+            Effect::Pulse | Effect::Meteors => {
+                p.life = 0.0;
+            }
         }
         p
     }
@@ -684,6 +760,11 @@ impl Engine {
             Effect::QuantumSwarm => self.tick_swarm(n, dt),
             Effect::CyberGridReveal => {}
             Effect::RepulsionDust => self.tick_dust(n, dt),
+            Effect::Bokeh => self.tick_bokeh(n, dt),
+            Effect::Leaves => self.tick_leaves(n, dt),
+            Effect::Warp => self.tick_warp(n, dt),
+            Effect::Pulse => self.tick_pulse(n, dt),
+            Effect::Meteors => self.tick_meteors(n, dt),
         }
         // External wind/gravity: additive uniform field over the live prefix.
         if self.lp.wind != 0.0 || self.lp.gravity != 0.0 {
@@ -941,16 +1022,17 @@ impl Engine {
             self.next_met -= dt;
             if self.next_met <= 0.0 {
                 self.next_met = self.range(5.0, 10.0);
-                let mut m = P::default();
-                m.x = self.range(0.0, self.w * 0.7);
-                m.y = self.range(0.0, self.h * 0.25);
                 let sp = self.range(700.0, 1100.0);
                 let ang = self.range(0.5, 0.9);
-                m.vx = sp * ang.cos();
-                m.vy = sp * ang.sin();
-                m.life = self.range(0.7, 1.2);
-                m.r = self.range(1.6, 2.6);
-                self.met = m;
+                self.met = P {
+                    x: self.range(0.0, self.w * 0.7),
+                    y: self.range(0.0, self.h * 0.25),
+                    vx: sp * ang.cos(),
+                    vy: sp * ang.sin(),
+                    life: self.range(0.7, 1.2),
+                    r: self.range(1.6, 2.6),
+                    ..P::default()
+                };
                 self.met_live = true;
             }
         }
@@ -1222,6 +1304,133 @@ impl Engine {
         }
     }
 
+    /// Defocused orbs rising gently with a lateral sway; deeper tiers are
+    /// smaller and climb faster (parallax), so respawns stay bottom-entry.
+    fn tick_bokeh(&mut self, n: usize, dt: f32) {
+        let w = self.w;
+        for i in 0..n {
+            let p = &mut self.ps[i];
+            p.ph += dt * p.fq;
+            p.x += (p.vx + p.ph.sin() * 18.0 * p.fq) * dt;
+            p.y += p.vy * dt;
+            if p.y + p.r < -10.0 {
+                self.respawn(i);
+                continue;
+            }
+            let m = p.r + 12.0;
+            if p.x < -m {
+                p.x = w + m;
+            } else if p.x > w + m {
+                p.x = -m;
+            }
+        }
+    }
+
+    /// Tumbling leaves: sway like sakura but heavier, and `vr` spins the
+    /// silhouette in the draw transform.
+    fn tick_leaves(&mut self, n: usize, dt: f32) {
+        let h = self.h;
+        for i in 0..n {
+            let p = &mut self.ps[i];
+            p.ph += dt * p.fq;
+            p.rot += p.vr * dt;
+            p.x += (p.vx + p.ph.sin() * 36.0) * dt;
+            p.y += p.vy * dt;
+            if p.y > h + 30.0 || p.x < -40.0 || p.x > self.w + 40.0 {
+                self.respawn(i);
+            }
+        }
+    }
+
+    /// Warp streaks accelerate away from the center; `r` is the distance
+    /// channel and x/y are just its cartesian projection for the draw pass.
+    fn tick_warp(&mut self, n: usize, dt: f32) {
+        let (cx, cy) = (self.w * 0.5, self.h * 0.5);
+        let maxd = (cx * cx + cy * cy).sqrt() + 80.0;
+        for i in 0..n {
+            let dead = {
+                let p = &mut self.ps[i];
+                p.r += (40.0 + p.r * 1.9) * p.fq * dt;
+                p.x = cx + p.ph.cos() * p.r;
+                p.y = cy + p.ph.sin() * p.r;
+                p.r > maxd
+            };
+            if dead {
+                self.respawn(i);
+            }
+        }
+    }
+
+    /// Sonar rings: `next_emit` claims a dead slot every ~0.9–1.6 s; a ring
+    /// grows for ~2.8 s while its alpha channel (`life`) fades to zero.
+    fn tick_pulse(&mut self, n: usize, dt: f32) {
+        self.next_emit -= dt;
+        if self.next_emit <= 0.0 {
+            self.next_emit = self.range(0.9, 1.6);
+            if let Some(i) = self.claim_dead_slot(n) {
+                let (x, y, grow, hue) = (
+                    self.w * 0.5 + self.range(-60.0, 60.0),
+                    self.h * 0.5 + self.range(-40.0, 40.0),
+                    self.range(160.0, 270.0),
+                    self.rnd(),
+                );
+                let p = &mut self.ps[i];
+                p.x = x;
+                p.y = y;
+                p.r = 0.0;
+                p.life = 1.0;
+                p.fq = grow;
+                p.k = hue;
+            }
+        }
+        for i in 0..n {
+            let p = &mut self.ps[i];
+            if p.life <= 0.0 {
+                continue;
+            }
+            p.life -= dt / 2.8;
+            p.r += p.fq * dt;
+        }
+    }
+
+    /// Meteor shower: `next_emit` launches a fast diagonal streak every
+    /// ~0.5–1.8 s, alternating fall directions; streaks die below the
+    /// screen or when their fade budget runs out.
+    fn tick_meteors(&mut self, n: usize, dt: f32) {
+        self.next_emit -= dt;
+        if self.next_emit <= 0.0 {
+            self.next_emit = self.range(0.5, 1.8);
+            if let Some(i) = self.claim_dead_slot(n) {
+                let dir = if self.rnd() < 0.5 { 1.0 } else { -1.0 };
+                let sp = self.range(650.0, 1150.0);
+                let ang = self.range(0.42, 0.62); // radians off vertical
+                let (x, y) = (self.range(0.0, self.w), self.range(-180.0, -40.0));
+                let (fq, r) = (self.range(2.6, 4.2), self.range(1.4, 2.6));
+                let p = &mut self.ps[i];
+                p.x = x;
+                p.y = y;
+                p.vx = ang.sin() * sp * dir;
+                p.vy = ang.cos() * sp;
+                p.life = 1.0;
+                p.fq = fq; // trail-length factor
+                p.r = r;
+            }
+        }
+        let h = self.h;
+        for i in 0..n {
+            let p = &mut self.ps[i];
+            if p.life <= 0.0 {
+                continue;
+            }
+            p.life -= dt * 0.9;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            if p.y - 20.0 > h || p.life <= 0.0 {
+                p.life = 0.0;
+            }
+        }
+    }
+
     /// Draw the frame into the panel session (surface already clipped to size).
     pub fn draw(&self, s: &DrawingSession<'_>, cache: &mut FxCache) -> Result<()> {
         s.clear(self.cf(0.0, 0.0, 0.0, 0.0));
@@ -1242,6 +1451,11 @@ impl Engine {
             Effect::QuantumSwarm => self.draw_swarm(s, cache),
             Effect::CyberGridReveal => self.draw_grid_reveal(s, cache),
             Effect::RepulsionDust => self.draw_dust(s, cache),
+            Effect::Bokeh => self.draw_bokeh(s, cache),
+            Effect::Leaves => self.draw_leaves(s, cache),
+            Effect::Warp => self.draw_warp(s, cache),
+            Effect::Pulse => self.draw_pulse(s, cache),
+            Effect::Meteors => self.draw_meteors(s, cache),
         }
         if self.flash > 0.0 {
             if let Some(b) = cache.pen(s) {
@@ -1757,6 +1971,153 @@ impl Engine {
             s.fill_ellipse(&ellipse(p.x, p.y, p.r, p.r), b);
         }
     }
+
+    /// Soft defocused orbs — one baked radial gradient, scaled to each
+    /// tier's radius; alpha bucketed like the other glow sprites.
+    fn draw_bokeh(&self, s: &DrawingSession<'_>, cache: &mut FxCache) {
+        if !FxCache::radial(
+            s,
+            &[
+                stop(0.0, self.cf(0.66, 0.80, 1.0, 0.85)),
+                stop(0.55, self.cf(0.48, 0.64, 0.98, 0.34)),
+                stop(1.0, self.cf(0.36, 0.52, 0.92, 0.0)),
+            ],
+            &mut cache.bokeh,
+        ) {
+            return;
+        }
+        let base = s.transform();
+        let n = self.target_count().min(self.ps.len());
+        for i in 0..n {
+            let p = &self.ps[i];
+            let g = &cache.bokeh[bucket(p.a)];
+            let r = p.r * self.lp.glow;
+            let m = Matrix3x2::scale(r, r) * Matrix3x2::translation(p.x, p.y) * base;
+            s.with_transform(&m, || s.fill_ellipse(&ellipse(0.0, 0.0, 1.0, 1.0), g));
+        }
+    }
+
+    /// Autumn leaves — a squashed ellipse body with a center vein, the whole
+    /// silhouette rotated by `rot` (tumble channel) through `with_transform`.
+    fn draw_leaves(&self, s: &DrawingSession<'_>, cache: &mut FxCache) {
+        const PALETTE: [[f32; 3]; 4] = [
+            [0.93, 0.62, 0.18], // amber
+            [0.90, 0.42, 0.12], // orange
+            [0.72, 0.20, 0.13], // crimson
+            [0.85, 0.70, 0.28], // gold
+        ];
+        let n = self.target_count().min(self.ps.len());
+        let base = s.transform();
+        for i in 0..n {
+            let p = &self.ps[i];
+            let c = PALETTE[p.k as usize % PALETTE.len()];
+            let Some(b) = cache.pen(s) else { return };
+            b.set_color(self.cf(c[0], c[1], c[2], 0.92));
+            let m = Matrix3x2::rotation(p.rot) * Matrix3x2::translation(p.x, p.y) * base;
+            s.with_transform(&m, || {
+                s.fill_ellipse(&ellipse(0.0, 0.0, p.r, p.r * 0.55), b);
+            });
+            // Vein — same transform, darker shade of the leaf's own hue.
+            let Some(v) = cache.pen(s) else { return };
+            v.set_color(self.cf(c[0] * 0.55, c[1] * 0.55, c[2] * 0.55, 0.7));
+            s.with_transform(&m, || {
+                s.draw_line(
+                    v2(0.0, -p.r * 0.5),
+                    v2(0.0, p.r * 0.5),
+                    v,
+                    (p.r * 0.12).max(0.6),
+                );
+            });
+        }
+    }
+
+    /// Warp streaks — short radial lines whose tails stretch with distance
+    /// and whose alpha fades in from the center spawn point.
+    fn draw_warp(&self, s: &DrawingSession<'_>, cache: &mut FxCache) {
+        let (cx, cy) = (self.w * 0.5, self.h * 0.5);
+        let maxd = (cx * cx + cy * cy).sqrt().max(1.0);
+        let n = self.target_count().min(self.ps.len());
+        for i in 0..n {
+            let p = &self.ps[i];
+            let (dx, dy) = (p.ph.cos(), p.ph.sin());
+            let tail = (p.r * 0.16 + 4.0).min(90.0);
+            let fade = (p.r / 140.0).clamp(0.0, 1.0);
+            let Some(b) = cache.pen(s) else { return };
+            // Warm↔cool mix per streak; near-white at the head line itself.
+            b.set_color(self.cf(0.72 + 0.26 * p.k, 0.78, 1.0, p.a * fade));
+            s.draw_line(
+                v2(cx + dx * (p.r - tail), cy + dy * (p.r - tail)),
+                v2(p.x, p.y),
+                b,
+                (0.8 + 2.0 * p.r / maxd).min(3.0),
+            );
+        }
+    }
+
+    /// Expanding sonar rings — cyan→violet hue per ring, outline width and
+    /// alpha both decay across the ring's life.
+    fn draw_pulse(&self, s: &DrawingSession<'_>, cache: &mut FxCache) {
+        let n = self.target_count().min(self.ps.len());
+        let Some(b) = cache.pen(s) else { return };
+        for i in 0..n {
+            let p = &self.ps[i];
+            if p.life <= 0.0 {
+                continue;
+            }
+            let t = p.life.clamp(0.0, 1.0);
+            // Slight vertical squash reads as a wave on the ground plane.
+            b.set_color(self.cf(0.35 + p.k * 0.4, 0.72 - p.k * 0.18, 1.0, t * 0.5));
+            s.draw_ellipse(&ellipse(p.x, p.y, p.r, p.r * 0.62), b, 0.8 + t * 2.4);
+        }
+    }
+
+    /// Meteor streaks — the shared horizontal tail gradient plus a bright
+    /// head dot, identical recipe to the starfield meteor but per-actor.
+    fn draw_meteors(&self, s: &DrawingSession<'_>, cache: &mut FxCache) {
+        let n = self.target_count().min(self.ps.len());
+        let mut any = false;
+        for i in 0..n {
+            if self.ps[i].life > 0.0 {
+                any = true;
+                break;
+            }
+        }
+        if !any {
+            return;
+        }
+        if !FxCache::linear(
+            s,
+            v2(0.0, 0.0),
+            v2(1.0, 0.0),
+            &[
+                stop(0.0, self.cf(1.0, 1.0, 1.0, 0.9)),
+                stop(1.0, self.cf(0.55, 0.75, 1.0, 0.0)),
+            ],
+            &mut cache.tail,
+        ) {
+            return;
+        }
+        for i in 0..n {
+            let p = &self.ps[i];
+            if p.life <= 0.0 {
+                continue;
+            }
+            let sp = (p.vx * p.vx + p.vy * p.vy).sqrt().max(1.0);
+            let (ux, uy) = (p.vx / sp, p.vy / sp);
+            let tail = p.fq * 55.0;
+            let a = p.life.clamp(0.0, 1.0);
+            let g = &cache.tail[bucket(a)];
+            s.draw_line(
+                v2(p.x, p.y),
+                v2(p.x - ux * tail, p.y - uy * tail),
+                g,
+                p.r.max(1.2),
+            );
+            let Some(b) = cache.pen(s) else { return };
+            b.set_color(self.cf(1.0, 1.0, 1.0, 0.9 * a));
+            s.fill_ellipse(&ellipse(p.x, p.y, p.r, p.r), b);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1872,6 +2233,19 @@ mod tests {
         assert!(wild.bolt_life < calm.bolt_life);
         // A strobe re-strike shortens the pending gap, never lengthens it.
         assert!(wild.next_bolt <= 1.8 + f32::EPSILON);
+    }
+
+    #[test]
+    fn every_effect_id_round_trips_with_metadata() {
+        // The closed catalog is a contract across three tables: the engine
+        // must parse+emit every id, and each must carry a display name and
+        // a baseline count for the sidecar template.
+        for id in pecofence_core::EFFECT_IDS {
+            let e =
+                Effect::from_id(id).unwrap_or_else(|| panic!("{id} missing from Effect::from_id"));
+            assert_eq!(e.id(), *id);
+            assert_ne!(pecofence_core::effect_display_name(id), "Live effect");
+        }
     }
 
     #[test]

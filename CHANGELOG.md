@@ -1,6 +1,28 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-11-06
+
+### New content — Series-2 widgets & effects
+
+- **5 new clock widgets** (`g11`–`g15`): **Neon Circuit HUD** (corner-bracket
+  frame, scanline sweep, mono HUD readouts), **Swiss Mono Column**
+  (oversized hairline type + micro caps column), **Retro Split-Flap**
+  (departure-board flip cards with hinge lines), **Orbital Geometry**
+  (wireframe circle/square/polygon field with an orbiting second-hand
+  satellite), and **Regent Classic Analog** (hairline ticks, roman
+  numerals, slim serif hands). All five support granular `elements`
+  sub-element styling, `adaptiveColor`, light-backdrop palettes, 12/24h
+  formatting, and fit-to-bounds scaling.
+- **5 new pure-D2D live effects**: `bokeh` (depth-tiered defocused orbs
+  drifting upward), `leaves` (tumbling autumn leaves in a 4-color
+  palette), `warp` (accelerating radial star-streaks from screen center),
+  `pulse` (expanding sonar rings, cyan→violet), `meteors` (diagonal
+  meteor shower with gradient tails + head glow). All five respect
+  `particleCount`, `speed`, `wind`, `gravity`, `primaryColor`, and
+  `glowRadius` in `Live_Effects_config.json`, and carry English `name`
+  labels in the sidecar templates like the rest of the catalog.
+
+### Improvements & fixes
 
 - **Thunderstorm intensity drives lightning, not rain**: the effect's
   rain layer is now a fixed 96-drop drizzle (or the modder's absolute

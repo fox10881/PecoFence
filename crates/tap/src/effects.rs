@@ -9,6 +9,16 @@
 //! ported 1:1 from `effects/GaussianBlurEffect.cpp`, `FloodEffect.cpp` and
 //! `CompositeEffect.cpp`.
 
+// COM signatures keep Windows' PascalCase member names and the interop
+// declarations mirror the ABI verbatim — style lints don't apply here.
+#![allow(
+    non_camel_case_types,
+    non_snake_case,
+    dead_code,
+    clippy::missing_transmute_annotations,
+    clippy::useless_transmute
+)]
+
 use crate::bindings::*;
 use crate::fx_bindings::{
     IGraphicsEffect, IGraphicsEffect_Impl, IGraphicsEffectSource, IGraphicsEffectSource_Impl,

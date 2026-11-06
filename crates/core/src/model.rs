@@ -252,9 +252,11 @@ pub struct Settings {
     #[serde(default = "default_true")]
     pub clock_use_24_hour: bool,
     /// Native desktop particle/weather effect: `"none"` (default) or one of the
-    /// 12 effect ids — `rain`, `thunderstorm`, `snow`, `fireflies`, `embers`,
+    /// 22 effect ids — `rain`, `thunderstorm`, `snow`, `fireflies`, `embers`,
     /// `sakura`, `mist`, `aurora`, `starfield`, `matrix`, `ripples`,
-    /// `constellation`. Rendered by the zero-WebView2 Direct2D/DComp overlay.
+    /// `constellation`, `magic_trail`, `shatter_clicks`, `quantum_swarm`,
+    /// `cyber_grid_reveal`, `repulsion_dust`, `bokeh`, `leaves`, `warp`,
+    /// `pulse`, `meteors`. Rendered by the zero-WebView2 Direct2D/DComp overlay.
     #[serde(default = "desktop_effect_default")]
     pub desktop_effect: String,
     /// Particle density 10–100 %; scales the live-particle count linearly.
@@ -302,6 +304,11 @@ pub const EFFECT_IDS: &[&str] = &[
     "quantum_swarm",
     "cyber_grid_reveal",
     "repulsion_dust",
+    "bokeh",
+    "leaves",
+    "warp",
+    "pulse",
+    "meteors",
 ];
 
 /// Per-effect baseline live-particle counts — the compiled default each
@@ -329,6 +336,11 @@ pub const EFFECT_BASE_PARTICLES: &[(&str, u32)] = &[
     ("quantum_swarm", 100),
     ("cyber_grid_reveal", 0),
     ("repulsion_dust", EFFECT_MAX_PARTICLES),
+    ("bokeh", 26),
+    ("leaves", 110),
+    ("warp", 190),
+    ("pulse", 14),
+    ("meteors", 28),
 ];
 
 /// Baseline live-particle count for `effect_id` (`0` = no particle loop /
@@ -366,6 +378,11 @@ pub const EFFECT_DISPLAY_NAMES: &[(&str, &str)] = &[
     ("quantum_swarm", "Quantum magnetic swarm"),
     ("cyber_grid_reveal", "Cyber grid reveal"),
     ("repulsion_dust", "Repulsion dust"),
+    ("bokeh", "Bokeh orbs"),
+    ("leaves", "Autumn leaves"),
+    ("warp", "Warp drive"),
+    ("pulse", "Sonic pulse"),
+    ("meteors", "Meteor shower"),
 ];
 
 /// English display name for a live-effect id (`"Live effect"` fallback —
@@ -487,7 +504,7 @@ impl EffectParams {
 /// dictionary keyed by these ids; `"none"` is not a widget and is absent.
 pub const CLOCK_WIDGET_IDS: &[&str] = &[
     "g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "g9", "g10", //
-    "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d10",
+    "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d10", "g11", "g12", "g13", "g14", "g15",
 ];
 
 /// `true` for a known clock-design id (`g1..g10`, `d1..d10`).
@@ -520,6 +537,11 @@ pub const WIDGET_DISPLAY_NAMES: &[(&str, &str)] = &[
     ("d8", "Gradient Slab"),
     ("d9", "Date Poster"),
     ("d10", "Compact Chip"),
+    ("g11", "Neon Circuit HUD"),
+    ("g12", "Swiss Mono Column"),
+    ("g13", "Retro Split-Flap"),
+    ("g14", "Orbital Geometry"),
+    ("g15", "Regent Classic Analog"),
 ];
 
 /// English display name for a clock-design id (`"Clock widget"` fallback —

@@ -317,7 +317,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "pecofence"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "pecofence-core",
  "pecofence-ipc",
@@ -335,7 +335,7 @@ dependencies = [
 
 [[package]]
 name = "pecofence-cli"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "clap",
  "pecofence-core",
@@ -348,7 +348,7 @@ dependencies = [
 
 [[package]]
 name = "pecofence-core"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "schemars",
  "serde",
@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "pecofence-ipc"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "pecofence-core",
  "schemars",
@@ -370,7 +370,7 @@ dependencies = [
 
 [[package]]
 name = "pecofence-platform"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "pecofence-core",
  "tracing",
@@ -384,7 +384,7 @@ dependencies = [
 
 [[package]]
 name = "pecofence-render"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "bezier_easing",
  "pecofence-core",
@@ -400,7 +400,7 @@ dependencies = [
 
 [[package]]
 name = "pecofence-tap"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "retour",
  "windows-collections 0.100.0",
@@ -412,7 +412,7 @@ dependencies = [
 
 [[package]]
 name = "pecofence-watchdog"
-version = "0.2.8"
+version = "0.3.0"
 dependencies = [
  "pecofence-core",
  "pecofence-platform",

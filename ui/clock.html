@@ -296,6 +296,80 @@
   .d10-secline i { display: block; height: 100%; background: var(--accent); }
   .style-d10-wrap { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
 
+  /* ===================== Series 2: g11–g15 ===================== */
+  /* G11 — لوحة الدائرة النيونية: cyberpunk HUD frame with scanline sweep */
+  .style-g11 {
+    position: relative; padding: 6vmin 7vmin; direction: ltr;
+    background: rgba(6, 10, 18, 0.62); border: 1px solid rgba(56, 189, 248, 0.32);
+    box-shadow: 0 0 4vmin rgba(56, 189, 248, 0.12), inset 0 0 5vmin rgba(56, 189, 248, 0.05);
+    font-family: Consolas, 'Cascadia Mono', monospace; overflow: hidden;
+  }
+  .g11-corner { position: absolute; width: 4.5vmin; height: 4.5vmin; border: 2px solid var(--accent); filter: drop-shadow(0 0 1vmin var(--accent-glow)); }
+  .g11-corner.tl { top: 1.2vmin; left: 1.2vmin; border-right: none; border-bottom: none; }
+  .g11-corner.tr { top: 1.2vmin; right: 1.2vmin; border-left: none; border-bottom: none; }
+  .g11-corner.bl { bottom: 1.2vmin; left: 1.2vmin; border-right: none; border-top: none; }
+  .g11-corner.br { bottom: 1.2vmin; right: 1.2vmin; border-left: none; border-top: none; }
+  .g11-scan { position: absolute; left: 0; right: 0; top: -16%; height: 14%; pointer-events: none;
+    background: linear-gradient(180deg, transparent, rgba(56, 189, 248, 0.10), transparent);
+    animation: g11sweep 4.5s linear infinite; }
+  @keyframes g11sweep { to { top: 112%; } }
+  .g11-head { display: flex; justify-content: space-between; font-size: 3.4vmin; letter-spacing: 0.22em; color: var(--accent); margin-bottom: 2.2vmin; }
+  .g11-head .blink { animation: g11blink 1.1s steps(1) infinite; }
+  @keyframes g11blink { 50% { opacity: 0.15; } }
+  .g11-time { font-size: 21vmin; font-weight: 700; line-height: 1; letter-spacing: 0.02em; color: #eaf6ff; text-shadow: 0 0 2.4vmin var(--accent-glow); }
+  .g11-time .ap { font-size: 6vmin; color: var(--accent); margin-left: 1.5vmin; }
+  .g11-row { display: flex; gap: 5vmin; margin-top: 2.6vmin; font-size: 4.6vmin; color: var(--text-main); }
+  .g11-row b { color: var(--accent); font-weight: 700; margin-right: 1.2vmin; }
+  .g11-bars { display: flex; gap: 1vmin; margin-top: 2.8vmin; }
+  .g11-bars i { flex: 1; height: 1vmin; background: rgba(56, 189, 248, 0.18); }
+  .g11-bars i.fill { background: var(--accent); box-shadow: 0 0 1vmin var(--accent); }
+  /* G12 — العمود الطباعي السويسري: pure typography, hairline rule, micro caps */
+  .style-g12 { display: flex; align-items: center; gap: 5vmin; direction: ltr; }
+  .g12-big { display: flex; flex-direction: column; font-weight: 200; font-size: 24vmin; line-height: 0.88; letter-spacing: -0.03em; }
+  .g12-big .sec { font-size: 7vmin; font-weight: 400; color: var(--accent); margin-top: 1vmin; letter-spacing: 0.1em; }
+  .g12-rule { width: 1px; align-self: stretch; background: rgba(255, 255, 255, 0.28); }
+  .g12-side { display: flex; flex-direction: column; gap: 1.6vmin; text-transform: uppercase; }
+  .g12-ap { font-size: 3.4vmin; color: var(--accent); letter-spacing: 0.3em; }
+  .g12-ap:empty { display: none; }
+  .g12-day { font-size: 5.4vmin; font-weight: 700; letter-spacing: 0.3em; }
+  .g12-date { font-size: 3.8vmin; font-weight: 500; color: var(--text-muted); letter-spacing: 0.22em; }
+  /* G13 — لوحة الوجه القلابة: retro split-flap departure board */
+  .style-g13 { display: flex; flex-direction: column; align-items: center; gap: 3.4vmin; direction: ltr; }
+  .g13-cards { display: flex; align-items: center; gap: 2.4vmin; }
+  .g13-card {
+    position: relative; padding: 3vmin 4.5vmin; border-radius: 2.2vmin;
+    background: linear-gradient(180deg, #2b2f36 0%, #1a1d23 49.5%, #12151a 50%, #191c22 100%);
+    border: 1px solid rgba(0, 0, 0, 0.6); font-family: 'Courier New', monospace;
+    font-size: 20vmin; font-weight: 700; color: #f5e9c8; line-height: 1;
+    box-shadow: 0 1.6vmin 4vmin rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    text-shadow: 0 2px 2px rgba(0, 0, 0, 0.5);
+  }
+  .g13-card::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: rgba(0, 0, 0, 0.72); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06); }
+  .g13-sep { font-size: 16vmin; font-weight: 700; color: rgba(245, 233, 200, 0.55); line-height: 1; }
+  .g13-meta { font-family: 'Courier New', monospace; font-size: 5.4vmin; font-weight: 700; letter-spacing: 0.14em; color: var(--text-main); display: flex; gap: 2vmin; }
+  .g13-meta .js-ap { color: var(--accent); }
+  .g13-meta .js-ap::before { content: '·'; margin-right: 2vmin; color: var(--text-muted); }
+  .g13-meta .js-ap:empty { display: none; }
+  /* G14 — الهندسة المدارية: abstract wireframe geometry behind the readout */
+  .style-g14 { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 80vmin; height: 80vmin; }
+  .g14-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .g14-core { text-align: center; z-index: 1; }
+  .g14-time { font-size: 19vmin; font-weight: 600; line-height: 1; direction: ltr; }
+  .g14-meta { margin-top: 2vmin; display: flex; justify-content: center; gap: 3vmin; font-size: 4.6vmin; }
+  .g14-day { color: var(--accent); font-weight: 700; }
+  /* G15 — الساعة الكلاسيكية الراقية: hairline ticks, roman numerals, slim hands */
+  .style-g15 {
+    position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    width: 82vmin; height: 82vmin; border-radius: 50%;
+    background: radial-gradient(circle at 50% 40%, rgba(252, 250, 244, 0.08), rgba(10, 12, 16, 0.55) 72%);
+    border: 1px solid rgba(255, 255, 255, 0.16); box-shadow: 0 2vmin 6vmin rgba(0, 0, 0, 0.45);
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+  .g15-svg { position: absolute; width: 88%; height: 88%; }
+  .g15-meta { position: absolute; bottom: 17%; text-align: center; }
+  .g15-day { font-size: 4.4vmin; letter-spacing: 0.28em; color: var(--accent); text-transform: uppercase; }
+  .g15-date { font-size: 3.6vmin; color: var(--text-muted); font-style: italic; }
+
   /* ============ Adaptive backdrop palette ============
      `body.light-backdrop` flips every design to a dark-on-light palette
      when the sampler reports a bright region behind the widget. :where()
@@ -320,7 +394,11 @@
   body.light-backdrop .d3-meta b, body.light-backdrop .d4-time i,
   body.light-backdrop .d4-meta .day, body.light-backdrop .d5-meta .day,
   body.light-backdrop .d6-val.huge, body.light-backdrop .d7-day,
-  body.light-backdrop .d9-sub .day, body.light-backdrop .d10-day { color: var(--accent-deep); }
+  body.light-backdrop .d9-sub .day, body.light-backdrop .d10-day,
+  body.light-backdrop .g11-head, body.light-backdrop .g11-row b,
+  body.light-backdrop .g11-time .ap, body.light-backdrop .g12-big .sec,
+  body.light-backdrop .g12-ap, body.light-backdrop .g13-meta .js-ap,
+  body.light-backdrop .g14-day, body.light-backdrop .g15-day { color: var(--accent-deep); }
   body.light-backdrop .d6-val.huge { text-shadow: 0 0 2.4vmin color-mix(in srgb, var(--accent), transparent 40%); }
   body.light-backdrop .g1-card {
   body.light-backdrop .g1-card::after { background: rgba(15,23,42,.22); box-shadow: 0 1px 0 rgba(255,255,255,.6); }
@@ -389,6 +467,22 @@
   }
   body.light-backdrop .style-d10 { background: rgba(255,255,255,.66); box-shadow: 0 1.6vmin 4.5vmin rgba(15,23,42,.2); }
   body.light-backdrop .d10-secline { background: rgba(15,23,42,.12); }
+  body.light-backdrop .style-g11 {
+    background: rgba(244, 248, 252, 0.8); border-color: color-mix(in srgb, var(--accent), #0f172a 30%);
+    box-shadow: 0 0 4vmin rgba(15, 23, 42, 0.14);
+  }
+  body.light-backdrop .g11-time { color: #0f172a; text-shadow: 0 0 2.4vmin color-mix(in srgb, var(--accent), transparent 55%); }
+  body.light-backdrop .g11-bars i { background: rgba(15, 23, 42, 0.16); }
+  body.light-backdrop .g11-corner { border-color: var(--accent-deep); }
+  body.light-backdrop .g12-rule { background: rgba(15, 23, 42, 0.3); }
+  body.light-backdrop .g13-card {
+    background: linear-gradient(180deg, #3a3f47 0%, #22262d 49.5%, #16191f 50%, #1e2229 100%);
+    color: #fdf3d8;
+  }
+  body.light-backdrop .style-g15 {
+    background: radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.75), rgba(226, 232, 240, 0.85) 72%);
+    border-color: rgba(15, 23, 42, 0.2); box-shadow: 0 2vmin 6vmin rgba(15, 23, 42, 0.25);
+  }
 </style>
 </head>
 <body>
@@ -535,6 +629,53 @@
     d10: () => `<div class="d10-time js-t"></div><div class="d10-dot"></div>
       <div class="d10-meta"><div class="d10-day js-day"></div><div class="d10-date js-date"></div></div>
       <div class="d10-secline"><i class="js-secfill"></i></div>`,
+    /* ---------- Series 2: g11–g15 ---------- */
+    g11: () => `
+      <div class="g11-corner tl"></div><div class="g11-corner tr"></div>
+      <div class="g11-corner bl"></div><div class="g11-corner br"></div>
+      <div class="g11-scan"></div>
+      <div class="g11-head"><span>SYS.CLOCK ▸ ONLINE</span><span class="blink">●</span></div>
+      <div class="g11-time"><span class="js-hh"></span>:<span class="js-mm"></span><span class="ap js-ap"></span></div>
+      <div class="g11-row"><span><b>DAY</b><span class="js-day"></span></span><span><b>DATE</b><span class="js-date"></span></span></div>
+      <div class="g11-bars"><i class="fill"></i><i class="fill"></i><i></i><i></i><i></i></div>`,
+    g12: () => `
+      <div class="g12-big"><span class="js-hh"></span><span class="js-mm"></span><span class="sec js-ss"></span></div>
+      <div class="g12-rule"></div>
+      <div class="g12-side"><span class="g12-ap js-ap"></span><span class="g12-day js-day"></span><span class="g12-date js-date"></span></div>`,
+    g13: () => `
+      <div class="g13-cards">
+        <div class="g13-card"><span class="js-hh"></span></div>
+        <div class="g13-sep">:</div>
+        <div class="g13-card"><span class="js-mm"></span></div>
+        <div class="g13-sep">:</div>
+        <div class="g13-card"><span class="js-ss"></span></div>
+      </div>
+      <div class="g13-meta"><span class="js-day"></span><span>·</span><span class="js-date"></span><span class="js-ap"></span></div>`,
+    g14: () => `<svg class="g14-svg" viewBox="0 0 320 320">
+        <circle cx="160" cy="160" r="140" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="1.5"/>
+        <rect x="60" y="60" width="200" height="200" fill="none" stroke="var(--accent)" stroke-width="1" opacity="0.5" transform="rotate(15 160 160)"/>
+        <circle cx="160" cy="160" r="105" fill="none" stroke="#a855f7" stroke-width="1" opacity="0.4" stroke-dasharray="4 8"/>
+        <polygon points="160,28 176,56 144,56" fill="var(--accent)" opacity="0.85"/>
+        <circle id="g14sat" r="6" cx="160" cy="20" fill="var(--accent)"/>
+      </svg>
+      <div class="g14-core"><div class="g14-time js-t"></div>
+      <div class="g14-meta"><span class="g14-day js-day"></span><span class="js-date"></span></div></div>`,
+    g15: () => {
+      let ticks = '';
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * TAU;
+        ticks += `<line x1="${160 + 132 * Math.sin(a)}" y1="${160 - 132 * Math.cos(a)}" x2="${160 + 144 * Math.sin(a)}" y2="${160 - 144 * Math.cos(a)}" stroke="rgba(255,255,255,.5)" stroke-width="1.6"/>`;
+      }
+      const num = (txt, a) => `<text x="${160 + 110 * Math.sin(a)}" y="${160 - 110 * Math.cos(a)}" text-anchor="middle" dominant-baseline="central" font-size="23" fill="rgba(248,250,252,.85)" font-family="Georgia">${txt}</text>`;
+      return `<svg class="g15-svg" viewBox="0 0 320 320">${ticks}
+        ${num('XII', 0)}${num('III', Math.PI / 2)}${num('VI', Math.PI)}${num('IX', Math.PI * 1.5)}
+        <line id="g15h" x1="160" y1="160" x2="160" y2="100" stroke="#f8fafc" stroke-width="4.5" stroke-linecap="round"/>
+        <line id="g15m" x1="160" y1="160" x2="160" y2="78" stroke="#f8fafc" stroke-width="2.8" stroke-linecap="round"/>
+        <line id="g15s" x1="160" y1="176" x2="160" y2="66" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round"/>
+        <circle cx="160" cy="160" r="4.5" fill="#f8fafc" stroke="var(--accent)" stroke-width="1.5"/>
+      </svg>
+      <div class="g15-meta"><div class="g15-day js-day"></div><div class="g15-date js-date"></div></div>`;
+    },
   };
 
   let style = '';
@@ -679,6 +820,18 @@
     const d5m = $('#d5m'); if (d5m) {
       d5m.setAttribute('stroke-dasharray', dash((m + s / 60) / 60, 146));
       $('#d5s').setAttribute('stroke-dasharray', dash(sf, 128));
+    }
+    // g14 orbiting satellite dot on the outer ring
+    const g14sat = $('#g14sat'); if (g14sat) {
+      const a = sf * TAU;
+      g14sat.setAttribute('cx', 160 + 140 * Math.sin(a));
+      g14sat.setAttribute('cy', 160 - 140 * Math.cos(a));
+    }
+    // g15 analog hands (slim elegant variant)
+    const g15h = $('#g15h'); if (g15h) {
+      const rot = (el, a) => el.setAttribute('transform', `rotate(${a} 160 160)`);
+      rot(g15h, (h % 12) * 30 + m * 0.5); rot($('#g15m'), m * 6 + s * 0.1); rot($('#g15s'), s * 6);
+      return;
     }
   }
 
