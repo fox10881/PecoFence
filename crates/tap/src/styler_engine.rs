@@ -187,6 +187,78 @@ fn is_immersive(handle: u64, parent: u64, reported_type: &str) -> bool {
     false
 }
 
+/// Positive scoping: the subtrees the armed wire actually targets. The
+/// immersive exclusion alone can't fence off Task View — its island reports
+/// almost entirely *generic* types (`Grid`, `Border`, `Button`), so only the
+/// `Experiences.*` leaves were ever marked while the whole rest of the
+/// island still ran `GetIInspectableFromHandle`, dispatcher marshals and
+/// matcher/walk work on the island's own UI thread during construction.
+/// With scoping, an element enters the styling pipeline only when it lives
+/// under a subtree root the wire names — everything else (the Task View
+/// island, snap flyouts, future surfaces) exits before any COM work.
+/// `(prefixes, marked handles)` share one lock.
+fn scope() -> std::sync::MutexGuard<'static, (Vec<String>, std::collections::BTreeSet<u64>)> {
+    static SCOPE: Mutex<(Vec<String>, std::collections::BTreeSet<u64>)> =
+        Mutex::new((Vec::new(), std::collections::BTreeSet::new()));
+    SCOPE.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Derive the scope-root prefixes from an armed wire: every `Element`
+/// matcher type name contributes its namespace (all but the last segment);
+/// `Windows.*`/`Microsoft.*` namespaces and the immersive prefix can never
+/// anchor a scope (generic types exist on every surface). An empty result
+/// means the wire names no anchors — scoping stays off entirely so
+/// type-free wires keep their legacy everything-in-scope behaviour.
+fn rebuild_scope(wire_rules: &[WireRuleSet]) {
+    let mut scope = scope();
+    scope.0.clear();
+    for rs in wire_rules {
+        for m in std::iter::once(&rs.matcher).chain(rs.parents.iter()) {
+            if m.kind != MKind::Element || m.type_name.is_empty() {
+                continue;
+            }
+            let Some(dot) = m.type_name.rfind('.') else {
+                continue;
+            };
+            let prefix = &m.type_name[..dot + 1];
+            if prefix.starts_with(IMMERSIVE_PREFIX)
+                || prefix.starts_with("Windows.")
+                || prefix.starts_with("Microsoft.")
+            {
+                continue;
+            }
+            let prefix = prefix.to_string();
+            if !scope.0.contains(&prefix) {
+                scope.0.push(prefix);
+            }
+        }
+    }
+    scope.1.clear();
+    crate::tap_log!("styler: scope roots {:?}", scope.0);
+}
+
+/// `true` when `handle` may enter the styling pipeline — the wire names no
+/// subtree anchors (legacy everything-in-scope), or the element is under a
+/// scope root: its reported type starts with a scope prefix, or its parent
+/// handle was already marked. Marks the handle so descendants inherit.
+fn is_in_scope(handle: u64, parent: u64, reported_type: &str) -> bool {
+    let mut scope = scope();
+    let (prefixes, set) = &mut *scope;
+    if prefixes.is_empty() {
+        return true;
+    }
+    if set.contains(&handle) {
+        return true;
+    }
+    if prefixes.iter().any(|p| reported_type.starts_with(p.as_str()))
+        || set.contains(&parent)
+    {
+        set.insert(handle);
+        return true;
+    }
+    false
+}
+
 /// `g_elementPropertyModifying` — set while we write a property so the
 /// re-apply callback skips our own writes.
 static MODIFYING: AtomicBool = AtomicBool::new(false);
@@ -4001,6 +4073,8 @@ pub fn reset() {
         eng.rules_gen += 1;
         eng.to_release.clear();
     }
+    scope().0.clear();
+    scope().1.clear();
     let dispatcher = state().dispatcher.clone();
     if let Some(dispatcher) = dispatcher {
         post_ui(&dispatcher, Prio::Normal, || {
@@ -4030,6 +4104,7 @@ pub fn session_reset() {
         eng.readvising = false;
     }
     known().clear();
+    scope().1.clear();
 }
 
 /// dispatcher; without one the pending theme sits until the first element.
@@ -4074,6 +4149,7 @@ fn apply_theme_ui() {
         eng.wire_rules = Some(Rc::new(wire_rules.clone()));
         eng.rules_gen += 1;
     }
+    rebuild_scope(&wire_rules);
     // Resource vars before element styles — `{ThemeResource}` lookups during
     // application must resolve (the mod applies them in the same order).
     let dict = apply_resvars(&theme.resvars);
@@ -4167,6 +4243,14 @@ pub fn on_element(
     known().insert(element.Handle.0, reported_type.to_string());
     queue_release(element.Handle.0);
     queue_release(parent);
+    if !is_in_scope(element.Handle.0, parent, reported_type) {
+        // Subtree the wire doesn't target (e.g. the Task View island's
+        // generic chrome) — released and bookkept above, but no
+        // `GetIInspectableFromHandle`, dispatcher marshal, matcher or
+        // write work. Out-of-scope churn also stays out of the storm
+        // counter so an island open can never pause taskbar styling.
+        return;
+    }
     if storm_limited() {
         return;
     }
@@ -4256,6 +4340,7 @@ pub fn on_element_removed(handle: u64) {
     // Handles recycle across tree lifetimes — drop the mark so a reused
     // handle is never mistaken for immersive later.
     immersive().remove(&handle);
+    scope().1.remove(&handle);
     known().remove(&handle);
     queue_release(handle);
     let es = {
@@ -4330,6 +4415,8 @@ pub fn shutdown() {
     }
     known().clear();
     immersive().clear();
+    scope().0.clear();
+    scope().1.clear();
     TL_RULES.with(|t| *t.borrow_mut() = (0, Rc::new(Vec::new())));
     TREE_NODES.with(|p| p.borrow_mut().clear());
     PROP_QUEUE.with(|q| q.borrow_mut().clear());
@@ -4370,5 +4457,47 @@ mod tests {
         immersive().remove(&child);
         assert!(!immersive().contains(&child));
         immersive().clear();
+    }
+
+    #[test]
+    fn scope_limits_styling_to_wire_anchors() {
+        let mk = |ty: &str| Matcher {
+            kind: MKind::Element,
+            type_name: ty.to_string(),
+            ..Default::default()
+        };
+        let wire = vec![
+            WireRuleSet {
+                matcher: mk("Windows.UI.Xaml.Controls.Border"),
+                parents: vec![mk("Taskbar.TaskbarFrame")],
+                styles: vec![],
+            },
+            WireRuleSet {
+                matcher: mk("SystemTray.Stack"),
+                parents: vec![],
+                styles: vec![],
+            },
+        ];
+        rebuild_scope(&wire);
+        // Only non-generic namespaces anchor scope: `Taskbar.` and
+        // `SystemTray.` from the wire; the `Windows.UI.Xaml` leaf cannot.
+        assert!(is_in_scope(0xF1, 0, "Taskbar.TaskbarFrame"));
+        // Generic descendants of a scoped root inherit via the parent mark.
+        assert!(is_in_scope(0xF2, 0xF1, "Windows.UI.Xaml.Controls.Grid"));
+        assert!(is_in_scope(0xF3, 0xF2, "Windows.UI.Xaml.Controls.Border"));
+        assert!(is_in_scope(0xF4, 0, "SystemTray.OmniButton"));
+        // Generic elements outside any anchor subtree stay out — this is
+        // the Task View island's chrome shape.
+        assert!(!is_in_scope(0xA1, 0, "Windows.UI.Xaml.Controls.Grid"));
+        assert!(!is_in_scope(0xA2, 0xA1, "Windows.UI.Xaml.Controls.Button"));
+        // A wire without anchors leaves everything in scope (legacy path).
+        rebuild_scope(&[WireRuleSet {
+            matcher: mk("Windows.UI.Xaml.Controls.Grid"),
+            parents: vec![],
+            styles: vec![],
+        }]);
+        assert!(is_in_scope(0xB1, 0, "Windows.UI.Xaml.Controls.Border"));
+        scope().0.clear();
+        scope().1.clear();
     }
 }
