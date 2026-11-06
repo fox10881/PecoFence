@@ -15,7 +15,10 @@ const ORPHAN_GC_SECS: i64 = 7 * 24 * 3600;
 
 pub struct AppState {
     pub config: Config,
-    store: ConfigStore,
+    /// `pub(crate)` so the settings merge can borrow the store while it
+    /// mutates `config.settings` — a `store()` getter would borrow all of
+    /// `self` and conflict.
+    pub(crate) store: ConfigStore,
     pub layout: usize,
     dirty: bool,
     catalog: HashMap<ItemKey, ItemId>,
@@ -121,6 +124,11 @@ impl AppState {
             LoadOutcome::Recovered(c, from) => (c, false, Some(from)),
             LoadOutcome::Fresh(c) => (c, true, None),
         };
+        // Baseline for the sidecar freshness tri-state: what the load just
+        // ingested counts as "seen", so a hand-edit after this point —
+        // including a revert-to-baseline — is distinguishable from state
+        // the app itself holds.
+        store.note_sidecars_seen();
         pecofence_core::i18n::set_language(
             config
                 .settings

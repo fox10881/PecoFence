@@ -38,20 +38,101 @@ fn clock_style_json(s: &pecofence_core::Settings) -> String {
     .to_string()
 }
 
-/// Overlay sidecar-on-disk authored deltas under `s`'s in-memory dicts —
-/// disk fills fields the memory entries lack; memory/IPC values win every
-/// conflict. Run before resolving/applying so a hand-edit made while the
-/// app ran is honored without a restart.
-fn merge_sidecar_deltas(s: &mut pecofence_core::Settings, dir: &std::path::Path) {
-    for (id, p) in pecofence_core::config_store::read_effect_sidecar_deltas(
-        &dir.join(pecofence_core::config_store::LIVE_EFFECTS_CONFIG_FILE),
-    ) {
-        s.effect_params.entry(id).or_default().merge_disk(&p);
+/// Overlay sidecar-on-disk authored deltas under `s`'s in-memory dicts,
+/// run before resolving/applying so a hand-edit made while the app ran is
+/// honored without a restart.
+///
+/// Reconciliation is the same per-entry tri-state the save path uses,
+/// driven by [`ConfigStore::sidecar_diff`]: an entry whose authored view
+/// changed on disk *and* whose in-memory view still equals the recorded
+/// baseline is a pure hand-edit — including a revert-to-baseline, which
+/// produces no delta and used to be invisible — so the memory entry is
+/// rebuilt from the disk delta (`None` delta = defaults). An entry the
+/// app itself touched since the baseline (theme apply, IPC, runtime
+/// mirror) keeps memory; untouched entries keep pending runtime edits.
+///
+/// Without a recorded baseline (`sidecar_diff` → `None`, e.g. a store
+/// that never loaded) the legacy fill-if-unset merge runs instead.
+fn merge_sidecar_deltas(s: &mut pecofence_core::Settings, store: &pecofence_core::ConfigStore) {
+    use pecofence_core::config_store as cs;
+    let empty = serde_json::json!({});
+    if let Some(diff) = store.sidecar_diff(cs::LIVE_EFFECTS_CONFIG_FILE, cs::EFFECTS_DICT_KEY) {
+        for id in &diff.changed {
+            let untouched = s.effect_params.get(id).is_none_or(|p| {
+                cs::memory_authored_view(
+                    cs::EFFECTS_DICT_KEY,
+                    id,
+                    &serde_json::to_value(p).unwrap_or_else(|_| empty.clone()),
+                ) == diff
+                    .baseline
+                    .get(id)
+                    .cloned()
+                    .unwrap_or_else(|| empty.clone())
+            });
+            if !untouched {
+                continue;
+            }
+            let params = diff
+                .deltas
+                .get(id)
+                .and_then(|d| {
+                    serde_json::from_value::<pecofence_core::EffectParams>(d.clone()).ok()
+                })
+                .map(|mut p| {
+                    p.sanitize();
+                    p
+                })
+                .unwrap_or_default();
+            s.effect_params.insert(id.clone(), params);
+        }
+    } else {
+        for (id, p) in
+            cs::read_effect_sidecar_deltas(&store.dir().join(cs::LIVE_EFFECTS_CONFIG_FILE))
+        {
+            s.effect_params.entry(id).or_default().merge_disk(&p);
+        }
     }
-    for (id, p) in pecofence_core::config_store::read_widget_sidecar_deltas(
-        &dir.join(pecofence_core::config_store::WIDGET_CONFIG_FILE),
-    ) {
-        s.widget_params.entry(id).or_default().merge_disk(&p);
+    if let Some(diff) = store.sidecar_diff(cs::WIDGET_CONFIG_FILE, cs::WIDGET_DICT_KEY) {
+        for id in &diff.changed {
+            let untouched = s.widget_params.get(id).is_none_or(|p| {
+                cs::memory_authored_view(
+                    cs::WIDGET_DICT_KEY,
+                    id,
+                    &serde_json::to_value(p).unwrap_or_else(|_| empty.clone()),
+                ) == diff
+                    .baseline
+                    .get(id)
+                    .cloned()
+                    .unwrap_or_else(|| empty.clone())
+            });
+            if !untouched {
+                continue;
+            }
+            let mut params = diff
+                .deltas
+                .get(id)
+                .and_then(|d| {
+                    serde_json::from_value::<pecofence_core::WidgetParams>(d.clone()).ok()
+                })
+                .map(|mut p| {
+                    p.sanitize();
+                    p
+                })
+                .unwrap_or_default();
+            // `bounds`/`adaptiveColor` mirror the visible widget — the
+            // file can't snap the active design back mid-edit.
+            if *id == s.clock_style
+                && let Some(old) = s.widget_params.get(id)
+            {
+                params.bounds = old.bounds.or(params.bounds);
+                params.adaptive_color = old.adaptive_color.or(params.adaptive_color);
+            }
+            s.widget_params.insert(id.clone(), params);
+        }
+    } else {
+        for (id, p) in cs::read_widget_sidecar_deltas(&store.dir().join(cs::WIDGET_CONFIG_FILE)) {
+            s.widget_params.entry(id).or_default().merge_disk(&p);
+        }
     }
 }
 
@@ -612,9 +693,7 @@ impl App {
         }
         // Right-click refresh is the modder's "pick up my edits" gesture —
         // pull sidecar deltas authored while the app ran before rebuilding.
-        if let Some(dir) = self.state.config_path().parent().map(|p| p.to_path_buf()) {
-            merge_sidecar_deltas(&mut self.state.config.settings, &dir);
-        }
+        merge_sidecar_deltas(&mut self.state.config.settings, &self.state.store);
         h.close();
         let style = self.state.config.settings.clock_style.clone();
         self.apply_clock_style(&style);
@@ -1477,14 +1556,13 @@ impl App {
         if new == old {
             return;
         }
-        // Hand-edits to the sidecar files made while the app runs: the
-        // on-disk authored deltas fill fields the in-memory dict hasn't
-        // claimed (memory/IPC values win every conflict), so a modder's
-        // tweak applies on the next apply gesture without a restart — and
-        // the merge-on-save keeps it on disk instead of stomping it.
-        if let Some(dir) = self.state.config_path().parent().map(|p| p.to_path_buf()) {
-            merge_sidecar_deltas(&mut new, &dir);
-        }
+        // Hand-edits to the sidecar files made while the app runs: entries
+        // the app never touched since the recorded baseline are rebuilt
+        // from disk (a revert-to-baseline counts), so a modder's tweak —
+        // or a manual reset — applies on the next apply gesture without a
+        // restart; merge-on-save then keeps it on disk instead of
+        // stomping it.
+        merge_sidecar_deltas(&mut new, &self.state.store);
         // Layered widget dictionary: a style switch first mirrors the
         // outgoing design's live placement into its dict slot (per-design
         // persistence), then the incoming design's entry resolves onto the

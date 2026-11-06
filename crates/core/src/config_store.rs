@@ -4,7 +4,8 @@
 
 use crate::geometry::MAX_DIP;
 use crate::model::{Config, ItemSourceSpec, NormGeometry, SCHEMA_VERSION};
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -52,13 +53,45 @@ impl std::fmt::Display for SaveError {
 
 impl std::error::Error for SaveError {}
 
+/// Per-sidecar authored-delta baseline (`id → authored view`), recorded
+/// whenever this store last read or wrote the file. `None` = never
+/// recorded — the merge paths then keep the legacy memory-wins behavior.
+/// Comparing a fresh disk read against this baseline is what separates a
+/// hand-edit on disk from a value the app itself authored or ingested.
+#[derive(Default)]
+struct SidecarSeen {
+    widget: Option<BTreeMap<String, serde_json::Value>>,
+    effects: Option<BTreeMap<String, serde_json::Value>>,
+}
+
+impl SidecarSeen {
+    fn slot(&self, dict_key: &str) -> &Option<BTreeMap<String, serde_json::Value>> {
+        if dict_key == WIDGET_DICT_KEY {
+            &self.widget
+        } else {
+            &self.effects
+        }
+    }
+    fn slot_mut(&mut self, dict_key: &str) -> &mut Option<BTreeMap<String, serde_json::Value>> {
+        if dict_key == WIDGET_DICT_KEY {
+            &mut self.widget
+        } else {
+            &mut self.effects
+        }
+    }
+}
+
 pub struct ConfigStore {
     dir: PathBuf,
+    sidecar_seen: RefCell<SidecarSeen>,
 }
 
 impl ConfigStore {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        Self {
+            dir: dir.into(),
+            sidecar_seen: RefCell::new(SidecarSeen::default()),
+        }
     }
 
     /// Reuse an existing installation's data in place. No copying, rewriting or
@@ -394,14 +427,18 @@ impl ConfigStore {
         // a write failure logs but doesn't fail the (already complete) save.
         // Authored deltas still on disk are merged back in first so a
         // hand-edit made while the app was running survives the save instead
-        // of being stomped by the (stale) in-memory view.
+        // of being stomped by the (stale) in-memory view — and an entry the
+        // user edited since the recorded baseline wins outright.
         for (name, text, dict_key) in [
             (WIDGET_CONFIG_FILE, &split.widget, WIDGET_DICT_KEY),
             (LIVE_EFFECTS_CONFIG_FILE, &split.effects, EFFECTS_DICT_KEY),
         ] {
             let mut doc: serde_json::Value =
                 serde_json::from_str(text).unwrap_or_else(|_| serde_json::json!({}));
-            merge_disk_sidecar(&mut doc, &self.dir.join(name), dict_key);
+            let baseline = self.sidecar_seen.borrow().slot(dict_key).clone();
+            let recorded =
+                merge_disk_sidecar(&mut doc, &self.dir.join(name), dict_key, baseline.as_ref());
+            *self.sidecar_seen.borrow_mut().slot_mut(dict_key) = Some(recorded);
             let text = serde_json::to_string_pretty(&doc).unwrap_or_else(|_| text.clone());
             if let Err(e) = fs::write(self.dir.join(name), text) {
                 tracing::warn!(file = name, error = %e, "config sidecar write failed");
@@ -418,8 +455,8 @@ pub const WIDGET_CONFIG_FILE: &str = "Widget_config.json";
 pub const LIVE_EFFECTS_CONFIG_FILE: &str = "Live_Effects_config.json";
 
 /// `settings.*` key each sidecar owns — the whole per-id dictionary.
-const WIDGET_DICT_KEY: &str = "widgetParams";
-const EFFECTS_DICT_KEY: &str = "effectParams";
+pub const WIDGET_DICT_KEY: &str = "widgetParams";
+pub const EFFECTS_DICT_KEY: &str = "effectParams";
 
 /// Scalar keys the first split release wrote *inside* the sidecars before
 /// they became pure dictionaries — read back into `settings` for migration,
@@ -621,34 +658,186 @@ pub fn read_effect_sidecar_deltas(path: &Path) -> BTreeMap<String, crate::Effect
         .collect()
 }
 
+/// The hand-edit-owned view of an entry delta — what the tri-state merge
+/// compares to decide who authored a change. Effects entries are pure
+/// authored knobs, so the whole delta counts. Widget entries keep only
+/// `elements`: `bounds`/`adaptiveColor` are live-mirrored runtime fields
+/// that the save mirror rewrites every pass — they can't witness a
+/// hand-edit and would otherwise mark the active design "app-authored"
+/// on every drag. An empty object means "at baseline" (reverted == never
+/// authored).
+fn authored_view(dict_key: &str, delta: Option<&serde_json::Value>) -> serde_json::Value {
+    let Some(obj) = delta.and_then(serde_json::Value::as_object) else {
+        return serde_json::Value::Object(serde_json::Map::new());
+    };
+    if dict_key == WIDGET_DICT_KEY {
+        return obj
+            .get("elements")
+            .cloned()
+            .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+    }
+    serde_json::Value::Object(obj.clone())
+}
+
+/// The [`authored_view`] of an in-memory params entry — the caller
+/// serializes its `EffectParams`/`WidgetParams` to a `serde_json::Value`
+/// and passes it in; delta normalization makes the result comparable
+/// against a [`SidecarDiff::baseline`] entry.
+pub fn memory_authored_view(
+    dict_key: &str,
+    id: &str,
+    entry: &serde_json::Value,
+) -> serde_json::Value {
+    authored_view(dict_key, delta_from_template(dict_key, id, entry).as_ref())
+}
+
+/// A fresh disk read of one sidecar measured against the recorded
+/// baseline — the apply-time half of the freshness tri-state. [`Self::changed`]
+/// lists the ids a hand-edit touched; [`Self::baseline`] still holds the
+/// pre-read authored views so the caller can run the memory-side check
+/// (an entry whose memory view equals its baseline was never touched by
+/// the app, so the disk change wins).
+pub struct SidecarDiff {
+    /// Per-id authored deltas found on disk right now (template-stripped).
+    pub deltas: BTreeMap<String, serde_json::Value>,
+    /// Authored views as last recorded (pre-read baseline).
+    pub baseline: BTreeMap<String, serde_json::Value>,
+    /// Ids whose authored view differs from the baseline — externally
+    /// edited, reverted, or deleted.
+    pub changed: BTreeSet<String>,
+}
+
+impl ConfigStore {
+    /// Records the sidecars' current on-disk authored deltas as this
+    /// store's baseline — call once after a load so later reads/writes
+    /// can tell a hand-edit apart from state the app itself holds.
+    /// Missing/unreadable files record as empty baselines (everything on
+    /// them later counts as new).
+    pub fn note_sidecars_seen(&self) {
+        let mut seen = self.sidecar_seen.borrow_mut();
+        for (name, dict_key) in [
+            (WIDGET_CONFIG_FILE, WIDGET_DICT_KEY),
+            (LIVE_EFFECTS_CONFIG_FILE, EFFECTS_DICT_KEY),
+        ] {
+            let map = sidecar_delta_values(&self.dir.join(name), dict_key)
+                .iter()
+                .map(|(id, d)| (id.clone(), authored_view(dict_key, Some(d))))
+                .collect();
+            *seen.slot_mut(dict_key) = Some(map);
+        }
+    }
+
+    /// Reads one sidecar's authored deltas and diffs them against the
+    /// recorded baseline — then adopts the read as the new baseline.
+    /// `None` when no baseline was ever recorded (a `ConfigStore` that
+    /// never saw a load/save): callers then keep the legacy memory-wins
+    /// merge rather than treating the whole file as externally edited.
+    pub fn sidecar_diff(&self, file: &str, dict_key: &str) -> Option<SidecarDiff> {
+        let baseline = self.sidecar_seen.borrow().slot(dict_key).clone()?;
+        let deltas = sidecar_delta_values(&self.dir.join(file), dict_key);
+        let empty = serde_json::Value::Object(serde_json::Map::new());
+        let changed: BTreeSet<String> = deltas
+            .keys()
+            .chain(baseline.keys())
+            .filter(|id| {
+                let disk = deltas
+                    .get(*id)
+                    .map(|d| authored_view(dict_key, Some(d)))
+                    .unwrap_or_else(|| empty.clone());
+                let seen = baseline.get(*id).cloned().unwrap_or_else(|| empty.clone());
+                disk != seen
+            })
+            .cloned()
+            .collect();
+        let recorded: BTreeMap<String, serde_json::Value> = deltas
+            .iter()
+            .map(|(id, d)| (id.clone(), authored_view(dict_key, Some(d))))
+            .collect();
+        *self.sidecar_seen.borrow_mut().slot_mut(dict_key) = Some(recorded);
+        Some(SidecarDiff {
+            deltas,
+            baseline,
+            changed,
+        })
+    }
+}
+
 /// Gap-fill `emitted` (the sidecar doc about to be written) with authored
-/// deltas still on disk at `disk_path`. A hand-edit made while the app was
-/// running isn't in memory — without this merge the save would stomp it
-/// back to the template. Emitted (memory) fields win every conflict; disk
-/// only supplies keys the emitted entry lacks, and `elements` merges one
-/// level deeper per target. `name` never merges — it's file-owned.
-fn merge_disk_sidecar(emitted: &mut serde_json::Value, disk_path: &Path, dict_key: &str) {
-    let Ok(text) = fs::read_to_string(disk_path) else {
-        return;
+/// deltas still on disk at `disk_path`, then return the emitted doc's
+/// authored-view map for the caller to record as the new baseline.
+///
+/// Reconciliation is a per-entry tri-state against `baseline` (the
+/// authored views this store last saw/wrote, `None` = never recorded):
+///
+/// - **disk changed, memory didn't** (`disk != baseline`, `mem ==
+///   baseline`): the user hand-edited the entry — possibly back to the
+///   template, which produces no delta and used to be invisible — so the
+///   disk side wins outright and the entry is rebuilt from it. Widget
+///   `bounds`/`adaptiveColor` stay live-mirrored from memory.
+/// - **memory changed** (`mem != baseline`, whether or not disk did): the
+///   app authored or ingested the value — the emitted entry stands, with
+///   disk only gap-filling keys it lacks.
+/// - **neither changed** or **no baseline**: the legacy gap-fill.
+///
+/// An unreadable file contributes nothing: `emitted` stays the memory
+/// view and the recorded baseline mirrors it (a momentary lock can never
+/// read as a mass-revert).
+fn merge_disk_sidecar(
+    emitted: &mut serde_json::Value,
+    disk_path: &Path,
+    dict_key: &str,
+    baseline: Option<&BTreeMap<String, serde_json::Value>>,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut recorded = BTreeMap::new();
+    let Some(emitted_obj) = emitted.as_object_mut() else {
+        return recorded;
     };
-    let Ok(disk) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return;
-    };
-    let (Some(disk_obj), Some(emitted_obj)) = (disk.as_object(), emitted.as_object_mut()) else {
-        return;
-    };
-    for (id, dv) in disk_obj {
-        let Some(delta) = delta_from_template(dict_key, id, dv) else {
-            continue;
-        };
-        let Some(dobj) = delta.as_object() else {
-            continue;
-        };
-        match emitted_obj.get_mut(id).and_then(|e| e.as_object_mut()) {
-            Some(eobj) => {
-                // "Lacks" = absent OR still sitting at its template
-                // baseline — only a value that differs from the baseline
-                // is something memory actually authored and must win.
+    let disk: Option<serde_json::Value> = fs::read_to_string(disk_path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok());
+    let readable = disk.is_some();
+    let empty_map = serde_json::Map::new();
+    let disk_obj = disk
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
+        .unwrap_or(&empty_map);
+    let empty_view = serde_json::Value::Object(serde_json::Map::new());
+    for (id, ev) in emitted_obj.iter_mut() {
+        let disk_delta = disk_obj
+            .get(id)
+            .and_then(|v| delta_from_template(dict_key, id, v));
+        let disk_auth = authored_view(dict_key, disk_delta.as_ref());
+        let seen_auth = baseline
+            .and_then(|m| m.get(id))
+            .cloned()
+            .unwrap_or_else(|| empty_view.clone());
+        let mem_delta = delta_from_template(dict_key, id, ev);
+        let mem_auth = authored_view(dict_key, mem_delta.as_ref());
+        if readable && baseline.is_some() && disk_auth != seen_auth && mem_auth == seen_auth {
+            // External edit the app never touched: rebuild the entry's
+            // authored fields from disk — a revert shows as an empty
+            // delta and lands as the plain template.
+            let mut authored = disk_delta.unwrap_or_else(|| serde_json::json!({}));
+            if dict_key == WIDGET_DICT_KEY
+                && let Some(ao) = authored.as_object_mut()
+            {
+                for k in ["bounds", "adaptiveColor"] {
+                    match ev.as_object().and_then(|e| e.get(k)) {
+                        Some(live) if !live.is_null() => {
+                            ao.insert(k.to_string(), live.clone());
+                        }
+                        _ => {
+                            ao.remove(k);
+                        }
+                    }
+                }
+            }
+            *ev = merged_with_template(dict_key, id, &authored);
+        } else if let Some(dobj) = disk_delta.as_ref().and_then(|d| d.as_object()) {
+            // "Lacks" = absent OR still sitting at its template baseline —
+            // only a value that differs from the baseline is something
+            // memory actually authored and must win.
+            if let Some(eobj) = ev.as_object_mut() {
                 let tmpl = template_for(dict_key, id);
                 for (k, v) in dobj {
                     if dict_key == WIDGET_DICT_KEY && k == "elements" {
@@ -685,11 +874,24 @@ fn merge_disk_sidecar(emitted: &mut serde_json::Value, disk_path: &Path, dict_ke
                     }
                 }
             }
-            None => {
+        }
+        recorded.insert(
+            id.clone(),
+            authored_view(dict_key, delta_from_template(dict_key, id, ev).as_ref()),
+        );
+    }
+    if readable {
+        for (id, dv) in disk_obj {
+            if emitted_obj.contains_key(id) {
+                continue;
+            }
+            if let Some(delta) = delta_from_template(dict_key, id, dv) {
                 emitted_obj.insert(id.clone(), merged_with_template(dict_key, id, &delta));
+                recorded.insert(id.clone(), authored_view(dict_key, Some(&delta)));
             }
         }
     }
+    recorded
 }
 
 /// Splits a serialized config document into [`SplitConfigJson`]. The two
@@ -1416,6 +1618,174 @@ mod tests {
         assert_eq!(disk["g10"]["bounds"], serde_json::json!([5, 5, 400, 200]));
         // Unvisited design's authored edit survived too.
         assert_eq!(disk["d3"]["elements"]["day"]["offsetX"], 40);
+    }
+
+    #[test]
+    fn manual_reset_to_defaults_survives_the_next_save() {
+        // The ghost-state repro: a tweak lands via apply so memory and
+        // file both carry it; the user then reverts the file to baseline
+        // by hand, and the next save used to resurrect the tweaked
+        // numbers. A revert produces no authored delta — without the
+        // freshness baseline it was invisible.
+        let store = ConfigStore::new(tmpdir("ghost-revert"));
+        fs::create_dir_all(store.dir()).unwrap();
+        let mut c = sample();
+        c.settings.effect_params.insert(
+            "fireflies".into(),
+            crate::EffectParams {
+                particle_count: Some(300),
+                ..Default::default()
+            },
+        );
+        store.save(&c).unwrap();
+        let path = store.dir().join(LIVE_EFFECTS_CONFIG_FILE);
+        let mut disk: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(disk["fireflies"]["particleCount"], 300);
+
+        // The user's hand-revert: fireflies back to the pristine block.
+        disk["fireflies"] = serde_json::json!({
+            "name": "Fireflies", "particleCount": 90, "speed": 1.0,
+            "wind": 0.0, "gravity": 0.0, "primaryColor": null, "glowRadius": 1.0
+        });
+        fs::write(&path, serde_json::to_string_pretty(&disk).unwrap()).unwrap();
+
+        // Memory still holds 300 — the ghost. The revert must win anyway.
+        store.save(&c).unwrap();
+        let disk: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(disk["fireflies"]["particleCount"], 90);
+    }
+
+    #[test]
+    fn manual_revert_to_other_value_wins_over_ghost() {
+        // Same ghost setup, but the revert lands on a non-baseline value:
+        // the disk delta exists yet used to lose the "memory authored"
+        // conflict check.
+        let store = ConfigStore::new(tmpdir("ghost-revert-150"));
+        fs::create_dir_all(store.dir()).unwrap();
+        let mut c = sample();
+        c.settings.effect_params.insert(
+            "fireflies".into(),
+            crate::EffectParams {
+                particle_count: Some(300),
+                ..Default::default()
+            },
+        );
+        store.save(&c).unwrap();
+        let path = store.dir().join(LIVE_EFFECTS_CONFIG_FILE);
+        let mut disk: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        disk["fireflies"]["particleCount"] = serde_json::json!(150);
+        fs::write(&path, serde_json::to_string_pretty(&disk).unwrap()).unwrap();
+        store.save(&c).unwrap();
+        let disk: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(disk["fireflies"]["particleCount"], 150);
+    }
+
+    #[test]
+    fn memory_authored_survives_external_edit_elsewhere() {
+        // A pending app-side change (theme applied, not yet saved) keeps
+        // its entry while a concurrent hand-edit on a *different* id is
+        // honored — per-entry reconciliation, not whole-file.
+        let store = ConfigStore::new(tmpdir("ghost-pending"));
+        fs::create_dir_all(store.dir()).unwrap();
+        let c0 = sample();
+        store.save(&c0).unwrap();
+        let path = store.dir().join(LIVE_EFFECTS_CONFIG_FILE);
+
+        // Runtime-side authored change on snow.
+        let mut c = c0.clone();
+        c.settings.effect_params.insert(
+            "snow".into(),
+            crate::EffectParams {
+                particle_count: Some(500),
+                ..Default::default()
+            },
+        );
+        // Concurrent hand-edit on fireflies.
+        let mut disk: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        disk["fireflies"]["particleCount"] = serde_json::json!(250);
+        fs::write(&path, serde_json::to_string_pretty(&disk).unwrap()).unwrap();
+
+        store.save(&c).unwrap();
+        let disk: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(disk["fireflies"]["particleCount"], 250);
+        assert_eq!(disk["snow"]["particleCount"], 500);
+    }
+
+    #[test]
+    fn both_sides_changed_memory_wins() {
+        // Memory authored fireflies too (e.g. a theme applied moments
+        // before the hand-edit): the app's in-flight intent is kept —
+        // last-writer-wins favors the running state over the file.
+        let store = ConfigStore::new(tmpdir("ghost-both"));
+        fs::create_dir_all(store.dir()).unwrap();
+        let mut c = sample();
+        c.settings.effect_params.insert(
+            "fireflies".into(),
+            crate::EffectParams {
+                particle_count: Some(300),
+                ..Default::default()
+            },
+        );
+        store.save(&c).unwrap();
+        let path = store.dir().join(LIVE_EFFECTS_CONFIG_FILE);
+        let mut disk: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        disk["fireflies"]["particleCount"] = serde_json::json!(150);
+        fs::write(&path, serde_json::to_string_pretty(&disk).unwrap()).unwrap();
+
+        c.settings.effect_params.insert(
+            "fireflies".into(),
+            crate::EffectParams {
+                particle_count: Some(400),
+                ..Default::default()
+            },
+        );
+        store.save(&c).unwrap();
+        let disk: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(disk["fireflies"]["particleCount"], 400);
+    }
+
+    #[test]
+    fn sidecar_diff_marks_only_external_changes() {
+        // The apply-time read: after the baseline is recorded, a disk
+        // revert shows in `changed`; a second read sees nothing — and an
+        // id memory never had reports changed too (new authored entry).
+        let store = ConfigStore::new(tmpdir("ghost-diff"));
+        fs::create_dir_all(store.dir()).unwrap();
+        let mut c = sample();
+        c.settings.effect_params.insert(
+            "fireflies".into(),
+            crate::EffectParams {
+                particle_count: Some(300),
+                ..Default::default()
+            },
+        );
+        store.save(&c).unwrap();
+        let path = store.dir().join(LIVE_EFFECTS_CONFIG_FILE);
+        let mut disk: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        disk["fireflies"]["particleCount"] = serde_json::json!(90);
+        disk["embers"]["wind"] = serde_json::json!(25.0);
+        fs::write(&path, serde_json::to_string_pretty(&disk).unwrap()).unwrap();
+
+        let diff = store
+            .sidecar_diff(LIVE_EFFECTS_CONFIG_FILE, EFFECTS_DICT_KEY)
+            .expect("baseline recorded by save");
+        assert!(diff.changed.contains("fireflies"));
+        assert!(diff.changed.contains("embers"));
+        assert!(!diff.changed.contains("snow"));
+        // The baseline adopted the read: a second diff reports nothing.
+        let diff2 = store
+            .sidecar_diff(LIVE_EFFECTS_CONFIG_FILE, EFFECTS_DICT_KEY)
+            .unwrap();
+        assert!(diff2.changed.is_empty());
     }
 
     #[test]

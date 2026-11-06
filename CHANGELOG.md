@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **Manual sidecar reverts are honored (ghost-state fix)**: editing
+  `Live_Effects_config.json`/`Widget_config.json` back to defaults after
+  a tweak had been applied used to be silently undone — the next save
+  rewrote the file from stale in-memory values, and the apply merge
+  couldn't see a revert at all (a baseline-equal field produces no
+  authored delta). The store now keeps a per-entry freshness baseline of
+  the authored deltas it last read or wrote, and both the apply-time
+  merge and merge-on-save reconcile with a tri-state: an entry whose
+  authored view changed on disk while memory still matches the baseline
+  is a hand-edit and wins outright (revert, retune, or deletion — the
+  entry is rebuilt from disk, baseline when empty); an entry the app
+  touched keeps memory; untouched entries gap-fill as before. Widget
+  `bounds`/`adaptiveColor` stay live-mirrored — they can't witness a
+  hand-edit and would otherwise mark the active design "app-authored" on
+  every drag.
+
 ## 0.3.0 — 2026-11-06
 
 ### New content — Series-2 widgets & effects
