@@ -25,8 +25,11 @@ UNINSTALL = r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
 RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
 PAYLOAD = {
     "pecofence.exe", "pecofence-cli.exe", "pecofence-watchdog.exe",
+    "pecofence_tap.dll", "ExplorerBlurMica.dll",
     "WebView2Loader.dll", "LICENSE",
     "LICENSE-WebView2Loader.txt", "THIRD-PARTY-LICENSES.txt", "README.md",
+    "GPL-ExplorerBlurMica.txt", "LICENSE-ExplorerBlurMica.txt",
+    "README-ExplorerBlurMica.txt",
     "UPGRADING.md", "SKILL.md", "DESKTOP_CONTAINERS.md", "GLASS_RENDERING.md",
     "WALLPAPER_ENGINE.md", "assets",
 }
@@ -35,9 +38,13 @@ WALLPAPERS = {
     for p in (ROOT / "assets" / "wallpapers").iterdir()
 }
 ZIP_PAYLOAD = (PAYLOAD - {"assets"}) | WALLPAPERS
-# The installer skips the three design docs but keeps the wallpaper pack.
+# The installer skips the three design docs and the ExplorerBlurMica set —
+# the app embeds that DLL and self-deploys it to AppData at runtime, so the
+# installed dir only needs pecofence_tap.dll — but keeps the wallpaper pack.
 INSTALLED = (PAYLOAD - {"assets", "DESKTOP_CONTAINERS.md", "GLASS_RENDERING.md",
-                        "WALLPAPER_ENGINE.md"}) | WALLPAPERS
+                        "WALLPAPER_ENGINE.md", "ExplorerBlurMica.dll",
+                        "GPL-ExplorerBlurMica.txt", "LICENSE-ExplorerBlurMica.txt",
+                        "README-ExplorerBlurMica.txt"}) | WALLPAPERS
 HIDDEN = subprocess.STARTUPINFO()
 HIDDEN.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 HIDDEN.wShowWindow = 0
