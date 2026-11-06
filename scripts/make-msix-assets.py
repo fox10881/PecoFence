@@ -1,9 +1,9 @@
-"""Render the Store/tile PNGs for the MSIX package from packaging/assets/badge.png.
+"""Render the Store/tile PNGs for the MSIX package from packaging/assets/icon.png.
 
-The CoreDesk Engine badge is the circular fox emblem; every asset is that artwork
-composited (Lanczos) onto a transparent canvas at the size the Store expects. Wide
-tiles and the splash screen keep the transparent ring so the manifest BackgroundColor
-(the plate indigo) shows behind the badge.
+The CoreDesk Engine icon is the 3D display-engine + fox-emblem composite; every
+asset is that artwork scaled (Lanczos) onto a transparent canvas at the size the
+Store expects. Wide tiles and the splash screen keep a transparent ring so the
+manifest BackgroundColor (the plate indigo) shows behind the icon.
 
     python scripts/make-msix-assets.py <output directory> [--preview <png>]
     python scripts/make-msix-assets.py --preview .cache/icon-sheet.png
@@ -17,8 +17,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 PLATE = (0x47, 0x68, 0xDE)
-TILE_MARGIN = 0.18  # badge inset on tiles: badge = 64% of the side
-ICON_MARGIN = 0.12  # taskbar / Explorer icons: the badge fills a bit more
+TILE_MARGIN = 0.18  # icon inset on mark-only tiles
+ICON_MARGIN = 0.12  # taskbar / Explorer icons
 
 # Logical name -> (base width, base height) at 100% scale.
 TILES = {
@@ -37,21 +37,22 @@ SCALES = (100, 125, 150, 200, 400)
 TARGET_SIZES = (16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256)
 
 
-BADGE_SRC = Path(__file__).resolve().parent.parent / "packaging" / "assets" / "badge.png"
+ICON_SRC = Path(__file__).resolve().parent.parent / "packaging" / "assets" / "icon.png"
 
 
-def badge() -> Image.Image:
-    # The CoreDesk Engine fox badge (circular, transparent margin) is the whole icon now.
-    return Image.open(BADGE_SRC).convert("RGBA")
+def icon_art() -> Image.Image:
+    # The 3D display-engine + fox-emblem composite is the whole icon.
+    return Image.open(ICON_SRC).convert("RGBA")
 
 
 def render_icon(width: int, height: int, *, plate: bool = True, margin: float = TILE_MARGIN) -> Image.Image:
-    """The fox badge centred on a transparent canvas at the given size.
+    """The icon composite centred on a transparent canvas at the given size.
 
-    `plate`/`margin` are kept for the tile call sites; a badge tile is the badge at the
-    fill the Store expects (the manifest BackgroundColor shows through the transparent ring).
+    `plate`/`margin` are kept for the tile call sites: mark-only tiles (wide, splash)
+    draw the icon at reduced fill so the manifest BackgroundColor shows through the
+    transparent ring.
     """
-    b = badge()
+    b = icon_art()
     side = min(width, height)
     fill = side if plate else round(side * (1 - 2 * margin))
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
@@ -64,7 +65,7 @@ def render_tile(name: str, width: int, height: int) -> Image.Image:
 
 
 def render_target(size: int) -> Image.Image:
-    # The badge carries its own circular plate — plated and unplated forms are identical.
+    # The composite already includes its own depth/plate — plated and unplated are identical.
     return render_icon(size, size, margin=ICON_MARGIN)
 
 

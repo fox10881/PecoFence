@@ -770,11 +770,12 @@ pub(super) fn shadow_style_for(theme: &Theme) -> ShadowStyle {
 }
 
 pub(super) fn tray_icon_image(size: i32, _accent: [u8; 3], _dark: bool) -> Vec<u8> {
-    // The CoreDesk Engine fox badge, baked to 64x64 premultiplied BGRA from the
-    // icon source (scripts/make-app-icon.py -> assets/coredesk.ico). Box-filtered
-    // to the requested size so the tray, window frame and taskbar all show one mark.
+    // The CoreDesk Engine 3D icon composite, baked to 64x64 premultiplied BGRA from
+    // packaging/assets/icon.png (the same source the .ico and Store assets use).
+    // Box-filtered to the requested size so tray, window frame and taskbar all show
+    // one mark.
     const SRC: usize = 64;
-    const BADGE: &[u8] = include_bytes!("../../assets/badge-64.bgra");
+    const BADGE: &[u8] = include_bytes!("../../assets/icon-64.bgra");
     let dst = size.max(1) as usize;
     if dst == SRC {
         return BADGE.to_vec();
@@ -1296,7 +1297,7 @@ mod tray_icon_tests {
 
     /// Every pixel is premultiplied (colour ≤ alpha) and the corners stay transparent.
     #[test]
-    fn tray_icon_is_premultiplied_with_rounded_corners() {
+    fn tray_icon_is_premultiplied_with_transparent_corners() {
         for size in [16, 20, 24, 32, 48] {
             let px = tray_icon_image(size, [0, 0, 0], true);
             assert_eq!(px.len(), (size * size * 4) as usize);
